@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "wlanpi-core",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "wlanpi-core.main:app",
+                "--env-file",
+                ".env",
+                "--reload"
+            ],
+            "jinja": true
+        }
+    ]
+}

@@ -1,0 +1,27 @@
+# wlanpi-core.service
+
+[Unit]
+Description=Gunicorn daemon for managing uvicorn serving wlanpi-core
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wlanpi-core/lib/python3.7/site-packages/wlanpi_core
+ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 2 -k uvicorn.workers.UvicornWorker app:app --name wlanpicore_svc --access-logfile /var/log/wlanpi-core/access.log --error-logfile /var/log/wlanpi-core/errors.log --user www-data
+
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+
+# Requires systemd version 211 or newer
+# RuntimeDirectory=/opt/wlanpi-core
+Restart=always
+Type=notify
+StandardError=syslog
+NotifyAccess=all
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+{% extends "shared/layout.html" %}
+
+{% block content %}
+
+    <img src="/static/img/apple-icon-144x144.png" style="float: left; max-width: 48px; margin-right: 20px;" alt="WLAN Pi">
+
+    <h1><span class="font-semi-bold">wlanpi-core API:</span> <span class="smaller">The RESTful backend service part</span>
+    </h1>
+
+    <div style="clear:both;"></div>
+    <br>
+    <br>
+    <p class="lead">
+        The <strong>WLAN Pi</strong> backend service.
+    </p>
+    <p>Check out OpenAPI <a href="/docs">/docs</a> and ReDoc <a href="/redoc">/redoc</a>.<br>
+        <br>
+        <strong>Sample endpoints:</strong>
+   
+        {% if endpoints %}
+        <div>
+            <ul>
+                {% for e in endpoints %}
+                <li> <a href="{{e.path}}">{{ e.path }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+    </p>
+
+
+
+{% endblock %}

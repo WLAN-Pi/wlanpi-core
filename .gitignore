@@ -6,6 +6,19 @@ __pycache__/
 # C extensions
 *.so
 
+# dpkg ignores
+
+*.build
+*.deb
+*.changes
+*.buildinfo
+
+# dh-virtualenv
+.pybuild/
+debian/.debhelper/
+debian/files
+debian/wlanpi-core/
+
 # Distribution / packaging
 .Python
 build/

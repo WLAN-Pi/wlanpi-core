@@ -1,0 +1,12 @@
+{
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/venv/*/**": true,
+        "**/env/*/**": true,
+        "**/debian/wlanpi-core/*/**": true,
+        "**/debian/.debhelper/*/**": true
+    },
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": false,
+}
