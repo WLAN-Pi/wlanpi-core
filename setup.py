@@ -2,20 +2,22 @@
 
 import os
 from codecs import open
+from typing import Dict
 
-from setuptools import find_packages
-from setuptools import setup
+from setuptools import find_packages, setup
 
 here = os.path.abspath(os.path.dirname(__file__))
 
 # load the package's __version__.py module as a dictionary
-about = {}
+about: Dict[str, str] = {}
 with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as f:
     exec(f.read(), about)
 
-packages=find_packages(exclude=('tests',))
+# important to collect various modules in the package directory
+packages = find_packages(exclude=("tests",))
 
-with open('./requirements.txt', 'r', encoding='utf-8') as requires:
+# read in requirements for setup.py
+with open("./requirements.txt", "r", encoding="utf-8") as requires:
     requires_list = [line.strip() for line in requires if line and line.strip()]
 
 setup(
@@ -29,7 +31,7 @@ setup(
     license=about["__license__"],
     classifiers=[
         "Natural Language :: English",
-        'Development Status :: 2 - Pre-Alpha',
+        "Development Status :: 2 - Pre-Alpha",
         "Programming Language :: Python :: 3.7",
         "Intended Audience :: System Administrators",
         "Topic :: Utilities",
@@ -41,5 +43,5 @@ setup(
     },
     include_package_data=True,
     install_requires=requires_list,
-    entry_points={"console_scripts": ["wlanpi-core=wlanpi_core:main"]},
+    entry_points={"console_scripts": ["wlanpi-core=wlanpi_core:__main__"]},
 )
