@@ -24,7 +24,6 @@ import uvicorn
 
 # app imports
 from .__version__ import __version__
-from wlanpi_core.app import app
 
 
 def setup_parser() -> argparse.ArgumentParser:
@@ -34,12 +33,11 @@ def setup_parser() -> argparse.ArgumentParser:
         description="wlanpi-core provides backend services for the WLAN pi. Read the manual with: man wlanpi-core",
     )
     parser.add_argument(
-        "--reload",
-        dest="development",
-        action="store_true",
-        default=False
+        "--reload", dest="development", action="store_true", default=False
     )
-    parser.add_argument("--version", "-V", "-v", action="version", version=f"{__version__}")
+    parser.add_argument(
+        "--version", "-V", "-v", action="version", version=f"{__version__}"
+    )
     return parser
 
 
@@ -47,16 +45,23 @@ def confirm_prompt(question: str) -> bool:
     reply = None
     while reply not in ("y", "n"):
         reply = input(f"{question} (y/n): ").lower()
-    return (reply == "y")
+    return reply == "y"
 
 
 def main():
-    lets_go = confirm_prompt("Running wlanpi-core directly which is normally run as a service... Are you sure?")
+    lets_go = confirm_prompt(
+        "Running wlanpi-core directly which is normally run as a service... Are you sure?"
+    )
 
     if lets_go:
         parser = setup_parser()
         args = parser.parse_args()
-        uvicorn.run("wlanpi_core.__main__:app", port=8000, host='0.0.0.0', reload=args.development)
+        uvicorn.run(
+            "wlanpi_core.__main__:app",
+            port=8000,
+            host="0.0.0.0",
+            reload=args.development,
+        )
 
 
 def init():
