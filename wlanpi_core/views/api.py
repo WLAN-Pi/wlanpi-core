@@ -1,15 +1,19 @@
+# stdlib imports
 import logging
 
+# third party imports
 import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 
-templates = Jinja2Templates("wlanpi_core/templates")
-router = fastapi.APIRouter()
+# app imports
 from wlanpi_core.settings import ENDPOINTS
+from wlanpi_core.core.config import settings
 
 log = logging.getLogger("uvicorn")
 
+templates = Jinja2Templates(settings.Config.base_dir / "templates")
+router = fastapi.APIRouter()
 
 @router.get("/", include_in_schema=False)
 async def index(request: Request):

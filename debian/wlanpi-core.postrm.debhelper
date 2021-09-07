@@ -6,14 +6,14 @@ fi
 # Automatically added by dh_installsystemd/13.2~bpo10+1
 if [ "$1" = "remove" ]; then
 	if [ -x "/usr/bin/deb-systemd-helper" ]; then
-		deb-systemd-helper mask 'wlanpi-core.service' >/dev/null || true
+		deb-systemd-helper mask 'wlanpi-core.service' 'wlanpi-core.socket' >/dev/null || true
 	fi
 fi
 
 if [ "$1" = "purge" ]; then
 	if [ -x "/usr/bin/deb-systemd-helper" ]; then
-		deb-systemd-helper purge 'wlanpi-core.service' >/dev/null || true
-		deb-systemd-helper unmask 'wlanpi-core.service' >/dev/null || true
+		deb-systemd-helper purge 'wlanpi-core.service' 'wlanpi-core.socket' >/dev/null || true
+		deb-systemd-helper unmask 'wlanpi-core.service' 'wlanpi-core.socket' >/dev/null || true
 	fi
 fi
 # End automatically added section

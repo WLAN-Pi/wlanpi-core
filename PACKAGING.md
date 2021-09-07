@@ -65,10 +65,11 @@ dpkg-buildpackage -us -uc -b -d
 
 ### Debian Packaging Breakdown
 
-- `changelog`: Contains changelog information and sets the version of the package
-- `control`: provides dependencies, package name, and other package meta data.
+- `changelog`: Contains changelog information and sets the version of the package. date must be in RFC 5322 format.
+- `control`: provides dependencies, package name, and other package meta data. tols like apt uses these to build dependencies, etc.
+- `copyright`: copyright information for upstream source and packaging
 - `compat`: sets compatibility level for debhelper
-- `rules`: this is the build recipe for make
+- `rules`: this is the build recipe for make. it does the work for creating our package. it is a makefile with targets to compile and install the application, then create the .deb file.
 - `wlanpi-core.service`: `dh` automatically picks up and installs this systemd service
 - `wlanpi-core.triggers`: tells dpkg what packages we're interested in
 

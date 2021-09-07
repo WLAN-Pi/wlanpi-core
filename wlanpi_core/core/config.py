@@ -1,3 +1,4 @@
+from pathlib import Path
 from pydantic import BaseSettings
 
 
@@ -8,6 +9,7 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+        base_dir: Path = None
 
 
 settings = Settings()

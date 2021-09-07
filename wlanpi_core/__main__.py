@@ -57,7 +57,7 @@ def main():
         parser = setup_parser()
         args = parser.parse_args()
         uvicorn.run(
-            "wlanpi_core.__main__:app",
+            "wlanpi_core.app:app",
             port=8000,
             host="0.0.0.0",
             reload=args.development,

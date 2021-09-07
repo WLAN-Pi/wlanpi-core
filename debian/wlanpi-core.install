@@ -1,0 +1,2 @@
+/etc/nginx/nginx.conf /etc/wlanpi-core/nginx
+/etc/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled

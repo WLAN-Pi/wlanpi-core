@@ -1,0 +1,11 @@
+# wlanpi-webui.socket
+
+[Unit]
+Description=wlanpi-core gunicorn socket
+
+[Socket]
+ListenStream=/run/wlanpi_core.sock
+User=wlanpi_api
+
+[Install]
+WantedBy=sockets.target

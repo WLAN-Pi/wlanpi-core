@@ -18,12 +18,21 @@ Backend providing API endpoints for various consumers.
 
 - [AUTHORS.md](AUTHORS.md)
 
-If you contribute, please add yourself.
+If you contribute, feel free to add yourself to the authors file!
 
 ## OSS
 
-- Python
-- FastAPI
+- [Python](https://www.python.org/)
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [dh_virtualenv](https://github.com/spotify/dh-virtualenv)
+
+## Inspirations
+
+- [Abstracting FastAPI Services](https://camillovisini.com/article/abstracting-fastapi-services/)
+- [Real-time data streaming using FastAPI and WebSockets](https://stribny.name/blog/2020/07/real-time-data-streaming-using-fastapi-and-websockets/)
+- [Introducing FARM Stack - FastAPI, React, and MongoDB](https://www.mongodb.com/developer/how-to/FARM-Stack-FastAPI-React-MongoDB/)
+- [Modern APIs with FastAPI and Python Course](https://training.talkpython.fm/courses/getting-started-with-fastapi)
+- [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/)
 
 ## Contributing
 

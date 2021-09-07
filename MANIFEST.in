@@ -1,0 +1,4 @@
+include LICENSE
+graft wlanpi_core/static
+graft wlanpi_core/templates
+global-exclude *.pyc

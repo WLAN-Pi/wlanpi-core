@@ -1,4 +1,7 @@
 #!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 export DH_VIRTUALENV_INSTALL_ROOT=/opt
 export PYBUILD_NAME=wlanpi-core

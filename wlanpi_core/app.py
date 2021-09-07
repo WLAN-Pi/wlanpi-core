@@ -2,6 +2,7 @@
 
 # stdlib imports
 import logging
+import pathlib
 
 # third party imports
 from fastapi import FastAPI
@@ -32,7 +33,7 @@ def configure_routing():
         if isinstance(route, APIRoute):
             ENDPOINTS.append({"path": route.path})
 
-    app.mount("/static", StaticFiles(directory="wlanpi_core/static"), name="static")
+    app.mount("/static", StaticFiles(directory=settings.Config.base_dir / "static"), name="static")
     app.include_router(api.router)
 
 

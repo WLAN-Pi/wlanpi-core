@@ -8,6 +8,122 @@
 
 #DEBHELPER#
 
-# Insert any custom postinst logic here
+# function to check if a path is a symlink
+function isValidSymlink() {
+    if [ -L "$1" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# variable to store if the nginx configuration changes were applied
+CONF_CHANGED=0
+
+# nginx configuration file location
+NGINX_CONF=/etc/nginx/nginx.conf
+
+# if conf is a symlink, unlink it, and symlink ours.
+if isValidSymlink $NGINX_CONF; then
+    echo "Unlinking $NGINX_CONF"
+    unlink $NGINX_CONF
+    echo "Linking our nginx.conf config to $NGINX_CONF..."
+    ln -s /etc/wlanpi-core/nginx/nginx.conf $NGINX_CONF
+    CONF_CHANGED=1
+else 
+    # conf is not a symlink; check if exists as a file, if yes, create backup, and finally symlink ours.
+    if [ -f "$NGINX_CONF" ]; then
+        TSTAMP=`date '+%s'`
+        NEW_CONF="$NGINX_CONF.$TSTAMP"
+        echo "Existing nginx.conf detected; moving to $NEW_CONF..."
+        mv $NGINX_CONF $NEW_CONF
+    fi
+    echo "Linking our nginx.conf config to $NGINX_CONF..."
+    ln -s /etc/wlanpi-core/nginx/nginx.conf $NGINX_CONF
+    CONF_CHANGED=1
+fi
+
+
+# if wlanpi_core.conf is not a symlink, create symlink.
+WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
+if ! isValidSymlink $WLANPI_CORE; then
+    echo "Linking our wlanpi_core.conf to sites-enabled..."
+    ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
+    CONF_CHANGED=1
+fi
+
+# if we changed a nginx config file, test config, and restart nginx.
+if [ $CONF_CHANGED -eq 1 ]; then
+    nginx -t
+    systemctl restart nginx.service
+fi
+
+# create log directory and set permissions for apiuser
+DIR="/var/log/wlanpi-core/"
+APIUSER="wlanpi_api"
+GROUPID="wlanpi_api"
+
+if id ${APIUSER} &>/dev/null; then
+    echo "User $APIUSER already exists, skipping..."
+else
+    echo "User $APIUSER does not exist, creating..."
+    choose() { echo ${1:RANDOM%${#1}:1} $RANDOM; }
+    pass="$({ choose '!@#$%^\&'
+        choose '0123456789'
+        choose 'abcdefghijklmnopqrstuvwxyz'
+        choose 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        for i in $( seq 1 $(( 4 + RANDOM % 8 )) )
+            do
+                choose '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+            done
+        } | sort -R | awk '{printf "%s",$1}')"
+    echo "User $APIUSER created..."
+    if [ $(getent group $APIUSER) ]; then
+        useradd ${APIUSER} -g ${APIUSER} -s /bin/false
+    else
+        useradd ${APIUSER} -s /bin/false
+    fi
+
+    # if user is not in group, add them.
+    if ! id -nGz "$APIUSER" | grep -qzxF "$GROUPID"; then
+        echo User \`$APIUSER\' does not belong to group \`$GROUPID\'
+        usermod -g ${GROUPID} ${APIUSER}
+        echo "User $APIUSER added to group $GROUPID"    
+    fi
+    echo $APIUSER:$pass | chpasswd
+    echo "random password assigned to $APIUSER"
+fi
+
+# if DIR does not exist, create it
+if [ ! -d "$DIR" ]; then
+    echo "$DIR does not exist, creating it..."
+    mkdir -p ${DIR}
+fi
+
+# set $DIR permissions for apiuser
+if id -u ${APIUSER} > /dev/null 2>&1; then    
+    echo "Fix up permissions on $DIR for $APIUSER..."
+    chown ${APIUSER}:${GROUPID} ${DIR}
+fi
+
+# if ACCESS_LOG does not exist, create it
+ACCESS_LOG=/var/log/wlanpi-core/access.log
+
+if [ ! -f "$ACCESS_LOG" ]; then
+    echo "$ACCESS_LOG does not exist, creating it..."
+    touch ${ACCESS_LOG}
+    chown ${APIUSER}:${GROUPID} ${ACCESS_LOG}
+fi
+
+# if ERROR_LOG does not exist, create it
+ERROR_LOG=/var/log/wlanpi-core/error.log
+
+if [ ! -f "$ERROR_LOG" ]; then
+    echo "$ERROR_LOG does not exist, creating it..."
+    touch ${ERROR_LOG}
+    chown ${APIUSER}:${GROUPID} ${ERROR_LOG}
+fi
+
+systemctl restart wlanpi-core.service
 
 exit 0
