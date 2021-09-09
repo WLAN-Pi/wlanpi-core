@@ -15,6 +15,7 @@ log = logging.getLogger("uvicorn")
 templates = Jinja2Templates(settings.Config.base_dir / "templates")
 router = fastapi.APIRouter()
 
+
 @router.get("/", include_in_schema=False)
 async def index(request: Request):
     data = {"request": request}
