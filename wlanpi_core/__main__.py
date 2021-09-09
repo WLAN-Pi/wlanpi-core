@@ -30,10 +30,10 @@ def setup_parser() -> argparse.ArgumentParser:
     """Set default values and handle arg parser"""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="wlanpi-core provides backend services for the WLAN pi. Read the manual with: man wlanpi-core",
+        description="wlanpi-core provides backend services for the WLAN Pi. Read the manual with: man wlanpi-core",
     )
     parser.add_argument(
-        "--reload", dest="development", action="store_true", default=False
+        "--reload", dest="livereload", action="store_true", default=False
     )
     parser.add_argument(
         "--version", "-V", "-v", action="version", version=f"{__version__}"
@@ -48,23 +48,33 @@ def confirm_prompt(question: str) -> bool:
     return reply == "y"
 
 
-def main():
-    lets_go = confirm_prompt(
-        "Running wlanpi-core directly which is normally run as a service... Are you sure?"
-    )
+def main() -> None:
+    parser = setup_parser()
+    args = parser.parse_args()
+
+    try:
+        lets_go = confirm_prompt(
+            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development. Are you sure?"
+        )
+    except KeyboardInterrupt:
+        print("\nInterrupt detected, exiting...")
+        sys.exit(0)
+
+    if not args.livereload:
+        print(
+            "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
+        )
 
     if lets_go:
-        parser = setup_parser()
-        args = parser.parse_args()
         uvicorn.run(
             "wlanpi_core.app:app",
             port=8000,
             host="0.0.0.0",
-            reload=args.development,
+            reload=args.livereload,
         )
 
 
-def init():
+def init() -> None:
     """Handle main init"""
     # hard set no support for non linux platforms
     if "linux" not in sys.platform:
