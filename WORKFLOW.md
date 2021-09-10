@@ -110,13 +110,11 @@ chmod +x ./scripts/run.sh
 
 Now you can open your browser and interact with these URLs:
 
-- Frontend, with routes handled based on the path: http://localhost:8000
+- API frontend, with routes handled based on the path: http://localhost:8000
 
-- Backend, OpenAPI based JSON based web API: http://localhost:8000/api/
+- Automatic interactive documentation with Swagger UI (from the OpenAPI backend): http://localhost:8000/documentation
 
-- Automatic interactive documentation with Swagger UI (from the OpenAPI backend): http://localhost:8000/docs
-
-- Alternative automatic documentation with ReDoc (from the OpenAPI backend): http://localhost:8000/redoc
+- ReDoc has been disabled with `redoc_url=None` in app.py ~~Alternative automatic documentation with ReDoc (from the OpenAPI backend): http://localhost:8000/redoc~~
 
 ## Troubleshooting
 
