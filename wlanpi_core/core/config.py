@@ -13,3 +13,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# when app is created, endpoints will be stored here for api landing page
+endpoints = []

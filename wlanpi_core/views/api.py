@@ -7,8 +7,7 @@ from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 
 # app imports
-from wlanpi_core.settings import ENDPOINTS
-from wlanpi_core.core.config import settings
+from wlanpi_core.core.config import settings, endpoints
 
 log = logging.getLogger("uvicorn")
 
@@ -20,7 +19,7 @@ router = fastapi.APIRouter()
 @router.get("/api", include_in_schema=False)
 @router.get("/api/v1", include_in_schema=False)
 async def index(request: Request):
-    data = {"request": request, "endpoints": ENDPOINTS}
+    data = {"request": request, "endpoints": endpoints}
     return templates.TemplateResponse("home/index.html", data)
 
 

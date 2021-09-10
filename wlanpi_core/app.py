@@ -10,8 +10,7 @@ from starlette.staticfiles import StaticFiles
 
 # app imports
 from wlanpi_core.api.api_v1.api import api_router
-from wlanpi_core.core.config import settings
-from wlanpi_core.settings import ENDPOINTS
+from wlanpi_core.core.config import settings, endpoints
 from wlanpi_core.views import api
 
 log = logging.getLogger("uvicorn")
@@ -30,7 +29,7 @@ def configure_routing():
     app.include_router(api_router, prefix=settings.API_V1_STR)
     for route in app.routes:
         if isinstance(route, APIRoute):
-            ENDPOINTS.append({"path": route.path})
+            endpoints.append({"path": route.path})
 
     app.mount(
         "/static",
