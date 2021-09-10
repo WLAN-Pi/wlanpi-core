@@ -6,10 +6,41 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     PROJECT_NAME: str = "wlanpi-core"
-    
+
     PROJECT_DESCRIPTION = """
     The wlanpi-core API provides endpoints for applications on and off the WLAN Pi to share data. 🚀
     """
+
+    TAGS_METADATA = [
+        {
+            "name": "diagnostics",
+            "description": "Provides information for troubleshooting WLAN interfaces",
+        },
+        {
+            "name": "front panel menu system",
+            "description": "These are for the physical FPMS found on the WLAN Pi device",
+        },
+        {
+            "name": "network information",
+            "description": "Gather network information with these endpoints",
+        },
+        {
+            "name": "profiler",
+            "description": "Gathers client capability profiles",
+            "externalDocs": {
+                "description": "External profiler docs",
+                "url": "https://github.com/wlan-pi/profiler",
+            },
+        },
+        {
+            "name": "speedtest",
+            "description": "Everybody likes speed, right?",
+        },
+        {
+            "name": "utilities",
+            "description": "Some utility classes",
+        },
+    ]
 
     class Config:
         case_sensitive = True
