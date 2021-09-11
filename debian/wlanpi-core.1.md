@@ -8,7 +8,11 @@ wlanpi-core - a backend for the WLAN Pi
 
 wlanpi-core provides core backend services for various applications on the WLAN Pi such as the frontend, fpms, chatbot, and more.
 
-To view the API documentation, open a browser and navigate to `http://<WLAN Pi IP address>/api`
+To view service status use: `systemctl status wlanpi-core`
+
+To check the journal use: `journalctl -u wlanpi-core`
+
+To view the API documentation, open a browser and navigate to `http://<WLAN Pi IP address>:31415/`
 
 # LOCALE
 
