@@ -2,6 +2,7 @@
 
 A few of the things that need done (there is __much__ not included in this list):
 
+- [ ] access/error rolling for nginx and gunicorn (prevent SBC disk from filling)
 - [ ] embedded database
 - [ ] review services
 - [ ] review documentation
