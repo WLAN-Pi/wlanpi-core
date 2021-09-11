@@ -27,7 +27,7 @@ NGINX_CONF=/etc/nginx/nginx.conf
 if isValidSymlink $NGINX_CONF; then
     echo "Unlinking $NGINX_CONF"
     unlink $NGINX_CONF
-    echo "Linking our nginx.conf config to $NGINX_CONF..."
+    echo "Linking our nginx.conf config to $NGINX_CONF ..."
     ln -s /etc/wlanpi-core/nginx/nginx.conf $NGINX_CONF
     CONF_CHANGED=1
 else 
@@ -35,10 +35,10 @@ else
     if [ -f "$NGINX_CONF" ]; then
         TSTAMP=`date '+%s'`
         NEW_CONF="$NGINX_CONF.$TSTAMP"
-        echo "Existing nginx.conf detected; moving to $NEW_CONF..."
+        echo "Existing nginx.conf detected; moving to $NEW_CONF ..."
         mv $NGINX_CONF $NEW_CONF
     fi
-    echo "Linking our nginx.conf config to $NGINX_CONF..."
+    echo "Linking our nginx.conf config to $NGINX_CONF ..."
     ln -s /etc/wlanpi-core/nginx/nginx.conf $NGINX_CONF
     CONF_CHANGED=1
 fi
@@ -47,7 +47,7 @@ fi
 # if wlanpi_core.conf is not a symlink, create symlink.
 WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
 if ! isValidSymlink $WLANPI_CORE; then
-    echo "Linking our wlanpi_core.conf to sites-enabled..."
+    echo "Linking our wlanpi_core.conf to sites-enabled ..."
     ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
     CONF_CHANGED=1
 fi
@@ -64,9 +64,9 @@ APIUSER="wlanpi_api"
 GROUPID="wlanpi_api"
 
 if id ${APIUSER} &>/dev/null; then
-    echo "User $APIUSER already exists, skipping..."
+    echo "User $APIUSER already exists, skipping ..."
 else
-    echo "User $APIUSER does not exist, creating..."
+    echo "User $APIUSER does not exist, creating ..."
     choose() { echo ${1:RANDOM%${#1}:1} $RANDOM; }
     pass="$({ choose '!@#$%^\&'
         choose '0123456789'
@@ -77,7 +77,7 @@ else
                 choose '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
             done
         } | sort -R | awk '{printf "%s",$1}')"
-    echo "User $APIUSER created..."
+    echo "User $APIUSER created ..."
     if [ $(getent group $APIUSER) ]; then
         useradd ${APIUSER} -g ${APIUSER} -s /bin/false
     else
@@ -96,13 +96,13 @@ fi
 
 # if DIR does not exist, create it
 if [ ! -d "$DIR" ]; then
-    echo "$DIR does not exist, creating it..."
+    echo "$DIR does not exist, creating it ..."
     mkdir -p ${DIR}
 fi
 
 # set $DIR permissions for apiuser
 if id -u ${APIUSER} > /dev/null 2>&1; then    
-    echo "Fix up permissions on $DIR for $APIUSER..."
+    echo "Fix up permissions on $DIR for $APIUSER ..."
     chown ${APIUSER}:${GROUPID} ${DIR}
 fi
 
@@ -110,7 +110,7 @@ fi
 ACCESS_LOG=/var/log/wlanpi-core/access.log
 
 if [ ! -f "$ACCESS_LOG" ]; then
-    echo "$ACCESS_LOG does not exist, creating it..."
+    echo "$ACCESS_LOG does not exist, creating it ..."
     touch ${ACCESS_LOG}
     chown ${APIUSER}:${GROUPID} ${ACCESS_LOG}
 fi
@@ -119,11 +119,12 @@ fi
 ERROR_LOG=/var/log/wlanpi-core/error.log
 
 if [ ! -f "$ERROR_LOG" ]; then
-    echo "$ERROR_LOG does not exist, creating it..."
+    echo "$ERROR_LOG does not exist, creating it ..."
     touch ${ERROR_LOG}
     chown ${APIUSER}:${GROUPID} ${ERROR_LOG}
 fi
 
+echo "Restarting wlanpi-core.service ..."
 systemctl restart wlanpi-core.service
 
 exit 0
