@@ -16,9 +16,34 @@ with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as 
 # important to collect various modules in the package directory
 packages = find_packages(exclude=("tests",))
 
-# read in requirements for setup.py
-with open("./requirements.txt", "r", encoding="utf-8") as requires:
-    requires_list = [line.strip() for line in requires if line and line.strip()]
+core_requires = [
+    "fastapi",
+    "httpx",
+    "Jinja2",
+    "aiofiles",
+    "gunicorn",
+    "uvicorn",
+    "python-dotenv",
+]
+
+endpoint_requires = ["psutil", "dbus-python"]
+
+requires = core_requires + endpoint_requires
+
+extras = {
+    "testing": [
+        "tox",
+        "black",
+        "isort",
+        "autoflake",
+        "mypy",
+        "flake8",
+        "pytest",
+        "pytest-cov",
+        "coverage-badge",
+        "pytest-mock",
+    ],
+}
 
 setup(
     name=about["__title__"],
@@ -27,7 +52,7 @@ setup(
     author=about["__author__"],
     author_email=about["__author_email__"],
     url=about["__url__"],
-    python_requires="~=3.7,",
+    python_requires="~=3.7",
     license=about["__license__"],
     classifiers=[
         "Natural Language :: English",
@@ -42,6 +67,7 @@ setup(
         "Source": "https://github.com/wlan-pi/wlanpi-core",
     },
     include_package_data=True,
-    install_requires=requires_list,
+    install_requires=requires,
+    extras_require=extras,
     entry_points={"console_scripts": ["wlanpi-core=wlanpi_core:__main__"]},
 )

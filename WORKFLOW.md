@@ -1,5 +1,22 @@
 # Development Workflow
 
+Table of contents:
+
+* [Development Workflow](#development-workflow)
+  * [Releases](#releases)
+  * [Server setup](#server-setup)
+  * [Third Party Depends](#third-party-depends)
+  * [Setup development environment](#setup-development-environment)
+  * [Developing](#developing)
+  * [Troubleshooting](#troubleshooting)
+  * [Tagging](#tagging)
+  * [`debian/changelog`](#`debian/changelog`)
+  * [Versioning](#versioning)
+  * [Commiting](#commiting)
+    * [Linting and formatting](#linting-and-formatting)
+    * [Testing](#testing)
+  * [Building the Debian Package](#building-the-debian-package)
+
 ## Releases
 
 Each release should contain appropriate git tagging and versioning.
@@ -26,44 +43,29 @@ Setup ufw (if not done already for you):
 ufw allow 22
 ufw allow 80
 ufw allow 8000
+ufw allow 31415
 ufw enable
 ```
 
-## Third Party Depends
-
-TODO: clarify why this is here.
-
-- dbus-python
-- uvicorn 
-- python-dotenv
-- fastapi
-- psutil
-
 ## Setup development environment
 
-1. Clone repo and `cd` into repo folder.
-2. Create a new virtualenv with `python3 -m venv venv`
-3. Activate the virtualenv with `source venv/bin/activate`
-4. Update pip, setuptools, and wheel with `pip install -U pip wheel setuptools`
-5. Install requirements with `pip install -r requirements`
+1. Clone repo
+2. Create virtualenv
+3. Install wheel and setuptools in virtualenv
+4. Install package into virtualenv with extras
 
-or
+```
+git clone git@github.com:WLAN-Pi/wlanpi-core.git 
+cd wlanpi-core
+python3 -m venv venv && source venv/bin/activate
+pip install wheel setuptools 
 
-- Create virtualenv and install dependencies.
+# normal users who do not need to run or create tests
+pip install .
 
-    ```
-    cd {repo}/wlanpi-core
-    python3 -m venv venv && source ./venv/bin/activate
-    python -m pip install -U pip wheel setuptools
-    pip install -r requirements.txt
-    ```
-
-- Activate the virtualenv
-
-    ```
-    cd {repo}
-    source ./venv/bin/activate
-    ```
+# developers install test depends like so
+pip install .[testing]
+```
 
 ## Developing
 
@@ -108,13 +110,15 @@ You may need to make scripts executable prior to first run.
 chmod +x ./scripts/run.sh 
 ```
 
-Now you can open your browser and interact with these URLs:
+If you are running directly, now you can open your browser and interact with these URLs:
 
 - API frontend, with routes handled based on the path: http://localhost:8000
 
 - Automatic interactive documentation with Swagger UI (from the OpenAPI backend): http://localhost:8000/documentation
 
 - ReDoc has been disabled with `redoc_url=None` in app.py ~~Alternative automatic documentation with ReDoc (from the OpenAPI backend): http://localhost:8000/redoc~~
+
+In production, the port will be different.
 
 ## Troubleshooting
 
@@ -156,21 +160,21 @@ Before committing, please lint, format, and test your code.
 
 ### Linting and formatting
 
-Please use the `format.sh`, `lint.sh`, and `test.sh` scripts found in `{repo}/scripts`.
+You should install depends with `pip install .[testing]` and then you will be able to run `tox -e format` and `tox -e lint` to format and lint respectively.
+
+For reference, there are `format.sh`, `lint.sh`, and `test.sh` scripts found in `{repo}/scripts`.
 
 Here are some of the tools used:
 
-- autoflake
-- black
-- flake8
-- isort
-- mypy
-
-TODO: migrate to `tox` for formatting and linting.
+* autoflake
+* black
+* flake8
+* isort
+* mypy
 
 ### Testing
 
-TODO: setup `tox` with pytest for unit testing.
+You should install depends with `pip install .[testing]` and then you will be able to run `tox` to run tests.
 
 ## Building the Debian Package
 
