@@ -2,31 +2,48 @@
 
 The `wlanpi-core` is a FastAPI backend built for the WLAN Pi.
 
-The primary goal when we choose tools for development include developer productivity, lightweight system requirements, and high performance. 
+## Goals
 
-# Why a backend?
+The primary goals include:
 
-During the first iterations of the WLAN Pi project, various developers working on tools ended up doing their own thing for gathering the same sets of data. 
+- developer productivity
+- contributor familiarity with the language
+- lightweight system requirements
+- high performance
+- async out of the box
 
-The purpose of the backend is to eliminate the need for various 
+## Why a backend?
 
-# Choosing a backend
+During the first iterations of the WLAN Pi project, various developers working on tools (like fpms, ui, chatbot, etc.) ended up doing their own thing for gathering the same sets of data.
 
-When we looked at our goals and what was available at the time. `FastAPI` made the most sense given it's developer productivity, async first design, automatic API documentation, and performance compared to the previous tools like `Django`, `Flask`, `Requests`, etc. 
+The purpose of the backend is to provide a way for various subscribers to get the same set of data from the WLAN Pi device.
 
-# Server
+## Choosing a backend
+
+When we looked at our goals and what was available at the time. `FastAPI` made the most sense given it's developer productivity, async first design, automatic API documentation, and performance compared to the previous tools like `Django`, `Flask`, `Requests`, etc.
+
+## Server
 
 We're giving a go at running Uvicorn with Gunicorn. https://www.uvicorn.org/#running-with-gunicorn
 
-Gunicorn is a fully featured server and process manager.
+Gunicorn is a fully featured server and process manager. https://gunicorn.org/
 
-Uvicorn gives us the ASGI goodness. https://www.uvicorn.org/deployment/
+Uvicorn gives us the Asynchronous Server Gateway Interface (ASGI) goodness. https://www.uvicorn.org/deployment/
 
-# Consumers
+nginx is used as a proxy. https://nginx.org/en/
 
-Here are some of the projects we expect to leverage this backend
+## Consumers
 
-## wlanpi-webui
-## wlanpi-fpms
-## wlanpi-profiler
-## wlanpi-chatbot
+Here are some of the projects (consumers) we expect to leverage the backend:
+
+### wlanpi-webui
+
+### wlanpi-fpms
+
+### wlanpi-profiler
+
+### wlanpi-chatbot
+
+## Questions
+
+Something missing here or just doesn't make sense? Let us know so we can correct it or add clarity. Thanks!
