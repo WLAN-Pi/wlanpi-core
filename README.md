@@ -44,10 +44,20 @@ Please let us know if we forgot to mention a project here.
 
 ## Inspirations
 
+Python:
+
 - [Abstracting FastAPI Services](https://camillovisini.com/article/abstracting-fastapi-services/)
 - [Real-time data streaming using FastAPI and WebSockets](https://stribny.name/blog/2020/07/real-time-data-streaming-using-fastapi-and-websockets/)
 - [Introducing FARM Stack - FastAPI, React, and MongoDB](https://www.mongodb.com/developer/how-to/FARM-Stack-FastAPI-React-MongoDB/)
 - [Modern APIs with FastAPI and Python Course](https://training.talkpython.fm/courses/getting-started-with-fastapi)
+- [Modern APIs with FastAPI Repo](https://github.com/talkpython/modern-apis-with-fastapi/)
+
+Design:
+
+- [API Design Guidelines](https://www.moesif.com/blog/api-guide/api-design-guidelines/)
+
+Packaging:
+
 - [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/)
 
 ## Contributing
