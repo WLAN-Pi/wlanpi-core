@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 
 # app imports
-from wlanpi_core.core.config import settings, endpoints
+from wlanpi_core.core.config import endpoints, settings
 
 log = logging.getLogger("uvicorn")
 

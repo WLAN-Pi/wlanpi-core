@@ -11,7 +11,7 @@ from starlette.staticfiles import StaticFiles
 # app imports
 from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
-from wlanpi_core.core.config import settings, endpoints
+from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.views import api
 
 log = logging.getLogger("uvicorn")
