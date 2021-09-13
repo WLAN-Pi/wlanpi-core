@@ -26,11 +26,11 @@ When we looked at our goals and what was available at the time. `FastAPI` made t
 
 We're giving a go at running Uvicorn with Gunicorn. https://www.uvicorn.org/#running-with-gunicorn
 
-Gunicorn is a fully featured server and process manager. https://gunicorn.org/
+Uvicorn gives us the Asynchronous Server Gateway Interface (ASGI) goodness. It runs async Python web code in a single process. https://www.uvicorn.org/deployment/
 
-Uvicorn gives us the Asynchronous Server Gateway Interface (ASGI) goodness. https://www.uvicorn.org/deployment/
+Gunicorn is a fully featured server and process manager. We can use it to manage multiple concurrent processes. This gives us concurrency and paralleism. https://gunicorn.org/
 
-nginx is used as a proxy. https://nginx.org/en/
+In our case, we're binding Gunicorn to a UNIX socket. Then we're using nginx as a proxy/load balancer. https://nginx.org/en/
 
 ## Consumers
 
