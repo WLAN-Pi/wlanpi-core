@@ -33,7 +33,17 @@ dpkg-buildpackage -us -uc -b
 If you are found favorable by the packaging gods, you should see some output files at `../wlanpi-core` like this:
 
 ```
-...
+dpkg-deb: building package 'wlanpi-core-dbgsym' in '../wlanpi-core-dbgsym_0.0.1~rc1_arm64.deb'.
+dpkg-deb: building package 'wlanpi-core' in '../wlanpi-core_0.0.1~rc1_arm64.deb'.
+ dpkg-genbuildinfo --build=binary
+ dpkg-genchanges --build=binary >../wlanpi-core_0.0.1~rc1_arm64.changes
+dpkg-genchanges: info: binary-only upload (no source code included)
+ dpkg-source --after-build .
+dpkg-buildpackage: info: binary-only upload (no source included)
+(venv) wlanpi@rbpi4b-8gb:[~/dev/wlanpi-core]: ls .. | grep wlanpi-core_
+wlanpi-core_0.0.1~rc1_arm64.buildinfo
+wlanpi-core_0.0.1~rc1_arm64.changes
+wlanpi-core_0.0.1~rc1_arm64.deb
 ```
 
 ## sudo apt remove vs sudo apt purge
@@ -50,7 +60,28 @@ If we want to clean `/etc` we should purge:
 ## installing our deb with apt for testing
 
 ```
-...
+(venv) wlanpi@rbpi4b-8gb:[~/dev]: sudo dpkg -i wlanpi-core_0.0.1~rc1_arm64.deb 
+Selecting previously unselected package wlanpi-core.
+(Reading database ... 80780 files and directories currently installed.)
+Preparing to unpack wlanpi-core_0.0.1~rc1_arm64.deb ...
+Unpacking wlanpi-core (0.0.1~rc1) ...
+Setting up wlanpi-core (0.0.1~rc1) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/wlanpi-core.service → /lib/systemd/system/wlanpi-core.service.
+Created symlink /etc/systemd/system/sockets.target.wants/wlanpi-core.socket → /lib/systemd/system/wlanpi-core.socket.
+Job for wlanpi-core.service failed because the control process exited with error code.
+See "systemctl status wlanpi-core.service" and "journalctl -xe" for details.
+Linking our nginx.conf config to /etc/nginx/nginx.conf ...
+Linking our wlanpi_core.conf to sites-enabled ...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+User wlanpi_api does not exist, creating ...
+User wlanpi_api created ...
+random password assigned to wlanpi_api
+Fix up permissions on /var/log/wlanpi-core/ for wlanpi_api ...
+/var/log/wlanpi-core/access.log does not exist, creating it ...
+/var/log/wlanpi-core/error.log does not exist, creating it ...
+Restarting wlanpi-core.service ...
+Processing triggers for man-db (2.8.5-2) ...
 ```
 
 ## APPENDIX
@@ -72,6 +103,11 @@ dpkg-buildpackage -us -uc -b -d
 - `rules`: this is the build recipe for make. it does the work for creating our package. it is a makefile with targets to compile and install the application, then create the .deb file.
 - `wlanpi-core.service`: `dh` automatically picks up and installs this systemd service
 - `wlanpi-core.triggers`: tells dpkg what packages we're interested in
+
+### Maintainer Scripts
+
+- `postinst` - this runs after the install and handles setting up a few things.
+- `postrm` - this runs and handles `remove` and `purge` args when uninstalling or purging the package.
 
 ### Installing dh-virtualenv from source
 
