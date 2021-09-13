@@ -4,11 +4,16 @@ from socket import gethostname
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
+import wlanpi_core.infrastructure.utils_cache as utils_cache
 from wlanpi_core.models.validation_error import ValidationError
 
 
 def check_service_status(service):
-    """queries systemd through dbus to see if the service is running"""
+    """
+    queries systemd through dbus to see if the service is running
+
+    you can list services from the CLI like this: systemctl list-unit-files --type=service
+    """
     service_running = False
     bus = SystemBus()
     systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
@@ -19,6 +24,7 @@ def check_service_status(service):
             if service.endswith(".service")
             else manager.GetUnit(f"{service}.service")
         )
+        # print(service_unit)
         service_proxy = bus.get_object("org.freedesktop.systemd1", str(service_unit))
         service_props = Interface(
             service_proxy, dbus_interface="org.freedesktop.DBus.Properties"
@@ -34,16 +40,15 @@ def check_service_status(service):
     except DBusException as de:
         if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
             raise ValidationError(
-                f"{service} service does not exist on host", status_code=400
+                f"no such unit for {service} on host", status_code=400
             )
     return service_running
 
 
 allowed_services = [
-    "profiler",
     "wlanpi-profiler",
-    "fpms",
     "wlanpi-fpms",
+    "wlanpi-chatbot",
     "iperf3",
     "ufw",
     "tftpd-hpa",
@@ -54,7 +59,7 @@ allowed_services = [
 
 async def get_systemd_service_status(name: str):
     """
-    Queries systemd via dbus to get status of a given service.
+    Queries systemd via dbus to get the current status of an allowed service.
     """
     status = ""
     name = name.strip().lower()
@@ -93,11 +98,6 @@ async def get_systemd_service_status(name: str):
 # def update_wpa_password():
 #    return "TBD"
 
-
-async def get_wlanpi_hostname():
-    return {"hostname": gethostname()}
-
-
 # @router.put("/hostname")
 # def set_wlanpi_hostname(name: str):
 #    """
@@ -112,6 +112,10 @@ async def get_wlanpi_hostname():
 #    Example: https://github.com/cleanbrowsing/dnsperftest
 #    """
 #    return "TODO"
+
+
+async def get_wlanpi_hostname():
+    return {"hostname": gethostname()}
 
 
 def get_wlanpi_version():
@@ -129,14 +133,39 @@ def get_wlanpi_version():
     return wlanpi_version
 
 
-async def get_system_summary():
+def get_hardware_from_proc_cpuinfo():
+    hardware = ""
+    try:
+        with open("/proc/cpuinfo") as _file:
+            lines = _file.read().splitlines()
+            for line in lines:
+                if "hardware" in line.lower():
+                    return line.split(":")[1].strip()
+    except OSError:
+        pass
+    return hardware
+
+
+async def get_system_summary_async():
+    key = "system_summary_cache"
+
+    # have we already cached this?
+    system_summary = utils_cache.get_system_summary(key)
+    if system_summary:
+        return system_summary
+
+    # no cache, so let's get the data
     uname = platform.uname()
-    summary = {}
-    summary["system"] = uname.system
-    summary["build"] = get_wlanpi_version()
-    summary["node_name"] = uname.node
-    summary["release"] = uname.release
-    summary["version"] = uname.version
-    summary["machine"] = uname.machine
-    summary["processor"] = uname.processor
-    return summary
+    system_summary = {}
+    system_summary["system"] = uname.system
+    system_summary["build"] = get_wlanpi_version()
+    system_summary["node_name"] = uname.node
+    system_summary["release"] = uname.release
+    system_summary["version"] = uname.version
+    system_summary["machine"] = uname.machine
+    system_summary["hardware"] = get_hardware_from_proc_cpuinfo()
+
+    # cache the data
+    utils_cache.set_system_summary(key, system_summary)
+
+    return system_summary

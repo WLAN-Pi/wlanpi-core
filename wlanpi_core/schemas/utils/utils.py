@@ -17,4 +17,4 @@ class SystemInfo(BaseModel):
     release: str = Field(example="5.4.48-sunxi64")
     version: str = Field(example="#trunk SMP Wed Jun 24 00:42:17 -03 2020")
     machine: str = Field(example="aarch64")
-    processor: str = Field(example="")
+    hardware: str = Field(example="BCM2835")

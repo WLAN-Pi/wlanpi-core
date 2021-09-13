@@ -7,10 +7,21 @@ from wlanpi_core.services import utils_service
 router = APIRouter()
 
 
-@router.get("/service", response_model=utils.ServiceStatus)
+@router.get("/service_status", response_model=utils.ServiceStatus)
 async def show_systemd_service_status(name: str):
     """
-    Queries systemd via dbus to get status of a given service.
+    Queries systemd via dbus to get the current status of an allowed service.
+
+    Services you can query status for include:
+
+    - wlanpi-profiler
+    - wlanpi-fpms
+    - wlanpi-chatbot
+    - iperf3
+    - ufw
+    - tftpd-hpa
+    - hostapd
+    - wpa_supplicant
     """
 
     try:
@@ -84,8 +95,8 @@ async def show_system_summary():
     """
 
     try:
-        return await utils_service.get_system_summary()
+        return await utils_service.get_system_summary_async()
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        return Response(content=str(ex), status_code=500)
+    # except Exception as ex:
+    #    return Response(content=str(ex), status_code=500)
