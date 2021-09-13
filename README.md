@@ -1,18 +1,26 @@
-# warning/unstable
+# WARNING/UNSTABLE
 
-this is not yet a production ready repo. wlanpi-core is exploratory at the moment and is in development.
+This is not yet a production ready repo. wlanpi-core is an exploratory project at the moment and is in active development.
 
-# wlanpi-core
+## wlanpi-core
 
-Backend providing API endpoints for various consumers.
+Backend providing API endpoints for various consumers on and off the WLAN Pi.
 
-## other important docs
+## Endpoints
 
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+TODO: Insert a description of the endpoints here.
+
+## Development Workflow
+
+Please checkout the workflow document for getting started on developing.
+
+- [WORKFLOW.md](WORKFLOW.md)
+
+## Other Important Docs
+
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [PACKAGING.md](PACKAGING.md)
 - [TODO.md](TODO.md)
-- [WORKFLOW.md](WORKFLOW.md)
 
 ## Authors
 
@@ -22,9 +30,17 @@ If you contribute, feel free to add yourself to the authors file!
 
 ## OSS
 
+This project is powered by some way cool open source software.
+
 - [Python](https://www.python.org/)
 - [FastAPI](https://fastapi.tiangolo.com/)
+- [pydantic](https://github.com/samuelcolvin/pydantic/)
+- [uvicorn](https://www.uvicorn.org/)
+- [gunicorn](https://gunicorn.org/)
+- [nginx](https://docs.nginx.com/nginx/admin-guide/installing-nginx/installing-nginx-open-source/)
 - [dh_virtualenv](https://github.com/spotify/dh-virtualenv)
+
+Please let us know if we forgot to mention a project here.
 
 ## Inspirations
 
@@ -36,12 +52,16 @@ If you contribute, feel free to add yourself to the authors file!
 
 ## Contributing
 
-Want to contribute? Thanks! Please checkout our [contributing docs](CONTRIBUTING.md) and also reach out to one of the core members to align your ideas before starting.
+Want to contribute? Thanks! Please checkout our [contributing docs](CONTRIBUTING.md) and also first either open an issue or reach out to one of the core members to align your ideas (before starting on them).
+
+## Code of Conduct
+
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## License
 
 - [LICENSE](LICENSE)
 
-## Thanks!
+## Thanks
 
 Wow, you read to the bottom. You're awesome.
