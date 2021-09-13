@@ -1,13 +1,15 @@
 
-# tips for working with debchange
+# Tips for Working with debchange
 
-## debchange - tool for maintaining the source package changelog file
+## debchange - a tool for maintaining the source package changelog file
 
-It is recommended to use `debchange` or its alias `dch` to assist in the modification of the changelog. You should 
+While you could edit the changelog directly, it is recommended to use `debchange` or its alias `dch` to assist in the modification of the changelog.
 
-If you are using debchange, it is a good idea to set environment variables on your development machine. If you do not, when `debchange` is invoked, it will automatically author the change with `<user@systemname>` when you should use the `Dale Cooper <special_agent@twinpeaks.com>` format.
+If you are regularly using debchange, it is also a good idea to set environment variables on your development machine. 
 
-## debchange - usage
+If you do not, when `debchange` is invoked, it will automatically author the change with `<user@systemname>` when you should use the `Dale Cooper <special_agent@twinpeaks.com>` format.
+
+## debchange - usage tips
 
 ### Create a new version entry
 
