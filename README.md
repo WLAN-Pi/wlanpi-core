@@ -59,6 +59,7 @@ Design:
 Packaging:
 
 - [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/)
+- [Debian Best Packaging Practices](https://www.debian.org/doc/manuals/developers-reference/best-pkging-practices.html)
 
 ## Contributing
 
