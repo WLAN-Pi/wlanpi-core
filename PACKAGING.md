@@ -30,10 +30,7 @@ From the root directory of this repository run:
 dpkg-buildpackage -us -uc -b
 ```
 
-Note that -us -uc disables signing the package with GPG.
-
-
-or
+Note that -us -uc disables signing the package with GPG. So, if you want to build, test with lintian, sign with GPG:
 
 ```
 debuild
@@ -53,6 +50,16 @@ dpkg-buildpackage: info: binary-only upload (no source included)
 wlanpi-core_0.0.1~rc1_arm64.buildinfo
 wlanpi-core_0.0.1~rc1_arm64.changes
 wlanpi-core_0.0.1~rc1_arm64.deb
+```
+
+### lintian
+
+There is a static analyzer we can use to check our debian package.
+
+```
+lintian
+lintian -i
+lintian -EviIL +pedantic
 ```
 
 ## sudo apt remove vs sudo apt purge
@@ -147,3 +154,10 @@ dpkg-buildpackage -us -uc -b
 # dependencies when doing this)
 sudo dpkg -i ../dh-virtualenv_<version>.deb
 ```
+
+## Appendix
+
+Links:
+
+* [https://www.debian.org/doc/manuals/packaging-tutorial/packaging-tutorial.en.pdf](https://www.debian.org/doc/manuals/packaging-tutorial/packaging-tutorial.en.pdf)
+* [https://wiki.debian.org/Teams/pkg-systemd/Packaging](https://wiki.debian.org/Teams/pkg-systemd/Packaging)
