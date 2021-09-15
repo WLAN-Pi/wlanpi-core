@@ -30,6 +30,15 @@ From the root directory of this repository run:
 dpkg-buildpackage -us -uc -b
 ```
 
+Note that -us -uc disables signing the package with GPG.
+
+
+or
+
+```
+debuild
+```
+
 If you are found favorable by the packaging gods, you should see some output files at `../wlanpi-core` like this:
 
 ```

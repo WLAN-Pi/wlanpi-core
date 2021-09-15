@@ -138,9 +138,11 @@ Use `git push origin <tag_name>` to push your local tag to the remote repository
 
 ## `debian/changelog`
 
-1. (optional) Create the changelog file, this will be created already by the time you are reading this, but you can create it by browsing to the root of the repository, and running `debchange --create`.
+Create a changelog entry for a new release: `dch -i`
 
-2. Run `debchange` to create a new changelog entry, describe what you changed, fixed, or enhanced.
+Describe what you changed, fixed, or enhanced.
+
+If you were to do this initially, and create the changelog file, you can create it by browsing to the root of the repository, and running `debchange --create`. This will be already done by the time you read this.
 
 See [DEBCHANGE_NOTES.md](DEBCHANGE_NOTES.md) for further reading.
 
