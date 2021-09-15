@@ -1,4 +1,4 @@
 # stuff to keep out of source tarballs
 tar-ignore = "*.egg-info"
-tar-ignore = "*.py[co]"
 tar-ignore = ".pip-cache"
+tar-ignore = "*.exe"
