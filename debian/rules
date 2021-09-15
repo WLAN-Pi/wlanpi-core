@@ -17,5 +17,8 @@ DH_VENV_ARGS=--builtin-venv --python ${SNAKE} $(EXTRA_REQUIREMENTS) \
 %:
 	dh $@ --with python3,python-virtualenv --buildsystem=pybuild
 
+override_dh_installexamples:
+	dh_installexamples -A -X__pycache__
+
 override_dh_virtualenv:
 	dh_virtualenv $(DH_VENV_ARGS)
