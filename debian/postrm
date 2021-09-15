@@ -3,7 +3,7 @@
 #
 # see: dh_installdeb(1)
 
--e
+set -e
 
 if [ "$1" == "purge" ] || [ "$1" == "remove" ]; then
     function unlink_if_existing() {
