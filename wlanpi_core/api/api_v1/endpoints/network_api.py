@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 
 from fastapi import APIRouter, Response
 
@@ -15,9 +16,9 @@ log = logging.getLogger("uvicorn")
 @router.get("/neighbors")  # , response_model=network.Neighbors)
 async def show_neighbors():
     """
-    Run `lldpcli show neighbors -f json` and return results
+    Run `lldpcli show neighbors -f json` and relay results to consumer.
 
-    Test psuedo code:
+    TODO: remove test psuedo code, this is what Swagger UI is for:
 
     ```
     import urllib.request,json,pprint
@@ -49,11 +50,20 @@ async def retrieve_public_ip_information():
         return Response(content=str(ex), status_code=500)
 
 
-# @router.get("/interface/ip_config")
-# def get_interface_ip_config(interface: str):
-#    return "TBD"
+@router.get("/localip")
+def get_local_ip():
+    """
+    Return the determined primary local IP address. 
 
-
-# @router.get("/interface/vlan")
-# def get_interface_vlan(interface: str):
-#    return "TBD"
+    TODO: Test get_local_ip() when Pi has no connectivity. Abstract out to a service.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # does not have to be reachable
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return {'ip': IP}
