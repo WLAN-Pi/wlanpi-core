@@ -1,14 +1,21 @@
 from fastapi import APIRouter
 
-from wlanpi_core.api.api_v1.endpoints import (diagnostics_api, fpms_api,
-                                              network_api, profiler_api,
-                                              speedtest_api, utils_api)
+from wlanpi_core.api.api_v1.endpoints import (
+    diagnostics_api,
+    fpms_api,
+    interface_api,
+    network_api,
+    profiler_api,
+    speedtest_api,
+    utils_api,
+)
 
 api_router = APIRouter()
 
 api_router.include_router(
     diagnostics_api.router, prefix="/diagnostics", tags=["diagnostics"]
 )
+api_router.include_router(interface_api.router, prefix="/interface", tags=["interface"])
 api_router.include_router(
     fpms_api.router, prefix="/fpms", tags=["front panel menu system"]
 )
