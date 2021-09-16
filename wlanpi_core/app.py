@@ -31,7 +31,8 @@ app = FastAPI(
 
 def configure():
     configure_routing()
-    # configure_api_keys()
+    # TODO: configure_events()
+    # TODO: configure_api_keys()
 
 
 def configure_routing():
