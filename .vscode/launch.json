@@ -5,13 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "wlanpi-core",
+            "name": "wlanpi_core",
             "type": "python",
             "request": "launch",
             "module": "uvicorn",
             "cwd": "${workspaceFolder}",
             "args": [
-                "wlanpi-core.main:app",
+                "wlanpi_core.app:app",
                 "--env-file",
                 ".env",
                 "--reload"
