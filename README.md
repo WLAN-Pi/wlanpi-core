@@ -1,6 +1,10 @@
-# WARNING/UNSTABLE
+# READ UNSTABLE WARNING FIRST
 
 This is not yet a production ready repo. wlanpi-core is an exploratory project at the moment and is in active development.
+
+Many of the endpoints do not have unit tests, schemas, and are also in an alpha state. In some cases the output is very unstable. Everything is subject to change. You have been warned.
+
+Ok, whew. Let's move on.
 
 ## wlanpi-core
 
@@ -8,7 +12,7 @@ Backend providing API endpoints for various consumers on and off the WLAN Pi.
 
 ## Endpoints
 
-TODO: Insert a description of the endpoints here.
+TODO: Insert a high level description of the endpoints here.
 
 ## Development Workflow
 
