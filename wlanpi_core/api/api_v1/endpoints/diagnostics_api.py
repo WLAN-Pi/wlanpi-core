@@ -49,6 +49,9 @@ async def show_diagnostics():
 @router.get("/interfaces", response_model=diagnostics.Interfaces)
 @router.get("/interfaces/{interface}", response_model=diagnostics.Interfaces)
 async def diagnostics(interface: Optional[str] = None):
+    """
+    Return diagnostic tests for a specific interface or all interfaces
+    """
     try:
         if interface:
             resp = await diagnostics_service.get_interface_diagnostics(interface)

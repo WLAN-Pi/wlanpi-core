@@ -4,7 +4,7 @@ from socket import gethostname
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
-import wlanpi_core.infrastructure.utils_cache as utils_cache
+import wlanpi_core.infrastructure.system_cache as system_cache
 from wlanpi_core.models.validation_error import ValidationError
 
 
@@ -115,7 +115,14 @@ async def get_systemd_service_status(name: str):
 
 
 async def get_wlanpi_hostname():
+    """Run gethostname() from socket and return JSON"""
     return {"hostname": gethostname()}
+
+
+async def set_wlanpi_hostname():
+    """Set hostname and return pass/fail response"""
+    # Need to change both /etc/hostname and /etc/hosts
+    # socket.sethostname(name) does not seem to work
 
 
 def get_wlanpi_version():
@@ -150,7 +157,7 @@ async def get_system_summary_async():
     key = "system_summary_cache"
 
     # have we already cached this?
-    system_summary = utils_cache.get_system_summary(key)
+    system_summary = system_cache.get_system_summary(key)
     if system_summary:
         return system_summary
 
@@ -166,6 +173,6 @@ async def get_system_summary_async():
     system_summary["hardware"] = get_hardware_from_proc_cpuinfo()
 
     # cache the data
-    utils_cache.set_system_summary(key, system_summary)
+    system_cache.set_system_summary(key, system_summary)
 
     return system_summary

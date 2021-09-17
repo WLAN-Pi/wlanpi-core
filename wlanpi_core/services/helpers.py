@@ -1,6 +1,37 @@
+"""
+shared resources between services
+"""
+
 import asyncio
+import os
+import socket
+from typing import List
 
 from wlanpi_core.models.runcommand_error import RunCommandError
+
+
+async def get_phy80211_interfaces() -> List:
+    interfaces = []
+    path = "/sys/class/net"
+    for net, ifaces, files in os.walk(path):
+        for iface in ifaces:
+            for dirpath, dirnames, filenames in os.walk(os.path.join(path, iface)):
+                if "phy80211" in dirnames:
+                    interfaces.append(iface)
+    return interfaces
+
+
+async def get_local_ip_async() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # does not have to be reachable
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
 
 async def run_cli_async(cmd: str) -> str:

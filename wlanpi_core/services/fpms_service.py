@@ -1,7 +1,6 @@
 import json
-import socket
 
-from .helpers import run_cli_async
+from .helpers import get_local_ip_async, run_cli_async
 
 
 async def get_system_summary() -> dict:
@@ -14,16 +13,7 @@ async def get_system_summary() -> dict:
     - Disk utilization
     - Device temperature
     """
-    ip = ""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # does not have to be reachable
-        s.connect(("10.255.255.255", 1))
-        ip = s.getsockname()[0]
-    except:
-        ip = "127.0.0.1"
-    finally:
-        s.close()
+    ip = await get_local_ip_async()
 
     # determine CPU load
     cmd = "top -bn1 | grep load | awk '{printf \"%.2f\", $(NF-2)}'"
@@ -66,4 +56,5 @@ async def get_system_summary() -> dict:
         "disk_util": str(disk),
         "temp": temp,
     }
+
     return json.dumps(system_summary)

@@ -1,28 +1,10 @@
-import os
-from shutil import which
-from typing import List, Optional
+from typing import Optional
 
 from wlanpi_core.models.validation_error import ValidationError
 
-from .helpers import run_cli_async
+from .helpers import get_phy80211_interfaces, run_cli_async
 
-
-async def is_tool(name: str) -> bool:
-    """
-    Check whether `name` is on PATH and marked as executable.
-    """
-    return which(name) is not None
-
-
-async def get_wifi_interfaces() -> List:
-    interfaces = []
-    path = "/sys/class/net"
-    for net, ifaces, files in os.walk(path):
-        for iface in ifaces:
-            for dirpath, dirnames, filenames in os.walk(os.path.join(path, iface)):
-                if "phy80211" in dirnames:
-                    interfaces.append(iface)
-    return interfaces
+# rewrite to interface copied from diag
 
 
 async def test_wifi_interface(interface: str) -> dict:
@@ -95,7 +77,7 @@ async def get_diagnostics():
 
 async def get_interface_diagnostics(interface: Optional[str] = None):
     results = []
-    interfaces = await get_wifi_interfaces()
+    interfaces = await get_phy80211_interfaces()
     if interface:
         if interface not in interfaces:
             raise ValidationError(
@@ -107,3 +89,16 @@ async def get_interface_diagnostics(interface: Optional[str] = None):
         for interface in interfaces:
             results.append({interface: await test_wifi_interface(interface)})
         return results
+
+
+async def get_channels(interface: str):
+    """
+    Return list of channels for interface
+    """
+    if interface not in await get_phy80211_interfaces():
+        raise ValidationError(
+            status_code=404, error_msg=f"wlan interface {interface} not found"
+        )
+    await run_cli_async(f"sudo iw list")
+
+    return None

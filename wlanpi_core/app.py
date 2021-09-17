@@ -39,7 +39,13 @@ def configure_routing():
     app.include_router(api_router, prefix=settings.API_V1_STR)
     for route in app.routes:
         if isinstance(route, APIRoute):
-            endpoints.append({"path": route.path})
+            endpoints.append(
+                {
+                    "path": route.path,
+                    "methods": "".join(list(route.methods)),
+                    "description": route.description.split("\n")[0],
+                }
+            )
 
     app.mount(
         "/static",

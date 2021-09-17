@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     TAGS_METADATA = [
         {
             "name": "diagnostics",
-            "description": "Provides information for troubleshooting WLAN interfaces",
+            "description": "Provides diagnostics information for the WLAN Pi",
+        },
+        {
+            "name": "interface",
+            "description": "Provides information for WLAN interfaces",
         },
         {
             "name": "front panel menu system",
@@ -38,8 +42,8 @@ class Settings(BaseSettings):
             "description": "Everybody likes speed, right?",
         },
         {
-            "name": "utilities",
-            "description": "Some utility classes",
+            "name": "system",
+            "description": "Some system utility endpoints",
         },
     ]
 

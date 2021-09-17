@@ -1,8 +1,8 @@
 import json
 import logging
-import socket
 
 from fastapi import APIRouter, Response
+from starlette.responses import JSONResponse
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
@@ -51,19 +51,37 @@ async def retrieve_public_ip_information():
 
 
 @router.get("/localip")
-def get_local_ip():
+async def get_local_ip():
     """
-    Return the determined primary local IP address.
+    Return the determined primary local IP address without a given interface.
 
     TODO: Test get_local_ip() when Pi has no connectivity. Abstract out to a service.
     """
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # does not have to be reachable
-        s.connect(("10.255.255.255", 1))
-        IP = s.getsockname()[0]
-    except Exception:
-        IP = "127.0.0.1"
-    finally:
-        s.close()
-    return {"ip": IP}
+        return await network_service.get_local_ip()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)
+
+
+@router.get("/reachability")
+async def get_internet_reachability(host="8.8.8.8", port=53, timeout=3):
+    """
+    Get the reachability status of the internet from the Pi.
+    """
+    try:
+        if network_service.get_internet(host, port, timeout):
+            return JSONResponse(
+                content={"reachability": True, "host": host, "port": port},
+                status_code=200,
+            )
+        else:
+            return JSONResponse(
+                content={"reachability": False, "host": host, "port": port},
+                status_code=404,
+            )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)

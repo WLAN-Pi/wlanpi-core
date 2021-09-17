@@ -5,14 +5,14 @@
         Backend services for the <strong>WLAN Pi</strong>.
     </p>
     <p>
-        For documentation and usage head over to the Swagger UI at <a href="/documentation">/documentation</a>.
+        For visual and interactive documentation you'll want to head over to the Swagger UI at <a href="/documentation">/documentation</a>.
     </p>
     <p>
-        <strong>Sample endpoints:</strong>
+        <strong>Sample APIRoutes:</strong>
         {% if endpoints %}
         <ul>
             {% for e in endpoints %}
-            <li> <a href="{{e.path}}">{{ e.path }}</a></li>
+            <li>Verb: <b>{{e.methods}}</b>, URL: <a href="{{e.path}}">{{e.path}}</a><ul><li>{{e.description}}</li></ul></li>
             {% endfor %}
         </ul>
         {% endif %}

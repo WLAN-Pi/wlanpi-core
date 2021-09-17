@@ -15,13 +15,14 @@ log = logging.getLogger("uvicorn")
 @router.get("/system_summary", response_model=fpms.SystemSummary)
 async def show_system_summary():
     """
-    Returns device status information:
+    Returns device status information for the FPMS
 
-    - IP address
-    - CPU utilization
-    - Memory usage
-    - Disk utilization
-    - Device temperature
+    Response includes:
+    * IP address
+    * CPU utilization
+    * Memory usage
+    * Disk utilization
+    * Device temperature
     """
     resp = await fpms_service.get_system_summary()
 
