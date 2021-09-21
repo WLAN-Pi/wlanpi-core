@@ -1,32 +1,21 @@
-import os
 from shutil import which
-from typing import List, Optional
+from typing import Optional
 
 from wlanpi_core.models.validation_error import ValidationError
 
-from .helpers import run_cli_async
+from .helpers import get_phy80211_interfaces, run_cli_async
 
 
-async def is_tool(name: str) -> bool:
+async def executable_exists(name: str) -> bool:
     """
     Check whether `name` is on PATH and marked as executable.
     """
     return which(name) is not None
 
 
-async def get_wifi_interfaces() -> List:
-    interfaces = []
-    path = "/sys/class/net"
-    for net, ifaces, files in os.walk(path):
-        for iface in ifaces:
-            for dirpath, dirnames, filenames in os.walk(os.path.join(path, iface)):
-                if "phy80211" in dirnames:
-                    interfaces.append(iface)
-    return interfaces
-
-
 async def test_wifi_interface(interface: str) -> dict:
     test = {}
+    test["name"] = interface
 
     test["mac"] = (
         await run_cli_async(f"cat /sys/class/net/{interface}/address")
@@ -84,26 +73,64 @@ async def get_diagnostics():
     regdomain = await run_cli_async("iw reg get")
 
     diag["regdomain"] = [line for line in regdomain.split("\n") if "country" in line]
-    diag["tcpdump"] = await is_tool("tcpdump")
-    diag["iw"] = await is_tool("iw")
-    diag["ip"] = await is_tool("ip")
-    diag["ifconfig"] = await is_tool("ifconfig")
-    diag["airmon-ng"] = await is_tool("airmon-ng")
+
+    executable = {}
+    tcpdump_exists = await executable_exists("tcpdump")
+    executable["tcpdump"] = tcpdump_exists
+    iw_exists = await executable_exists("iw")
+    executable["iw"] = iw_exists
+    ip_exists = await executable_exists("ip")
+    executable["ip"] = ip_exists
+    ifconfig_exists = await executable_exists("ifconfig")
+    executable["ifconfig"] = ifconfig_exists
+    airmonng_exists = await executable_exists("airmon-ng")
+    executable["airmon-ng"] = airmonng_exists
+
+    # add executable tests to diag
+    diag["tools"] = executable
+
+    tool_versions = {}
+    if tcpdump_exists:
+        tool_versions["tcpdump"] = await run_cli_async(
+            "tcpdump --version", want_stderr=True
+        )
+    else:
+        tool_versions["tcpdump"] = "unknown"
+
+    if iw_exists:
+        tool_versions["iw"] = await run_cli_async("iw --version")
+    else:
+        tool_versions["iw"] = "unknown"
+
+    if ip_exists:
+        tool_versions["ip"] = await run_cli_async("ip -V")
+    else:
+        tool_versions["ip"] = "unknown"
+
+    if ifconfig_exists:
+        tool_versions["ifconfig"] = await run_cli_async("ifconfig --version")
+    else:
+        tool_versions["ifconfig"] = "unknown"
+
+    # add version tests to diag
+    diag["versions"] = tool_versions
 
     return diag
 
 
 async def get_interface_diagnostics(interface: Optional[str] = None):
-    results = []
-    interfaces = await get_wifi_interfaces()
+    interfaces = get_phy80211_interfaces()
+    results = {}
     if interface:
         if interface not in interfaces:
             raise ValidationError(
                 status_code=400, error_msg=f"wlan interface {interface} not found"
             )
-        results.append({interface: await test_wifi_interface(interface)})
+        results["interfaces"] = [await test_wifi_interface(interface)]
         return results
     else:
+        ifaces = []
         for interface in interfaces:
-            results.append({interface: await test_wifi_interface(interface)})
+            ifaces.append(await test_wifi_interface(interface))
+        results["interfaces"] = ifaces
         return results

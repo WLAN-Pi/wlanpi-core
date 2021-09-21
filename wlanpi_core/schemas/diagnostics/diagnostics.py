@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ class Diagnostics(BaseModel):
 
 
 class Interface(BaseModel):
+    name: str = Field(example="wlan0")
     mac: str = Field(example="8c:88:2a:90:25:a3")
     driver: str = Field(example="mt76x2u")
     operstate: str = Field(example="down")
@@ -20,4 +21,4 @@ class Interface(BaseModel):
 
 
 class Interfaces(BaseModel):
-    interface: Optional[Interface]
+    interfaces: List[Optional[Interface]]

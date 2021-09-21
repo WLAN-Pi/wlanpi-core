@@ -5,12 +5,12 @@ shared resources between services
 import asyncio
 import os
 import socket
-from typing import List
+from typing import Iterable, List, Tuple
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 
 
-async def get_phy80211_interfaces() -> List:
+def get_phy80211_interfaces() -> List:
     interfaces = []
     path = "/sys/class/net"
     for net, ifaces, files in os.walk(path):
@@ -34,7 +34,7 @@ async def get_local_ip_async() -> str:
     return ip
 
 
-async def run_cli_async(cmd: str) -> str:
+async def run_cli_async(cmd: str, want_stderr: bool = False) -> str:
     proc = await asyncio.create_subprocess_shell(
         cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -44,8 +44,20 @@ async def run_cli_async(cmd: str) -> str:
     if proc.returncode == 0:
         if stdout:
             return stdout.decode()
+        if stderr and want_stderr:
+            return stderr.decode()
 
     if stderr:
         raise RunCommandError(
             status_code=424, error_msg=f"'{cmd}' gave stderr response"
         )
+
+
+def flag_last_object(_iterable: Iterable) -> Tuple[any, bool]:
+    """Treat the last object in an iterable differently"""
+    _iterable = iter(_iterable)  # ensure _iterable is an iterator
+    a = next(_iterable)
+    for b in _iterable:
+        yield a, False
+        a = b
+    yield a, True

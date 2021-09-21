@@ -1,104 +1,120 @@
-from typing import Optional
+from collections import namedtuple
+from typing import List
 
-from wlanpi_core.models.validation_error import ValidationError
+from .helpers import flag_last_object, run_cli_async
 
-from .helpers import get_phy80211_interfaces, run_cli_async
-
-# rewrite to interface copied from diag
+# from wlanpi_core.models.validation_error import ValidationError
 
 
-async def test_wifi_interface(interface: str) -> dict:
-    test = {}
+PHYMapping = namedtuple("PHYMapping", "phy_id interface")
+ChannelMapping = namedtuple("ChannelMapping", "center_channel_frequency channel_widths")
 
-    test["mac"] = (
-        await run_cli_async(f"cat /sys/class/net/{interface}/address")
-    ).strip()
 
-    test["driver"] = (
-        (await run_cli_async(f"readlink -f /sys/class/net/{interface}/device/driver"))
-        .strip()
-        .rsplit("/", 1)[1]
-    )
-
+async def set_monitor_mode(interface: str) -> List:
     """
-https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-class-net
-
-What:		/sys/class/net/<iface>/operstate
-Date:		March 2006
-KernelVersion:	2.6.17
-Contact:	netdev@vger.kernel.org
-Description:
-		Indicates the interface RFC2863 operational state as a string.
-
-		Possible values are:
-
-		"unknown", "notpresent", "down", "lowerlayerdown", "testing",
-		"dormant", "up".
+    wpa_cli -i wlan0 terminate
+    ip link set wlan0 down
+    iw dev wlan0 set monitor none
+    iw dev wlan0 set type monitor
+    ip link set wlan1 up
     """
-    operstate = await run_cli_async(f"cat /sys/class/net/{interface}/operstate")
-    test["operstate"] = operstate.strip()
-
-    _type = await run_cli_async(f"cat /sys/class/net/{interface}/type")
-
-    _type = int(_type)
-    if _type == 1:
-        test["mode"] = "managed"
-    elif _type == 801:
-        test["mode"] = "monitor"
-    elif _type == 802:
-        test["mode"] = "monitor"
-    elif (
-        _type == 803
-    ):  # https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/if_arp.h#L90
-        test["mode"] = "monitor"
-    else:
-        test["mode"] = "unknown"
-
-    return test
+    # TODO: Add set_monitor_mode() implementation
+    return []
 
 
-async def get_diagnostics():
+def sanitize_line(line: str) -> str:
     """
-    Return diagnostic tests for probe
+    Sanitize line
     """
-    diag = {}
-
-    regdomain = await run_cli_async("iw reg get")
-
-    diag["regdomain"] = [line for line in regdomain.split("\n") if "country" in line]
-    diag["tcpdump"] = await is_tool("tcpdump")
-    diag["iw"] = await is_tool("iw")
-    diag["ip"] = await is_tool("ip")
-    diag["ifconfig"] = await is_tool("ifconfig")
-    diag["airmon-ng"] = await is_tool("airmon-ng")
-
-    return diag
+    return line.strip().lower()
 
 
-async def get_interface_diagnostics(interface: Optional[str] = None):
-    results = []
-    interfaces = await get_phy80211_interfaces()
-    if interface:
-        if interface not in interfaces:
-            raise ValidationError(
-                status_code=400, error_msg=f"wlan interface {interface} not found"
+def parse_iw_dev(iw_dev_output: str) -> List:
+    """
+    Parse iw dev output
+    """
+    mappings = []
+    phy = ""
+    interface = ""
+    for line in iw_dev_output.splitlines():
+        line = sanitize_line(line)
+        if line.startswith("phy"):
+            phy = line.replace("#", "")
+        if line.startswith("interface"):
+            interface = line.split(" ")[1]
+            mappings.append(PHYMapping(phy, interface))
+    return mappings
+
+
+async def get_phy_interface_mapping() -> List:
+    """
+    Run `iw dev` and return a list of phys mapped to interface names
+    """
+
+    return parse_iw_dev(await run_cli_async(f"iw dev"))
+
+
+async def get_center_channel_frequencies(phy_id: str) -> List[ChannelMapping]:
+    """
+    Parse iw phy phy# channels to return channel mapping
+    """
+    channels_output = await run_cli_async(f"iw phy {phy_id} channels")
+    frequencies = []
+    first = True
+    channel_center_frequency = 0
+    channel_mapping = []
+    for line, is_last_line in flag_last_object(channels_output.splitlines()):
+        line = sanitize_line(line)
+        if "*" in line and "mhz" in line:
+            if "disabled" not in line:
+                if first:
+                    first = False
+                    channel_center_frequency = line.split(" ")[1]
+                    continue
+                else:
+                    frequencies.append(
+                        ChannelMapping(channel_center_frequency, channel_mapping)
+                    )
+                    channel_center_frequency = line.split(" ")[1]
+            continue
+        if "channel widths" in line:
+            line = line.replace("channel widths:", "").strip()
+            channel_mapping = (
+                line.replace("20mhz", "ht20")
+                .upper()
+                .replace("VHT80", "80MHz")
+                .replace("VHT160", "160MHz")
+                .split(" ")
             )
-        results.append({interface: await test_wifi_interface(interface)})
-        return results
-    else:
-        for interface in interfaces:
-            results.append({interface: await test_wifi_interface(interface)})
-        return results
+        if is_last_line:
+            frequencies.append(
+                ChannelMapping(channel_center_frequency, channel_mapping)
+            )
+    return frequencies
 
 
-async def get_channels(interface: str):
+async def get_wiphys():
     """
-    Return list of channels for interface
+    Return list of wiphys
     """
-    if interface not in await get_phy80211_interfaces():
-        raise ValidationError(
-            status_code=404, error_msg=f"wlan interface {interface} not found"
-        )
-    await run_cli_async(f"sudo iw list")
+    wiphys = {}
+    phys = []
 
-    return None
+    phy_ids = await get_phy_interface_mapping()
+    for mapping in phy_ids:
+        phy = mapping.phy_id
+        interface = mapping.interface
+        channel_mappings = await get_center_channel_frequencies(phy)
+        frequencies = []
+        for channel_mapping in channel_mappings:
+            frequencies.append(
+                {
+                    "frequency": channel_mapping.center_channel_frequency,
+                    "widths": channel_mapping.channel_widths,
+                }
+            )
+        wiphy = {"phy": phy, "interface": interface, "frequencies": frequencies}
+        phys.append(wiphy)
+
+    wiphys["wiphys"] = phys
+    return wiphys
