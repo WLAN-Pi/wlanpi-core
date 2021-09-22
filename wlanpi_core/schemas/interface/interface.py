@@ -1,24 +1,15 @@
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
+class Frequencies(BaseModel):
+    freq: int = Field(example=2412)
+    widths: List = Field(example=["20","40+"])
 
-class Band(BaseModel):
-    band: str = Field(example="2G")
-    channels: List = Field(example=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-
-
-class Channels(BaseModel):
+class Wiphy(BaseModel):
+    phy: str = Field(example="phy0")
     interface: str = Field(example="wlan0")
-    bands: Optional[Band]
+    frequencies: List[Frequencies]
 
-
-class Interface(BaseModel):
-    mac: str = Field(example="8c:88:2a:90:25:a3")
-    driver: str = Field(example="mt76x2u")
-    operstate: str = Field(example="down")
-    mode: str = Field(example="managed")
-
-
-class Interfaces(BaseModel):
-    interface: Optional[Interface]
+class Wiphys(BaseModel):
+    wiphys: List[Wiphy] 

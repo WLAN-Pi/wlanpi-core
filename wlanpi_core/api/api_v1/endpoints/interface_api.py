@@ -4,16 +4,15 @@ from starlette.responses import Response
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services import interface_service
+from wlanpi_core.schemas import interface
 
 router = APIRouter()
 
 
-@router.get("/wiphys")
+@router.get("/wiphys", response_model=interface.Wiphys)
 async def show_interfaces_list():
     """
     Return a list interfaces and associated channelization
-
-    TODO: Add schema for show_interfaces_list()
     """
     try:
         resp = await interface_service.get_wiphys()
