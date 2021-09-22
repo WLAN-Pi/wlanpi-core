@@ -1,3 +1,5 @@
+![coverage-badge](coverage.svg)
+
 # READ UNSTABLE WARNING FIRST
 
 This is not yet a production ready repo. wlanpi-core is an exploratory project at the moment and is in active development.

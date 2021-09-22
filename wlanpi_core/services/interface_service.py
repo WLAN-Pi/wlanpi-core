@@ -54,11 +54,10 @@ async def get_phy_interface_mapping() -> List:
     return parse_iw_dev(await run_cli_async(f"iw dev"))
 
 
-async def get_center_channel_frequencies(phy_id: str) -> List[ChannelMapping]:
+def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]:
     """
     Parse iw phy phy# channels to return channel mapping
     """
-    channels_output = await run_cli_async(f"iw phy {phy_id} channels")
     frequencies = []
     first = True
     channel_center_frequency = 0
@@ -80,10 +79,12 @@ async def get_center_channel_frequencies(phy_id: str) -> List[ChannelMapping]:
         if "channel widths" in line:
             line = line.replace("channel widths:", "").strip()
             channel_mapping = (
-                line.replace("20mhz", "ht20")
-                .upper()
-                .replace("VHT80", "80MHz")
-                .replace("VHT160", "160MHz")
+                line.upper()
+                .replace("20MHZ", "20")
+                .replace("HT40-", "40-")
+                .replace("HT40+", "40+")
+                .replace("VHT80", "80")
+                .replace("VHT160", "160")
                 .split(" ")
             )
         if is_last_line:
@@ -104,12 +105,13 @@ async def get_wiphys():
     for mapping in phy_ids:
         phy = mapping.phy_id
         interface = mapping.interface
-        channel_mappings = await get_center_channel_frequencies(phy)
+        channels_output = await run_cli_async(f"iw phy {phy} channels")
+        channel_mappings = get_center_channel_frequencies(channels_output)
         frequencies = []
         for channel_mapping in channel_mappings:
             frequencies.append(
                 {
-                    "frequency": channel_mapping.center_channel_frequency,
+                    "freq": int(channel_mapping.center_channel_frequency),
                     "widths": channel_mapping.channel_widths,
                 }
             )
