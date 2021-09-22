@@ -12,7 +12,7 @@
         {% if endpoints %}
         <ul>
             {% for e in endpoints %}
-            <li>Verb: <b>{{e.methods}}</b>, URL: <a href="{{e.path}}">{{e.path}}</a><ul><li>{{e.description}}</li></ul></li>
+            <li><strong>HTTP {{e.methods}}</strong> — URL: <a href="{{e.path}}">{{e.path}}</a><ul><li>{{e.description}}</li></ul></li>
             {% endfor %}
         </ul>
         {% endif %}
