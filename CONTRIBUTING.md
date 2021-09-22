@@ -1,13 +1,7 @@
 # Contribution Guidelines
 
-To get the greatest chance of helpful responses, please observe the
+For the greatest chance of helpful responses, please observe the
 following additional notes.
-
-## Before You Start
-
-To increase the chances of Pull Request (PR) approval, first, talk to one of the core [WLAN Pi](https://github.com/WLAN-Pi/) [team members](https://github.com/orgs/WLAN-Pi/people).
-
-Aligning your ideas with the project team (before doing the work) will save everybody's time. 
 
 ## Questions
 
@@ -49,22 +43,26 @@ Please be aware of the following things when filing bug reports:
    - Tell us **what version you're using**, and
      **how you installed it**. Different versions behave
      differently and have different bugs.
-   
-   If you do not provide all of these things, it can take us much longer to
-   fix your problem. If we ask you to clarify these and you never respond, we
-   will close your issue without fixing it.
+
+If you do not provide all of these things, it can take us much longer to
+fix your problem. If we ask you to clarify these and you never respond, we
+will close your issue without fixing it.
 
 ## Code Contributions
 
-### Before You Start
+Some tips to consider.
 
-To increase the chances of PR approval, first, talk to one of the core team members. Aligning your ideas with the project team will save everybody's time. 
+### Before You Start Coding
+
+To increase the chances of Pull Request (PR) approval, first, talk to one of the core [WLAN Pi](https://github.com/WLAN-Pi/) [team members](https://github.com/orgs/WLAN-Pi/people).
+
+Aligning your ideas with the project team (before doing the work) will save everybody's time.
 
 ### Development Environment
 
-Use whatever you want to develop. 
+Use whatever environment you want to develop.
 
-Need help? Consider using PyCharm or Visual Studio Code with the official Python and Pylance extensions from Microsoft (recommended).
+Need help? Consider using PyCharm or Visual Studio Code (VSC) with the official Python and Pylance extensions from Microsoft.
 
 ### Pull Requests
 
@@ -72,10 +70,14 @@ Before submitting a PR perform the following:
 
 1. Lint your code with `tox -e lint` and make sure it passes.
 
-1. Format your code with `tox -e format`.
+2. Format your code with `tox -e format`.
 
-2. Create a test that validates your changes. this test should go in `/tests`.
+3. Create a test that validates your changes. this test should go in `/tests`.
 
-3. Ensure your tests pass by running `tox`.
+4. Ensure all tests pass by running `tox`.
+
+These steps are done from the root directory of the repo. You may need to first setup and activate the virtualenv.
 
 Failure to do so means it will take longer to test, validate, and merge your PR into the repo.
+
+CI/CD workflows will also fail if tox fails.
