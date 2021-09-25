@@ -11,7 +11,7 @@ Our goal is to use dh-virtualenv for accomplishing things like packaging, symlin
 On your _build host_, install the build tools (these are only needed on your build host):
 
 ```
-sudo apt-get install build-essential debhelper devscripts equivs python3-pip python3-all python3-dev python3-setuptools dh-virtualenv
+sudo apt-get install build-essential debhelper devscripts equivs python3-pip python3-all-dev python3-setuptools dh-virtualenv
 ```
 
 Install Python depends:
@@ -20,7 +20,19 @@ Install Python depends:
 python3 -m pip install mock
 ```
 
+Update pip, setuptools, and install wheels:
+
+```
+python3 -m pip install -U pip setuptools wheel
+```
+
 This is required, otherwise the tooling will fail when tries to evaluate which tests to run.
+
+## This will install build dependencies
+
+```
+sudo mk-build-deps -ri
+```
 
 ## Building our project
 

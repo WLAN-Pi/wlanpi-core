@@ -1,0 +1,1 @@
+wlanpi_api ALL = (root) NOPASSWD: /sbin/iwconfig, /sbin/iw, /sbin/ifconfig, /bin/ip, /usr/sbin/tcpdump

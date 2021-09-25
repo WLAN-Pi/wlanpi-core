@@ -58,7 +58,7 @@ ufw enable
 git clone git@github.com:WLAN-Pi/wlanpi-core.git 
 cd wlanpi-core
 python3 -m venv venv && source venv/bin/activate
-pip install wheel setuptools 
+pip install -U pip wheel setuptools 
 
 # normal users who do not need to run or create tests
 pip install .

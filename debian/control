@@ -1,5 +1,5 @@
 Source: wlanpi-core
-Section: python
+Section: contrib/python
 Priority: optional
 Maintainer: Josh Schmelzle <josh@joshschmelzle.com>
 Build-Depends: debhelper (>= 11),
@@ -19,10 +19,9 @@ Package: wlanpi-core
 Architecture: any
 Pre-Depends: dpkg (>= 1.16.1), python3 (>=3.7), ${misc:Pre-Depends}
 Depends: lldpd,
-         ${python3:Depends}, 
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: wlanpi-common, wlanpi-webui
+Recommends: wlanpi-common, wlanpi-webui, nginx
 Description: Core backend services for the WLAN Pi
  wlanpi-core provides API endpoints for various consumers on and off
  the WLAN Pi platform.
