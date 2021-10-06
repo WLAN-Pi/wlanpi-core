@@ -4,7 +4,10 @@ import os
 from codecs import open
 from typing import Dict
 
-from setuptools import find_packages, setup
+try:
+    from setuptools import find_packages, setup
+except:
+    raise ImportError("setuptools is required ...")
 
 here = os.path.abspath(os.path.dirname(__file__))
 
