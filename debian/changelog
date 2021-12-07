@@ -1,5 +1,5 @@
-wlanpi-core (0.0.1~rc1) unstable; urgency=medium
+wlanpi-core (0.0.1) unstable; urgency=medium
 
-  * Initial release. Update me to trigger CI/CD.
+  * Initial release.
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 05 Sep 2021 14:33:56 -0400
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 23 Nov 2021 20:33:56 -0500

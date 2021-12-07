@@ -16,26 +16,19 @@ from wlanpi_core.views import api
 
 log = logging.getLogger("uvicorn")
 
-
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description=settings.PROJECT_DESCRIPTION,
-    version=__version__,
-    license_info={"name": __license__, "url": __license_url__},
-    docs_url="/documentation",
-    redoc_url=None,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    openapi_tags=settings.TAGS_METADATA,
-)
-
-
-def configure():
-    configure_routing()
-    # TODO: configure_events()
-    # TODO: configure_api_keys()
+def create_app():
+    app = FastAPI(
+        title=settings.PROJECT_NAME,
+        description=settings.PROJECT_DESCRIPTION,
+        version=__version__,
+        license_info={"name": __license__, "url": __license_url__},
+        docs_url="/documentation",
+        redoc_url=None,
+        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        openapi_tags=settings.TAGS_METADATA,
+    )
 
 
-def configure_routing():
     app.include_router(api_router, prefix=settings.API_V1_STR)
     for route in app.routes:
         if isinstance(route, APIRoute):
@@ -54,5 +47,4 @@ def configure_routing():
     )
     app.include_router(api.router)
 
-
-configure()
+    return app

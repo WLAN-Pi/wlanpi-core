@@ -10,7 +10,7 @@ Type=notify
 User=wlanpi_api
 Group=wlanpi_api
 WorkingDirectory=/opt/wlanpi-core/lib/python3.7/site-packages/wlanpi_core
-ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 2 -k uvicorn.workers.UvicornWorker --bind unix:wlanpi_core.sock app:app --name wlanpi_core_svc --access-logfile /var/log/wlanpi-core/access.log --error-logfile /var/log/wlanpi-core/error.log --user wlanpi_api
+ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 2 -k uvicorn.workers.UvicornWorker --bind unix:wlanpi_core.sock asgi:app --name wlanpi_core_svc --access-logfile /var/log/wlanpi-core/access.log --error-logfile /var/log/wlanpi-core/error.log --user wlanpi_api
 
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

@@ -7,7 +7,7 @@ echo "Starting wlanpi_core install fixup script ..."
 # nginx configuration file location
 NGINX_CONF=/etc/nginx/nginx.conf
 
-# if conf exists, we're going to overwrite it
+# if conf exists, create backup and then overwrite it
 if [ -f "$NGINX_CONF" ]; then
     TSTAMP=`date '+%s'`
     NEW_CONF="$NGINX_CONF.$TSTAMP"

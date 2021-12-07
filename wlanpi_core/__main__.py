@@ -67,7 +67,7 @@ def main() -> None:
 
     if lets_go:
         uvicorn.run(
-            "wlanpi_core.app:app",
+            "wlanpi_core.asgi:app",
             port=8000,
             host="0.0.0.0",
             reload=args.livereload,
