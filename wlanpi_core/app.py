@@ -16,6 +16,7 @@ from wlanpi_core.views import api
 
 log = logging.getLogger("uvicorn")
 
+
 def create_app():
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -27,7 +28,6 @@ def create_app():
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         openapi_tags=settings.TAGS_METADATA,
     )
-
 
     app.include_router(api_router, prefix=settings.API_V1_STR)
     for route in app.routes:
