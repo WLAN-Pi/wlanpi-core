@@ -20,7 +20,7 @@ with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as 
 packages = find_packages(exclude=("tests",))
 
 core_requires = [
-    "fastapi",
+    "fastapi==0.70.0",
     "httpx",
     "Jinja2",
     "aiofiles",
@@ -29,7 +29,11 @@ core_requires = [
     "python-dotenv",
 ]
 
-endpoint_requires = ["psutil", "dbus-python"]
+# fmt: off
+endpoint_requires = [
+    "psutil==5.8.0",
+    "dbus-python==1.2.18"
+]
 
 requires = core_requires + endpoint_requires
 
