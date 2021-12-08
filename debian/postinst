@@ -5,4 +5,26 @@
 
 #DEBHELPER#
 
+# function to check if a path is a symlink
+function isValidSymlink() {
+    if [ -L "$1" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# get python version, remove spaces, get Python3.7 or Python3.9, lowercase
+PYTHONSTUB=`python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p'`
+
+# target working directory
+WORKINGDIRECTORY=/opt/wlanpi-core/lib/$PYTHONSTUB/site-packages/wlanpi_core
+
+# link
+LINK=/opt/wlanpi-core/workingdirectory
+
+if ! isValidSymlink $WORKINGDIRECTORY; then
+    ln -s $WORKINGDIRECTORY $LINK
+fi
+
 exit 0

@@ -72,7 +72,6 @@ EOF
 sshd -t
 fi
 
-
 # create log directory and set permissions for apiuser
 DIR="/var/log/wlanpi-core/"
 
@@ -92,6 +91,9 @@ echo "Adding wlanpi_api to sudoers ..."
 visudo -c -q -f /etc/wlanpi-core/sudoers.d/wlanpi_api && \
 chmod 600 /etc/wlanpi-core/sudoers.d/wlanpi_api && \
 cp /etc/wlanpi-core/sudoers.d/wlanpi_api /etc/sudoers.d/wlanpi_api
+
+echo "Invoking restart of wlanpi-core.service ..."
+deb-systemd-invoke restart wlanpi-core.service
 
 echo "Finished wlanpi_core install fixup script ..."
 exit 0
