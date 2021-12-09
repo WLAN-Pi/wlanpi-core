@@ -21,7 +21,7 @@ def get_phy80211_interfaces() -> List:
     return interfaces
 
 
-async def get_local_ip_async() -> str:
+async def get_local_ipv4_async() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # does not have to be reachable
@@ -29,6 +29,19 @@ async def get_local_ip_async() -> str:
         ip = s.getsockname()[0]
     except Exception:
         ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
+
+
+async def get_local_ipv6_async() -> str:
+    s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    try:
+        # does not have to be reachable
+        s.connect(("fec0::aaaa", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "::1"
     finally:
         s.close()
     return ip

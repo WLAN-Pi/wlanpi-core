@@ -1,6 +1,6 @@
 import json
 
-from .helpers import get_local_ip_async, run_cli_async
+from .helpers import get_local_ipv4_async, run_cli_async
 
 
 async def get_system_summary() -> dict:
@@ -13,7 +13,7 @@ async def get_system_summary() -> dict:
     - Disk utilization
     - Device temperature
     """
-    ip = await get_local_ip_async()
+    ip = await get_local_ipv4_async()
 
     # determine CPU load
     cmd = "top -bn1 | grep load | awk '{printf \"%.2f\", $(NF-2)}'"

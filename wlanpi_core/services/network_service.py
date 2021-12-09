@@ -5,7 +5,7 @@ from httpx import Response
 
 from wlanpi_core.models.validation_error import ValidationError
 
-from .helpers import get_local_ip_async, run_cli_async
+from .helpers import get_local_ipv4_async, get_local_ipv6_async, run_cli_async
 
 
 async def get_neighbor_results():
@@ -17,6 +17,9 @@ async def get_neighbor_results():
 
 
 async def get_public_ipv4():
+    """
+    TODO: If host has IPv6 reachability, resp contains IPv6. Force IPv4.
+    """
     url = "https://ifconfig.co/json"
 
     async with httpx.AsyncClient() as client:
@@ -24,14 +27,19 @@ async def get_public_ipv4():
         if resp.status_code != 200:
             raise ValidationError(content=resp.text, status_code=resp.status_code)
 
-    # TODO: HANDLE IF RESP DOESN'T MATCH SCHEMA I.E. INTERNAL SERVER ERROR 
+    # TODO: HANDLE IF RESP DOESN'T MATCH SCHEMA I.E. INTERNAL SERVER ERROR
 
     return resp.json()
 
 
-async def get_local_ip():
-    ip = await get_local_ip_async()
-    return {"ip": ip}
+async def get_local_ipv4():
+    ip = await get_local_ipv4_async()
+    return {"ipv4": ip}
+
+
+async def get_local_ipv6():
+    ip = await get_local_ipv6_async()
+    return {"ipv6": ip}
 
 
 async def get_internet(host, port, timeout):

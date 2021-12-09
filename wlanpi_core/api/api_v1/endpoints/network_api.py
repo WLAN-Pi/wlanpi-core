@@ -63,15 +63,30 @@ async def retrieve_public_ip_information():
         return Response(content=str(ex), status_code=500)
 
 
-@router.get("/localip")
-async def get_local_ip():
+@router.get("/localipv4")
+async def get_local_ipv4():
     """
-    Return the determined primary local IP address without a given interface.
+    Return the determined primary local IPv4 address without a given interface.
 
-    TODO: Test get_local_ip() when Pi has no connectivity. Abstract out to a service.
+    TODO: Test get_local_ipv4() when Pi has no connectivity. Abstract out to a service.
     """
     try:
-        return await network_service.get_local_ip()
+        return await network_service.get_local_ipv4()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)
+
+
+@router.get("/localipv6")
+async def get_local_ipv6():
+    """
+    Return the determined primary local IPv6 address without a given interface.
+
+    TODO: Test get_local_ipv6() when Pi has no connectivity. Abstract out to a service.
+    """
+    try:
+        return await network_service.get_local_ipv6()
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -81,6 +96,8 @@ async def get_local_ip():
 @router.get("/reachability")
 async def get_internet_reachability(host="8.8.8.8", port=53, timeout=3):
     """
+    # TODO: refactor to IPv4 Internet Reachability
+    # TODO: add IPv6 Internet Reachability
     Get the reachability status of the internet from the Pi.
     """
     try:
