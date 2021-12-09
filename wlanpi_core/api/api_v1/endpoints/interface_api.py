@@ -3,8 +3,8 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.services import interface_service
 from wlanpi_core.schemas import interface
+from wlanpi_core.services import interface_service
 
 router = APIRouter()
 

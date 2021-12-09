@@ -37,13 +37,26 @@ async def show_neighbors():
         return Response(content=str(ex), status_code=500)
 
 
-@router.get("/publicip", response_model=network.PublicIP)
+@router.get("/publicipv4", response_model=network.PublicIP)
 async def retrieve_public_ip_information():
     """
     publicip leverages the `ifconfig.co/json` service to retrieve public IP information.
     """
     try:
-        return await network_service.get_public_ip()
+        return await network_service.get_public_ipv4()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)
+
+
+@router.get("/publicipv6", response_model=network.PublicIP)
+async def retrieve_public_ip_information():
+    """
+    publicip leverages the `ifconfig.co/json` service to retrieve public IP information.
+    """
+    try:
+        return await network_service.get_public_ipv6()
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

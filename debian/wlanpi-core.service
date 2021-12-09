@@ -22,7 +22,6 @@ PrivateTmp=true
 # RuntimeDirectory=/opt/wlanpi-core
 # Restart=always
 Type=notify
-StandardError=syslog
 NotifyAccess=all
 
 [Install]
