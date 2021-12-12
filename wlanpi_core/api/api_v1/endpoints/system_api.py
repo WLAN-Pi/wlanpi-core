@@ -17,7 +17,9 @@ async def show_systemd_service_status(name: str):
 
     - wlanpi-profiler
     - wlanpi-fpms
-    - wlanpi-chatbot
+    - wlanpi-chat-bot
+    - bt-agent
+    - bt-network
     - iperf3
     - ufw
     - tftpd-hpa
