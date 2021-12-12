@@ -48,7 +48,10 @@ def check_service_status(service):
 allowed_services = [
     "wlanpi-profiler",
     "wlanpi-fpms",
-    "wlanpi-chatbot",
+    "wlanpi-chat-bot",
+    "bt-agent",
+    "bt-network",
+    "iperf"
     "iperf3",
     "ufw",
     "tftpd-hpa",
