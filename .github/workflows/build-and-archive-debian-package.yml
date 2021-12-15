@@ -1,14 +1,17 @@
-name: Build Debian Package On PR
+name: Build and Archive Debian Package
 
 on:
+  # Allow manual runs of workflow from Actions tab
+  workflow_dispatch:
+
   pull_request:
-    branches:
-      - main
     paths:
       - 'debian/changelog'
 
 jobs:
   sbuild:
+    name: sbuild ${{ matrix.distro }}+${{ matrix.arch }}
+
     runs-on: 'ubuntu-20.04'
 
     strategy:
@@ -16,8 +19,6 @@ jobs:
       matrix:
         distro: [buster,bullseye]
         arch: [armhf,arm64]
-
-    name: Ubuntu 20.04 sbuild using ${{ matrix.distro }} ${{ matrix.arch }}
     
     steps:
       - name: Checkout
@@ -33,7 +34,7 @@ jobs:
       - name: Archive artifacts and upload to GitHub
         uses: actions/upload-artifact@v2
         with:
-          name: wlanpi-fpms-${{ matrix.distro }}-${{ matrix.arch }}
+          name: wlanpi-core-${{ matrix.distro }}-${{ matrix.arch }}
           path: ${{ steps.build-debian-package.outputs.deb-package }}
         
   slack-workflow-status:
@@ -48,5 +49,3 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          channel: '#wlanpi-core'
-          name: 'WLAN Pi CI Bot'

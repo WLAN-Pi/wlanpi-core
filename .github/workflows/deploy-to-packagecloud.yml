@@ -1,6 +1,9 @@
-name: Packagecloud Build CI
+name: Deploy to Packagecloud
 
 on:
+  # Allow manual runs of workflow from Actions tab
+  workflow_dispatch:
+  
   push:
     branches:
       - main
@@ -9,6 +12,8 @@ on:
 
 jobs:
   sbuild:
+    name: sbuild ${{ matrix.distro }}+${{ matrix.arch }}
+
     runs-on: 'ubuntu-20.04'
 
     strategy:
@@ -33,7 +38,7 @@ jobs:
       - name: Archive artifacts and upload to GitHub
         uses: actions/upload-artifact@v2
         with:
-          name: wlanpi-profiler-${{ matrix.distro }}-${{ matrix.arch }}
+          name: wlanpi-core-${{ matrix.distro }}-${{ matrix.arch }}
           path: ${{ steps.build-debian-package.outputs.deb-package }}
 
       - name: Upload package to packagecloud
@@ -57,5 +62,3 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          channel: '#wlanpi-core'
-          name: 'WLAN Pi CI Bot'
