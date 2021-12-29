@@ -31,7 +31,7 @@ core_requires = [
 
 # fmt: off
 endpoint_requires = [
-    "psutil==5.8.0",
+    "psutil==5.9.0",
     "dbus-python==1.2.18"
 ]
 
