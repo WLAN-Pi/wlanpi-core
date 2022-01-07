@@ -20,7 +20,7 @@ with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as 
 packages = find_packages(exclude=("tests",))
 
 core_requires = [
-    "fastapi==0.70.1",
+    "fastapi==0.71.0",
     "httpx",
     "Jinja2",
     "aiofiles",
