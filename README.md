@@ -4,7 +4,9 @@
 
 This is not yet a production ready repo. wlanpi-core is an exploratory project at the moment and is in active development.
 
-Many of the endpoints do not have unit tests, schemas, and are also in an alpha state. In some cases the output is very unstable. Everything is subject to change. You have been warned.
+Many of the endpoints do not have unit tests, schemas, and are also in an alpha state. In some cases the output is very unstable. 
+
+EVERYTHING IS SUBJECT TO CHANGE AT THIS POINT. DO NOT CODE AGAINST WLANPI-CORE YET! You have been warned.
 
 Ok, whew. Let's move on.
 

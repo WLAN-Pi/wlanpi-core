@@ -1,5 +1,5 @@
-wlanpi-core (0.0.1) unstable; urgency=medium
+wlanpi-core (0.0.1-1) unstable; urgency=medium
 
-  * Initial release.
+  * Unstable initial release.
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 08 Dec 2021 00:21:00 -0500
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 11 Jan 2022 22:17:38 -0500

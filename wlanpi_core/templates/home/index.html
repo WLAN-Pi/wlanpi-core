@@ -2,19 +2,16 @@
 
 {% block content %}
     <p class="lead">
-        Backend services for the <strong>WLAN Pi</strong>.
+        Hello! This homepage is a work in progress.
+    </p>
+    <p>If you're reading this, bug Josh to update it.</p>
+    <p>
+        Check out:
     </p>
     <p>
-        For visual and interactive documentation you'll want to head over to the Swagger UI at <a href="/documentation">/documentation</a>.
-    </p>
-    <p>
-        <strong>Sample APIRoutes:</strong>
-        {% if endpoints %}
         <ul>
-            {% for e in endpoints %}
-            <li><strong>HTTP {{e.methods}}</strong> — URL: <a href="{{e.path}}">{{e.path}}</a><ul><li>{{e.description}}</li></ul></li>
-            {% endfor %}
+            <li><a href="/api">/api</a></li>
+            <li><a href="/documentation">/documentation</a></li>
         </ul>
-        {% endif %}
     </p>
 {% endblock %}

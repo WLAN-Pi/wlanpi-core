@@ -56,7 +56,7 @@ else
         echo "User $APIUSER added to group $GROUPID"    
     fi
     echo $APIUSER:$pass | chpasswd
-    echo "Assigned random password to $APIUSER"
+    echo "Assigned pseudo random password to $APIUSER"
 fi
 
 # Deny wlanpi_api from SSH Access if it is not already denied

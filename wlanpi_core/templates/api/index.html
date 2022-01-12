@@ -1,0 +1,20 @@
+{% extends "api/layout.html" %}
+
+{% block content %}
+    <p class="lead">
+        A brief description of some of the backend services for the <strong>WLAN Pi</strong>.
+    </p>
+    <p>
+        For more comprehensive visual and interactive documentation, you'll want to head over to the Swagger UI at <a href="/documentation">/documentation</a>.
+    </p>
+    <p>
+        <strong>Sample APIRoutes:</strong>
+        {% if endpoints %}
+        <ul>
+            {% for e in endpoints %}
+            <li><strong>HTTP {{e.methods}}</strong> — URL: <a href="{{e.path}}">{{e.path}}</a><ul><li>{{e.description}}</li></ul></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </p>
+{% endblock %}

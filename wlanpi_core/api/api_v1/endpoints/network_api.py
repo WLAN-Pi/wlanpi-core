@@ -92,16 +92,35 @@ async def get_local_ipv6():
     except Exception as ex:
         return Response(content=str(ex), status_code=500)
 
-
-@router.get("/reachability")
-async def get_internet_reachability(host="8.8.8.8", port=53, timeout=3):
+@router.get("/ipv4_reachability")
+async def get_ipv4_internet_reachability(host="8.8.8.8", port=53, timeout=3):
     """
-    # TODO: refactor to IPv4 Internet Reachability
-    # TODO: add IPv6 Internet Reachability
-    Get the reachability status of the internet from the Pi.
+    Get IPv4 reachability to Internet from the Pi.
     """
     try:
-        if network_service.get_internet(host, port, timeout):
+        if network_service.get_ipv4_internet_reachability(host, port, timeout):
+            return JSONResponse(
+                content={"reachability": True, "host": host, "port": port},
+                status_code=200,
+            )
+        else:
+            return JSONResponse(
+                content={"reachability": False, "host": host, "port": port},
+                status_code=404,
+            )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)
+
+
+@router.get("/ipv6_reachability")
+async def get_ipv6_internet_reachability(host="2001:4860:4860::8888", port=53, timeout=3):
+    """
+    Get IPv6 reachability to Internet from the Pi.
+    """
+    try:
+        if network_service.get_ipv4_internet_reachability(host, port, timeout):
             return JSONResponse(
                 content={"reachability": True, "host": host, "port": port},
                 status_code=200,

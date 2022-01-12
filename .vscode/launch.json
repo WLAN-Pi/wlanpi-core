@@ -11,9 +11,7 @@
             "module": "uvicorn",
             "cwd": "${workspaceFolder}",
             "args": [
-                "wlanpi_core.app:app",
-                "--env-file",
-                ".env",
+                "wlanpi_core.asgi:app",
                 "--reload"
             ],
             "jinja": true
