@@ -7,8 +7,7 @@ After=network.target
 
 [Service]
 Type=notify
-User=wlanpi_api
-Group=wlanpi_api
+User=wlanpi-core
 
 # this is a soft link created via maintainer script
 WorkingDirectory=/opt/wlanpi-core/workingdirectory
