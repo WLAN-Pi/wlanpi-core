@@ -32,7 +32,7 @@ core_requires = [
 # fmt: off
 endpoint_requires = [
     "psutil==5.9.3",
-    "dbus-python==1.2.18"
+    "dbus-python==1.3.2"
 ]
 
 requires = core_requires + endpoint_requires
