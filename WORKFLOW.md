@@ -33,7 +33,7 @@ Install depends:
 
 ```
 sudo apt update 
-sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev
+sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake
 sudo apt-get install -y -q python3-pip python3-dev python3-venv python3-wheel
 ```
 
@@ -58,7 +58,7 @@ ufw enable
 git clone git@github.com:WLAN-Pi/wlanpi-core.git 
 cd wlanpi-core
 python3 -m venv venv && source venv/bin/activate
-pip install -U pip wheel setuptools 
+pip install -U pip pip-tools wheel setuptools 
 
 # normal users who do not need to run or create tests
 pip install .

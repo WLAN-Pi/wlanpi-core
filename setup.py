@@ -16,41 +16,35 @@ about: Dict[str, str] = {}
 with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as f:
     exec(f.read(), about)
 
+
+def parse_requires(_list):
+    requires = list()
+    trims = ["#", "piwheels.org"]
+    for require in _list:
+        if any(match in require for match in trims):
+            continue
+        requires.append(require)
+    requires = list(filter(None, requires))  # remove "" from list
+    return requires
+
+
 # important to collect various modules in the package directory
 packages = find_packages(exclude=("tests",))
 
-core_requires = [
-    "fastapi==0.85.1",
-    "httpx",
-    "Jinja2",
-    "aiofiles",
-    "gunicorn",
-    "uvicorn",
-    "python-dotenv",
-]
+with open("testing.txt") as f:
+    testing = f.read().splitlines()
 
-# fmt: off
-endpoint_requires = [
-    "psutil==5.9.3",
-    "dbus-python==1.3.2"
-]
+testing = parse_requires(testing)
 
-requires = core_requires + endpoint_requires
+extras = {"testing": testing}
 
-extras = {
-    "testing": [
-        "tox",
-        "black",
-        "isort",
-        "autoflake",
-        "mypy",
-        "flake8",
-        "pytest",
-        "pytest-cov",
-        "coverage-badge",
-        "pytest-mock",
-    ],
-}
+with open("core_requires.txt") as f:
+    core_requires = f.read().splitlines()
+
+with open("endpoint_requires.txt") as f:
+    endpoint_requires = f.read().splitlines()
+
+requires = parse_requires(core_requires + endpoint_requires)
 
 setup(
     name=about["__title__"],

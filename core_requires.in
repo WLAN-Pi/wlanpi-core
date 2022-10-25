@@ -5,5 +5,3 @@ aiofiles
 gunicorn
 uvicorn
 python-dotenv
-psutil
-dbus-python

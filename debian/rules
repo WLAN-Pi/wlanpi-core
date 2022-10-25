@@ -9,8 +9,8 @@ SNAKE=/usr/bin/python3
 PACKAGE=$(shell dh_listpackages)
 VERSION=$(shell parsechangelog | grep ^Version: | sed -re 's/[^0-9]+([^-]+).*/\1/')
 SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
-EXTRA_REQUIREMENTS=--upgrade-pip --preinstall "setuptools>=57" --preinstall "wheel>=0.36"
-DBUSPYTHON_SPEC=$(shell grep dbus-python== setup.py | cut -f1 -d ",")
+EXTRA_REQUIREMENTS=--upgrade-pip-to 22.3 --preinstall "setuptools==65.5.0" --preinstall "wheel==0.37.1"
+DBUSPYTHON_SPEC=$(shell grep dbus-python== endpoint_requires.txt | cut -f1 -d ",")
 DH_VENV_DIR=debian/$(PACKAGE)$(DH_VIRTUALENV_INSTALL_ROOT)/$(PACKAGE)
 DH_VENV_ARGS=--builtin-venv --python ${SNAKE} $(EXTRA_REQUIREMENTS) \
 			--extra-pip-arg=--progress-bar=on
@@ -25,4 +25,6 @@ override_dh_installexamples:
 
 override_dh_virtualenv:
 	dh_virtualenv $(DH_VENV_ARGS)
-	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --no-binary dbus-python $(DBUSPYTHON_SPEC)
+	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --use-feature no-binary-enable-wheel-cache dbus-python $(DBUSPYTHON_SPEC)
+
+# $(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --no-binary dbus-python $(DBUSPYTHON_SPEC)
