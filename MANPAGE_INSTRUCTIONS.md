@@ -8,8 +8,8 @@ arm64 host:
 
 ```
 cd ~
-wget https://github.com/jgm/pandoc/releases/download/2.12/pandoc-2.12-1-arm64.deb
-sudo apt install ~/pandoc-2.12-1-arm64.deb
+wget https://github.com/jgm/pandoc/releases/download/2.19.2/pandoc-2.19.2-1-arm64.deb
+sudo apt install ~/pandoc-2.19.2-1-arm64.deb
 ```
 
 ## Generate Man Page
