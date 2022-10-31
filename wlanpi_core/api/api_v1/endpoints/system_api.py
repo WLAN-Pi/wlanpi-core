@@ -35,11 +35,6 @@ async def show_systemd_service_status(name: str):
         return Response(content=str(ex), status_code=500)
 
 
-# @router.get("/reachability")
-# def get_reachability():
-#    return "TBD"
-
-
 # @router.get("/usb_devices")
 # def get_usb_devices():
 #    return "TBD"
@@ -47,16 +42,6 @@ async def show_systemd_service_status(name: str):
 
 # @router.get("/ufw_ports")
 # def get_ufw_ports():
-#    return "TBD"
-
-
-# @router.get("/wpa_password")
-# def get_wpa_password():
-#    return "TBD"
-
-
-# @router.put("/wpa_password")
-# def update_wpa_password():
 #    return "TBD"
 
 
@@ -105,10 +90,10 @@ def get_uptime():
 @router.get("/uptime")
 async def show_wlanpi_uptime():
     """
+    # TODO: handle errors
+
     Return the uptime of the host in seconds
     """
-    # TODO handle errors
-    # TODO cleanup
     return JSONResponse(content={"uptime": get_uptime()}, status_code=200)
 
 

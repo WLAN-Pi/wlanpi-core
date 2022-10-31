@@ -19,6 +19,8 @@ async def get_neighbor_results():
 async def get_public_ipv4():
     """
     TODO: If host has IPv6 reachability, resp contains IPv6. Force IPv4.
+    
+    IPv4 or IPv6 still can be forced by passing the appropiate flag to your client, e.g curl -4 or curl -6.
     """
     url = "https://ifconfig.co/json"
 
@@ -33,6 +35,11 @@ async def get_public_ipv4():
 
 
 async def get_public_ipv6():
+    """
+    TODO: If host only has IPv4 reachability, resp contains IPv4. Force IPv6.
+
+    IPv4 or IPv6 still can be forced by passing the appropiate flag to your client, e.g curl -4 or curl -6.
+    """
     url = "https://ifconfig.co/json"
 
     async with httpx.AsyncClient() as client:

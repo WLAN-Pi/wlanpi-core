@@ -18,7 +18,7 @@ async def show_neighbors():
     """
     Run `lldpcli show neighbors -f json` and relay results to consumer.
 
-    TODO: remove test psuedo code, this is what Swagger UI is for:
+    Python psuedo code to read this from this endpoint:
 
     ```
     import urllib.request,json,pprint
@@ -66,9 +66,9 @@ async def retrieve_public_ip_information():
 @router.get("/localipv4")
 async def get_local_ipv4():
     """
-    Return the determined primary local IPv4 address without a given interface.
-
     TODO: Test get_local_ipv4() when Pi has no connectivity. Abstract out to a service.
+
+    Return the determined primary local IPv4 address without a given interface.
     """
     try:
         return await network_service.get_local_ipv4()
@@ -81,9 +81,9 @@ async def get_local_ipv4():
 @router.get("/localipv6")
 async def get_local_ipv6():
     """
-    Return the determined primary local IPv6 address without a given interface.
-
     TODO: Test get_local_ipv6() when Pi has no connectivity. Abstract out to a service.
+
+    Return the determined primary local IPv6 address without a given interface.
     """
     try:
         return await network_service.get_local_ipv6()
@@ -95,6 +95,8 @@ async def get_local_ipv6():
 @router.get("/ipv4_reachability")
 async def get_ipv4_internet_reachability(host="8.8.8.8", port=53, timeout=3):
     """
+    TODO: When host has IPv6 reachability. IPv6 is returned. Force IPv4.
+
     Get IPv4 reachability to Internet from the Pi.
     """
     try:
@@ -117,10 +119,12 @@ async def get_ipv4_internet_reachability(host="8.8.8.8", port=53, timeout=3):
 @router.get("/ipv6_reachability")
 async def get_ipv6_internet_reachability(host="2001:4860:4860::8888", port=53, timeout=3):
     """
+    TODO: When host only has IPv4 reachability, we get IPv4 response. Force IPv6.
+
     Get IPv6 reachability to Internet from the Pi.
     """
     try:
-        if network_service.get_ipv4_internet_reachability(host, port, timeout):
+        if network_service.get_ipv6_internet_reachability(host, port, timeout):
             return JSONResponse(
                 content={"reachability": True, "host": host, "port": port},
                 status_code=200,
