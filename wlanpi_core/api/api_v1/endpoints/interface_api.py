@@ -21,3 +21,16 @@ async def show_interfaces_list():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         return Response(content=str(ex), status_code=500)
+
+@router.get("/wiphys/{interface}/iw_scan", response_model=interface.IwScanResults)
+async def show_wiphy_scan(interface: str):
+    """
+    Retrieves iw scan for given interface
+    """
+    try:
+        resp = await interface_service.get_scan_results(interface)
+        return resp
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        return Response(content=str(ex), status_code=500)

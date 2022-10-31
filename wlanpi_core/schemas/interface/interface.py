@@ -22,3 +22,14 @@ class Wiphys(BaseModel):
     wiphys: List[Wiphy]
 
 
+class ScanResult(BaseModel):
+    bssid: str = Field(example="e0:e1:a9:00:00:00")
+    ssid: str = Field(example="MyLittleSSID")
+    country: str = Field(example="US")
+    interface: str = Field(example="wlan0")
+    freq: int = Field(example="2412")
+    signal_dbm: float = Field(example="-52")
+
+
+class IwScanResults(BaseModel):
+    iwscanresults: List[ScanResult]

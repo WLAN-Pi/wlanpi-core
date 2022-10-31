@@ -1,9 +1,10 @@
 from collections import namedtuple
+import json
 from typing import List
 
 from .helpers import flag_last_object, run_cli_async, __20MHZ_FREQUENCY_CHANNEL_MAP
 
-# from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.models.validation_error import ValidationError
 
 
 PHYMapping = namedtuple("PHYMapping", "phy_id interface")
@@ -144,3 +145,33 @@ async def get_wiphys():
 
     wiphys["wiphys"] = phys
     return wiphys
+
+async def get_scan_results(wiphy: str):
+    """
+    iw wlan0 scan | jc -p --iw-scan
+    """
+    _wiphys = await get_phy_interface_mapping()
+    wiphys = [_wiphy.interface for _wiphy in _wiphys]
+    if wiphy not in wiphys:
+        raise ValidationError(
+                f"{wiphy} does not exist on host", status_code=400
+            )
+    iw_scan_results = await run_cli_async(f"sudo iw {wiphy} scan | jc -p --iw-scan")
+
+    complete_scan_results = json.loads(iw_scan_results)
+
+    partial_scan_results = []
+
+    for _result in complete_scan_results:
+        _out = {}
+        _out['bssid'] = _result.get('bssid')
+        _out['ssid'] = _result.get('ssid', "")
+        _out['country'] = _result.get('country', "")
+        _out['interface'] = _result.get('interface')
+        _out['freq'] = _result.get('freq')
+        _out['signal_dbm'] = _result.get('signal_dbm')
+        partial_scan_results.append(_out)
+
+    sort_by_signal = sorted(partial_scan_results, key=lambda d: d['signal_dbm'], reverse=True) 
+
+    return {'iwscanresults': sort_by_signal}
