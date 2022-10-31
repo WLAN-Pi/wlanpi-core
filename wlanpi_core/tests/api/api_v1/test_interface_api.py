@@ -2,7 +2,7 @@ import pytest
 
 from wlanpi_core.services.interface_service import (
     get_center_channel_frequencies,
-    parse_iw_dev,
+    parse_iw_dev_for_mappings,
 )
 
 iw_dev_output_a = """
@@ -684,7 +684,7 @@ class TestInterfaceAPI:
         ],
     )
     def test_parse_iw_dev(self, iw_dev_output, expected):
-        phy_interface_mapping = parse_iw_dev(iw_dev_output)
+        phy_interface_mapping = parse_iw_dev_for_mappings(iw_dev_output)
         for test in expected:
             assert test in phy_interface_mapping
 

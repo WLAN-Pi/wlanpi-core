@@ -1,13 +1,13 @@
 from collections import namedtuple
 from typing import List
 
-from .helpers import flag_last_object, run_cli_async
+from .helpers import flag_last_object, run_cli_async, __20MHZ_FREQUENCY_CHANNEL_MAP
 
 # from wlanpi_core.models.validation_error import ValidationError
 
 
 PHYMapping = namedtuple("PHYMapping", "phy_id interface")
-ChannelMapping = namedtuple("ChannelMapping", "center_channel_frequency channel_widths")
+ChannelMapping = namedtuple("ChannelMapping", "channel_number center_channel_frequency channel_widths")
 
 
 async def set_monitor_mode(interface: str) -> List:
@@ -29,7 +29,7 @@ def sanitize_line(line: str) -> str:
     return line.strip().lower()
 
 
-def parse_iw_dev(iw_dev_output: str) -> List:
+def parse_iw_dev_for_mappings(iw_dev_output: str) -> List:
     """
     Parse iw dev output
     """
@@ -51,12 +51,14 @@ async def get_phy_interface_mapping() -> List:
     Run `iw dev` and return a list of phys mapped to interface names
     """
 
-    return parse_iw_dev(await run_cli_async(f"iw dev"))
+    return parse_iw_dev_for_mappings(await run_cli_async(f"iw dev"))
 
 
 def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]:
     """
     Parse iw phy phy# channels to return channel mapping
+
+    Disabled channels are not returned
     """
     frequencies = []
     first = True
@@ -72,7 +74,7 @@ def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]
                     continue
                 else:
                     frequencies.append(
-                        ChannelMapping(channel_center_frequency, channel_mapping)
+                        ChannelMapping(__20MHZ_FREQUENCY_CHANNEL_MAP.get(int(channel_center_frequency), 0), channel_center_frequency, channel_mapping)
                     )
                     channel_center_frequency = line.split(" ")[1]
             continue
@@ -89,10 +91,9 @@ def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]
             )
         if is_last_line:
             frequencies.append(
-                ChannelMapping(channel_center_frequency, channel_mapping)
+                ChannelMapping(__20MHZ_FREQUENCY_CHANNEL_MAP.get(int(channel_center_frequency), 0), channel_center_frequency, channel_mapping)
             )
     return frequencies
-
 
 async def get_wiphys():
     """
@@ -111,11 +112,34 @@ async def get_wiphys():
         for channel_mapping in channel_mappings:
             frequencies.append(
                 {
+                    "channel": channel_mapping.channel_number,
                     "freq": int(channel_mapping.center_channel_frequency),
                     "widths": channel_mapping.channel_widths,
                 }
             )
-        wiphy = {"phy": phy, "interface": interface, "frequencies": frequencies}
+        operstate = await run_cli_async(f"cat /sys/class/net/{interface}/operstate")
+        operstate = operstate.strip().lower()
+        mac = await run_cli_async(f"cat /sys/class/net/{interface}/address")
+        mac = mac.strip().lower()
+        driver = await run_cli_async(f"readlink -f /sys/class/net/{interface}/device/driver")
+        driver = driver.split("/")[-1].strip().lower()
+        interface_type = await run_cli_async(f"cat /sys/class/net/{interface}/type")
+        mode = "unknown"
+        try:
+            _type = int(interface_type)
+            if _type == 1:
+                mode = "managed"
+            elif _type == 801:
+                mode = "monitor"
+            elif _type == 802:
+                mode = "monitor"
+            elif (
+                _type == 803
+            ):  # https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_arp.h#L91
+                mode = "monitor"
+        except ValueError:
+            pass
+        wiphy = {"phy": phy, "interface": interface, "mac": mac, "driver": driver, "operstate": operstate, "mode": mode, "channels": frequencies}
         phys.append(wiphy)
 
     wiphys["wiphys"] = phys
