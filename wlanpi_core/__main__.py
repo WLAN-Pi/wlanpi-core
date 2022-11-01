@@ -54,7 +54,7 @@ def main() -> None:
 
     try:
         lets_go = confirm_prompt(
-            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development. Are you sure?"
+            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development and debugging! Continue?"
         )
     except KeyboardInterrupt:
         print("\nInterrupt detected, exiting...")
@@ -71,6 +71,7 @@ def main() -> None:
             port=8000,
             host="0.0.0.0",
             reload=args.livereload,
+            log_level="debug",
         )
 
 
