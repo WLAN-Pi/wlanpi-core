@@ -25,6 +25,5 @@ override_dh_installexamples:
 
 override_dh_virtualenv:
 	dh_virtualenv $(DH_VENV_ARGS)
-	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --use-feature no-binary-enable-wheel-cache dbus-python $(DBUSPYTHON_SPEC)
+	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --no-binary dbus-python $(DBUSPYTHON_SPEC)
 
-# $(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install -I --no-binary dbus-python $(DBUSPYTHON_SPEC)
