@@ -91,26 +91,30 @@ async def get_diagnostics():
 
     tool_versions = {}
     if tcpdump_exists:
-        tool_versions["tcpdump"] = await run_cli_async(
-            "tcpdump --version", want_stderr=True
+        _tcpdump_version = await run_cli_async(
+            "tcpdump --version"
         )
+        tool_versions["tcpdump"] = _tcpdump_version.replace('\n', ' ').strip()
     else:
         tool_versions["tcpdump"] = "unknown"
 
     if iw_exists:
-        tool_versions["iw"] = await run_cli_async("iw --version")
+        _iw_version = await run_cli_async("iw --version")
+        tool_versions["iw"] = _iw_version.replace('\n', ' ').strip()
     else:
         tool_versions["iw"] = "unknown"
 
     if ip_exists:
-        tool_versions["ip"] = await run_cli_async("ip -V")
+        _iproute2_version = await run_cli_async("ip -V")
+        tool_versions["iproute2"] = _iproute2_version.replace('\n', ' ').strip()
     else:
-        tool_versions["ip"] = "unknown"
+        tool_versions["iproute2"] = "unknown"
 
     if ifconfig_exists:
-        tool_versions["ifconfig"] = await run_cli_async("ifconfig --version")
+        _net_tools_version = await run_cli_async("ifconfig --version")
+        tool_versions["net-tools"] = _net_tools_version.replace('\n', ' ').strip()
     else:
-        tool_versions["ifconfig"] = "unknown"
+        tool_versions["net-tools"] = "unknown"
 
     # add version tests to diag
     diag["versions"] = tool_versions
