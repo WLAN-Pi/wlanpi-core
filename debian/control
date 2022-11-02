@@ -12,6 +12,7 @@ Build-Depends: debhelper (>= 11),
                python3-setuptools, 
                python3-distutils, 
                python3-venv,
+               dbus,
                libdbus-1-dev,
                libglib2.0-dev
 Standards-Version: 4.6.0
