@@ -12,7 +12,7 @@ jobs:
   sbuild:
     name: sbuild ${{ matrix.distro }}+${{ matrix.arch }}
 
-    runs-on: 'ubuntu-20.04'
+    runs-on: 'ubuntu-22.04'
 
     strategy:
       fail-fast: false
@@ -42,7 +42,7 @@ jobs:
     name: Post Workflow Status to Slack
     needs:
       - sbuild
-    runs-on: 'ubuntu-20.04'
+    runs-on: 'ubuntu-22.04'
     steps:
       - name: Slack Workflow Notification
         uses: Gamesight/slack-workflow-status@master
