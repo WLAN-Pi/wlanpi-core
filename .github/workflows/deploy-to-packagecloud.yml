@@ -20,7 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         distro: [bullseye]
-        arch: [armhf,arm64]
+        arch: [arm64]
+        # arch: [armhf,arm64]
 
     environment: PACKAGECLOUD
 
