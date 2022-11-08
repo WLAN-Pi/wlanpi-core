@@ -53,12 +53,12 @@ setup(
     author=about["__author__"],
     author_email=about["__author_email__"],
     url=about["__url__"],
-    python_requires="~=3.7",
+    python_requires="~=3.9",
     license=about["__license__"],
     classifiers=[
         "Natural Language :: English",
-        "Development Status :: 2 - Pre-Alpha",
-        "Programming Language :: Python :: 3.7",
+        "Development Status :: 1 - Planning",
+        "Programming Language :: Python :: 3.9",
         "Intended Audience :: System Administrators",
         "Topic :: Utilities",
     ],
@@ -70,5 +70,4 @@ setup(
     include_package_data=True,
     install_requires=requires,
     extras_require=extras,
-    # entry_points={"console_scripts": ["wlanpi-core=wlanpi_core:__main__"]},
 )
