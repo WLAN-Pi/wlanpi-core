@@ -1,0 +1,13 @@
+# core requires
+fastapi
+httpx
+Jinja2
+aiofiles
+gunicorn
+uvicorn
+python-dotenv
+pydantic-settings
+
+# endpoint requires
+psutil
+dbus-python

@@ -75,6 +75,7 @@ def flag_last_object(_iterable: Iterable) -> Tuple[any, bool]:
         a = b
     yield a, True
 
+
 __20MHZ_FREQUENCY_CHANNEL_MAP = {
     2412: 1,
     2417: 2,

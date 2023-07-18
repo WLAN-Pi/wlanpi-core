@@ -1,1 +1,1 @@
-from .system import Hostname, ServiceStatus, SystemInfo
+from .system import Hostname, ServiceRunning, ServiceStatus, SystemInfo

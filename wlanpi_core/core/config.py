@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -8,11 +8,11 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "wlanpi-core"
 
-    PROJECT_DESCRIPTION = """
+    PROJECT_DESCRIPTION: str = """
     The wlanpi-core API provides endpoints for applications on and off the WLAN Pi to share data. 🚀
     """
 
-    TAGS_METADATA = [
+    TAGS_METADATA: list = [
         {
             "name": "diagnostics",
             "description": "Provides diagnostics information for the WLAN Pi",

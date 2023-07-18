@@ -20,6 +20,7 @@ async def index(request: Request):
     data = {"request": request}
     return templates.TemplateResponse("home/index.html", data)
 
+
 @router.get("/api", include_in_schema=False)
 @router.get("/api/v1", include_in_schema=False)
 async def api(request: Request):

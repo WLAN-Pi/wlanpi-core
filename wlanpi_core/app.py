@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 # stdlib imports
-import logging
 
 # third party imports
 import uvicorn
@@ -18,6 +17,7 @@ from wlanpi_core.views import api
 # setup logger
 log_config = uvicorn.config.LOGGING_CONFIG
 log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
+
 
 def create_app():
     app = FastAPI(

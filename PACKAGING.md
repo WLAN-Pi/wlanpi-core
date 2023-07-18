@@ -20,10 +20,10 @@ Install Python depends:
 python3 -m pip install mock
 ```
 
-Update pip, setuptools, and install wheels:
+Update pre-commit, pip, pip-tools, setuptools, and install wheels:
 
 ```
-python3 -m pip install -U pip setuptools wheel
+python3 -m pip install -U pre-commit pip setuptools wheel pip-tools  
 ```
 
 This is required, otherwise the tooling will fail when tries to evaluate which tests to run.

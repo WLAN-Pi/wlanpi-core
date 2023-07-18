@@ -1,1 +1,1 @@
-from .interface import Wiphys, IwScanResults
+from .interface import IwScanResults, Wiphys

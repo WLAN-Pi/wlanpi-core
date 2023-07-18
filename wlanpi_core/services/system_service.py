@@ -1,30 +1,50 @@
 import platform
 from socket import gethostname
 
-from dbus import Interface, SystemBus
+from dbus import Boolean, Interface, SystemBus
 from dbus.exceptions import DBusException
 
 import wlanpi_core.infrastructure.system_cache as system_cache
 from wlanpi_core.models.validation_error import ValidationError
 
+bus = SystemBus()
+systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
+manager = Interface(systemd, dbus_interface="org.freedesktop.systemd1.Manager")
 
-def check_service_status(service):
+allowed_services = [
+    "wlanpi-profiler",
+    "wlanpi-fpms",
+    "wlanpi-chat-bot",
+    "bt-agent",
+    "bt-network",
+    "iperf" "iperf3",
+    "tftpd-hpa",
+    "hostapd",
+    "wpa_supplicant",
+    "kismet",
+]
+
+
+def is_allowed_service(service: str):
+    for allowed_service in allowed_services:
+        if service.replace(".service", "") == allowed_service:
+            return True
+    return False
+
+
+def check_service_status(service: str):
     """
-    queries systemd through dbus to see if the service is running
+    Queries systemd through dbus to see if the service is running
 
-    you can list services from the CLI like this: systemctl list-unit-files --type=service
+    You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
     service_running = False
-    bus = SystemBus()
-    systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-    manager = Interface(systemd, dbus_interface="org.freedesktop.systemd1.Manager")
     try:
         service_unit = (
             service
             if service.endswith(".service")
             else manager.GetUnit(f"{service}.service")
         )
-        # print(service_unit)
         service_proxy = bus.get_object("org.freedesktop.systemd1", str(service_unit))
         service_props = Interface(
             service_proxy, dbus_interface="org.freedesktop.DBus.Properties"
@@ -42,22 +62,9 @@ def check_service_status(service):
             raise ValidationError(
                 f"no such unit for {service} on host", status_code=400
             )
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
     return service_running
-
-
-allowed_services = [
-    "wlanpi-profiler",
-    "wlanpi-fpms",
-    "wlanpi-chat-bot",
-    "bt-agent",
-    "bt-network",
-    "iperf"
-    "iperf3",
-    "ufw",
-    "tftpd-hpa",
-    "hostapd",
-    "wpa_supplicant",
-]
 
 
 async def get_systemd_service_status(name: str):
@@ -66,12 +73,85 @@ async def get_systemd_service_status(name: str):
     """
     status = ""
     name = name.strip().lower()
-    if name in allowed_services:
+    if is_allowed_service(name):
         status = check_service_status(name)
         return {"name": name, "active": status}
 
     raise ValidationError(
         f"{name} access is restricted or does not exist", status_code=400
+    )
+
+
+def stop_service(service: str):
+    try:
+        if ".service" not in service:
+            service = service + ".service"
+        manager.StopUnit(service, "replace")
+        manager.DisableUnitFiles([service], Boolean(False))
+    except DBusException as de:
+        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
+            raise ValidationError(
+                f"no such unit for {service} on host", status_code=400
+            )
+        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
+            raise ValidationError(f"Problem with the args", status_code=500)
+        if (
+            de._dbus_error_name
+            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
+        ):
+            raise ValidationError(
+                f"Interactive authentication required.", status_code=500
+            )
+    return False
+
+
+async def stop_systemd_service(name: str):
+    """
+    Queries systemd via dbus to get the current status of an allowed service.
+    """
+    status = ""
+    name = name.strip().lower()
+    if is_allowed_service(name):
+        status = stop_service(name)
+        return {"name": name, "running": status}
+
+    raise ValidationError(
+        f"stopping {name} is restricted or does not exist", status_code=400
+    )
+
+
+def start_service(service: str):
+    try:
+        if ".service" not in service:
+            service = service + ".service"
+        manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
+        manager.StartUnit(service, "replace")
+    except DBusException as de:
+        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
+            raise ValidationError(
+                f"no such unit for {service} on host", status_code=400
+            )
+        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
+            raise ValidationError(f"Problem with the args", status_code=500)
+        if (
+            de._dbus_error_name
+            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
+        ):
+            raise ValidationError(
+                f"Interactive authentication required.", status_code=500
+            )
+    return True
+
+
+async def start_systemd_service(name: str):
+    status = ""
+    name = name.strip().lower()
+    if is_allowed_service(name):
+        status = start_service(name)
+        return {"name": name, "running": status}
+
+    raise ValidationError(
+        f"starting {name} is restricted or does not exist", status_code=400
     )
 
 

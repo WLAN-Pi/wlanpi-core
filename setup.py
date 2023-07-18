@@ -38,13 +38,10 @@ testing = parse_requires(testing)
 
 extras = {"testing": testing}
 
-with open("core_requires.txt") as f:
-    core_requires = f.read().splitlines()
+with open("requirements.txt") as f:
+    requirements = f.read().splitlines()
 
-with open("endpoint_requires.txt") as f:
-    endpoint_requires = f.read().splitlines()
-
-requires = parse_requires(core_requires + endpoint_requires)
+requires = parse_requires(requirements)
 
 setup(
     name=about["__title__"],

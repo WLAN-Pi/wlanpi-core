@@ -22,6 +22,7 @@ async def show_interfaces_list():
     except Exception as ex:
         return Response(content=str(ex), status_code=500)
 
+
 @router.get("/wiphys/{interface}/iw_scan", response_model=interface.IwScanResults)
 async def show_wiphy_scan(interface: str):
     """

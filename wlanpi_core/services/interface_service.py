@@ -1,14 +1,15 @@
-from collections import namedtuple
 import json
+from collections import namedtuple
 from typing import List
-
-from .helpers import flag_last_object, run_cli_async, __20MHZ_FREQUENCY_CHANNEL_MAP
 
 from wlanpi_core.models.validation_error import ValidationError
 
+from .helpers import __20MHZ_FREQUENCY_CHANNEL_MAP, flag_last_object, run_cli_async
 
 PHYMapping = namedtuple("PHYMapping", "phy_id interface")
-ChannelMapping = namedtuple("ChannelMapping", "channel_number center_channel_frequency channel_widths")
+ChannelMapping = namedtuple(
+    "ChannelMapping", "channel_number center_channel_frequency channel_widths"
+)
 
 
 async def set_monitor_mode(interface: str) -> List:
@@ -75,7 +76,13 @@ def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]
                     continue
                 else:
                     frequencies.append(
-                        ChannelMapping(__20MHZ_FREQUENCY_CHANNEL_MAP.get(int(channel_center_frequency), 0), channel_center_frequency, channel_mapping)
+                        ChannelMapping(
+                            __20MHZ_FREQUENCY_CHANNEL_MAP.get(
+                                int(channel_center_frequency), 0
+                            ),
+                            channel_center_frequency,
+                            channel_mapping,
+                        )
                     )
                     channel_center_frequency = line.split(" ")[1]
             continue
@@ -92,9 +99,14 @@ def get_center_channel_frequencies(channels_output: str) -> List[ChannelMapping]
             )
         if is_last_line:
             frequencies.append(
-                ChannelMapping(__20MHZ_FREQUENCY_CHANNEL_MAP.get(int(channel_center_frequency), 0), channel_center_frequency, channel_mapping)
+                ChannelMapping(
+                    __20MHZ_FREQUENCY_CHANNEL_MAP.get(int(channel_center_frequency), 0),
+                    channel_center_frequency,
+                    channel_mapping,
+                )
             )
     return frequencies
+
 
 async def get_wiphys():
     """
@@ -122,7 +134,9 @@ async def get_wiphys():
         operstate = operstate.strip().lower()
         mac = await run_cli_async(f"cat /sys/class/net/{interface}/address")
         mac = mac.strip().lower()
-        driver = await run_cli_async(f"readlink -f /sys/class/net/{interface}/device/driver")
+        driver = await run_cli_async(
+            f"readlink -f /sys/class/net/{interface}/device/driver"
+        )
         driver = driver.split("/")[-1].strip().lower()
         interface_type = await run_cli_async(f"cat /sys/class/net/{interface}/type")
         mode = "unknown"
@@ -140,11 +154,20 @@ async def get_wiphys():
                 mode = "monitor"
         except ValueError:
             pass
-        wiphy = {"phy": phy, "interface": interface, "mac": mac, "driver": driver, "operstate": operstate, "mode": mode, "channels": frequencies}
+        wiphy = {
+            "phy": phy,
+            "interface": interface,
+            "mac": mac,
+            "driver": driver,
+            "operstate": operstate,
+            "mode": mode,
+            "channels": frequencies,
+        }
         phys.append(wiphy)
 
     wiphys["wiphys"] = phys
     return wiphys
+
 
 async def get_scan_results(wiphy: str):
     """
@@ -153,9 +176,7 @@ async def get_scan_results(wiphy: str):
     _wiphys = await get_phy_interface_mapping()
     wiphys = [_wiphy.interface for _wiphy in _wiphys]
     if wiphy not in wiphys:
-        raise ValidationError(
-                f"{wiphy} does not exist on host", status_code=400
-            )
+        raise ValidationError(f"{wiphy} does not exist on host", status_code=400)
     iw_scan_results = await run_cli_async(f"sudo iw {wiphy} scan | jc -p --iw-scan")
 
     complete_scan_results = json.loads(iw_scan_results)
@@ -164,14 +185,16 @@ async def get_scan_results(wiphy: str):
 
     for _result in complete_scan_results:
         _out = {}
-        _out['bssid'] = _result.get('bssid')
-        _out['ssid'] = _result.get('ssid', "")
-        _out['country'] = _result.get('country', "")
-        _out['interface'] = _result.get('interface')
-        _out['freq'] = _result.get('freq')
-        _out['signal_dbm'] = _result.get('signal_dbm')
+        _out["bssid"] = _result.get("bssid")
+        _out["ssid"] = _result.get("ssid", "")
+        _out["country"] = _result.get("country", "")
+        _out["interface"] = _result.get("interface")
+        _out["freq"] = _result.get("freq")
+        _out["signal_dbm"] = _result.get("signal_dbm")
         partial_scan_results.append(_out)
 
-    sort_by_signal = sorted(partial_scan_results, key=lambda d: d['signal_dbm'], reverse=True) 
+    sort_by_signal = sorted(
+        partial_scan_results, key=lambda d: d["signal_dbm"], reverse=True
+    )
 
-    return {'iwscanresults': sort_by_signal}
+    return {"iwscanresults": sort_by_signal}

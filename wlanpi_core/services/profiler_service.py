@@ -90,7 +90,10 @@ def profiler_file_listing(mac: str = None) -> Dict:
                 try:
                     return profiler.Profile(**file[2])
                 except Exception:
-                    log.exception(f"{file[0]} failed Profile schema validation checks", exc_info=True)
+                    log.exception(
+                        f"{file[0]} failed Profile schema validation checks",
+                        exc_info=True,
+                    )
         raise ValidationError(status_code=404, error_msg=f"{mac} not found")
     else:
         validated_files = []
@@ -98,7 +101,9 @@ def profiler_file_listing(mac: str = None) -> Dict:
             try:
                 validated_files.append(profiler.Profile(**file[2]))
             except Exception:
-                log.exception(f"{file[0]} failed Profile schema validation checks", exc_info=True)
+                log.exception(
+                    f"{file[0]} failed Profile schema validation checks", exc_info=True
+                )
         return validated_files
 
 

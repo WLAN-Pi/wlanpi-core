@@ -12,9 +12,12 @@
             "cwd": "${workspaceFolder}",
             "args": [
                 "wlanpi_core.asgi:app",
-                "--reload"
+                "--reload",
+                "--host",
+                "0.0.0.0"
             ],
-            "jinja": true
+            "jinja": true,
+            "sudo": true
         }
     ]
 }

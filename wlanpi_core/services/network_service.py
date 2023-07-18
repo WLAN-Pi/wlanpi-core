@@ -19,7 +19,7 @@ async def get_neighbor_results():
 async def get_public_ipv4():
     """
     TODO: If host has IPv6 reachability, resp contains IPv6. Force IPv4.
-    
+
     IPv4 or IPv6 still can be forced by passing the appropiate flag to your client, e.g curl -4 or curl -6.
     """
     url = "https://ifconfig.co/json"
@@ -50,6 +50,7 @@ async def get_public_ipv6():
     # TODO: HANDLE IF RESP DOESN'T MATCH SCHEMA I.E. INTERNAL SERVER ERROR
 
     return resp.json()
+
 
 async def get_local_ipv4():
     ip = await get_local_ipv4_async()
