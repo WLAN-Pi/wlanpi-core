@@ -17,12 +17,12 @@ Build-Depends: debhelper (>= 11),
                libdbus-glib-1-dev,
                libglib2.0-dev
 Standards-Version: 4.6.0
-X-Python3-Version: >= 3.7
+X-Python3-Version: >= 3.9
 Homepage: https://github.com/WLAN-Pi/wlanpi-core
 
 Package: wlanpi-core
 Architecture: any
-Pre-Depends: dpkg (>= 1.16.1), python3 (>=3.7), python3-distutils, ${misc:Pre-Depends}
+Pre-Depends: dpkg (>= 1.16.1), python3 (>=3.9), python3-distutils, ${misc:Pre-Depends}
 Depends: ${misc:Depends}, wlanpi-common, nginx, jc, lldpd
 Description: WLAN Pi - core backend services
  wlanpi-core provides API endpoints for various consumers on and off

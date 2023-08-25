@@ -13,6 +13,7 @@ case "$1" in
   
   if ! cat /etc/passwd | grep -q wlanpi-core; then
     adduser --system wlanpi-core --no-create-home --disabled-password --shell /bin/false
+    chown -R wlanpi-core: /var/log/wlanpi-core
   fi
 esac
 

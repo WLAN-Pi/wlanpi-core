@@ -11,7 +11,7 @@ User=wlanpi-core
 
 # this is a soft link created via maintainer script
 WorkingDirectory=/opt/wlanpi-core/workingdirectory
-ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 2 -k uvicorn.workers.UvicornWorker --bind unix:wlanpi_core.sock asgi:app --name wlanpi_core_svc --access-logfile /var/log/wlanpi-core/access.log --error-logfile /var/log/wlanpi-core/error.log --user wlanpi_api
+ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 1 -k uvicorn.workers.UvicornWorker --bind unix:wlanpi_core.sock asgi:app --name wlanpi_core_svc --access-logfile /var/log/wlanpi-core/gunicorn_access.log --error-logfile /var/log/wlanpi-core/gunicorn_error.log --user wlanpi-core
 
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

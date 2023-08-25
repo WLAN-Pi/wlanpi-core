@@ -27,4 +27,18 @@ if ! isValidSymlink $WORKINGDIRECTORY; then
     ln -s $WORKINGDIRECTORY $LINK
 fi
 
+# if wlanpi_core.conf is not a symlink, create symlink.
+WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
+if ! isValidSymlink $WLANPI_CORE; then
+    echo "Linking wlanpi_core.conf ..."
+    ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
+    CONF_CHANGED=0
+fi
+
+# check nginx actually exists first
+if which nginx; then
+    echo "Restarting nginx ..."
+    systemctl restart nginx.service
+fi
+
 exit 0
