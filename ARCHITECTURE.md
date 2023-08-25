@@ -36,14 +36,6 @@ In our case, we're binding Gunicorn to a UNIX socket. Then we're using nginx as 
 
 Here are some of the projects (consumers) we expect to leverage the backend:
 
-### wlanpi-webui
-
-### wlanpi-fpms
-
-### wlanpi-profiler
-
-### wlanpi-chatbot
-
 ## Questions
 
 Something missing here or just doesn't make sense? Let us know so we can correct it or add clarity. Thanks!

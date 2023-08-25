@@ -8,7 +8,7 @@ function isValidSymlink() {
     fi
 }
 
-WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_webui.conf
+WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
 
 if ! isValidSymlink $WLANPI_CORE; then
     echo "Linking wlanpi_core.conf..."
