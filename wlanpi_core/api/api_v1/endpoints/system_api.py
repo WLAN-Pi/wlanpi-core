@@ -21,7 +21,7 @@ async def show_a_systemd_service_status(name: str):
         return Response(content=str(ex), status_code=500)
 
 
-@router.get("/service/start", response_model=system.ServiceRunning)
+@router.post("/service/start", response_model=system.ServiceRunning)
 async def start_a_systemd_service(name: str):
     """
     Uses systemd via dbus to start an allowed service.
@@ -35,7 +35,7 @@ async def start_a_systemd_service(name: str):
         return Response(content=str(ex), status_code=500)
 
 
-@router.get("/service/stop", response_model=system.ServiceRunning)
+@router.post("/service/stop", response_model=system.ServiceRunning)
 async def stop_a_systemd_service(name: str):
     """
     Uses systemd via dbus to stop an allowed service.
