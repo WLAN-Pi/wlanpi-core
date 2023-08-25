@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # wlanpi-core : backend services for the WLAN Pi
-# Copyright : (c) 2021 Josh Schmelzle
+# Copyright : (c) 2023 Josh Schmelzle
 # License : BSD-3-Clause
 # Maintainer : josh@joshschmelzle.com
 
@@ -83,10 +83,10 @@ def init() -> None:
             "{0} only works on Linux... exiting...".format(os.path.basename(__file__))
         )
 
-    # hard set no support for python < v3.7
-    if sys.version_info < (3, 7):
+    # hard set no support for python < v3.9
+    if sys.version_info < (3, 9):
         sys.exit(
-            "{0} requires Python version 3.7 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
+            "{0} requires Python version 3.9 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
                 os.path.basename(__file__), platform.python_version()
             )
         )
