@@ -6,7 +6,7 @@ wlanpi-core - a backend for the WLAN Pi
 
 # DESCRIPTION
 
-wlanpi-core provides core backend services for various applications on the WLAN Pi such as the frontend, fpms, chatbot, and more.
+wlanpi-core provides core backend services for various applications on the WLAN Pi.
 
 To view service status use: `systemctl status wlanpi-core`
 
@@ -31,4 +31,4 @@ https://github.com/wlan-pi/wlanpi-core
 
 # COPYRIGHT
 
-Copyright © 2021 Josh Schmelzle. License BSD-3-Clause.
+Copyright © 2023 Josh Schmelzle. License BSD-3-Clause.

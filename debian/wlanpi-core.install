@@ -1,4 +1,4 @@
-/install/etc/nginx/nginx.conf /etc/wlanpi-core/nginx
-/install/etc/nginx/wlanpi_core.conf /etc/nginx/sites-enabled
-/install/etc/sudoers.d/wlanpi_api /etc/wlanpi-core/sudoers.d
-/install/etc/wlanpi-core/scripts/install_fixup.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/nginx/nginx-sample.conf /etc/wlanpi-core/nginx
+/install/etc/wlanpi-core/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled
+/install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts

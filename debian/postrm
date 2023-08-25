@@ -14,5 +14,6 @@ function unlink_if_existing() {
 }
 
 unlink_if_existing /opt/wlanpi-core/workingdirectory
+unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
 
 exit 0

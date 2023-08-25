@@ -6,14 +6,3 @@
 set -e
 
 #DEBHELPER#
-
-# add service account if required
-case "$1" in
-  install|upgrade)
-  
-  if ! cat /etc/passwd | grep -q wlanpi-core; then
-    adduser --system wlanpi-core --no-create-home --disabled-password --shell /bin/false
-  fi
-esac
-
-exit 0

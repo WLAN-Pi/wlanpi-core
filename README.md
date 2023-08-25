@@ -1,27 +1,6 @@
-![coverage-badge](coverage.svg)
+# wlanpi-core
 
-# TREAD CAREFULLY
-
-1. This is not yet a development or production ready repo.
-2. wlanpi-core is still an exploratory project at the moment and is in active inception.
-3. Most of the endpoints are poorly designed, do not have unit tests, robust schemas. 
-4. Half of the endpoints are broke.
-
-EVERYTHING IS SUBJECT TO CHANGE AT THIS POINT!
-
-DO NOT CODE AGAINST WLANPI-CORE YET! 
-
-YOU HAVE BEEN WARNED!
-
-Ok, whew. Let's move on.
-
-## wlanpi-core
-
-wlanpi-core is a full stack application providing API endpoints for various consumers on and off the WLAN Pi.
-
-## Endpoints
-
-TODO: Insert a high level description of the endpoints here.
+wlanpi-core is a full stack application providing API endpoints for various consumers on the WLAN Pi.
 
 ## Development Workflow
 
@@ -33,7 +12,6 @@ Please checkout the workflow document for getting started on developing.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [PACKAGING.md](PACKAGING.md)
-- [TODO.md](TODO.md)
 
 ## Authors
 

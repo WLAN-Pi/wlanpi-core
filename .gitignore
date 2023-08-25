@@ -1,3 +1,9 @@
+# dbus-python-1.34.2.tar.gz
+*.tar.gz
+debian/wlanpi-core.postinst.debhelper
+debian/wlanpi-core.postrm.debhelper
+debian/wlanpi-core.prerm.debhelper
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

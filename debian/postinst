@@ -20,11 +20,30 @@ PYTHONSTUB=`python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p'`
 # target working directory
 WORKINGDIRECTORY=/opt/wlanpi-core/lib/$PYTHONSTUB/site-packages/wlanpi_core
 
-# link
-LINK=/opt/wlanpi-core/workingdirectory
+# working directory link
+WDLINK=/opt/wlanpi-core/workingdirectory
 
 if ! isValidSymlink $WORKINGDIRECTORY; then
-    ln -s $WORKINGDIRECTORY $LINK
+    ln -s $WORKINGDIRECTORY $WDLINK
 fi
+
+# if wlanpi_core.conf is not a symlink, create symlink.
+WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
+if ! isValidSymlink $WLANPI_CORE; then
+    echo "Linking wlanpi_core.conf ..."
+    ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
+    CONF_CHANGED=0
+fi
+
+chown -R wlanpi-core: /var/log/wlanpi-core
+
+# check nginx actually exists first
+if which nginx; then
+    echo "Restarting nginx ..."
+    systemctl restart nginx.service
+fi
+
+echo "Restarting wlanpi-core ..."
+systemctl restart wlanpi-core.service
 
 exit 0
