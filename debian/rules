@@ -35,13 +35,13 @@ override_dh_virtualenv:
 		--install-suffix "wlanpi-core" \
 		--builtin-venv \
 		--python ${SNAKE} \
-		--upgrade-pip-to=22.3.1 \
+		--upgrade-pip-to=23.2 \
 		--preinstall="setuptools==65.5.0" \
 		--preinstall="wheel==0.37.1"
 		--preinstall="mock" \
 		--extra-pip-arg="--compile" \
 		--extras="all,systemd,test"
-		
+	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip download $(DBUS_PYTHON_SPEC) --no-binary dbus-python ${DBUS_PYTHON_SPEC} --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install dbus-python-$(DBUS_VERSION).tar.gz --verbose
