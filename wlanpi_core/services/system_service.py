@@ -19,6 +19,7 @@ allowed_services = [
     "hostapd",
     "wpa_supplicant",
     "kismet",
+    "grafana",
 ]
 
 
