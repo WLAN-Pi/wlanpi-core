@@ -1,4 +1,4 @@
-wlanpi-core (1.0.0-1) unstable; urgency=medium
+wlanpi-core (1.0.0-2) unstable; urgency=medium
 
   * Initial release with support for starting and stopping allowed services.
 

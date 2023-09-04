@@ -13,7 +13,3 @@ class PublicIP(BaseModel):
     asn: str = Field(example="AS12345")
     asn_org: str = Field(example="INTERNET")
     hostname: str = Field(example="d-192-168-1-50.paw.cpe.chicagoisp.net")
-
-
-class Neighbors(BaseModel):
-    pass
