@@ -26,6 +26,8 @@ LINK=/opt/wlanpi-core/workingdirectory
 # this is the path that we need to check if is already a link
 TEST_PATH=/opt/wlanpi-core/workingdirectory/wlanpi_core
 
+CONF_CHANGED=1
+
 # if link doesn't exist, create it
 if ! isValidSymlink $TEST_PATH; then
     ln -s $TARGET_DIR $LINK
@@ -42,4 +44,5 @@ if [ $CONF_CHANGED -eq 0 ]; then
     echo "Restarting wlanpi-core ..."
     deb-systemd-invoke restart wlanpi-core.service
 fi
+
 exit 0
