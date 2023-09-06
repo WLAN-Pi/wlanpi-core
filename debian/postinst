@@ -38,4 +38,8 @@ if ! isValidSymlink $WLANPI_CORE; then
     CONF_CHANGED=0
 fi
 
+if [ $CONF_CHANGED -eq 0 ]; then
+    echo "Restarting wlanpi-core ..."
+    deb-systemd-invoke restart wlanpi-core.service
+fi
 exit 0
