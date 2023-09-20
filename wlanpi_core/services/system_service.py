@@ -22,6 +22,8 @@ allowed_services = [
     "grafana-server",
     "cockpit",
     "wlanpi-grafana-scanner",
+    "wlanpi-grafana-health",
+    "wlanpi-grafana-internet",
 ]
 
 
