@@ -1,3 +1,9 @@
+wlanpi-core (1.0.0-6) unstable; urgency=medium
+
+  * Do not change enabled / disabled state when starting / stopping a service.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 21 Sep 2023 15:58:10 -0400
+
 wlanpi-core (1.0.0-5) unstable; urgency=medium
 
   * Add "wlanpi-grafana-internet" and "wlanpi-grafana-health" to allowlist. 
