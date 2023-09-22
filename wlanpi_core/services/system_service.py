@@ -1,4 +1,4 @@
-from dbus import Boolean, Interface, SystemBus
+from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
 from wlanpi_core.models.validation_error import ValidationError
@@ -91,7 +91,7 @@ def stop_service(service: str):
         if ".service" not in service:
             service = service + ".service"
         manager.StopUnit(service, "replace")
-        manager.DisableUnitFiles([service], Boolean(False))
+        # manager.DisableUnitFiles([service], Boolean(False))
     except DBusException as de:
         if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
             raise ValidationError(
@@ -128,7 +128,7 @@ def start_service(service: str):
     try:
         if ".service" not in service:
             service = service + ".service"
-        manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
+        # manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
         manager.StartUnit(service, "replace")
     except DBusException as de:
         if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
