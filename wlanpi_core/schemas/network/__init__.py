@@ -1,1 +1,1 @@
-from .network import PublicIP
+from .network import PublicIP, ScanResults

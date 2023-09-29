@@ -21,6 +21,7 @@ allowed_services = [
     "kismet",
     "grafana-server",
     "cockpit",
+    "wlanpi-grafana-scanner",
 ]
 
 

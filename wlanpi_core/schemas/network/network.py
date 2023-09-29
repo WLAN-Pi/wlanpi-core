@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Any, List
 
 class PublicIP(BaseModel):
     ip: str = Field(example="192.168.1.50")
@@ -13,3 +13,15 @@ class PublicIP(BaseModel):
     asn: str = Field(example="AS12345")
     asn_org: str = Field(example="INTERNET")
     hostname: str = Field(example="d-192-168-1-50.paw.cpe.chicagoisp.net")
+
+
+class ScanItem(BaseModel):
+    ssid: str = Field(example="A Network")
+    bssid: str = Field(example="11:22:33:44:55")
+    wpa: str = Field(example="no")
+    wpa2: str = Field(example="yes")
+    signal: int = Field(example=-65)
+    freq: int = Field(example=5650)
+
+class ScanResults(BaseModel):
+    nets: List[ScanItem]
