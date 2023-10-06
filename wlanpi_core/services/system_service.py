@@ -24,6 +24,12 @@ allowed_services = [
     "wlanpi-grafana-scanner",
     "wlanpi-grafana-health",
     "wlanpi-grafana-internet",
+    "wlanpi-grafana-wispy-24",
+    "wlanpi-grafana-wispy-5",
+    "wlanpi-grafana-wipry-lp-24",
+    "wlanpi-grafana-wipry-lp-5",
+    "wlanpi-grafana-wipry-lp-6",
+    "wlanpi-grafana-wipry-lp-stop",
 ]
 
 
