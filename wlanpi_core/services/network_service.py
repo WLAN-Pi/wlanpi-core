@@ -363,13 +363,14 @@ async def get_systemd_network_currentNetwork_details(interface):
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     res = ""
     setup_DBus_Supplicant_Access(interface)
+    time.sleep(5)
     # res = fetch_currentBSS(interface)
     bssidPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
     if bssidPath != '/':
         res = getBss(bssidPath)
         return {"connectedNet":res}
     else:
-        return {"ssid": "", "bssid": "", "wpa": "", "wpa2": "", "signal": 0, "freq": 0}
+        return {"connectedNet":{"ssid": "", "bssid": "", "wpa": "", "wpa2": "", "signal": 0, "freq": 0}}
 
 # async def main():
 #     # await get_async_systemd_network_scan('passive', 'wlan0')
