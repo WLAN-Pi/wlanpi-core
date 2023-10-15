@@ -1,4 +1,4 @@
-from dbus import Boolean, Interface, SystemBus
+from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
 from wlanpi_core.models.validation_error import ValidationError
@@ -22,6 +22,14 @@ allowed_services = [
     "grafana-server",
     "cockpit",
     "wlanpi-grafana-scanner",
+    "wlanpi-grafana-health",
+    "wlanpi-grafana-internet",
+    "wlanpi-grafana-wispy-24",
+    "wlanpi-grafana-wispy-5",
+    "wlanpi-grafana-wipry-lp-24",
+    "wlanpi-grafana-wipry-lp-5",
+    "wlanpi-grafana-wipry-lp-6",
+    "wlanpi-grafana-wipry-lp-stop",
 ]
 
 
@@ -89,7 +97,7 @@ def stop_service(service: str):
         if ".service" not in service:
             service = service + ".service"
         manager.StopUnit(service, "replace")
-        manager.DisableUnitFiles([service], Boolean(False))
+        # manager.DisableUnitFiles([service], Boolean(False))
     except DBusException as de:
         if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
             raise ValidationError(
@@ -126,7 +134,7 @@ def start_service(service: str):
     try:
         if ".service" not in service:
             service = service + ".service"
-        manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
+        # manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
         manager.StartUnit(service, "replace")
     except DBusException as de:
         if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
