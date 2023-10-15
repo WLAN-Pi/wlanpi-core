@@ -10,44 +10,58 @@ router = APIRouter()
 
 log = logging.getLogger("uvicorn")
 
-@router.get("/network/scan", response_model=network.ScanResults)
-async def get_a_systemd_network_scan(type: str):
-    """
-    Queries systemd via dbus to get a scan of the available networks.
-    """
-
-    try:
-        return await network_service.get_systemd_network_scan(type)
-    except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
-        return Response(content="Internal Server Error", status_code=500)
-    
-
-@router.get("/network/set", response_model=network.ScanResults)
-async def set_a_systemd_network(netConfig: str, removeAllFirst: bool):
-    """
-    Queries systemd via dbus to set a single network.
-    """
-
-    try:
-        return await network_service.set_systemd_network_addNetwork(netConfig, removeAllFirst)
-    except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
-        return Response(content="Internal Server Error", status_code=500)
-    
-
-@router.get("/network/connected", response_model=network.ScanResults)
-async def get_a_systemd_currentNetwork_details():
+@router.get("/network/getInterfaces", response_model=network.Interfaces)
+async def get_a_systemd_network_interfaces():
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
 
     try:
-        return await network_service.get_systemd_network_currentNetwork_details()
+        return await network_service.get_systemd_network_interfaces()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+    
+@router.get("/network/scan", response_model=network.ScanResults)
+async def get_a_systemd_network_scan(type: str, interface: str):
+    """
+    Queries systemd via dbus to get a scan of the available networks.
+    """
+
+    try:
+        #return await network_service.get_systemd_network_scan(type)
+        return await network_service.get_async_systemd_network_scan(type, interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+    
+
+@router.get("/network/set", response_model=network.NetworkSetupStatus)
+async def set_a_systemd_network(interface: str, netConfig: str, removeAllFirst: bool):
+    """
+    Queries systemd via dbus to set a single network.
+    """
+
+    try:
+        return await network_service.set_systemd_network_addNetwork(interface, netConfig, removeAllFirst)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+    
+@router.get("/network/getConnected", response_model=network.ConnectedNetwork)
+async def get_a_systemd_currentNetwork_details(interface: str):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.get_systemd_network_currentNetwork_details(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

@@ -25,3 +25,18 @@ class ScanItem(BaseModel):
 
 class ScanResults(BaseModel):
     nets: List[ScanItem]
+
+class NetworkSetupStatus(BaseModel):
+    netId: str = Field(example="0")
+    selectErr: str = Field(example="fi.w1.wpa_supplicant1.NetworkUnknown")
+    connectedNet: ScanItem
+    input: str
+
+class ConnectedNetwork(BaseModel):
+    connectedNet: ScanItem
+
+class Interface(BaseModel):
+    interface: str = Field(example="wlan0")
+
+class Interfaces(BaseModel):
+    interfaces: List[Interface]
