@@ -168,11 +168,14 @@ Call back functions from GLib
 """
 def scanDone(success):
     # print("Scan done: success=%s" % success)
+    global scan
+    local_scan = []
     res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'BSSs',
              dbus_interface=dbus.PROPERTIES_IFACE)
     # print("Scanned wireless networks:")
     for opath in res:
-        scan.append(getBss(opath))
+        local_scan.append(getBss(opath))
+    scan = local_scan
     # print(scan)
 
 def networkSelected(network):

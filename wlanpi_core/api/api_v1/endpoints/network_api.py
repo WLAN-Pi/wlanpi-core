@@ -40,7 +40,7 @@ async def get_a_systemd_network_scan(type: str, interface: str):
         return Response(content="Internal Server Error", status_code=500)
     
 
-@router.get("/network/set", response_model=network.NetworkSetupStatus)
+@router.post("/network/set", response_model=network.NetworkSetupStatus)
 async def set_a_systemd_network(interface: str, netConfig: str, removeAllFirst: bool):
     """
     Queries systemd via dbus to set a single network.
