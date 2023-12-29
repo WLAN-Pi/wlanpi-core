@@ -1,1 +1,1 @@
-from .network import PublicIP, ScanResults, NetworkSetupStatus, ConnectedNetwork, Interface, Interfaces
+from .network import PublicIP, ScanResults, NetworkSetupStatus, ConnectedNetwork, Interface, Interfaces, WlanConfig, WlanInterfaceSetup

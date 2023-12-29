@@ -26,6 +26,18 @@ class ScanItem(BaseModel):
 class ScanResults(BaseModel):
     nets: List[ScanItem]
 
+class WlanConfig(BaseModel):
+    ssid: str = Field(example="SSID Name")
+    psk: str = Field(example="A_Paswword")
+    key_mgmt: str = Field(example="SAE")
+    ieee80211w: int = Field(example=2)
+
+
+class WlanInterfaceSetup(BaseModel):
+    interface: str = Field(example="wlan0")
+    netConfig: WlanConfig
+    removeAllFirst: bool
+
 class NetworkSetupStatus(BaseModel):
     netId: str = Field(example="0")
     selectErr: str = Field(example="fi.w1.wpa_supplicant1.NetworkUnknown")

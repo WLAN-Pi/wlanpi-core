@@ -10,6 +10,8 @@ from wlanpi_core.models.validation_error import ValidationError
 from gi.repository import GObject, GLib
 from dbus.mainloop.glib import DBusGMainLoop
 
+from wlanpi_core.schemas import network
+
 # For running locally (not in API)
 # import asyncio
 
@@ -115,8 +117,10 @@ def fetch_interfaces(wpas_obj):
     available_interfaces = []
     ifaces = wpas_obj.Get(WPAS_DBUS_INTERFACE, 'Interfaces',
                   dbus_interface=dbus.PROPERTIES_IFACE)
-    time.sleep(1)
+    print("InterfacesRequested: %s" % (ifaces))
+    #time.sleep(3)
     for path in ifaces:
+        print("Resolving Interface Path: %s" % (path))
         if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
         ifname = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'Ifname',
                   dbus_interface=dbus.PROPERTIES_IFACE)
@@ -151,9 +155,9 @@ def fetch_currentBSS(interface):
                 raise ValidationError(
                     f"Interface cannot be created : {exc}", status_code=400
                 )
-    time.sleep(2)
+    time.sleep(1)
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    time.sleep(2)
+    #time.sleep(2)
     currentBssPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
     # print("Checking BSS")
     if currentBssPath != '/':
@@ -228,7 +232,7 @@ def setup_DBus_Supplicant_Access(interface):
     time.sleep(1)
     # print(path)
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    time.sleep(1)
+    #time.sleep(1)
     iface = dbus.Interface(if_obj, WPAS_DBUS_INTERFACES_INTERFACE)
 
 
@@ -242,6 +246,7 @@ async def get_systemd_network_interfaces():
     global bus
     bus = dbus.SystemBus()
     wpas_obj = bus.get_object(WPAS_DBUS_SERVICE, WPAS_DBUS_OPATH)
+    print("Checking available interfaces")
     available_interfaces = fetch_interfaces(wpas_obj)
     
     return {"interfaces": available_interfaces}
@@ -282,7 +287,7 @@ async def get_async_systemd_network_scan(type: str, interface: str):
         f"{type} is not a valid scan type", status_code=400
     )
 
-async def set_systemd_network_addNetwork(interface: str, netConfig: str, removeAllFirst: bool):
+async def set_systemd_network_addNetwork(interface: str, netConfig: network.WlanConfig, removeAllFirst: bool):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
@@ -291,7 +296,7 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: str, removeA
 
     networkPath = ""
     selectErr = ""
-    bssid = ""
+    bssid = {"ssid": "", "bssid": "", "wpa": "", "wpa2": "", "signal": 0, "freq": 0}
 
     global selectedNetworkSSID
     selectedNetworkSSID = []
@@ -306,7 +311,7 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: str, removeA
     if removeAllFirst:
         netw = iface.RemoveAllNetworks()
 
-    netConfig_DBUS = dbus.Dictionary(json.loads(netConfig), signature='sv')
+    netConfig_DBUS = dbus.Dictionary(netConfig, signature='sv')
     netw = iface.AddNetwork(netConfig_DBUS)
 
     if netw != '/':
@@ -350,7 +355,7 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: str, removeA
         "netId": networkPath,
         "selectErr": str(selectErr),
         "connectedNet": bssid,
-        "input": netConfig
+        "input": netConfig.ssid
     }
 
     # print("Returning current BSS %s",NetworkSetupDict)
@@ -366,7 +371,7 @@ async def get_systemd_network_currentNetwork_details(interface):
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     res = ""
     setup_DBus_Supplicant_Access(interface)
-    time.sleep(5)
+    time.sleep(1)
     # res = fetch_currentBSS(interface)
     bssidPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
     if bssidPath != '/':

@@ -41,13 +41,13 @@ async def get_a_systemd_network_scan(type: str, interface: str):
     
 
 @router.post("/network/set", response_model=network.NetworkSetupStatus)
-async def set_a_systemd_network(interface: str, netConfig: str, removeAllFirst: bool):
+async def set_a_systemd_network(setup: network.WlanInterfaceSetup):
     """
     Queries systemd via dbus to set a single network.
     """
 
     try:
-        return await network_service.set_systemd_network_addNetwork(interface, netConfig, removeAllFirst)
+        return await network_service.set_systemd_network_addNetwork(setup.interface, setup.netConfig, setup.removeAllFirst)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
