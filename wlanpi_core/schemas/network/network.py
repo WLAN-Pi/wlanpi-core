@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Any, List
 
 class PublicIP(BaseModel):
     ip: str = Field(example="192.168.1.50")
@@ -13,3 +13,42 @@ class PublicIP(BaseModel):
     asn: str = Field(example="AS12345")
     asn_org: str = Field(example="INTERNET")
     hostname: str = Field(example="d-192-168-1-50.paw.cpe.chicagoisp.net")
+
+
+class ScanItem(BaseModel):
+    ssid: str = Field(example="A Network")
+    bssid: str = Field(example="11:22:33:44:55")
+    wpa: str = Field(example="no")
+    wpa2: str = Field(example="yes")
+    signal: int = Field(example=-65)
+    freq: int = Field(example=5650)
+
+class ScanResults(BaseModel):
+    nets: List[ScanItem]
+
+class WlanConfig(BaseModel):
+    ssid: str = Field(example="SSID Name")
+    psk: str = Field(example="A_Paswword")
+    key_mgmt: str = Field(example="SAE")
+    ieee80211w: int = Field(example=2)
+
+
+class WlanInterfaceSetup(BaseModel):
+    interface: str = Field(example="wlan0")
+    netConfig: WlanConfig
+    removeAllFirst: bool
+
+class NetworkSetupStatus(BaseModel):
+    netId: str = Field(example="0")
+    selectErr: str = Field(example="fi.w1.wpa_supplicant1.NetworkUnknown")
+    connectedNet: ScanItem
+    input: str
+
+class ConnectedNetwork(BaseModel):
+    connectedNet: ScanItem
+
+class Interface(BaseModel):
+    interface: str = Field(example="wlan0")
+
+class Interfaces(BaseModel):
+    interfaces: List[Interface]
