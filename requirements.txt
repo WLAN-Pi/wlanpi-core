@@ -52,6 +52,8 @@ packaging==23.1
     # via gunicorn
 psutil==5.9.5
     # via -r requirements.in
+pycairo==1.25.1
+    # via pygobject
 pydantic==2.3.0
     # via
     #   fastapi
@@ -59,6 +61,8 @@ pydantic==2.3.0
 pydantic-core==2.6.3
     # via pydantic
 pydantic-settings==2.0.3
+    # via -r requirements.in
+pygobject==3.46.0
     # via -r requirements.in
 python-dotenv==1.0.0
     # via
