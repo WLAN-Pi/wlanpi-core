@@ -1,15 +1,11 @@
-
-import dbus
-from dbus import Boolean, Interface, SystemBus, Dictionary
-from dbus.exceptions import DBusException
-import sys
 import time
 from datetime import datetime
-import json
-from wlanpi_core.models.validation_error import ValidationError
-from gi.repository import GObject, GLib
-from dbus.mainloop.glib import DBusGMainLoop
 
+import dbus
+from dbus import Interface
+from gi.repository import GLib
+
+from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 
 # For running locally (not in API)
@@ -30,11 +26,13 @@ allowed_scan_types = [
     "passive",
 ]
 
+
 def is_allowed_scan_type(scan: str):
     for allowed_scan_type in allowed_scan_types:
         if scan == allowed_scan_type:
             return True
     return False
+
 
 def is_allowed_interface(interface: str, wpas_obj):
     available_interfaces = fetch_interfaces(wpas_obj)
@@ -43,16 +41,17 @@ def is_allowed_interface(interface: str, wpas_obj):
             return True
     return False
 
+
 def byte_array_to_string(s):
-    import urllib
-    r = ""    
+    r = ""
     for c in s:
         if c >= 32 and c < 127:
             r += "%c" % c
         else:
             r += " "
-            #r += urllib.quote(chr(c))
+            # r += urllib.quote(chr(c))
     return r
+
 
 # def showNetwork(net):
 #     net_obj = bus.get_object(WPAS_DBUS_SERVICE, net)
@@ -65,90 +64,102 @@ def byte_array_to_string(s):
 #     print(network_properties)
 #     print("Net %s BSSID: %s Protocol: %s Pairwise: %s Key: %s [Enabled: %s]" % (network_properties.get('ssid',''), network_properties.get('bssid',''), network_properties.get('proto',''), network_properties.get('pairwise',''), network_properties.get('key_mgmt',''), enabled))
 
+
 def getBss(bss):
     net_obj = bus.get_object(WPAS_DBUS_SERVICE, bss)
-    net = dbus.Interface(net_obj, WPAS_DBUS_BSS_INTERFACE)
+    dbus.Interface(net_obj, WPAS_DBUS_BSS_INTERFACE)
     # Convert the byte-array for SSID and BSSID to printable strings
-    val = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'BSSID',
-              dbus_interface=dbus.PROPERTIES_IFACE)
+    val = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "BSSID", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     bssid = ""
     for item in val:
         bssid = bssid + ":%02x" % item
     bssid = bssid[1:]
-    val = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'SSID',
-              dbus_interface=dbus.PROPERTIES_IFACE)
+    val = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "SSID", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     ssid = byte_array_to_string(val)
-    val = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'WPA',
-              dbus_interface=dbus.PROPERTIES_IFACE)
-    wpa = "no"
+    val = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "WPA", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     if len(val["KeyMgmt"]) > 0:
-        wpa = "yes"
-    val = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'RSN',
-              dbus_interface=dbus.PROPERTIES_IFACE)
-    wpa2 = "no"
-    if len(val["KeyMgmt"]) > 0:
-        wpa2 = "yes"
-    rsn = val
-    freq = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'Frequency',
-               dbus_interface=dbus.PROPERTIES_IFACE)
-    signal = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'Signal',
-                 dbus_interface=dbus.PROPERTIES_IFACE)
-    val = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'Rates',
-              dbus_interface=dbus.PROPERTIES_IFACE)
-    IEs = net_obj.Get(WPAS_DBUS_BSS_INTERFACE, 'IEs',
-              dbus_interface=dbus.PROPERTIES_IFACE)
+        pass
+    val = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "RSN", dbus_interface=dbus.PROPERTIES_IFACE
+    )
+    keymgmt = "/".join([str(r) for r in val["KeyMgmt"]])
+    freq = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "Frequency", dbus_interface=dbus.PROPERTIES_IFACE
+    )
+    signal = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "Signal", dbus_interface=dbus.PROPERTIES_IFACE
+    )
+    val = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "Rates", dbus_interface=dbus.PROPERTIES_IFACE
+    )
+    IEs = net_obj.Get(
+        WPAS_DBUS_BSS_INTERFACE, "IEs", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     if len(val) > 0:
-        maxrate = val[0] / 1000000
+        val[0] / 1000000
     else:
-        maxrate = 0
-    
+        pass
+
     bssDict = {
         "ssid": ssid,
         "bssid": bssid,
-        "wpa": wpa,
-        "wpa2": wpa2,
+        "keymgmt": keymgmt,
         "signal": signal,
-        "freq": freq
+        "freq": freq,
     }
 
     return bssDict
 
+
 def fetch_interfaces(wpas_obj):
     available_interfaces = []
-    ifaces = wpas_obj.Get(WPAS_DBUS_INTERFACE, 'Interfaces',
-                  dbus_interface=dbus.PROPERTIES_IFACE)
+    ifaces = wpas_obj.Get(
+        WPAS_DBUS_INTERFACE, "Interfaces", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     print("InterfacesRequested: %s" % (ifaces))
-    #time.sleep(3)
+    # time.sleep(3)
     for path in ifaces:
         print("Resolving Interface Path: %s" % (path))
         if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-        ifname = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'Ifname',
-                  dbus_interface=dbus.PROPERTIES_IFACE)
-        available_interfaces.append({'interface':ifname})
+        ifname = if_obj.Get(
+            WPAS_DBUS_INTERFACES_INTERFACE,
+            "Ifname",
+            dbus_interface=dbus.PROPERTIES_IFACE,
+        )
+        available_interfaces.append({"interface": ifname})
         # print("Found interface : ", ifname)
     return available_interfaces
 
+
 def fetch_currentSSID():
     time.sleep(1)
-    currentNet = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentNetwork', dbus_interface=dbus.PROPERTIES_IFACE)
+    currentNet = if_obj.Get(
+        WPAS_DBUS_INTERFACES_INTERFACE,
+        "CurrentNetwork",
+        dbus_interface=dbus.PROPERTIES_IFACE,
+    )
     # print("Current Net Selected: ")
     # print(currentNet)
     return currentNet
 
+
 def fetch_currentBSS(interface):
     # Refresh the path to the adapter and read back the current BSSID
-    bssidPath = ""
     bssid = ""
-    
+
     try:
         path = wpas.GetInterface(interface)
     except dbus.DBusException as exc:
         if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceUnknown:"):
-            raise ValidationError(
-                f"Interface unknown : {exc}", status_code=400
-            )
+            raise ValidationError(f"Interface unknown : {exc}", status_code=400)
         try:
-            path = wpas.CreateInterface({'Ifname': interface, 'Driver': 'test'})
+            path = wpas.CreateInterface({"Ifname": interface, "Driver": "test"})
             time.sleep(1)
         except dbus.DBusException as exc:
             if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceExists:"):
@@ -157,11 +168,15 @@ def fetch_currentBSS(interface):
                 )
     time.sleep(1)
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    #time.sleep(2)
-    currentBssPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
+    # time.sleep(2)
+    currentBssPath = if_obj.Get(
+        WPAS_DBUS_INTERFACES_INTERFACE,
+        "CurrentBSS",
+        dbus_interface=dbus.PROPERTIES_IFACE,
+    )
     # print("Checking BSS")
-    if currentBssPath != '/':
-        bssidPath = currentBssPath.split("/")[-1]
+    if currentBssPath != "/":
+        currentBssPath.split("/")[-1]
         bssid = getBss(currentBssPath)
     # print(currentBssPath)
     return bssid
@@ -170,39 +185,45 @@ def fetch_currentBSS(interface):
 """
 Call back functions from GLib
 """
+
+
 def scanDone(success):
     # print("Scan done: success=%s" % success)
     global scan
     local_scan = []
-    res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'BSSs',
-             dbus_interface=dbus.PROPERTIES_IFACE)
+    res = if_obj.Get(
+        WPAS_DBUS_INTERFACES_INTERFACE, "BSSs", dbus_interface=dbus.PROPERTIES_IFACE
+    )
     # print("Scanned wireless networks:")
     for opath in res:
         local_scan.append(getBss(opath))
     scan = local_scan
     # print(scan)
 
+
 def networkSelected(network):
     # returns the current selected network path
     # print("Network Selected (Signal) : %s", network)
     selectedNetworkSSID.append(network)
-    
+
+
 def propertiesChanged(properties):
-	print("PropertiesChanged: %s" % (properties))
-	if properties.get("State") is not None:
-		state = properties["State"]
-		# print("PropertiesChanged: State: %s" % state)
-		if state == 'completed':
-			supplicantState.append(state)
-		connectionEvents.append(f"{state} : {datetime.now()}")
-	elif properties.get("AuthStatusCode") is not None:
-		authStatus = properties["AuthStatusCode"]
-		# print("Auth Status: %s" % authStatus)
-		if authStatus == 0:
-			connectionEvents.append(f"authenticated : {datetime.now()}")
-		else:
-			connectionEvents.append(f"authentication failed: {datetime.now()}")
-			supplicantState.append(state)
+    print("PropertiesChanged: %s" % (properties))
+    if properties.get("State") is not None:
+        state = properties["State"]
+        # print("PropertiesChanged: State: %s" % state)
+        if state == "completed":
+            supplicantState.append(state)
+        connectionEvents.append(f"{state} : {datetime.now()}")
+    elif properties.get("AuthStatusCode") is not None:
+        authStatus = properties["AuthStatusCode"]
+        # print("Auth Status: %s" % authStatus)
+        if authStatus == 0:
+            connectionEvents.append(f"authenticated : {datetime.now()}")
+        else:
+            connectionEvents.append(f"authentication failed: {datetime.now()}")
+            supplicantState.append(state)
+
 
 def setup_DBus_Supplicant_Access(interface):
     global bus
@@ -211,18 +232,16 @@ def setup_DBus_Supplicant_Access(interface):
     global wpas
 
     bus = dbus.SystemBus()
-    proxy = bus.get_object(WPAS_DBUS_SERVICE,WPAS_DBUS_OPATH)
+    proxy = bus.get_object(WPAS_DBUS_SERVICE, WPAS_DBUS_OPATH)
     wpas = Interface(proxy, WPAS_DBUS_INTERFACE)
 
     try:
         path = wpas.GetInterface(interface)
     except dbus.DBusException as exc:
         if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceUnknown:"):
-            raise ValidationError(
-                f"Interface unknown : {exc}", status_code=400
-            )
+            raise ValidationError(f"Interface unknown : {exc}", status_code=400)
         try:
-            path = wpas.CreateInterface({'Ifname': interface, 'Driver': 'test'})
+            path = wpas.CreateInterface({"Ifname": interface, "Driver": "test"})
             time.sleep(1)
         except dbus.DBusException as exc:
             if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceExists:"):
@@ -232,13 +251,15 @@ def setup_DBus_Supplicant_Access(interface):
     time.sleep(1)
     # print(path)
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    #time.sleep(1)
+    # time.sleep(1)
     iface = dbus.Interface(if_obj, WPAS_DBUS_INTERFACES_INTERFACE)
 
 
 """
 These are the functions used to deliver the API
 """
+
+
 async def get_systemd_network_interfaces():
     """
     Queries systemd via dbus to get a list of the available interfaces.
@@ -248,28 +269,30 @@ async def get_systemd_network_interfaces():
     wpas_obj = bus.get_object(WPAS_DBUS_SERVICE, WPAS_DBUS_OPATH)
     print("Checking available interfaces")
     available_interfaces = fetch_interfaces(wpas_obj)
-    
+    print(f"Available interfaces: {available_interfaces}")
     return {"interfaces": available_interfaces}
+
 
 async def get_async_systemd_network_scan(type: str, interface: str):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    
+
     type = type.strip().lower()
     if is_allowed_scan_type(type):
-
         setup_DBus_Supplicant_Access(interface)
 
         global scan
         scan = []
-        scanConfig = dbus.Dictionary({'Type': type}, signature='sv')
+        scanConfig = dbus.Dictionary({"Type": type}, signature="sv")
 
-        bus.add_signal_receiver(scanDone,
-				dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-				signal_name="ScanDone")
-          
+        bus.add_signal_receiver(
+            scanDone,
+            dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
+            signal_name="ScanDone",
+        )
+
         iface.Scan(scanConfig)
 
         main_context = GLib.MainContext.default()
@@ -278,16 +301,17 @@ async def get_async_systemd_network_scan(type: str, interface: str):
             time.sleep(1)
             timeout_check += 1
             # print (timeout_check)
-            main_context.iteration(False)   
-        
+            main_context.iteration(False)
+
         # scan = [{"ssid": "A Network", "bssid": "11:22:33:44:55", "wpa": "no", "wpa2": "yes", "signal": -65, "freq": 5650}]
         return {"nets": scan}
 
-    raise ValidationError(
-        f"{type} is not a valid scan type", status_code=400
-    )
+    raise ValidationError(f"{type} is not a valid scan type", status_code=400)
 
-async def set_systemd_network_addNetwork(interface: str, netConfig: network.WlanConfig, removeAllFirst: bool):
+
+async def set_systemd_network_addNetwork(
+    interface: str, netConfig: network.WlanConfig, removeAllFirst: bool
+):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
@@ -311,20 +335,24 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: network.Wlan
     if removeAllFirst:
         netw = iface.RemoveAllNetworks()
 
-    netConfig_DBUS = dbus.Dictionary(netConfig, signature='sv')
+    netConfig_DBUS = dbus.Dictionary(netConfig, signature="sv")
     netw = iface.AddNetwork(netConfig_DBUS)
 
-    if netw != '/':
+    if netw != "/":
         # A valid network entry has been created - get the Index
         networkPath = netw.split("/")[-1]
 
-        bus.add_signal_receiver(networkSelected,
-        dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-        signal_name="NetworkSelected")
-
-        bus.add_signal_receiver(propertiesChanged,
+        bus.add_signal_receiver(
+            networkSelected,
             dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-            signal_name="PropertiesChanged")
+            signal_name="NetworkSelected",
+        )
+
+        bus.add_signal_receiver(
+            propertiesChanged,
+            dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
+            signal_name="PropertiesChanged",
+        )
 
         # Select this network using its full path name
         selectErr = iface.SelectNetwork(netw)
@@ -338,15 +366,19 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: network.Wlan
                 time.sleep(1)
                 timeout_check += 1
                 # print (timeout_check)
-                main_context.iteration(False)  
-            
+                main_context.iteration(False)
+
             if supplicantState != []:
-                if supplicantState[0] == 'completed':
-                	# Now fetch the current connected BSSID
+                if supplicantState[0] == "completed":
+                    # Now fetch the current connected BSSID
                     print("About to check current BSS")
                     # bssid = fetch_currentBSS(interface)
-                    bssidPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
-                    if bssidPath != '/':
+                    bssidPath = if_obj.Get(
+                        WPAS_DBUS_INTERFACES_INTERFACE,
+                        "CurrentBSS",
+                        dbus_interface=dbus.PROPERTIES_IFACE,
+                    )
+                    if bssidPath != "/":
                         bssid = getBss(bssidPath)
             # print("Selected BSSID: %s", bssid)
             # print("States : %s", connectionEvents)
@@ -355,13 +387,13 @@ async def set_systemd_network_addNetwork(interface: str, netConfig: network.Wlan
         "netId": networkPath,
         "selectErr": str(selectErr),
         "connectedNet": bssid,
-        "input": netConfig.ssid
+        "input": netConfig.ssid,
     }
 
     # print("Returning current BSS %s",NetworkSetupDict)
 
     return NetworkSetupDict
-    #return json.loads('{"netId": "0", "selectErr": "None", "bssidPath": "5468"}')
+    # return json.loads('{"netId": "0", "selectErr": "None", "bssidPath": "5468"}')
 
 
 async def get_systemd_network_currentNetwork_details(interface):
@@ -373,18 +405,32 @@ async def get_systemd_network_currentNetwork_details(interface):
     setup_DBus_Supplicant_Access(interface)
     time.sleep(1)
     # res = fetch_currentBSS(interface)
-    bssidPath = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
-    if bssidPath != '/':
+    bssidPath = if_obj.Get(
+        WPAS_DBUS_INTERFACES_INTERFACE,
+        "CurrentBSS",
+        dbus_interface=dbus.PROPERTIES_IFACE,
+    )
+    if bssidPath != "/":
         res = getBss(bssidPath)
-        return {"connectedNet":res}
+        return {"connectedNet": res}
     else:
-        return {"connectedNet":{"ssid": "", "bssid": "", "wpa": "", "wpa2": "", "signal": 0, "freq": 0}}
+        return {
+            "connectedNet": {
+                "ssid": "",
+                "bssid": "",
+                "wpa": "",
+                "wpa2": "",
+                "signal": 0,
+                "freq": 0,
+            }
+        }
+
 
 # async def main():
 #     # await get_async_systemd_network_scan('passive', 'wlan0')
 #     testnet = '{"ssid":"PiAP_6","psk":"wlanpieea","key_mgmt":"SAE","ieee80211w":2}'
 #     await set_systemd_network_addNetwork('wlan0',testnet,True)
-    
+
 # if __name__ == "__main__":
 # 	asyncio.run(main())
 
