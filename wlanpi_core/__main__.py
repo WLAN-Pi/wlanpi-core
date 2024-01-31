@@ -26,6 +26,23 @@ import uvicorn
 from .__version__ import __version__
 
 
+def port(port) -> int:
+    """Check if the provided port is valid"""
+    try:
+        # make sure port is an int
+        port = int(port)
+    except ValueError:
+        raise ValueError("%s is not a number")
+
+    port_ranges = [(1024, 65353)]
+
+    for _range in port_ranges:
+        if _range[0] <= port <= _range[1]:
+            return port
+
+    raise ValueError("%s not a valid. Pick a port between %s.", port, port_ranges)
+
+
 def setup_parser() -> argparse.ArgumentParser:
     """Set default values and handle arg parser"""
     parser = argparse.ArgumentParser(
@@ -35,6 +52,8 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reload", dest="livereload", action="store_true", default=False
     )
+    parser.add_argument("--port", "-p", dest="port", type=port, default=8000)
+
     parser.add_argument(
         "--version", "-V", "-v", action="version", version=f"{__version__}"
     )
@@ -68,7 +87,7 @@ def main() -> None:
     if lets_go:
         uvicorn.run(
             "wlanpi_core.asgi:app",
-            port=8000,
+            port=args.port,
             host="0.0.0.0",
             reload=args.livereload,
             log_level="debug",
