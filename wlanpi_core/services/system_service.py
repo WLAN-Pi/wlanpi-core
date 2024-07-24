@@ -1,3 +1,7 @@
+import json
+import os
+import socket
+import subprocess
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
@@ -32,6 +36,170 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-stop",
 ]
 
+PLATFORM_UNKNOWN = "Unknown"
+
+# Mode changer scripts
+MODE_FILE = '/etc/wlanpi-state'
+
+# Version file for WLAN Pi image
+WLANPI_IMAGE_FILE = '/etc/wlanpi-release'
+
+def get_mode():
+    valid_modes = ['classic', 'wconsole', 'hotspot', 'wiperf', 'server', 'bridge']
+
+    # check mode file exists and read mode...create with classic mode if not
+    if os.path.isfile(MODE_FILE):
+        with open(MODE_FILE, 'r') as f:
+            current_mode = f.readline().strip()
+
+        # send msg to stdout & exit if mode invalid
+        if not current_mode in valid_modes:
+            print("The mode read from {} is not a valid mode of operation: {}". format(MODE_FILE, current_mode))
+            # sys.exit()
+    else:
+        # create the mode file as it does not exist
+        with open(MODE_FILE, 'w') as f:
+            current_mode = 'classic'
+            f.write(current_mode)
+
+    return current_mode
+
+def get_image_ver():
+    wlanpi_ver = "unknown"
+
+    if os.path.isfile(WLANPI_IMAGE_FILE):
+        with open(WLANPI_IMAGE_FILE, 'r') as f:
+            lines = f.readlines()
+
+        # pull out the version number for the FPMS home page
+        for line in lines:
+            (name, value) = line.split("=")
+            if name=="VERSION":
+                wlanpi_ver = value.strip()
+                break
+
+    return wlanpi_ver
+
+def get_hostname():
+    try:
+        hostname = subprocess.check_output('/usr/bin/hostname', shell=True).decode().strip()
+        if not "." in hostname:
+            domain = "local"
+            try:
+                output = subprocess.check_output('/usr/bin/hostname -d', shell=True).decode().strip()
+                if len(output) != 0:
+                    domain = output
+            except:
+                pass
+            hostname = f"{hostname}.{domain}"
+        return hostname
+    except:
+        pass
+
+    return None
+
+def get_platform():
+    '''
+    Method to determine which platform we're running on.
+    Uses output of "cat /proc/cpuinfo"
+
+    Possible strings seen in the wild:
+
+        Pro:    Raspberry Pi Compute Module 4
+        RPi3b+: Raspberry Pi 3 Model B Plus Rev 1.3
+        RPi4:   Raspberry Pi 4 Model B Rev 1.1
+
+    Errors sent to stdout, but will not exit on error
+    '''
+
+    platform = PLATFORM_UNKNOWN
+
+    # get output of wlanpi-model
+    model_cmd = "wlanpi-model -b"
+    try:
+        platform = subprocess.check_output(model_cmd, shell=True).decode().strip()
+    except subprocess.CalledProcessError as exc:
+        output = exc.model.decode()
+        # print("Err: issue running 'wlanpi-model -b' : ", model)
+        return "Unknown"
+
+    if platform.endswith('?'):
+        platform = PLATFORM_UNKNOWN
+
+    return platform
+
+def get_stats():
+    # figure out our IP
+    IP = ""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # doesn't even have to be reachable
+        s.connect(("10.255.255.255", 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = "127.0.0.1"
+    finally:
+        s.close()
+
+    ipStr = f"{IP}"
+
+    # determine CPU load
+    # cmd = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'"
+    cmd = "mpstat 1 1 -o JSON | grep idle"
+    try:
+        CPU_JSON = subprocess.check_output(cmd, shell=True).decode()
+        CPU_IDLE = json.loads(CPU_JSON)["idle"]
+        CPU = "{0:.2f}%".format(100 - CPU_IDLE)
+        if CPU_IDLE == 100:
+            CPU = "0%"
+        if CPU_IDLE == 0:
+            CPU = "100%"
+    except Exception:
+        CPU = "unknown"
+
+    # determine mem useage
+    cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
+    try:
+        MemUsage = subprocess.check_output(cmd, shell=True).decode()
+    except Exception:
+        MemUsage = "unknown"
+
+    # determine disk util
+    cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
+    try:
+        Disk = subprocess.check_output(cmd, shell=True).decode()
+    except Exception:
+        Disk = "unknown"
+
+    # determine temp
+    try:
+        tempI = int(open("/sys/class/thermal/thermal_zone0/temp").read())
+    except Exception:
+        tempI = "unknown"
+
+    if tempI > 1000:
+        tempI = tempI / 1000
+    tempStr = "%sC" % str(round(tempI, 1))
+
+    # determine uptime
+    cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
+    try:
+        uptime = subprocess.check_output(cmd, shell=True).decode().strip()
+    except Exception:
+        uptime = "unknown"
+
+    uptimeStr = f"{uptime}"
+
+    results = {
+        "ip": ipStr,
+        "cpu": str(CPU),
+        "ram": str(MemUsage),
+        "disk": str(Disk),
+        "cpu_temp": tempStr,
+        "uptime": uptimeStr,
+    }
+
+    return results
 
 def is_allowed_service(service: str):
     for allowed_service in allowed_services:
