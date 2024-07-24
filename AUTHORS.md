@@ -8,4 +8,4 @@ wlanpi-core was created by Josh Schmelzle.
 
 Alphabetical order:
 
-- Add yourself here.
+- Dylan Toner `@Orbitix <https://github.com/Orbitix>`.
