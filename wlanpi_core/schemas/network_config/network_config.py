@@ -1,10 +1,13 @@
 from typing import Union, Optional
 
-from pydantic import BaseModel, Field, field_validator
+import typing
+from pydantic import BaseModel, Field, field_validator, Extra
+
 
 class NetworkAddress(BaseModel):
     family: str = Field(example="inet", default="inet")
 
+    vlan_raw_device: Optional[str] = Field(alias="vlan-raw-device", example="192.168.1.1", default=None)
     @field_validator('family')
     def validate_family(cls, v):
         if v:
@@ -14,32 +17,44 @@ class NetworkAddress(BaseModel):
         assert v in ('inet',), "family must be one of 'inet'"
         return v
 
-class InetNetworkAddress(NetworkAddress):
+# class InetNetworkAddress(NetworkAddress):
+class InetNetworkAddress(NetworkAddress, extra=Extra.allow):
     family: str = "inet"
-    type: str = Field(example="dhcp")
+    address_type: typing.Literal['loopback', 'static', 'manual', 'dhcp']
 
-    @field_validator('type')
-    def validate_type(cls, v):
-        if v:
-            v = v.lower()
-        assert v in ('loopback', 'static', 'manual', 'dhcp'), "type must be one of 'loopback', 'static', 'manual', 'dhcp'"
-        return v
+    # @field_validator('address_type')
+    # def validate_address_type(cls, v):
+    #     if v:
+    #         v = v.lower()
+    #     # assert v in ('loopback', 'static', 'manual', 'dhcp'), "address_type must be one of 'loopback', 'static', 'manual', 'dhcp'"
+    #     print("cls: {}".format(cls.model_dump(cls)))
+    #     # assert v.lower() == cls.address_type, f"address_type must be '{cls.address_type}'"
+    #     return v
 
 
 class InetLoopbackNetworkAddress(InetNetworkAddress):
-    type: str = "loopback"
+    @field_validator('address_type')
+    def validate_own_address_type(cls, v):
+        correct_address_type = 'loopback'
+        assert v.lower() == correct_address_type, f"address_type must be '{correct_address_type}'"
+        return v
+
 
 class InetStaticNetworkAddress(InetNetworkAddress):
-    type: str = 'static'
-
     address: str = Field(example="192.168.1.27/24")
-    metric: Optional[int] = Field(example="10")
-    gateway: Optional[str] = Field(example="192.168.1.1")
-    pointopoint: Optional[str] = Field(example="192.168.1.1")
-    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC")
-    mtu: Optional[int] = Field(example="1500")
-    scope: Optional[str] = Field(example="global")
+    metric: Optional[int] = Field(example="10", default=None)
+    gateway: Optional[str] = Field(example="192.168.1.1", default=None)
+    pointopoint: Optional[str] = Field(example="192.168.1.1", default=None)
+    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC", default=None)
+    mtu: Optional[int] = Field(example="1500", default=None)
+    scope: Optional[str] = Field(example="global", default=None)
     # dns: str = Field(example="192.168.1.1")
+
+    @field_validator('address_type')
+    def validate_own_address_type(cls, v):
+        correct_address_type = 'static'
+        assert v.lower() == correct_address_type, f"address_type must be '{correct_address_type}'"
+        return v
 
     @field_validator('scope')
     def validate_scope(cls, v):
@@ -49,21 +64,44 @@ class InetStaticNetworkAddress(InetNetworkAddress):
         return v
 
 class InetManualNetworkAddress(InetNetworkAddress):
-    type: str = "manual"
-    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC")
-    mtu: Optional[int] = Field(example="1500")
+    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC", default=None)
+    mtu: Optional[int] = Field(example="1500", default=None)
+
+    @field_validator('address_type')
+    def validate_own_address_type(cls, v):
+        correct_address_type = 'manual'
+        assert v.lower() == correct_address_type, f"address_type must be '{correct_address_type}'"
+        return v
 
 class InetDhcpNetworkAddress(InetNetworkAddress):
-    type: str = "dhcp"
-    hostname: Optional[str] = Field(example="wlanpi")
-    metric: Optional[int] = Field(example="10")
-    leasetime: Optional[int] = Field(example="3600")
-    vendor: Optional[str] = Field()
-    client: Optional[str] = Field()
-    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC")
+    hostname: Optional[str] = Field(example="wlanpi", default=None)
+    metric: Optional[int] = Field(example="10", default=None)
+    leasetime: Optional[int] = Field(example="3600", default=None)
+    vendor: Optional[str] = Field(default=None)
+    client: Optional[str] = Field(default=None)
+    hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC", default=None)
+
+    @field_validator('address_type')
+    def validate_own_address_type(cls, v):
+        correct_address_type = 'dhcp'
+        assert v.lower() == correct_address_type, f"address_type must be '{correct_address_type}'"
+        return v
 
 class Vlan(BaseModel):
     interface: str = Field(example="eth0")
     vlan_tag: int = Field(example=20)
     if_control: str = Field(example="auto")
-    addresses: list[InetNetworkAddress] = Field()
+    # addresses: list[InetNetworkAddress] = Field()
+    # addresses: list[Union[InetStaticNetworkAddress, InetDhcpNetworkAddress, InetManualNetworkAddress, InetLoopbackNetworkAddress] ] = Field()
+    addresses: typing.List[typing.Union[InetStaticNetworkAddress, InetDhcpNetworkAddress, InetManualNetworkAddress, InetLoopbackNetworkAddress] ] = Field()
+
+
+NETWORK_ADDRESS_TYPES = {
+    "inet": {
+        "base" : InetNetworkAddress,
+        "loopback" : InetLoopbackNetworkAddress,
+        "static" : InetStaticNetworkAddress,
+        "manual" : InetManualNetworkAddress,
+        "dhcp" : InetDhcpNetworkAddress,
+    }
+}
