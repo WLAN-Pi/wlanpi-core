@@ -7,20 +7,22 @@ from dbus.exceptions import DBusException
 import re
 
 from wlanpi_core.models.validation_error import ValidationError
+from ..schemas.network_config.network_config import NETWORK_ADDRESS_TYPES
+
 # https://man.cx/interfaces(5)
 bus = SystemBus()
 STANZA_PREFIXES = ("iface", "mapping", "auto", "allow-", "rename",  "source", "source-directory")
 INET_METHODS = ("loopback", "static", "manual", "dhcp", "bootp", "tunnel", "ppp", "wvdial", "ipv4ll")
 
-def interface_stanza(inteface_file):
-    with open(inteface_file) as f:
+def interface_stanza(interface_file):
+    with open(interface_file) as f:
         vals = ("iface", "mapping", "auto", "allow-", "source")
         tmp = []
         line_count = 0
         for line in f:
             line_count += 1
             if line.startswith(STANZA_PREFIXES):
-                print(tmp)
+                # print(tmp)
                 # tmp = [i for i in tmp if i[1]]
                 tmp = [i for i in tmp if i]
                 yield tmp
@@ -71,7 +73,7 @@ async def get_vlans():
         if verb == 'iface':
             address = {
                 'family': rest[0],
-                'type': rest[1],
+                'address_type': rest[1],
                 'details': dict([i.split(' ', 1) for i in stanza[1:]])
             }
             vlans_devices[base_device][vlan_id]['addresses'].append(address)
@@ -116,6 +118,7 @@ async def get_vlans():
 
     for device, details in vlans_devices.items():
         for vlan, vlan_details in details.items():
+            print(f"Handling vlan {vlan}: {vlan_details}")
             obj = {
                 "interface": device,
                 "vlan_tag": vlan,
@@ -124,12 +127,17 @@ async def get_vlans():
                 # "dhcp": vlan_details['type']
             }
 
+
             for address in vlan_details["addresses"]:
                 address_obj = {
                     "family": address["family"],
-                    "type": 'st'
+                    "address_type": address["address_type"],
+                    **address["details"]
                 }
-                pass
+                if vlan == "10":
+                    print("Address:", address_obj)
+                obj["addresses"].append(address_obj)
+                # obj["addresses"].append(NETWORK_ADDRESS_TYPES[address["family"]][address["address_type"]](**address_obj) )
 
             return_obj.append(obj)
 
