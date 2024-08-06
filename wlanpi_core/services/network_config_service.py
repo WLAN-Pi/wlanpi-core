@@ -1,5 +1,8 @@
+from collections import defaultdict
 from importlib.util import find_spec
 from traceback import print_exc
+from pprint import pp
+from typing import Optional
 
 from .helpers import run_cli_async
 from dbus import Interface, SystemBus
@@ -7,69 +10,61 @@ from dbus.exceptions import DBusException
 import re
 
 from wlanpi_core.models.validation_error import ValidationError
-from ..schemas.network_config.network_config import NETWORK_ADDRESS_TYPES
+from ..schemas.network_config.network_config import NETWORK_ADDRESS_TYPES, Vlan, InetDhcpNetworkAddress
 
 # https://man.cx/interfaces(5)
 bus = SystemBus()
-STANZA_PREFIXES = ("iface", "mapping", "auto", "allow-", "rename",  "source", "source-directory")
+STANZA_PREFIXES = ("iface", "mapping", "auto", "allow-hotplug", "allow-auto", "rename",  "source", "source-directory")
 INET_METHODS = ("loopback", "static", "manual", "dhcp", "bootp", "tunnel", "ppp", "wvdial", "ipv4ll")
+VLAN_INTERFACE_FILE = '/etc/network/interfaces.d/vlans'
 
-def interface_stanza(interface_file):
-    with open(interface_file) as f:
-        vals = ("iface", "mapping", "auto", "allow-", "source")
-        tmp = []
-        line_count = 0
-        for line in f:
-            line_count += 1
-            if line.startswith(STANZA_PREFIXES):
-                # print(tmp)
-                # tmp = [i for i in tmp if i[1]]
-                tmp = [i for i in tmp if i]
-                yield tmp
-                # tmp = [[line_count, line.strip()]]
-                tmp = [line.strip()]
-            else:
-                if line.strip().startswith('#'):
-                    continue
-                # tmp.append([line_count, line.strip()])
-                tmp.append(line.strip())
-    # tmp = [i for i in tmp if i[1]]
+def interface_stanza(filelike):
+    tmp = []
+    line_count = 0
+    for line in filelike:
+        line_count += 1
+        if line.startswith(STANZA_PREFIXES):
+            # Filter out blank items
+            tmp = [i for i in tmp if i]
+            yield tmp
+            tmp = [line.strip()]
+        else:
+            if line.strip().startswith('#'):
+                continue
+            tmp.append(line.strip())
+
     tmp = [i for i in tmp if i]
     if tmp:
         yield tmp
 
 def read_interfaces(filepath="/etc/network/interfaces"):
-    # with open(filepath) as f:
-    #     content = f.read().splitlines()  # Read the file and split it into lines
-    return [ i for i in list(interface_stanza(filepath)) if i ]
+    with open(filepath) as f:
+        return [ i for i in list(interface_stanza(f)) if i ]
 
-async def get_vlans():
-    # return read_interfaces('/etc/network/interfaces.d/vlans')
-    raw_if_data = read_interfaces('/etc/network/interfaces.d/vlans')
+async def get_vlans(interface: Optional[str] = None):
+    """
+    Returns all VLANS configured in /etc/network/interfaces.d/vlans as objects
+    """
+    raw_if_data = read_interfaces(VLAN_INTERFACE_FILE)
 
-    ethernet_interfaces = (await run_cli_async("ls /sys/class/net/ | grep eth")).split("\n")
-    ethernet_interfaces = set([i.split('.')[0] for i in ethernet_interfaces if i])
-
-    vlans_devices = {}
+    # Create default objects
+    vlans_devices = defaultdict(lambda: defaultdict(lambda: {
+                'addresses': [],
+                'selection': None,
+            }))
 
     # This likely can be abstracted up to being a standard interface parser
     for stanza in raw_if_data:
 
         first_line = stanza[0].strip()
         verb, device, *rest = first_line.split()
-        base_device, vlan_id, = device.split('.')         # This might not be the best approach if renames get used, but it works for now
+        # This might not be the best approach if renames get used, but it works for now
+        base_device, vlan_id, = device.split('.')
 
         if verb in ['source', 'source-directory']:
+            # TODO: Should we throw here? We won't be creating these but someone else might add them?
             continue
 
-        # Create default objects
-        if base_device not in vlans_devices:
-            vlans_devices[base_device] = {}
-        if vlan_id not in vlans_devices[base_device]:
-            vlans_devices[base_device][vlan_id] = {
-                'addresses': [],
-                'selection': None,
-            }
         if verb == 'iface':
             address = {
                 'family': rest[0],
@@ -82,63 +77,96 @@ async def get_vlans():
             vlans_devices[base_device][vlan_id]['selection'] = 'auto'
         elif verb == 'allow-hotplug':
             vlans_devices[base_device][vlan_id]['selection'] = 'allow-hotplug'
-        # elif verb == 'source':
-        #     pass
-        # elif verb == 'source-directory':
-        #     pass
-
-    # vlan_raw_devices = []
-    #
-    # for stanza in raw_if_data:
-    #     for line in stanza:
-    #         verb, value = line.strip().split()
-    #         if verb == 'vlan-raw-device':
-    #             vlan_raw_devices.append(value)
-
-
-    # for stanza in raw_if_data:
-    #
-    #     first_line = stanza[0][1].strip()
-    #     if first_line.startswith('iface'):
-    #         pass
-    #     elif first_line.startswith('auto'):
-    #         pass
-    #     elif first_line.startswith('allow-'):
-    #         pass
-    #     elif first_line.startswith('source'):
-    #         pass
-    #     elif first_line.startswith('source-directory'):
-    #         pass
-
-
-
-    # adapter_config =
 
     return_obj = []
 
     for device, details in vlans_devices.items():
+        if interface is not None and interface != device:
+            continue
         for vlan, vlan_details in details.items():
-            print(f"Handling vlan {vlan}: {vlan_details}")
             obj = {
                 "interface": device,
                 "vlan_tag": vlan,
                 "addresses": [],
                 "if_control": vlan_details['selection']
-                # "dhcp": vlan_details['type']
             }
 
-
+            # There can be multiple addresses assigned to a specific VLAN interface--get them all
             for address in vlan_details["addresses"]:
                 address_obj = {
                     "family": address["family"],
                     "address_type": address["address_type"],
                     **address["details"]
                 }
-                if vlan == "10":
-                    print("Address:", address_obj)
                 obj["addresses"].append(address_obj)
-                # obj["addresses"].append(NETWORK_ADDRESS_TYPES[address["family"]][address["address_type"]](**address_obj) )
-
             return_obj.append(obj)
 
     return return_obj
+
+
+def generate_if_config_from_object(configuration: Vlan):
+    """
+    Generates an /etc/network/interfaces style config string from a Vlan object
+    """
+    vlan_interface = f"{configuration.interface}.{configuration.vlan_tag}"
+    config_string = f"{configuration.if_control} {vlan_interface}\n"
+
+    for address_config in configuration.addresses:
+        address_config_string = f"iface {vlan_interface} {address_config.family} {address_config.address_type}\n"
+        for key in [*address_config.model_fields.keys(), *address_config.model_extra.keys()]:
+            # Skip null keys, as well as keys that are used for the data but not actually valid interface config
+            if key in ['family', 'address_type'] or getattr(address_config, key) is None:
+                continue
+            # print(key)
+            address_config_string += f"\t{key} {getattr(address_config, key)}\n"
+        config_string += address_config_string
+        # TODO: Possibly validate details in here.
+    return config_string
+
+async def create_update_vlan(configuration: Vlan, require_existing_interface: bool = True):
+    """
+    Creates or updates a VLAN definition for a given interface.
+    """
+
+    # Validate that the requested interface exists
+    ethernet_interfaces = (await run_cli_async("ls /sys/class/net/ | grep eth")).split("\n")
+    ethernet_interfaces = set([i.split('.')[0] for i in ethernet_interfaces if i])
+    if require_existing_interface and configuration.interface not in ethernet_interfaces:
+        raise ValidationError(
+            f"Interface {configuration.interface} does not exist", status_code=400
+        )
+
+    # Get existing vlans:
+    existing_vlans = await get_vlans()
+
+    # Dump the given VLAN configuration to a basic dict to match the output of get_vlans
+    config_obj = configuration.model_dump(
+                exclude_unset=True,
+                exclude_none=True
+            )
+
+    # Scan existing to find a matching interface:
+    output_vlans = []
+    replaced = False
+    for existing_vlan in existing_vlans:
+        # If the right interface
+        if existing_vlan['interface'] == configuration.interface and str(existing_vlan['vlan_tag']) == str(configuration.vlan_tag):
+            # No sophisticated replace logic, just dumb swap for now.
+            output_vlans.append(config_obj)
+            replaced = True
+        else:
+            output_vlans.append(existing_vlan)
+    if not replaced:
+        output_vlans.append(config_obj)
+
+    output_string = '\n'.join(map(lambda f: generate_if_config_from_object(Vlan.model_validate(f)), output_vlans))
+
+    with open(VLAN_INTERFACE_FILE, 'w') as interface_file:
+        interface_file.write(output_string)
+
+    return {
+        'success': True,
+        'result': output_vlans,
+        'errors': {}
+    }
+

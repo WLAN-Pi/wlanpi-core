@@ -1,4 +1,6 @@
+
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Response
 
@@ -12,13 +14,13 @@ router = APIRouter()
 log = logging.getLogger("uvicorn")
 
 @router.get("/ethernet/vlans", response_model=list[network_config.Vlan])
-async def show_all_ethernet_vlans(interface: str = 'eth0'):
+async def show_all_ethernet_vlans(interface: Optional[str] = None):
     """
-    Queries systemd via dbus to get the current status of an allowed service.
+    Returns all VLANS configured in /etc/network/interfaces.d/vlans
     """
 
     try:
-        return await network_config_service.get_vlans()
+        return await network_config_service.get_vlans(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -38,3 +40,19 @@ async def show_all_ethernet_vlans(interface: str = 'eth0'):
 #     except Exception as ex:
 #         log.error(ex)
 #         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post("/ethernet/vlans/create", response_model=network_config.NetworkConfigResponse)
+async def create_ethernet_vlan(configuration: network_config.Vlan, require_existing_interface: bool = True):
+    """
+    Creates a new (or updates existing) VLAN on the given interface.
+    """
+
+    try:
+        return await network_config_service.create_update_vlan(configuration, require_existing_interface=require_existing_interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+#

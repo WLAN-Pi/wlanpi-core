@@ -96,6 +96,11 @@ class Vlan(BaseModel):
     addresses: typing.List[typing.Union[InetStaticNetworkAddress, InetDhcpNetworkAddress, InetManualNetworkAddress, InetLoopbackNetworkAddress] ] = Field()
 
 
+class NetworkConfigResponse(BaseModel):
+    success: bool = True
+    result: typing.Any = Field(default=None)
+    errors: typing.Optional[dict] = None
+
 NETWORK_ADDRESS_TYPES = {
     "inet": {
         "base" : InetNetworkAddress,
