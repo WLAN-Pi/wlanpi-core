@@ -120,6 +120,14 @@ If you are running directly, now you can open your browser and interact with the
 
 In production, the port will be different.
 
+### Protip
+
+Doing some development on the backend and want run your version in place instead of a different port?
+
+```
+gunicorn --workers 1 -k uvicorn.workers.UvicornWorker --bind unix:/run/wlanpi_core.sock asgi:app --name wlanpi_core_svc --reload
+```
+
 ## Troubleshooting
 
 Problems with the unit file? Check out the journal for the service:
