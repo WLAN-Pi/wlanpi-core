@@ -1,1 +1,1 @@
-from .network_config import Vlan, NetworkAddress
+from .network_config import Vlan, NetworkAddress, NetworkConfigResponse
