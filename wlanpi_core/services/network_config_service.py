@@ -2,7 +2,7 @@ from collections import defaultdict
 from importlib.util import find_spec
 from traceback import print_exc
 from pprint import pp
-from typing import Optional
+from typing import Optional, Union
 
 from .helpers import run_cli_async
 from dbus import Interface, SystemBus
@@ -113,12 +113,13 @@ def generate_if_config_from_object(configuration: Vlan):
 
     for address_config in configuration.addresses:
         address_config_string = f"iface {vlan_interface} {address_config.family} {address_config.address_type}\n"
+        pp([*address_config.model_fields.keys(), *address_config.model_extra.keys()])
         for key in [*address_config.model_fields.keys(), *address_config.model_extra.keys()]:
             # Skip null keys, as well as keys that are used for the data but not actually valid interface config
             if key in ['family', 'address_type'] or getattr(address_config, key) is None:
                 continue
             # print(key)
-            address_config_string += f"\t{key} {getattr(address_config, key)}\n"
+            address_config_string += f"\t{address_config.model_fields[key].serialization_alias or key} {getattr(address_config, key)}\n"
         config_string += address_config_string
         # TODO: Possibly validate details in here.
     return config_string
@@ -139,12 +140,23 @@ async def create_update_vlan(configuration: Vlan, require_existing_interface: bo
     # Get existing vlans:
     existing_vlans = await get_vlans()
 
+    # If there's not already a vlan-raw-device set, set it for each address
+    for address in configuration.addresses:
+        if address.vlan_raw_device is None:
+            address.vlan_raw_device = configuration.interface
+            # address['vlan-raw-device'] = configuration.interface
+
+
     # Dump the given VLAN configuration to a basic dict to match the output of get_vlans
     config_obj = configuration.model_dump(
+                by_alias=True,
                 exclude_unset=True,
                 exclude_none=True
             )
 
+
+
+    pp(config_obj)
     # Scan existing to find a matching interface:
     output_vlans = []
     replaced = False
@@ -158,6 +170,43 @@ async def create_update_vlan(configuration: Vlan, require_existing_interface: bo
             output_vlans.append(existing_vlan)
     if not replaced:
         output_vlans.append(config_obj)
+    pp(output_vlans)
+    output_string = '\n'.join(map(lambda f: generate_if_config_from_object(Vlan.model_validate(f)), output_vlans))
+
+    with open(VLAN_INTERFACE_FILE, 'w') as interface_file:
+        interface_file.write(output_string)
+
+    return {
+        'success': True,
+        'result': output_vlans,
+        'errors': {}
+    }
+
+async def remove_vlan(interface: str, vlan_tag: Union[str,int], allow_missing=False):
+    """
+    Removes a VLAN definition for a given interface.
+    """
+
+    # Get existing vlans:
+    existing_vlans = await get_vlans()
+
+    # Scan existing to find a matching interface:
+    output_vlans = []
+    removed = False
+    for existing_vlan in existing_vlans:
+        # If the right interface
+        if existing_vlan['interface'] == interface and str(existing_vlan['vlan_tag']) == str(
+                vlan_tag):
+            # Just drop the entire entry.
+            removed = True
+            continue
+        else:
+            output_vlans.append(existing_vlan)
+    if not removed:
+        # TODO: is this really a validation error?
+        raise ValidationError(
+            f"Interface {interface} with VLAN {vlan_tag} does not exist", status_code=400
+        )
 
     output_string = '\n'.join(map(lambda f: generate_if_config_from_object(Vlan.model_validate(f)), output_vlans))
 
