@@ -135,10 +135,16 @@ Doing some development on the backend and want run your version in place instead
   ```
 3. Start your development copy in its place (`--bind` binds a unix socket to where the service would, allowing nginx to proxy to your copy correctly)  :
   ```
-  venv/bin/gunicorn --workers 1 --reload -k uvicorn.workers.UvicornWorker --bind unix:/run/wlanpi_core.sock wlanpi_core.asgi:app
-  ``` 
-3. Occasionally, changes may not get picked up as reloads happen. If so, either restart the process or send a HUP with `kill -HUP <gunicorn PID>`.
-4. When you're done, restart the original core services:
+  gunicorn --workers 1 --reload -k uvicorn.workers.UvicornWorker --bind unix:/run/wlanpi_core.sock wlanpi_core.asgi:app
+  ```
+3. If you want to access the API directly:
+  1. You may need to first open the port in the firewall. You should probably only do this on a safe, trusted network.
+     ```
+     ufw allow 31415
+     ```
+  3. Now you can go to http://wlanpi-###.local:31415/ 
+5. Occasionally, changes may not get picked up as reloads happen. If so, either restart the process or send a HUP with `kill -HUP <gunicorn PID>`.
+6. When you're done, restart the original core services:
   ```
   systemctl stop wlanpi-core.socket && systemctl stop wlanpi-core.service
   ```
