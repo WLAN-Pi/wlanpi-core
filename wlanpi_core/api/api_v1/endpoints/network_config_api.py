@@ -1,6 +1,6 @@
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, Response
 
@@ -55,4 +55,18 @@ async def create_ethernet_vlan(configuration: network_config.Vlan, require_exist
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-#
+
+@router.post("/ethernet/vlans/delete", response_model=network_config.NetworkConfigResponse)
+async def delete_ethernet_vlan(interface: str, vlan_tag: Union[str,int], allow_missing=False):
+    """
+    Removes a VLAN from the given interface.
+    """
+
+    try:
+        return await network_config_service.remove_vlan(interface=interface, vlan_tag=vlan_tag, allow_missing=allow_missing)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+

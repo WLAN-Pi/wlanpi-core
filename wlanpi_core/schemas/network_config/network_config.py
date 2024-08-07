@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, Extra
 class NetworkAddress(BaseModel):
     family: str = Field(example="inet", default="inet")
 
-    vlan_raw_device: Optional[str] = Field(alias="vlan-raw-device", example="192.168.1.1", default=None)
+    vlan_raw_device: Optional[str] = Field(alias="vlan-raw-device", example="eth0", default=None)
     @field_validator('family')
     def validate_family(cls, v):
         if v:
@@ -33,6 +33,7 @@ class InetNetworkAddress(NetworkAddress, extra=Extra.allow):
 
 
 class InetLoopbackNetworkAddress(InetNetworkAddress):
+    address_type: str = "loopback"
     @field_validator('address_type')
     def validate_own_address_type(cls, v):
         correct_address_type = 'loopback'
@@ -41,12 +42,13 @@ class InetLoopbackNetworkAddress(InetNetworkAddress):
 
 
 class InetStaticNetworkAddress(InetNetworkAddress):
+    address_type: str = "static"
     address: str = Field(example="192.168.1.27/24")
-    metric: Optional[int] = Field(example="10", default=None)
+    metric: Optional[int] = Field(example=10, default=None)
     gateway: Optional[str] = Field(example="192.168.1.1", default=None)
-    pointopoint: Optional[str] = Field(example="192.168.1.1", default=None)
+    pointopoint: Optional[str] = Field( default=None)
     hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC", default=None)
-    mtu: Optional[int] = Field(example="1500", default=None)
+    mtu: Optional[int] = Field(example=1500, default=None)
     scope: Optional[str] = Field(example="global", default=None)
     # dns: str = Field(example="192.168.1.1")
 
@@ -64,6 +66,7 @@ class InetStaticNetworkAddress(InetNetworkAddress):
         return v
 
 class InetManualNetworkAddress(InetNetworkAddress):
+    address_type: str = "manual"
     hwaddress: Optional[str] = Field(example="12:34:56:78:9A:BC", default=None)
     mtu: Optional[int] = Field(example="1500", default=None)
 
@@ -74,6 +77,7 @@ class InetManualNetworkAddress(InetNetworkAddress):
         return v
 
 class InetDhcpNetworkAddress(InetNetworkAddress):
+    address_type: str = "dhcp"
     hostname: Optional[str] = Field(example="wlanpi", default=None)
     metric: Optional[int] = Field(example="10", default=None)
     leasetime: Optional[int] = Field(example="3600", default=None)
