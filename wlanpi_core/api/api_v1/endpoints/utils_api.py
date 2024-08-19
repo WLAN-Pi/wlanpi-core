@@ -22,11 +22,27 @@ async def reachability():
 
     try:
         reachability = utils_service.show_reachability()
-        
-        return {"reachability": reachability}
+        return reachability
         
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content="Internal Server Error", status_code=500)
+        return Response(content=f"Internal Server Error {ex}", status_code=500)
+    
+
+@router.get("/speedtest", response_model=utils.SpeedTest)
+async def speedtest():
+    """
+    Runs the network speedtest and returns the results
+    """
+
+    try:
+        speedtest = utils_service.show_speedtest()
+        return speedtest
+        
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error {ex}", status_code=500)
