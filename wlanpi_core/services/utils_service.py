@@ -8,12 +8,7 @@ from dbus.exceptions import DBusException
 
 from wlanpi_core.models.validation_error import ValidationError
 
-def run_command(cmd):
-    try:
-        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL)
-        return output.decode().strip()
-    except subprocess.CalledProcessError:
-        return None
+from .helpers import run_command
 
 def show_reachability():
     '''
