@@ -33,7 +33,7 @@ async def btstatus():
         return Response(content=f"Internal Server Error", status_code=500)
     
     
-@router.get("/power/{action}", response_model=bluetooth.PowerState)
+@router.post("/power/{action}", response_model=bluetooth.PowerState)
 async def bt_power(action: str):
     """
     Turns on bluetooth
