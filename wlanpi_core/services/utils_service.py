@@ -89,7 +89,7 @@ def show_speedtest():
 
     # Define regex patterns to extract parts from the output
     patterns = {
-        "IP_address": r"Testing from .*\(([\d\.]+)\)",
+        "ip_address": r"Testing from .*\(([\d\.]+)\)",
         "download_speed": r"Download:\s+([\d\.]+)\s*Mbit/s",
         "upload_speed": r"Upload:\s+([\d\.]+)\s*Mbit/s"
     }

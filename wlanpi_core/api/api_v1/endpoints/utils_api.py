@@ -44,6 +44,10 @@ async def speedtest():
 
     try:
         speedtest = utils_service.show_speedtest()
+        
+        if speedtest.get("error"):
+            return Response(content=json.dumps(speedtest), status_code=500, media_type="application/json")
+        
         return speedtest
         
     except ValidationError as ve:
