@@ -18,7 +18,7 @@ STANZA_PREFIXES = ("iface", "mapping", "auto", "allow-hotplug", "allow-auto", "r
 INET_METHODS = ("loopback", "static", "manual", "dhcp", "bootp", "tunnel", "ppp", "wvdial", "ipv4ll")
 VLAN_INTERFACE_FILE = '/etc/network/interfaces.d/vlans'
 
-def interface_stanza(filelike):
+def get_interface_stanzas(filelike):
     tmp = []
     line_count = 0
     for line in filelike:
@@ -37,15 +37,15 @@ def interface_stanza(filelike):
     if tmp:
         yield tmp
 
-def read_interfaces(filepath="/etc/network/interfaces"):
+def read_interfaces_file(filepath="/etc/network/interfaces"):
     with open(filepath) as f:
-        return [ i for i in list(interface_stanza(f)) if i ]
+        return [i for i in list(get_interface_stanzas(f)) if i]
 
 async def get_vlans(interface: Optional[str] = None):
     """
     Returns all VLANS configured in /etc/network/interfaces.d/vlans as objects
     """
-    raw_if_data = read_interfaces(VLAN_INTERFACE_FILE)
+    raw_if_data = read_interfaces_file(VLAN_INTERFACE_FILE)
 
     # Create default objects
     vlans_devices = defaultdict(lambda: defaultdict(lambda: {
@@ -170,7 +170,6 @@ async def create_update_vlan(configuration: Vlan, require_existing_interface: bo
             output_vlans.append(existing_vlan)
     if not replaced:
         output_vlans.append(config_obj)
-    pp(output_vlans)
     output_string = '\n'.join(map(lambda f: generate_if_config_from_object(Vlan.model_validate(f)), output_vlans))
 
     with open(VLAN_INTERFACE_FILE, 'w') as interface_file:
