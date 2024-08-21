@@ -96,48 +96,50 @@ def bluetooth_status():
     return status
 
 
-def bluetooth_pair():
-    if not bluetooth_present():
-        return False
+# Pairing not yet implemented
 
-    ok = False
-    if bluetooth_set_power(True):
-        if not bluetooth_paired_devices() == {}:
-            # Unpair existing paired devices
-            paired_devices = bluetooth_paired_devices()
-            '''
-            For some reason removing devices isn't working immediately in Bullseye,
-            so we need to keep trying until all devices are removed.
-            Give up after 30 seconds.
-            '''
-            timeout = 30
-            elapsed_time = 0
-            while paired_devices != None and elapsed_time < timeout:
-                for dev in paired_devices:
-                    try:
-                        cmd = f"bluetoothctl -- remove {dev}"
-                        subprocess.run(cmd, shell=True,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
-                    except:
-                        pass
-                paired_devices = bluetooth_paired_devices()
-                time.sleep(1)
-                elapsed_time += 1
+# def bluetooth_pair():
+#     if not bluetooth_present():
+#         return False
+
+#     ok = False
+#     if bluetooth_set_power(True):
+#         if not bluetooth_paired_devices() == {}:
+#             # Unpair existing paired devices
+#             paired_devices = bluetooth_paired_devices()
+#             '''
+#             For some reason removing devices isn't working immediately in Bullseye,
+#             so we need to keep trying until all devices are removed.
+#             Give up after 30 seconds.
+#             '''
+#             timeout = 30
+#             elapsed_time = 0
+#             while paired_devices != None and elapsed_time < timeout:
+#                 for dev in paired_devices:
+#                     try:
+#                         cmd = f"bluetoothctl -- remove {dev}"
+#                         subprocess.run(cmd, shell=True,
+#                             stdout=subprocess.DEVNULL,
+#                             stderr=subprocess.DEVNULL)
+#                     except:
+#                         pass
+#                 paired_devices = bluetooth_paired_devices()
+#                 time.sleep(1)
+#                 elapsed_time += 1
                 
-        else:
-            paired_devices = bluetooth_paired_devices()
-            if paired_devices != None:
-                for dev in paired_devices:
-                    return {True: paired_devices[dev]}
-            else:
-                alias = bluetooth_alias()
-                try:
-                    cmd = "systemctl start bt-timedpair"
-                    subprocess.run(cmd, shell=True).check_returncode()
-                    return True
-                except subprocess.CalledProcessError as exc:
-                    return False
+#         else:
+#             paired_devices = bluetooth_paired_devices()
+#             if paired_devices != None:
+#                 for dev in paired_devices:
+#                     return {True: paired_devices[dev]}
+#             else:
+#                 alias = bluetooth_alias()
+#                 try:
+#                     cmd = "systemctl start bt-timedpair"
+#                     subprocess.run(cmd, shell=True).check_returncode()
+#                     return True
+#                 except subprocess.CalledProcessError as exc:
+#                     return False
 
-    else:
-        return False
+#     else:
+#         return False

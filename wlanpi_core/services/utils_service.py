@@ -15,7 +15,8 @@ def show_reachability():
     Check if default gateway, internet and DNS are reachable and working
     '''
     
-    results = {}
+    output = {"results": {}}
+    
 
     # --- Variables ---
     try:
@@ -39,30 +40,37 @@ def show_reachability():
 
     # Ping Google
     ping_google = run_command("ping -c1 -W2 -q google.com")
-    ping_google_rtt = re.search(r'rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms', ping_google)
-    results["Ping Google"] = f"{ping_google_rtt.group(1)}ms" if ping_google_rtt else None
+    try:
+        ping_google_rtt = re.search(r'rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms', ping_google)
+        output["results"]["Ping Google"] = f"{ping_google_rtt.group(1)}ms" if ping_google_rtt else None
+    except:
+        output["results"]["Ping Google"] = "FAIL"
+    
 
     # Browse Google.com
     browse_google = run_command("timeout 2 curl -s -L www.google.com | grep 'google.com'")
-    results["Browse Google"] = "OK" if browse_google is not None else "FAIL"
+    output["results"]["Browse Google"] = "OK" if browse_google is not None else "FAIL"
 
     # Ping default gateway
     ping_gateway = run_command(f"ping -c1 -W2 -q {default_gateway}")
-    ping_gateway_rtt = re.search(r'rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms', ping_gateway)
-    results["Ping Gateway"] = f"{ping_gateway_rtt.group(1)}ms" if ping_gateway_rtt else None
+    try:
+        ping_gateway_rtt = re.search(r'rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms', ping_gateway)
+        output["results"]["Ping Gateway"] = f"{ping_gateway_rtt.group(1)}ms" if ping_gateway_rtt else None
+    except:
+        output["results"]["Ping Gateway"] = "FAIL"
 
     # DNS resolution checks
     for i, dns in enumerate(dns_servers[:3], start=1):
         dns_res = run_command(f"dig +short +time=2 +tries=1 @{dns} NS google.com")
         if dns_res:
-            results[f"DNS Server {i} Resolution"] = "OK"
+            output["results"][f"DNS Server {i} Resolution"] = "OK"
 
     # ARPing default gateway
     arping_gateway = run_command(f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway} 2>/dev/null")
     arping_rtt = re.search(r'\d+ms', arping_gateway)
-    results["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
+    output["results"]["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
     
-    return results
+    return output
 
 
 def show_speedtest():
