@@ -104,3 +104,24 @@ async def usb_interfaces():
     except Exception as ex:
         log.error(ex)
         return Response(content=f"Internal Server Error {ex}", status_code=500)
+    
+
+@router.get("/ufw", response_model=utils.Ufw)
+async def usb_interfaces():
+    """
+    Returns the UFW information.
+    """
+
+    try:
+        result = utils_service.show_ufw()
+        
+        if result.get("error"):
+            return Response(content=json.dumps(result["error"]), status_code=500, media_type="application/json")
+        
+        return result
+        
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error {ex}", status_code=500)

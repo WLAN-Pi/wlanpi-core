@@ -25,3 +25,7 @@ class PortBlinkerState(BaseModel):
 class Usb(BaseModel):
     interfaces: list = Field()
     
+class Ufw(BaseModel):
+    status: str = Field()
+    ports: list = Field()
+    

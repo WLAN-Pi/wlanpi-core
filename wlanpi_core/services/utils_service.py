@@ -10,6 +10,8 @@ from wlanpi_core.models.validation_error import ValidationError
 
 from .helpers import run_command
 
+UFW_FILE = '/usr/sbin/ufw'
+
 def show_reachability():
     '''
     Check if default gateway, internet and DNS are reachable and working
@@ -117,7 +119,7 @@ def show_usb():
     lsusb = r'/usr/bin/lsusb | /bin/grep -v Linux | /usr/bin/cut -d\  -f7-'
     lsusb_info = []
     
-    interfaces = {"error": {}, "interfaces": []}
+    interfaces = {}
 
     try:
         lsusb_output = subprocess.check_output(lsusb, shell=True).decode()
@@ -128,6 +130,8 @@ def show_usb():
         interfaces["error"] = {"lsusb error": str(output)}
         return interfaces
 
+    interfaces["interfaces"] = []
+    
     for result in (result for result in lsusb_info if result != ""):
         interfaces["interfaces"].append(result)
 
@@ -137,65 +141,84 @@ def show_usb():
     return interfaces
 
 
+def parse_ufw(output):
+    
+    '''
+    Parses the output of the UFW file into readable json for the api.
+    '''
+    
+    lines = output.strip().split('\n')
+    
+    status_line = lines[0]
+    status = status_line.split(":")[1].strip()  # Extract status value after "Status:"
+    
+    # Check if there are at least 4 lines (status + headers + at least one rule)
+    if len(lines) <= 4:
+        # No rules present in the output
+        parsed_rules = ["No UF info detected"]
+    else:
+        # Skip the first 4 lines as they are headers or status
+        rules = lines[4:]
+        
+        parsed_rules = []
+        
+        for rule in rules:
+            parts = rule.split()
+            
+            # Check if the line is long enough to be a rule and not malformed
+            if len(parts) >= 3:
+                if parts[1] == "ALLOW" or parts[1] == "DENY":
+                    # Correctly formatted rule (e.g., "22/tcp ALLOW Anywhere")
+                    to = parts[0]
+                    action = parts[1]
+                    from_ = ' '.join(parts[2:])  # Join remaining parts in case "From" has multiple words
+                else:
+                    # Special rule format (e.g., "Anywhere on pan0 ALLOW Anywhere")
+                    to = ' '.join(parts[:3])  # Combine first two parts for 'To'
+                    action = parts[3]
+                    from_ = ' '.join(parts[4:])  # Remaining parts for 'From'
+                
+                parsed_rules.append({
+                    "To": to,
+                    "Action": action,
+                    "From": from_
+                })
+    
+    final_output = {
+        "status": status,
+        "ports": parsed_rules
+    }
+    return final_output
+
+
 def show_ufw():
     '''
     Return a list ufw ports
     '''
     ufw_file = UFW_FILE
     ufw_info = []
+    
+    response = {}
 
     # check ufw is available
     if not os.path.isfile(ufw_file):
+        response["error"] = {"error": "UFW is not installed."}
+        
+        return response
 
-        self.alert_obj.display_alert_error(g_vars, "UFW is not installed.")
 
-        g_vars['display_state'] = 'page'
+    try:
+        ufw_output = subprocess.check_output(
+            "sudo {} status".format(ufw_file), shell=True).decode()
+        ufw_info = parse_ufw(ufw_output)
+        
+    except Exception as ex:
+        error_descr = "Issue getting ufw info using ufw command"
+        response["error"] = {"error": error_descr + str(ex)}
         return
-
-    # If no cached ufw data from previous screen paint, run ufw status
-    if g_vars['result_cache'] == False:
-
-        try:
-            ufw_output = subprocess.check_output(
-                "sudo {} status".format(ufw_file), shell=True).decode()
-            ufw_info = ufw_output.split('\n')
-            g_vars['result_cache'] = ufw_info  # cache results
-        except Exception as ex:
-            error_descr = "Issue getting ufw info using ufw command"
-            interfaces = ["Err: ufw error", error_descr, str(ex)]
-            self.simple_table_obj.display_simple_table(g_vars, interfaces)
-            return
-    else:
-        # we must have cached results from last time
-        ufw_info = g_vars['result_cache']
-
-    port_entries = []
 
     # Add in status line
-    port_entries.append(ufw_info[0])
+    
+    response = ufw_info
 
-    port_entries.append("Ports:")
-
-    # lose top 4 & last 2 lines of output
-    ufw_info = ufw_info[4:-2]
-
-    for result in ufw_info:
-
-        # tidy/compress the output
-        result = result.strip()
-        result_list = result.split()
-
-        final_result = ' '.join(result_list)
-
-        port_entries.append(final_result)
-
-    if len(port_entries) == 0:
-        port_entries.append("No UF info detected")
-
-    # final check no-one pressed a button before we render page
-    if g_vars['display_state'] == 'menu':
-        return
-
-    self.paged_table_obj.display_list_as_paged_table(g_vars, port_entries, title='UFW Ports')
-
-    return
+    return response
