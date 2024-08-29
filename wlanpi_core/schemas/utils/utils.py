@@ -22,3 +22,6 @@ class PortBlinkerState(BaseModel):
     status: str = Field(example="success")
     action: str = Field(examples=["on", "off"])
     
+class Usb(BaseModel):
+    interfaces: list = Field()
+    

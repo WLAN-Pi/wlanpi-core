@@ -107,3 +107,95 @@ def show_speedtest():
                 results[key] = number
             
     return results
+
+
+def show_usb():
+    '''
+    Return a list of non-Linux USB interfaces found with the lsusb command
+    '''
+
+    lsusb = r'/usr/bin/lsusb | /bin/grep -v Linux | /usr/bin/cut -d\  -f7-'
+    lsusb_info = []
+    
+    interfaces = {"error": {}, "interfaces": []}
+
+    try:
+        lsusb_output = subprocess.check_output(lsusb, shell=True).decode()
+        lsusb_info = lsusb_output.split('\n')
+    except subprocess.CalledProcessError as exc:
+        output = exc.output.decode()
+        #error_descr = "Issue getting usb info using lsusb command"
+        interfaces["error"] = {"lsusb error": str(output)}
+        return interfaces
+
+    for result in (result for result in lsusb_info if result != ""):
+        interfaces["interfaces"].append(result)
+
+    if len(interfaces) == 0:
+        interfaces["interfaces"].append("No devices detected")
+
+    return interfaces
+
+
+def show_ufw():
+    '''
+    Return a list ufw ports
+    '''
+    ufw_file = UFW_FILE
+    ufw_info = []
+
+    # check ufw is available
+    if not os.path.isfile(ufw_file):
+
+        self.alert_obj.display_alert_error(g_vars, "UFW is not installed.")
+
+        g_vars['display_state'] = 'page'
+        return
+
+    # If no cached ufw data from previous screen paint, run ufw status
+    if g_vars['result_cache'] == False:
+
+        try:
+            ufw_output = subprocess.check_output(
+                "sudo {} status".format(ufw_file), shell=True).decode()
+            ufw_info = ufw_output.split('\n')
+            g_vars['result_cache'] = ufw_info  # cache results
+        except Exception as ex:
+            error_descr = "Issue getting ufw info using ufw command"
+            interfaces = ["Err: ufw error", error_descr, str(ex)]
+            self.simple_table_obj.display_simple_table(g_vars, interfaces)
+            return
+    else:
+        # we must have cached results from last time
+        ufw_info = g_vars['result_cache']
+
+    port_entries = []
+
+    # Add in status line
+    port_entries.append(ufw_info[0])
+
+    port_entries.append("Ports:")
+
+    # lose top 4 & last 2 lines of output
+    ufw_info = ufw_info[4:-2]
+
+    for result in ufw_info:
+
+        # tidy/compress the output
+        result = result.strip()
+        result_list = result.split()
+
+        final_result = ' '.join(result_list)
+
+        port_entries.append(final_result)
+
+    if len(port_entries) == 0:
+        port_entries.append("No UF info detected")
+
+    # final check no-one pressed a button before we render page
+    if g_vars['display_state'] == 'menu':
+        return
+
+    self.paged_table_obj.display_list_as_paged_table(g_vars, port_entries, title='UFW Ports')
+
+    return
