@@ -1,45 +1,43 @@
-import json
-import os
-import socket
-import subprocess
 import re
-from dbus import Interface, SystemBus
-from dbus.exceptions import DBusException
-
-from wlanpi_core.models.validation_error import ValidationError
 
 from .helpers import run_command
 
 BT_ADAPTER = "hci0"
 
+
 def bluetooth_present():
-    '''
+    """
     We want to use hciconfig here as it works OK when no devices are present
-    '''
+    """
     return run_command(f"hciconfig | grep {BT_ADAPTER}")
+
 
 def bluetooth_name():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i" + "| grep Name | awk '{ print $2 }'"
     return run_command(cmd)
 
+
 def bluetooth_alias():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i" + "| grep Alias | awk '{ print $2 }'"
     return run_command(cmd)
+
 
 def bluetooth_address():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i" + "| grep Address | awk '{ print $2 }'"
     return run_command(cmd)
 
+
 def bluetooth_power():
-    '''
+    """
     We want to use hciconfig here as it works OK when no devices are present
-    '''
+    """
     cmd = f"hciconfig {BT_ADAPTER} | grep -E '^\s+UP'"
     return run_command(cmd)
 
+
 def bluetooth_set_power(power):
     bluetooth_is_on = bluetooth_power()
-    
+
     if power:
         if bluetooth_is_on:
             return True
@@ -49,27 +47,29 @@ def bluetooth_set_power(power):
             return True
         cmd = f"bt-adapter -a {BT_ADAPTER} --set Powered 0 && echo 0 > /etc/wlanpi-bluetooth/state"
     result = run_command(cmd)
-    
+
     if result:
         return True
     else:
         return False
 
+
 def bluetooth_paired_devices():
-    '''
+    """
     Returns a dictionary of paired devices, indexed by MAC address
-    '''
+    """
 
     if not bluetooth_present():
         return None
-    
+
     cmd = "bluetoothctl -- paired-devices | grep -iv 'no default controller'"
     output = run_command(cmd)
     if len(output) > 0:
-        output = re.sub("Device *", "", output).split('\n')
+        output = re.sub("Device *", "", output).split("\n")
         return dict([line.split(" ", 1) for line in output])
     else:
         return None
+
 
 def bluetooth_status():
     status = {}
@@ -92,7 +92,7 @@ def bluetooth_status():
         status["paired_devices"] = []
         for mac in paired_devices:
             status["paired_devices"].append({"name": paired_devices[mac], "addr": mac})
-            
+
     return status
 
 
@@ -126,7 +126,7 @@ def bluetooth_status():
 #                 paired_devices = bluetooth_paired_devices()
 #                 time.sleep(1)
 #                 elapsed_time += 1
-                
+
 #         else:
 #             paired_devices = bluetooth_paired_devices()
 #             if paired_devices != None:

@@ -1,6 +1,11 @@
 from fastapi import APIRouter
 
-from wlanpi_core.api.api_v1.endpoints import network_api, system_api, utils_api, bluetooth_api
+from wlanpi_core.api.api_v1.endpoints import (
+    bluetooth_api,
+    network_api,
+    system_api,
+    utils_api,
+)
 
 api_router = APIRouter()
 

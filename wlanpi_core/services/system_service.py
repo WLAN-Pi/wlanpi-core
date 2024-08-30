@@ -2,6 +2,7 @@ import json
 import os
 import socket
 import subprocess
+
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
@@ -41,54 +42,67 @@ allowed_services = [
 PLATFORM_UNKNOWN = "Unknown"
 
 # Mode changer scripts
-MODE_FILE = '/etc/wlanpi-state'
+MODE_FILE = "/etc/wlanpi-state"
 
 # Version file for WLAN Pi image
-WLANPI_IMAGE_FILE = '/etc/wlanpi-release'
+WLANPI_IMAGE_FILE = "/etc/wlanpi-release"
+
 
 def get_mode():
-    valid_modes = ['classic', 'wconsole', 'hotspot', 'wiperf', 'server', 'bridge']
+    valid_modes = ["classic", "wconsole", "hotspot", "wiperf", "server", "bridge"]
 
     # check mode file exists and read mode...create with classic mode if not
     if os.path.isfile(MODE_FILE):
-        with open(MODE_FILE, 'r') as f:
+        with open(MODE_FILE, "r") as f:
             current_mode = f.readline().strip()
 
         # send msg to stdout & exit if mode invalid
         if not current_mode in valid_modes:
-            print("The mode read from {} is not a valid mode of operation: {}". format(MODE_FILE, current_mode))
+            print(
+                "The mode read from {} is not a valid mode of operation: {}".format(
+                    MODE_FILE, current_mode
+                )
+            )
             # sys.exit()
     else:
         # create the mode file as it does not exist
-        with open(MODE_FILE, 'w') as f:
-            current_mode = 'classic'
+        with open(MODE_FILE, "w") as f:
+            current_mode = "classic"
             f.write(current_mode)
 
     return current_mode
+
 
 def get_image_ver():
     wlanpi_ver = "unknown"
 
     if os.path.isfile(WLANPI_IMAGE_FILE):
-        with open(WLANPI_IMAGE_FILE, 'r') as f:
+        with open(WLANPI_IMAGE_FILE, "r") as f:
             lines = f.readlines()
 
         # pull out the version number for the FPMS home page
         for line in lines:
             (name, value) = line.split("=")
-            if name=="VERSION":
+            if name == "VERSION":
                 wlanpi_ver = value.strip()
                 break
 
     return wlanpi_ver
 
+
 def get_hostname():
     try:
-        hostname = subprocess.check_output('/usr/bin/hostname', shell=True).decode().strip()
+        hostname = (
+            subprocess.check_output("/usr/bin/hostname", shell=True).decode().strip()
+        )
         if not "." in hostname:
             domain = "local"
             try:
-                output = subprocess.check_output('/usr/bin/hostname -d', shell=True).decode().strip()
+                output = (
+                    subprocess.check_output("/usr/bin/hostname -d", shell=True)
+                    .decode()
+                    .strip()
+                )
                 if len(output) != 0:
                     domain = output
             except:
@@ -100,8 +114,9 @@ def get_hostname():
 
     return None
 
+
 def get_platform():
-    '''
+    """
     Method to determine which platform we're running on.
     Uses output of "cat /proc/cpuinfo"
 
@@ -112,7 +127,7 @@ def get_platform():
         RPi4:   Raspberry Pi 4 Model B Rev 1.1
 
     Errors sent to stdout, but will not exit on error
-    '''
+    """
 
     platform = PLATFORM_UNKNOWN
 
@@ -121,14 +136,15 @@ def get_platform():
     try:
         platform = subprocess.check_output(model_cmd, shell=True).decode().strip()
     except subprocess.CalledProcessError as exc:
-        output = exc.model.decode()
+        exc.model.decode()
         # print("Err: issue running 'wlanpi-model -b' : ", model)
         return "Unknown"
 
-    if platform.endswith('?'):
+    if platform.endswith("?"):
         platform = PLATFORM_UNKNOWN
 
     return platform
+
 
 def get_stats():
     # figure out our IP
@@ -202,6 +218,7 @@ def get_stats():
     }
 
     return results
+
 
 def is_allowed_service(service: str):
     for allowed_service in allowed_services:

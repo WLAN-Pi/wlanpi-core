@@ -1,13 +1,11 @@
 import logging
-import os
+import subprocess
 
 from fastapi import APIRouter, Response
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import system_service
-
-import subprocess
 
 router = APIRouter()
 
@@ -18,7 +16,7 @@ log = logging.getLogger("uvicorn")
 async def show_device_info():
     """
     Returns core information about the PI.
-    
+
     Commands:
      - Uses 'wlanpi-model -b' to query the device model.
      - Uses '/usr/bin/hostname' to query the device hostname.
@@ -33,30 +31,36 @@ async def show_device_info():
         name = hostname.split(".")[0]
         software_ver = system_service.get_image_ver()
         mode = system_service.get_mode()
-        
-        return {"model": model, "hostname": hostname, "name": name, "software_version": software_ver, "mode": mode}
-        
+
+        return {
+            "model": model,
+            "hostname": hostname,
+            "name": name,
+            "software_version": software_ver,
+            "mode": mode,
+        }
+
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-    
-    
+
+
 @router.get("/device/stats", response_model=system.DeviceStats)
 async def show_device_info():
     """
     Returns system stats about the PI.
-    
+
     See get_stats in system_service.py
     """
 
     try:
         # get system stats
         stats = system_service.get_stats()
-        
+
         return stats
-        
+
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -74,17 +78,17 @@ async def show_device_model():
     model_cmd = "wlanpi-model -b"
     try:
         platform = subprocess.check_output(model_cmd, shell=True).decode().strip()
-        
-        if platform.endswith('?'):
+
+        if platform.endswith("?"):
             platform = "Unknown"
-            
+
         return {"model": platform}
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except subprocess.CalledProcessError as exc:
         log.error(exc)
-        output = exc.model.decode()
+        exc.model.decode()
         return Response(content="Internal Server Error", status_code=500)
 
 

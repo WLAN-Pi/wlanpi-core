@@ -1,1 +1,1 @@
-from .system import ServiceRunning, ServiceStatus, DeviceModel, DeviceInfo, DeviceStats
+from .system import DeviceInfo, DeviceModel, DeviceStats, ServiceRunning, ServiceStatus
