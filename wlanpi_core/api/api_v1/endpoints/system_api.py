@@ -48,7 +48,7 @@ async def show_device_info():
 
 
 @router.get("/device/stats", response_model=system.DeviceStats)
-async def show_device_info():
+async def device_stats():
     """
     Returns system stats about the PI.
 
