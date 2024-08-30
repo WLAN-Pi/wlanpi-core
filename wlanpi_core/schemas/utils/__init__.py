@@ -1,1 +1,1 @@
-from .utils import ReachabilityTest, SpeedTest, Usb, Ufw
+from .utils import ReachabilityTest, SpeedTest, Ufw, Usb

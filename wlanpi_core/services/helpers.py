@@ -4,7 +4,6 @@ shared resources between services
 
 import asyncio
 import subprocess
-
 from typing import Union
 
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -27,8 +26,8 @@ async def run_cli_async(cmd: str, want_stderr: bool = False) -> str:
         raise RunCommandError(
             status_code=424, error_msg=f"'{cmd}' gave stderr response"
         )
-        
-        
+
+
 def run_command(cmd) -> Union[str, None]:
     """
     Runs the given command, and handles errors and formatting.
