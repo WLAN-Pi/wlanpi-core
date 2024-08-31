@@ -21,7 +21,6 @@ async def show_network_info():
     try:
         # get network information
         info = network_info_service.show_info()
-        print(info)
         return info
 
     except ValidationError as ve:

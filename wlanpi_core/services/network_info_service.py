@@ -1,10 +1,19 @@
-import json
 import os
-import socket
 import subprocess
+import re
 
 from wlanpi_core.models.validation_error import ValidationError
 
+from .helpers import (
+    LLDPNEIGH_FILE,
+    CDPNEIGH_FILE,
+    IPCONFIG_FILE,
+    PUBLICIP_CMD,
+    PUBLICIP6_CMD,
+    ETHTOOL_FILE,
+    IFCONFIG_FILE,
+    IW_FILE,
+)
 
 def show_info():
     output = {}
@@ -14,6 +23,10 @@ def show_info():
     output["eth0_ipconfig_info"] = show_eth0_ipconfig()
     output["vlan_info"] = show_vlan()
     output["lldp_neighbour_info"] = show_lldp_neighbour()
+    output["cdp_neighbour_info"] = show_cdp_neighbour()
+    output["public_ip"] = show_publicip()
+    
+    return output
 
 
 def show_interfaces():
@@ -40,17 +53,18 @@ def show_interfaces():
         # Something broke is our regex - report an issue
         interfaces["error"] = "match error"
     else:
-        interfaces["interfaces"] = {}
+
         for result in interface_re:
 
             # save the interface name
             interface_name = result[0]
-
+            interfaces[interface_name] = {}
+            
             # look at the rest of the interface info & extract IP if available
             interface_info = result[1]
 
             # determine interface status
-            status = "▲" if re.search("UP", interface_info, re.MULTILINE) is not None else "▽"
+            status = "UP" if re.search("UP", interface_info, re.MULTILINE) is not None else "DOWN"
 
             # determine IP address
             inet_search = re.search(
@@ -72,23 +86,10 @@ def show_interfaces():
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
-
-            # shorten interface name to make space for status and IP address
-            if len(interface_name) > 2:
-                short_name = interface_name
-                try:
-                    id = re.search(".*(\d+).*", interface_name).group(1)
-                    if interface_name.endswith(id):
-                        short_name = "{}{}".format(interface_name[0], id)
-                    else:
-                        short_name = "{}{}{}".format(interface_name[0], id, interface_name[-1])
-                    interface_name = short_name
-                except:
-                    pass
-
+                
             # format interface info
-            interfaces["interfaces"][interface_name]["status"] = status
-            interfaces["interfaces"][interface_name]["ip"] = ip_address
+            interfaces[interface_name]["status"] = status
+            interfaces[interface_name]["ip"] = ip_address
 
 
     return interfaces
@@ -186,8 +187,7 @@ def show_eth0_ipconfig():
 
     except subprocess.CalledProcessError as exc:
         output = exc.output.decode()
-        #error_descr = "Issue getting ipconfig"
-        eth0_ipconfig_info["error"] = "ipconfig command error" + str(output)
+        eth0_ipconfig_info["error"] = "Issue getting ipconfig" + str(output)
         return eth0_ipconfig_info
 
     eth0_ipconfig_info["info"] = []
@@ -238,7 +238,7 @@ def show_lldp_neighbour():
     '''
     lldpneigh_file = LLDPNEIGH_FILE
 
-    neighbour_info = {}
+    neighbour_info = {"info": []}
     neighbour_cmd = "sudo cat " + lldpneigh_file
 
     if os.path.exists(lldpneigh_file):
@@ -250,9 +250,7 @@ def show_lldp_neighbour():
                 neighbour_info["info"].append(line)
 
         except subprocess.CalledProcessError as exc:
-            output = exc.output.decode()
-            #error_descr = "Issue getting LLDP neighbour"
-            neighbour_info["error"] = "Neighbour command error"
+            neighbour_info["error"] = "Issue getting LLDP neighbour"
             return neighbour_info
 
     if len(neighbour_info) == 0:
@@ -261,13 +259,13 @@ def show_lldp_neighbour():
     return neighbour_info
 
 
-def show_cdp_neighbour(g_vars):
+def show_cdp_neighbour():
     '''
     Display CDP neighbour on eth0
     '''
     cdpneigh_file = CDPNEIGH_FILE
 
-    neighbour_info = []
+    neighbour_info = {"info": []}
     neighbour_cmd = "sudo cat " + cdpneigh_file
 
     if os.path.exists(cdpneigh_file):
@@ -275,54 +273,35 @@ def show_cdp_neighbour(g_vars):
         try:
             neighbour_output = subprocess.check_output(
                 neighbour_cmd, shell=True).decode()
-            neighbour_info = neighbour_output.split('\n')
+            for line in neighbour_output.split('\n'):
+                neighbour_info["info"].append(line)
 
         except subprocess.CalledProcessError as exc:
-            output = exc.output.decode()
-            #error_descr = "Issue getting LLDP neighbour"
-            error = ["Err: Neighbour command error", output]
-            simple_table_obj.display_simple_table(g_vars, error)
-            return
+            neighbour_info["error"] = "Issue getting CDP neighbour"
+            return neighbour_info
+
 
     if len(neighbour_info) == 0:
-        neighbour_info.append("No neighbour")
+        neighbour_info["error"] = "No neighbour"
 
-    # final check no-one pressed a button before we render page
-    if g_vars['display_state'] == 'menu':
-        return
+    return neighbour_info
 
-    paged_table_obj.display_list_as_paged_table(g_vars, neighbour_info, title='CDP Neighbour')
 
-def show_publicip(g_vars, ip_version=4):
+def show_publicip(ip_version=4):
     '''
     Shows public IP address and related details, works with any interface with internet connectivity
     '''
 
-    publicip_info = []
+    publicip_info = {"info": []}
     cmd = PUBLICIP6_CMD if ip_version == 6 else PUBLICIP_CMD
 
-    if g_vars['result_cache'] == False:
-        alert_obj.display_popup_alert(g_vars, "Detecting public " + ("IPv6..." if ip_version == 6 else "IPv4..."))
-
-        try:
-            g_vars["disable_keys"] = True
-            publicip_output = subprocess.check_output(
-                cmd, shell=True).decode().strip()
-            publicip_info = publicip_output.split('\n')
-            g_vars['publicip_info'] = publicip_info
-            g_vars['result_cache'] = True
-        except subprocess.CalledProcessError:
-            alert_obj.display_alert_error(g_vars, "Failed to detect public IP address")
-            return
-        finally:
-            g_vars["disable_keys"] = False
-
-    else:
-
-        publicip_info = g_vars['publicip_info']
-        if len(publicip_info) == 1:
-            alert_obj.display_alert_error(g_vars, publicip_info[0])
-            return
-
-        title = "Public IPv6" if ip_version == 6 else "Public IPv4"
-        paged_table_obj.display_list_as_paged_table(g_vars, publicip_info, title=title, justify=False)
+    try:
+        publicip_output = subprocess.check_output(
+            cmd, shell=True).decode().strip()
+        for line in publicip_output.split('\n'):
+            publicip_info["info"].append(line)
+    except subprocess.CalledProcessError:
+        publicip_info["error"] = "Failed to detect public IP address"
+        return publicip_info
+    
+    return publicip_info
