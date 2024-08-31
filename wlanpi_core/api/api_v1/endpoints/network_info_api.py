@@ -1,5 +1,4 @@
 import logging
-import subprocess
 
 from fastapi import APIRouter, Response
 
