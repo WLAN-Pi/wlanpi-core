@@ -1,1 +1,1 @@
-from .network_info import *
+from .network_info import NetworkInfo
