@@ -5,7 +5,6 @@ from typing import Optional, Union
 from fastapi import APIRouter, Response
 
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.schemas import system
 from wlanpi_core.schemas import network_config
 from wlanpi_core.services import network_config_service
 

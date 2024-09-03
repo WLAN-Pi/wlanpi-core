@@ -3,7 +3,7 @@ import re
 from typing import List
 
 from wlanpi_core.models.command_result import CommandResult
-from wlanpi_core.services.network.namespace.models.network_namespace_errors import (
+from wlanpi_core.models.network.namespace.namespace_errors import (
     NetworkNamespaceError,
     NetworkNamespaceNotFoundError,
 )
