@@ -2,7 +2,8 @@ from collections import defaultdict
 from pprint import pp
 from typing import List
 
-from wlanpi_core.models.network.vlan.vlan_errors import VLANNotFoundError, VLANCreationError, VLANExistsError
+from wlanpi_core.models.network.vlan.vlan_errors import VLANNotFoundError, VLANCreationError, VLANExistsError, \
+    VLANDeletionError
 from wlanpi_core.models.unified_result import UnifiedResult
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core.schemas.network_config import Vlan
@@ -72,15 +73,12 @@ class LiveVLANs:
             run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"], raise_on_fail=False)
             raise VLANCreationError(f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: ") from e
 
-
-    #
-    #
-    # @staticmethod
-    # def delete_vlan(self):
-    #
-    #
-    #
-    # pass
+    @staticmethod
+    def delete_vlan(if_name: str, vlan_id: int,):
+        try:
+            run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"])
+        except Exception as e:
+            raise VLANDeletionError(f"Failed to delete interface {if_name}.{vlan_id}: ") from e
 
 
 

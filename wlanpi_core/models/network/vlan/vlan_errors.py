@@ -11,6 +11,9 @@ class VLANError(Exception):
 class VLANCreationError(VLANError):
     pass
 
+class VLANDeletionError(VLANError):
+    pass
+
 class VLANExistsError(VLANError):
     pass
 
