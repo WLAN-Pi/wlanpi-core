@@ -1,3 +1,9 @@
+wlanpi-core (1.0.1) UNRELEASED; urgency=medium
+
+  * Add Network APIs for managing wlan0 via DBUS
+
+ --  Ben Toner <ben@numerousnetworks.co.uk>  Wed, 11 Sep 2024 10:32:40 -0500
+
 wlanpi-core (1.0.0-7) unstable; urgency=medium
 
   * Add "wlanpi-grafana-wispy-*" and "wlanpi-grafana-wipry-*" to allowlist.
