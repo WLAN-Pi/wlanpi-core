@@ -120,6 +120,37 @@ If you are running directly, now you can open your browser and interact with the
 
 In production, the port will be different.
 
+### Protip
+
+Doing some development on the backend and want run your version in place instead of a different port? Use this trick to start it the way it's started in `debian/wlanpi-core.service`.
+
+1. Starting in your repo root, elevate to root and activate the repo venv:
+    ```
+    sudo su --
+    source venv/bin/activate
+    ``` 
+2. Stop the installed wlanpi-core and socket, so that it won't auto-restart the built-in core:
+    ```
+    systemctl stop wlanpi-core.service && systemctl stop wlanpi-core.socket
+    ```
+3. Start your development copy in its place (`--bind` binds a unix socket to where the service would, allowing nginx to proxy to your copy correctly)  :
+    ```
+    gunicorn --workers 1 --reload -k uvicorn.workers.UvicornWorker --bind unix:/run/wlanpi_core.sock wlanpi_core.asgi:app
+    ```
+4. If you want to access the API directly:
+    1. You may need to first open the port in the firewall. You should probably only do this on a safe, trusted network.
+       ```
+       ufw allow 31415
+       ```
+    2. Now you can go to http://wlanpi-###.local:31415/ 
+5. Occasionally, changes may not get picked up as reloads happen. If so, either restart the process or send a HUP with `kill -HUP <gunicorn PID>`.
+6. When you're done, restart the original core services:
+    ```
+    systemctl stop wlanpi-core.socket && systemctl stop wlanpi-core.service
+    ```
+
+For more information on the debug options gunicorn provides, including how to watch extra files for reloading, check the [Gunicorn settings documentation](https://docs.gunicorn.org/en/stable/settings.html#debugging).
+
 ## Troubleshooting
 
 Problems with the unit file? Check out the journal for the service:
