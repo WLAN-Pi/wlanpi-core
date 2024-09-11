@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 from pydantic import BaseModel, Field
 
@@ -20,9 +20,10 @@ class PublicIP(BaseModel):
 class ScanItem(BaseModel):
     ssid: str = Field(example="A Network")
     bssid: str = Field(example="11:22:33:44:55")
-    keymgmt: str = Field(example="wpa-psk")
+    key_mgmt: str = Field(example="wpa-psk")
     signal: int = Field(example=-65)
     freq: int = Field(example=5650)
+    minrate: int = Field(example=1000000)
 
 
 class ScanResults(BaseModel):
@@ -31,9 +32,10 @@ class ScanResults(BaseModel):
 
 class WlanConfig(BaseModel):
     ssid: str = Field(example="SSID Name")
-    psk: str = Field(example="A_Paswword")
-    key_mgmt: str = Field(example="SAE")
-    ieee80211w: int = Field(example=2)
+    psk: Union[str, None] = None
+    proto: Union[str, None] = None
+    key_mgmt: str = Field(example="NONE, SAE")
+    ieee80211w: Union[int, None] = None
 
 
 class WlanInterfaceSetup(BaseModel):
@@ -42,15 +44,26 @@ class WlanInterfaceSetup(BaseModel):
     removeAllFirst: bool
 
 
-class NetworkSetupStatus(BaseModel):
-    netId: str = Field(example="0")
+class NetworkEvent(BaseModel):
+    event: str = Field(example="authenticated")
+    time: str = Field(example="2024-09-01 03:52:31.232828")
+
+
+class NetworkSetupLog(BaseModel):
     selectErr: str = Field(example="fi.w1.wpa_supplicant1.NetworkUnknown")
+    eventLog: List[NetworkEvent]
+
+
+class NetworkSetupStatus(BaseModel):
+    status: str = Field(example="connected")
+    response: NetworkSetupLog
     connectedNet: ScanItem
     input: str
 
 
 class ConnectedNetwork(BaseModel):
-    connectedNet: ScanItem
+    connectedStatus: bool = Field(example=True)
+    connectedNet: Union[ScanItem, None]
 
 
 class Interface(BaseModel):
@@ -59,3 +72,7 @@ class Interface(BaseModel):
 
 class Interfaces(BaseModel):
     interfaces: List[Interface]
+
+
+class APIConfig(BaseModel):
+    timeout: int = Field(example=20)

@@ -30,6 +30,8 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-5",
     "wlanpi-grafana-wipry-lp-6",
     "wlanpi-grafana-wipry-lp-stop",
+    "wpa_supplicant",
+    "wpa_supplicant@wlan0",
 ]
 
 
