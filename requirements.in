@@ -12,3 +12,4 @@ requests
 # endpoint requires
 psutil
 dbus-python
+PyGObject

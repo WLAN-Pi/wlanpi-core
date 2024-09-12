@@ -21,6 +21,10 @@ SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 
 .PHONY: override_dh_virtualenv override_dh_installexamples 
 
+# ensure that the systemd services are handled by systemd.
+override_dh_installsystemd:
+	dh_installsystemd --name=wpa_supplicant@wlan0 wpa_supplicant@wlan0.service
+
 # we don't really want to strip the symbols from our object files.
 override_dh_strip:
 
