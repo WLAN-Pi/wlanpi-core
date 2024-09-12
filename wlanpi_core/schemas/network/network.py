@@ -29,7 +29,7 @@ class IPInterfaceAddress(BaseModel, extra=Extra.allow):
 
     @model_validator(mode='after')
     def check_dynamic_condition(self) -> Any:
-        print(self)
+        # print(self)
         if self.dynamic:
             self.prefixlen = 24
             self.local = "0.0.0.0"

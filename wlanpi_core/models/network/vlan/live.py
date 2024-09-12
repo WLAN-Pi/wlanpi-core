@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pprint import pp
-from typing import List
+from typing import List, Optional
 
 from wlanpi_core.models.network.vlan.vlan_errors import VLANCreationError, VLANExistsError, VLANDeletionError
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
@@ -21,7 +21,7 @@ class LiveVLANs:
     def get_vlan_interfaces_by_interface() -> dict[str, list[IPInterface]]:
         out_dict = defaultdict(list)
         for interface in LiveVLANs.get_vlan_interfaces():
-            out_dict[interface.ifname].append(interface)
+            out_dict[interface.link].append(interface)
         return out_dict
 
 
@@ -44,8 +44,13 @@ class LiveVLANs:
         return res.success
 
     @staticmethod
-    def start_dhcp_for_vlan(if_name: str, vlan_id: int) -> bool:
-        res = run_command(["dhcpcd", "-b", f"{if_name}.{vlan_id}"])
+    def start_dhcp_for_vlan(if_name: str, vlan_id: int, ip_version: Optional[str]=None) -> bool:
+        base_command = ["dhcpcd", "-b"]
+        if ip_version == '4':
+            base_command.extend(['--waitip', '4'])
+        if ip_version == '6':
+            base_command.extend(['--waitip', '6'])
+        res = run_command([*base_command, f"{if_name}.{vlan_id}"])
         return res.success
 
     @staticmethod
@@ -59,7 +64,7 @@ class LiveVLANs:
         # Create the VLAN:
         try:
             command = ["ip", "link", "add", "link", str(if_name), "name", f"{if_name}.{vlan_id}", "type", "vlan", "id", str(vlan_id)]
-            print(command)
+            # print(command)
             run_command(command)
         except Exception as e:
             raise VLANCreationError(f"Failed to create VLAN {vlan_id} on interface {if_name}: ") from e
@@ -67,7 +72,7 @@ class LiveVLANs:
         # Try to raise the interface
         try:
             command = ["ip", "link", "set", "up", f"{if_name}.{vlan_id}"]
-            print(command)
+            # print(command)
             run_command(command)
         except Exception as e:
             raise VLANCreationError(f"Failed to raise VLAN {vlan_id} on interface {if_name}: ") from e
@@ -90,7 +95,12 @@ class LiveVLANs:
                     address.prefixlen = 24
                     run_command(["ip", "addr", "add", f"{address.local}/{address.prefixlen}", *extras, "dev",
                                  f"{if_name}.{vlan_id}", *lifetimes])
-                    LiveVLANs.start_dhcp_for_vlan(if_name, vlan_id)
+                    ip_version = None,
+                    if address.family == "inet":
+                        ip_version = "4"
+                    if address.family == "inet6":
+                        ip_version = "6"
+                    LiveVLANs.start_dhcp_for_vlan(if_name, vlan_id, ip_version)
                 else:
                     if address.broadcast:
                         extras.extend(["broadcast", str(address.broadcast)])
@@ -119,7 +129,7 @@ class LiveVLANs:
         try:
             LiveVLANs.stop_dhcp_for_vlan(if_name, vlan_id)
             command = ["ip", "link", "set", "down", f"{if_name}.{vlan_id}"]
-            print(command)
+            # print(command)
             run_command(command)
         except Exception as e:
             raise VLANCreationError(f"Failed to down VLAN {vlan_id} on interface {if_name}: ") from e
@@ -140,26 +150,27 @@ class LiveVLANs:
 if __name__ == '__main__':
 
     live_vlans = LiveVLANs()
+    print(live_vlans.get_vlan_interfaces())
     # pp(live_vlans)
     # https://www.reddit.com/r/learnpython/comments/66sjjm/asyncio_main_is_sync_so_how_do_i_await_anything/
     #res = asyncio.get_event_loop().run_until_complete( task )
-    test_vlan_id = 120
-    if live_vlans.check_if_vlan_exists('eth0',test_vlan_id):
-        live_vlans.delete_vlan('eth0', test_vlan_id)
-
-    live_vlans.create_vlan('eth0',test_vlan_id, [
-        IPInterfaceAddress.model_validate({
-            "family": "inet",
-            "scope": "global",
-            "dynamic": True,
-        }),
-        IPInterfaceAddress.model_validate({
-            "family": "inet",
-            "scope": "global",
-            "local": "192.168.20.251",
-            "prefixlen": 24
-        })
-
-    ])
-
-    # print(live_vlans.kill_dhcp_for_vlan('eth0', test_vlan_id))
+    # test_vlan_id = 120
+    # if live_vlans.check_if_vlan_exists('eth0',test_vlan_id):
+    #     live_vlans.delete_vlan('eth0', test_vlan_id)
+    #
+    # live_vlans.create_vlan('eth0',test_vlan_id, [
+    #     IPInterfaceAddress.model_validate({
+    #         "family": "inet",
+    #         "scope": "global",
+    #         "dynamic": True,
+    #     }),
+    #     IPInterfaceAddress.model_validate({
+    #         "family": "inet",
+    #         "scope": "global",
+    #         "local": "192.168.20.251",
+    #         "prefixlen": 24
+    #     })
+    #
+    # ])
+    #
+    # # print(live_vlans.kill_dhcp_for_vlan('eth0', test_vlan_id))

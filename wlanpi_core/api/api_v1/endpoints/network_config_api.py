@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network_config
-from wlanpi_core.schemas.network.network import IPInterfaceAddress
+from wlanpi_core.schemas.network.network import IPInterfaceAddress, IPInterface
 from wlanpi_core.schemas.network_config import NetworkConfigResponse
 from wlanpi_core.services import network_config_service
 
@@ -14,16 +14,15 @@ router = APIRouter()
 
 log = logging.getLogger("uvicorn")
 
-@router.get("/ethernet/vlans", response_model=list[network_config.Vlan])
+@router.get("/ethernet/vlans", response_model=dict[str, list[IPInterface]])
 async def show_all_ethernet_vlans(interface: Optional[str] = None):
     """
     Returns all VLANS configured in /etc/network/interfaces.d/vlans
     """
 
     try:
-        return NetworkConfigResponse(
-            result=await network_config_service.get_vlans(interface)
-        )
+        return await network_config_service.get_vlans(interface)
+
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -45,15 +44,15 @@ async def show_all_ethernet_vlans(interface: Optional[str] = None):
 #         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/ethernet/vlans", response_model=network_config.NetworkConfigResponse)
-async def create_ethernet_vlan(interface: str, vlan_tag: Union[str,int], addresses: list[IPInterfaceAddress]):
+@router.post("/ethernet/vlans/{interface}/{vlan}", response_model=network_config.NetworkConfigResponse)
+async def create_ethernet_vlan(interface: str, vlan: Union[str,int], addresses: list[IPInterfaceAddress]):
     """
     Creates (or replaces) a VLAN on the given interface.
     """
 
     try:
-        await network_config_service.remove_vlan(interface=interface, vlan_id=vlan_tag, allow_missing=True)
-        await network_config_service.create_vlan(interface=interface, vlan_id=vlan_tag, addresses=addresses)
+        await network_config_service.remove_vlan(interface=interface, vlan_id=vlan, allow_missing=True)
+        await network_config_service.create_vlan(interface=interface, vlan_id=vlan, addresses=addresses)
         return NetworkConfigResponse(
             result= await network_config_service.get_vlans(interface)
         )
@@ -63,14 +62,14 @@ async def create_ethernet_vlan(interface: str, vlan_tag: Union[str,int], address
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
-@router.delete("/ethernet/vlans", response_model=network_config.NetworkConfigResponse)
-async def delete_ethernet_vlan(interface: str, vlan_tag: Union[str,int], allow_missing=False):
+@router.delete("/ethernet/vlans/{interface}/{vlan}", response_model=network_config.NetworkConfigResponse)
+async def delete_ethernet_vlan(interface: str, vlan: Union[str,int], allow_missing=False):
     """
     Removes a VLAN from the given interface.
     """
 
     try:
-        await network_config_service.remove_vlan(interface=interface, vlan_id=vlan_tag, allow_missing=allow_missing)
+        await network_config_service.remove_vlan(interface=interface, vlan_id=vlan, allow_missing=allow_missing)
         return NetworkConfigResponse(
             result=await network_config_service.get_vlans(interface)
         )

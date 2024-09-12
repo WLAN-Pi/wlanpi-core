@@ -17,7 +17,7 @@ async def get_vlans(interface: Optional[str] = None):
     if interface is None:
         return LiveVLANs.get_vlan_interfaces_by_interface()
     else:
-        return LiveVLANs.get_vlan_interfaces_by_interface().get(interface, {})
+        return {interface: LiveVLANs.get_vlan_interfaces_by_interface().get(interface, [])}
 
 async def create_vlan(interface: str, vlan_id: Union[str,int], addresses: list[IPInterfaceAddress]):
     """
