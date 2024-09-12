@@ -2,12 +2,8 @@ from collections import defaultdict
 from pprint import pp
 from typing import List
 
-from wlanpi_core.models.network.vlan.vlan_errors import VLANNotFoundError, VLANCreationError, VLANExistsError, \
-    VLANDeletionError
-from wlanpi_core.models.unified_result import UnifiedResult
+from wlanpi_core.models.network.vlan.vlan_errors import VLANCreationError, VLANExistsError, VLANDeletionError
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
-from wlanpi_core.schemas.network_config import Vlan
-from wlanpi_core.services.helpers import run_cli_async
 from wlanpi_core.utils.general import run_command
 
 
@@ -34,6 +30,24 @@ class LiveVLANs:
         cmd_output = run_command(["ip", "-j", "addr", "show", f"{if_name}.{vlan_id}"], raise_on_fail=False)
         return cmd_output.success
 
+
+    # @staticmethod
+    # def kill_dhcp_for_vlan(if_name: str, vlan_id: int) -> None:
+    #     ps_output = run_command("jc ps -aux".split(' ')).output_from_json()
+    #     ps_item = next((i for i in ps_output if i["command"].startswith(f"dhcpcd: {if_name}.{vlan_id}")), None)
+    #     if ps_item is not None:
+    #         run_command(["kill", "-9", str(ps_item["pid"])])
+
+    @staticmethod
+    def stop_dhcp_for_vlan(if_name: str, vlan_id: int) -> bool:
+        res = run_command(["dhcpcd", "-x", f"{if_name}.{vlan_id}"], raise_on_fail=False)
+        return res.success
+
+    @staticmethod
+    def start_dhcp_for_vlan(if_name: str, vlan_id: int) -> bool:
+        res = run_command(["dhcpcd", "-b", f"{if_name}.{vlan_id}"])
+        return res.success
+
     @staticmethod
     # async def create_vlan(configuration: Vlan):
     def create_vlan(if_name: str, vlan_id: int, addresses: List[IPInterfaceAddress]  ):
@@ -50,31 +64,65 @@ class LiveVLANs:
         except Exception as e:
             raise VLANCreationError(f"Failed to create VLAN {vlan_id} on interface {if_name}: ") from e
 
+        # Try to raise the interface
         try:
-            # Add addresses to the VLAN
-            for address in addresses:
-                extras = []
-                if address.broadcast:
-                    extras.extend(["broadcast", str(address.broadcast)])
-                if address.anycast:
-                    extras.extend(["anycast", str(address.anycast)])
-                if address.scope:
-                    extras.extend(["scope", str(address.scope)])
-
-                lifetimes = []
-                if address.valid_life_time:
-                    lifetimes.extend(["valid_lft", str(address.valid_life_time)])
-                if address.preferred_life_time:
-                    lifetimes.extend(["preferred_lft", str(address.preferred_life_time)])
-                run_command(["ip", "addr", "add", f"{address.local}/{address.prefixlen}", *extras, "dev", f"{if_name}.{vlan_id}", *lifetimes])
-
+            command = ["ip", "link", "set", "up", f"{if_name}.{vlan_id}"]
+            print(command)
+            run_command(command)
         except Exception as e:
-            # If this fails in any way, we should consider creation failed and attempt to remove the VLAN.
-            run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"], raise_on_fail=False)
-            raise VLANCreationError(f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: ") from e
+            raise VLANCreationError(f"Failed to raise VLAN {vlan_id} on interface {if_name}: ") from e
+
+
+        # Add addresses to the VLAN
+        for address in addresses:
+            try:
+                extras = []
+                pp(address)
+                if address.dynamic:
+                    if address.scope:
+                        extras.extend(["scope", str(address.scope)])
+                    lifetimes = []
+                    if address.valid_life_time:
+                        lifetimes.extend(["valid_lft", str(address.valid_life_time)])
+                    if address.preferred_life_time:
+                        lifetimes.extend(["preferred_lft", str(address.preferred_life_time)])
+                    address.local = "0.0.0.0"
+                    address.prefixlen = 24
+                    run_command(["ip", "addr", "add", f"{address.local}/{address.prefixlen}", *extras, "dev",
+                                 f"{if_name}.{vlan_id}", *lifetimes])
+                    LiveVLANs.start_dhcp_for_vlan(if_name, vlan_id)
+                else:
+                    if address.broadcast:
+                        extras.extend(["broadcast", str(address.broadcast)])
+                    if address.anycast:
+                        extras.extend(["anycast", str(address.anycast)])
+                    if address.scope:
+                        extras.extend(["scope", str(address.scope)])
+
+                    lifetimes = []
+                    if address.valid_life_time:
+                        lifetimes.extend(["valid_lft", str(address.valid_life_time)])
+                    if address.preferred_life_time:
+                        lifetimes.extend(["preferred_lft", str(address.preferred_life_time)])
+                    run_command(["ip", "addr", "add", f"{address.local}/{address.prefixlen}", *extras, "dev", f"{if_name}.{vlan_id}", *lifetimes])
+
+            except Exception as e:
+                # If this fails in any way, we should consider creation failed and attempt to remove the VLAN.
+                run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"], raise_on_fail=False)
+                raise VLANCreationError(f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: ") from e
 
     @staticmethod
-    def delete_vlan(if_name: str, vlan_id: int,):
+    def delete_vlan(if_name: str, vlan_id: int, allow_missing: False):
+        if allow_missing and not LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
+            return
+        # Try to down the interface
+        try:
+            LiveVLANs.stop_dhcp_for_vlan(if_name, vlan_id)
+            command = ["ip", "link", "set", "down", f"{if_name}.{vlan_id}"]
+            print(command)
+            run_command(command)
+        except Exception as e:
+            raise VLANCreationError(f"Failed to down VLAN {vlan_id} on interface {if_name}: ") from e
         try:
             run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"])
         except Exception as e:
@@ -95,11 +143,23 @@ if __name__ == '__main__':
     # pp(live_vlans)
     # https://www.reddit.com/r/learnpython/comments/66sjjm/asyncio_main_is_sync_so_how_do_i_await_anything/
     #res = asyncio.get_event_loop().run_until_complete( task )
-    pp(live_vlans.check_if_vlan_exists('eth0',101))
+    test_vlan_id = 120
+    if live_vlans.check_if_vlan_exists('eth0',test_vlan_id):
+        live_vlans.delete_vlan('eth0', test_vlan_id)
 
-    live_vlans.create_vlan('eth0',102, [IPInterfaceAddress.model_validate({
-        "family": "inet",
-        "local": "192.168.199.200",
-        "prefixlen": 24,
-        "scope": "global",
-      })])
+    live_vlans.create_vlan('eth0',test_vlan_id, [
+        IPInterfaceAddress.model_validate({
+            "family": "inet",
+            "scope": "global",
+            "dynamic": True,
+        }),
+        IPInterfaceAddress.model_validate({
+            "family": "inet",
+            "scope": "global",
+            "local": "192.168.20.251",
+            "prefixlen": 24
+        })
+
+    ])
+
+    # print(live_vlans.kill_dhcp_for_vlan('eth0', test_vlan_id))
