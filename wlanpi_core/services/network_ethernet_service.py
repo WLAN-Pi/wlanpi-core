@@ -3,10 +3,8 @@ from typing import Optional, Union
 from ..models.network.vlan import LiveVLANs
 from ..models.network.vlan.vlan_file import VLANFile
 from ..schemas.network.network import IPInterfaceAddress
-from ..schemas.network_config.network_config import  Vlan
 
 # https://man.cx/interfaces(5)
-
 
 async def get_vlans(interface: Optional[str] = None):
     """
