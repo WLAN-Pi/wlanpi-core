@@ -1,5 +1,6 @@
 from typing import Optional, Union
 
+from ..models.network import common
 from ..models.network.vlan import LiveVLANs
 from ..models.network.vlan.vlan_file import VLANFile
 from ..schemas.network.network import IPInterfaceAddress
@@ -33,3 +34,12 @@ async def remove_vlan(interface: str, vlan_id: Union[str,int], allow_missing=Fal
     vlan_file = VLANFile()
     return LiveVLANs.delete_vlan(if_name=interface, vlan_id=int(vlan_id), allow_missing=allow_missing)
 
+
+async def get_interfaces(interface: str, allow_missing=False):
+    """
+    Removes a VLAN definition for a given interface.
+    """
+    if interface is None:
+        return common.get_interfaces_by_interface()
+    else:
+        return {interface: common.get_interfaces_by_interface().get(interface, [])}

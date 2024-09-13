@@ -2,6 +2,7 @@ from collections import defaultdict
 from pprint import pp
 from typing import List, Optional
 
+from wlanpi_core.models.network import common
 from wlanpi_core.models.network.vlan.vlan_errors import VLANCreationError, VLANExistsError, VLANDeletionError
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core.utils.general import run_command
@@ -14,13 +15,12 @@ class LiveVLANs:
 
     @staticmethod
     def get_vlan_interfaces() -> list[IPInterface]:
-        cmd_output = run_command("ip -j addr show type vlan".split(' ')).output_from_json()
-        return [IPInterface.model_validate(i) for i in cmd_output]
+        return common.get_interfaces(show_type='vlan')
 
     @staticmethod
     def get_vlan_interfaces_by_interface() -> dict[str, list[IPInterface]]:
         out_dict = defaultdict(list)
-        for interface in LiveVLANs.get_vlan_interfaces():
+        for interface in common.get_interfaces(show_type='vlan'):
             out_dict[interface.link].append(interface)
         return out_dict
 
@@ -67,7 +67,7 @@ class LiveVLANs:
             # print(command)
             run_command(command)
         except Exception as e:
-            raise VLANCreationError(f"Failed to create VLAN {vlan_id} on interface {if_name}: ") from e
+            raise VLANCreationError(f"Failed to create VLAN {vlan_id} on interface {if_name}: {str(e)}") from e
 
         # Try to raise the interface
         try:
@@ -75,7 +75,7 @@ class LiveVLANs:
             # print(command)
             run_command(command)
         except Exception as e:
-            raise VLANCreationError(f"Failed to raise VLAN {vlan_id} on interface {if_name}: ") from e
+            raise VLANCreationError(f"Failed to raise VLAN {vlan_id} on interface {if_name}: {str(e)}") from e
 
 
         # Add addresses to the VLAN
@@ -119,7 +119,7 @@ class LiveVLANs:
             except Exception as e:
                 # If this fails in any way, we should consider creation failed and attempt to remove the VLAN.
                 run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"], raise_on_fail=False)
-                raise VLANCreationError(f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: ") from e
+                raise VLANCreationError(f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: {str(e)}") from e
 
     @staticmethod
     def delete_vlan(if_name: str, vlan_id: int, allow_missing: False):
@@ -132,11 +132,11 @@ class LiveVLANs:
             # print(command)
             run_command(command)
         except Exception as e:
-            raise VLANCreationError(f"Failed to down VLAN {vlan_id} on interface {if_name}: ") from e
+            raise VLANDeletionError(f"Failed to down VLAN {vlan_id} on interface {if_name}: {str(e)}") from e
         try:
             run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"])
         except Exception as e:
-            raise VLANDeletionError(f"Failed to delete interface {if_name}.{vlan_id}: ") from e
+            raise VLANDeletionError(f"Failed to delete interface {if_name}.{vlan_id}: {str(e)}") from e
 
 
 
