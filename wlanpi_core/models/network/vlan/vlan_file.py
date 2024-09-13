@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Optional, Union
 
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.schemas.network_config import Vlan
+from wlanpi_core.schemas.network.config import Vlan
 from wlanpi_core.services.helpers import run_cli_async
 
 
