@@ -10,7 +10,13 @@ def get_interfaces(show_type: Optional[IP_SHOW_TYPES] = None, custom_filter: Opt
     cmd = ["ip", "--details", "-j", "addr", "show"]
     if show_type:
         cmd += ["type", show_type.lower()]
-    cmd_output = run_command(cmd).output_from_json()
+    cmd_output: list[dict[str, any]] = run_command(cmd).output_from_json()
+
+    # Attach extra data, like link speed
+    for interface in cmd_output:
+        if interface["ifname"].startswith('eth'):
+            interface['link_speed'] = int(run_command(["cat", f"/sys/class/net/{interface['ifname']}/speed"]).output)
+
     if custom_filter:
         return [j for j in [IPInterface.model_validate(i) for i in cmd_output] if custom_filter(j)]
     return [IPInterface.model_validate(i) for i in cmd_output]
