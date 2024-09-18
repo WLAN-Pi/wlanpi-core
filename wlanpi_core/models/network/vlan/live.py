@@ -5,6 +5,7 @@ from typing import List, Optional
 from wlanpi_core.models.network import common
 from wlanpi_core.models.network.vlan.vlan_errors import VLANCreationError, VLANExistsError, VLANDeletionError
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
+from wlanpi_core.schemas.network.types import CustomIPInterfaceFilter
 from wlanpi_core.utils.general import run_command
 
 
@@ -14,13 +15,13 @@ class LiveVLANs:
         self.vlan_interfaces_by_interface = self.get_vlan_interfaces_by_interface()
 
     @staticmethod
-    def get_vlan_interfaces() -> list[IPInterface]:
-        return common.get_interfaces(show_type='vlan')
+    def get_vlan_interfaces(custom_filter: Optional[CustomIPInterfaceFilter] = None) -> list[IPInterface]:
+        return common.get_interfaces(show_type='vlan', custom_filter=custom_filter)
 
     @staticmethod
-    def get_vlan_interfaces_by_interface() -> dict[str, list[IPInterface]]:
+    def get_vlan_interfaces_by_interface(custom_filter: Optional[CustomIPInterfaceFilter] = None) -> dict[str, list[IPInterface]]:
         out_dict = defaultdict(list)
-        for interface in common.get_interfaces(show_type='vlan'):
+        for interface in common.get_interfaces(show_type='vlan', custom_filter=custom_filter):
             out_dict[interface.link].append(interface)
         return out_dict
 
