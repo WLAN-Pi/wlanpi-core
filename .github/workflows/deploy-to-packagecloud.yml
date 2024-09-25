@@ -19,9 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [bullseye]
+        distro: [bullseye,bookworm]
         arch: [arm64]
-        # arch: [armhf,arm64]
 
     environment: PACKAGECLOUD
 
@@ -37,7 +36,7 @@ jobs:
           arch: ${{ matrix.arch }}
 
       - name: Archive artifacts and upload to GitHub
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wlanpi-core-${{ matrix.distro }}-${{ matrix.arch }}
           path: ${{ steps.build-debian-package.outputs.deb-package }}
