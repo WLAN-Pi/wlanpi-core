@@ -6,6 +6,4 @@ api_router = APIRouter()
 
 api_router.include_router(system_api.router, prefix="/system", tags=["system"])
 
-api_router.include_router(
-    network_api.router, prefix="/network", tags=["network information", "network_configuration"]
-)
+api_router.include_router(network_api.router, prefix="/network", tags=["network"])

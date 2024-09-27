@@ -17,4 +17,3 @@ def run_command(cmd: list, shell=False, raise_on_fail=True) -> CommandResult:
     if raise_on_fail and cp.returncode != 0:
         raise RunCommandError(cp.stderr, cp.returncode)
     return CommandResult(cp.stdout, cp.stderr, cp.returncode)
-
