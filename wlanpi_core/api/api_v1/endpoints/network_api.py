@@ -1,10 +1,14 @@
 import logging
+from typing import Optional, Union
 
 from fastapi import APIRouter, Response
 
+from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
-from wlanpi_core.services import network_service
+from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
+from wlanpi_core.schemas.network.config import NetworkConfigResponse
+from wlanpi_core.services import network_service, network_ethernet_service
 
 router = APIRouter()
 
@@ -12,6 +16,148 @@ API_DEFAULT_TIMEOUT = 20
 
 log = logging.getLogger("uvicorn")
 
+################################
+# General Network Management   #
+################################
+@router.get("/interfaces", response_model=dict[str, list[IPInterface]])
+@router.get("/interfaces/{interface}", response_model=dict[str, list[IPInterface]])
+async def show_all_interfaces(interface: Optional[str] = None):
+    """
+    Returns all network interfaces.
+    """
+    if interface and interface.lower() == "all":
+        interface=None
+
+    try:
+        return await network_ethernet_service.get_interfaces(interface=interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except VLANError as ve:
+        log.error(ve)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+################################
+# Ethernet Management          #
+################################
+@router.get("/ethernet/{interface}", response_model=dict[str, list[IPInterface]])
+async def show_all_ethernet_interfaces(interface: Optional[str] = None):
+    """
+    Returns all ethernet interfaces.
+    """
+    if interface and interface.lower() == "all":
+        interface=None
+
+    try:
+        def filterfunc(i):
+            iface_obj = i.model_dump()
+            # TODO: Naive approach, come up with a better one later, maybe IP command has a better way to filter?
+            return "linkinfo" not in iface_obj and iface_obj['link_type'] != 'loopback' and iface_obj["ifname"].startswith("eth")
+
+        return await network_ethernet_service.get_interfaces(interface=interface, custom_filter=filterfunc)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except VLANError as ve:
+        log.error(ve)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+################################
+# VLAN Management              #
+################################
+
+@router.get("/ethernet/all/vlan", response_model=dict[str, list[IPInterface]])
+@router.get("/ethernet/all/vlan/{vlan}", response_model=dict[str, list[IPInterface]])
+@router.get("/ethernet/{interface}/vlan", response_model=dict[str, list[IPInterface]])
+@router.get("/ethernet/{interface}/vlan/{vlan}", response_model=dict[str, list[IPInterface]])
+async def show_all_ethernet_vlans(interface: Optional[str] = None, vlan: Optional[str] = None):
+    """
+    Returns all VLANS for a given ethernet interface.
+    """
+    custom_filter = lambda i: True
+    if not interface or interface.lower() == "all":
+        interface = None
+    if vlan and vlan.lower() == "all":
+        vlan = None
+    if vlan and vlan.lower() != "all":
+        def filterfunc(i):
+            return i.model_dump().get("linkinfo", {}).get("info_kind") == "vlan" and i.model_dump().get("linkinfo", {}).get(
+                "info_data", {}).get("id") == int(vlan)
+        custom_filter = filterfunc
+    try:
+        return await network_ethernet_service.get_vlans(interface=interface, custom_filter=custom_filter)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except VLANError as ve:
+        log.error(ve)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post("/ethernet/{interface}/vlan/{vlan}", response_model=network.config.NetworkConfigResponse)
+async def create_ethernet_vlan(interface: str, vlan: Union[str,int], addresses: list[IPInterfaceAddress]):
+    """
+    Creates (or replaces) a VLAN on the given interface.
+    """
+
+    # Screen against "all" for this operation
+    if interface and interface.lower() == "all":
+        ve = ValidationError("The \"all\" meta-interface is not currently supported for this operation", 400)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+
+    try:
+        await network_ethernet_service.remove_vlan(interface=interface, vlan_id=vlan, allow_missing=True)
+        await network_ethernet_service.create_vlan(interface=interface, vlan_id=vlan, addresses=addresses)
+        return NetworkConfigResponse(
+            result= await network_ethernet_service.get_vlans(interface)
+        )
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except VLANError as ve:
+        log.error(ve)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+@router.delete("/ethernet/{interface}/vlan/{vlan}", response_model=network.config.NetworkConfigResponse)
+async def delete_ethernet_vlan(interface: str, vlan: Union[str,int], allow_missing=False):
+    """
+    Removes a VLAN from the given interface.
+    """
+
+    # Screen against "all" for this operation
+    if interface and interface.lower() == "all":
+        ve = ValidationError("The \"all\" meta-interface is not currently supported for this operation", 400)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+
+    try:
+        await network_ethernet_service.remove_vlan(interface=interface, vlan_id=vlan, allow_missing=allow_missing)
+        return NetworkConfigResponse(
+            result=await network_ethernet_service.get_vlans(interface)
+        )
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except VLANError as ve:
+        log.error(ve)
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+################################
+# WLAN Management              #
+################################
 
 @router.get("/wlan/getInterfaces", response_model=network.Interfaces)
 async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):

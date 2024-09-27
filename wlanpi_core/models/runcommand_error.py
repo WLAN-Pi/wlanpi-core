@@ -1,5 +1,5 @@
 class RunCommandError(Exception):
-    """Raised when run_cli_async(cmd) returns stderr"""
+    """Raised when runcommand returns stderr"""
 
     def __init__(self, error_msg: str, status_code: int):
         super().__init__(error_msg)
