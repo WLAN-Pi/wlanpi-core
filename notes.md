@@ -1,3 +1,5 @@
+# Note from MDK
+
 new packages needed:
 - vlan
 
@@ -22,3 +24,7 @@ may need to restart networking, or at least the affected interface:
 either 
 `sudo ifdown wlan0 && sudo ifup wlan0` or
 `sudo ip addr flush interface-name && sudo systemctl restart networking`
+
+## TODO
+
+Proabbly migrate these notes and delete this file 
