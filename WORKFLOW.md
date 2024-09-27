@@ -33,7 +33,7 @@ Install depends:
 
 ```
 sudo apt update 
-sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake
+sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan 
 sudo apt-get install -y -q python3-pip python3-dev python3-venv python3-wheel
 ```
 
