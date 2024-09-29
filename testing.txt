@@ -74,7 +74,7 @@ pytest==8.3.3
     #   -r testing.in
     #   pytest-cov
     #   pytest-mock
-pytest-cov==4.1.0
+pytest-cov==5.0.0
     # via -r testing.in
 pytest-mock==3.11.1
     # via -r testing.in
