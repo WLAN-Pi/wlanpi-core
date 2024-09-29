@@ -38,7 +38,7 @@ jobs:
           path: ${{ steps.build-debian-package.outputs.deb-package }}
         
   slack-workflow-status:
-    if:  ${{ always() && (vars.SKIP_SLACK != 'true') }}
+    if: ${{ always() && (vars.SKIP_SLACK != 'true') && (github.repository_owner == 'WLAN-Pi') }}
     name: Post Workflow Status to Slack
     needs:
       - sbuild

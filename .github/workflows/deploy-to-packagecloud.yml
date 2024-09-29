@@ -62,7 +62,7 @@ jobs:
           packagecloud-token: ${{ secrets.PACKAGECLOUD_TOKEN }}
   
   slack-workflow-status:
-    if: ${{ always() && (vars.SKIP_SLACK != 'true') }}
+    if: ${{ always() && (vars.SKIP_SLACK != 'true') && (github.repository_owner == 'WLAN-Pi') }}
     name: Post Workflow Status to Slack
     needs:
       - sbuild
