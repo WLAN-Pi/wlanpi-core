@@ -4,8 +4,6 @@
 #
 #    pip-compile testing.in
 #
---extra-index-url https://www.piwheels.org/simple
-
 autoflake==2.2.0
     # via -r testing.in
 black==23.7.0
@@ -32,7 +30,7 @@ filelock==3.12.2
     # via
     #   tox
     #   virtualenv
-flake8==6.1.0
+flake8==7.1.1
     # via -r testing.in
 iniconfig==2.0.0
     # via pytest
@@ -63,9 +61,9 @@ pluggy==1.2.0
     # via
     #   pytest
     #   tox
-pycodestyle==2.11.0
+pycodestyle==2.12.1
     # via flake8
-pyflakes==3.1.0
+pyflakes==3.2.0
     # via
     #   autoflake
     #   flake8
