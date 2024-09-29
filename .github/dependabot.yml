@@ -2,5 +2,6 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     directory: "/"
-    schedule:
+    schedule: 
+      interval: "weekly"
     interval: "daily"
