@@ -76,7 +76,7 @@ pytest==8.3.3
     #   pytest-mock
 pytest-cov==5.0.0
     # via -r testing.in
-pytest-mock==3.11.1
+pytest-mock==3.14.0
     # via -r testing.in
 tomli==2.0.1
     # via
