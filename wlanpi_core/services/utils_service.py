@@ -162,11 +162,11 @@ def parse_ufw(output):
     Parses the output of the UFW file into readable json for the api.
     """
 
-    lines = output.strip().split('\n')
-    
+    lines = output.strip().split("\n")
+
     status_line = lines[0]
     status = status_line.split(":")[1].strip()
-    
+
     # Check if there are at least 3 lines (status + headers + at least one rule)
     if len(lines) <= 3:
         # No rules present in the output
@@ -174,9 +174,9 @@ def parse_ufw(output):
     else:
         rules = lines[3:]
         parsed_rules = []
-        
+
         # IPv6 pattern detection: "XX (v6)" followed by "ALLOW" and "Anywhere (v6)"
-        ipv6_pattern = re.compile(r'\(v6\)')
+        ipv6_pattern = re.compile(r"\(v6\)")
 
         for rule in rules:
             parts = rule.split()
@@ -184,19 +184,15 @@ def parse_ufw(output):
             if len(parts) >= 3 and (parts[1] == "ALLOW" or parts[1] == "DENY"):
                 to = parts[0]
                 action = parts[1]
-                from_ = ' '.join(parts[2:]) 
+                from_ = " ".join(parts[2:])
             elif len(parts) >= 4 and ipv6_pattern.search(rule):
-                to = ' '.join(parts[0:2])
+                to = " ".join(parts[0:2])
                 action = parts[2]
-                from_ = ' '.join(parts[3:]) 
+                from_ = " ".join(parts[3:])
             else:
                 continue
-            
-            parsed_rules.append({
-                "To": to,
-                "Action": action,
-                "From": from_
-            })
+
+            parsed_rules.append({"To": to, "Action": action, "From": from_})
     final_output = {"status": status, "ports": parsed_rules}
     return final_output
 

@@ -54,9 +54,7 @@ def show_interfaces():
         # Something broke is our regex - report an issue
         interfaces["error"] = "match error"
     else:
-
         for result in interface_re:
-
             # save the interface name
             interface_name = result[0]
             interfaces[interface_name] = {}
@@ -78,7 +76,6 @@ def show_interfaces():
 
                 # do check if this is an interface in monitor mode
                 if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
-
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
                         iw_info = subprocess.check_output(
@@ -250,7 +247,6 @@ def show_vlan():
     )
 
     if os.path.exists(lldpneigh_file):
-
         try:
             vlan_output = subprocess.check_output(vlan_cmd, shell=True).decode()
             for line in vlan_output.split("\n"):
@@ -275,7 +271,6 @@ def show_lldp_neighbour():
     neighbour_cmd = "sudo cat " + lldpneigh_file
 
     if os.path.exists(lldpneigh_file):
-
         try:
             neighbour_output = subprocess.check_output(
                 neighbour_cmd, shell=True
@@ -303,7 +298,6 @@ def show_cdp_neighbour():
     neighbour_cmd = "sudo cat " + cdpneigh_file
 
     if os.path.exists(cdpneigh_file):
-
         try:
             neighbour_output = subprocess.check_output(
                 neighbour_cmd, shell=True
