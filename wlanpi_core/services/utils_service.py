@@ -162,41 +162,41 @@ def parse_ufw(output):
     Parses the output of the UFW file into readable json for the api.
     """
 
-    lines = output.strip().split("\n")
-
+    lines = output.strip().split('\n')
+    
     status_line = lines[0]
-    status = status_line.split(":")[1].strip()  # Extract status value after "Status:"
-
-    # Check if there are at least 4 lines (status + headers + at least one rule)
-    if len(lines) <= 4:
+    status = status_line.split(":")[1].strip()
+    
+    # Check if there are at least 3 lines (status + headers + at least one rule)
+    if len(lines) <= 3:
         # No rules present in the output
-        parsed_rules = ["No UF info detected"]
-    else:
-        # Skip the first 4 lines as they are headers or status
-        rules = lines[4:]
-
         parsed_rules = []
+    else:
+        rules = lines[3:]
+        parsed_rules = []
+        
+        # IPv6 pattern detection: "XX (v6)" followed by "ALLOW" and "Anywhere (v6)"
+        ipv6_pattern = re.compile(r'\(v6\)')
 
         for rule in rules:
             parts = rule.split()
 
-            # Check if the line is long enough to be a rule and not malformed
-            if len(parts) >= 3:
-                if parts[1] == "ALLOW" or parts[1] == "DENY":
-                    # Correctly formatted rule (e.g., "22/tcp ALLOW Anywhere")
-                    to = parts[0]
-                    action = parts[1]
-                    from_ = " ".join(
-                        parts[2:]
-                    )  # Join remaining parts in case "From" has multiple words
-                else:
-                    # Special rule format (e.g., "Anywhere on pan0 ALLOW Anywhere")
-                    to = " ".join(parts[:3])  # Combine first two parts for 'To'
-                    action = parts[3]
-                    from_ = " ".join(parts[4:])  # Remaining parts for 'From'
-
-                parsed_rules.append({"To": to, "Action": action, "From": from_})
-
+            if len(parts) >= 3 and (parts[1] == "ALLOW" or parts[1] == "DENY"):
+                to = parts[0]
+                action = parts[1]
+                from_ = ' '.join(parts[2:]) 
+            elif len(parts) >= 4 and ipv6_pattern.search(rule):
+                to = ' '.join(parts[0:2])
+                action = parts[2]
+                from_ = ' '.join(parts[3:]) 
+            else:
+                continue
+            
+            parsed_rules.append({
+                "To": to,
+                "Action": action,
+                "From": from_
+            })
     final_output = {"status": status, "ports": parsed_rules}
     return final_output
 
