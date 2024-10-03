@@ -4,3 +4,16 @@ updates:
     directory: "/"
     schedule: 
       interval: "weekly"
+    allow:
+      - dependency-name: fastapi
+      - dependency-name: httpx
+      - dependency-name: Jinja2
+      - dependency-name: aiofiles
+      - dependency-name: gunicorn
+      - dependency-name: uvicorn
+      - dependency-name: python-dotenv
+      - dependency-name: pydantic-settings
+      - dependency-name: requests
+      - dependency-name: psutil
+      - dependency-name: dbus-python
+      - dependency-name: PyGObject
