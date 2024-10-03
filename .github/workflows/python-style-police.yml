@@ -42,7 +42,7 @@ jobs:
     if: ${{ always() && (github.repository_owner == 'WLAN-Pi') }}
     name: Post Workflow Status to Slack
     needs:
-      - python
+      - python-style-police
     runs-on: 'ubuntu-22.04'
     steps:
       - name: Slack Workflow Notification
