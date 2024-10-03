@@ -19,6 +19,8 @@ class Settings(BaseSettings):
         },
     ]
 
+    DEBUGGING: bool = False
+
     class Config:
         case_sensitive = True
         base_dir: Path = None

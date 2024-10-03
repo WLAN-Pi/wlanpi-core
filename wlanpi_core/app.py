@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 # stdlib imports
+import logging
+import os
 
 # third party imports
 import uvicorn
@@ -14,12 +16,31 @@ from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.views import api
 
-# setup logger
-log_config = uvicorn.config.LOGGING_CONFIG
-log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
+
+def configure_logging():
+    log_config = uvicorn.config.LOGGING_CONFIG
+    log_config["formatters"]["access"][
+        "fmt"
+    ] = "%(asctime)s - %(levelname)s - %(message)s"
+    log_config["formatters"]["default"][
+        "fmt"
+    ] = "%(asctime)s - %(levelname)s - %(message)s"
+    log_level = logging.DEBUG if settings.DEBUGGING else logging.INFO
+    logging.config.dictConfig(log_config)
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_logger.setLevel(log_level)
+    return log_config
 
 
 def create_app():
+    if "WLANPI_CORE_DEBUGGING" in os.environ:
+        level = os.environ["WLANPI_CORE_DEBUGGING"]
+        if level == "1":
+            settings.DEBUGGING = True
+    print(f"create_app settings.DEBUGGING: {settings.DEBUGGING}")
+
+    log_config = configure_logging()
+
     app = FastAPI(
         title=settings.PROJECT_NAME,
         description=settings.PROJECT_DESCRIPTION,

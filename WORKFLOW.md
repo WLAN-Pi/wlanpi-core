@@ -151,6 +151,31 @@ Doing some development on the backend and want run your version in place instead
 
 For more information on the debug options gunicorn provides, including how to watch extra files for reloading, check the [Gunicorn settings documentation](https://docs.gunicorn.org/en/stable/settings.html#debugging).
 
+## Debugging while developing or running
+
+### Add debugging
+
+Pick one of the two options below:
+
+Set the variable and then preserve the environment when running like `sudo -E`:
+
+```
+export WLANPI_CORE_DEBUGGING=1
+sudo -E venv/bin/python -m wlanpi_core
+```
+
+Set the environment variable while running as sudo:
+
+```
+sudo WLANPI_CORE_DEBUGGING=1 venv/bin/python -m wlanpi_core
+```
+
+To stop debugging:
+
+```
+unset WLANPI_CORE_DEBUGGING
+```
+
 ## Troubleshooting
 
 Problems with the unit file? Check out the journal for the service:

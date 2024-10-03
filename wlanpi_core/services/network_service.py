@@ -9,6 +9,7 @@ from gi.repository import GLib
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
+from wlanpi_core.services.helpers import debug_print
 
 # For running locally (not in API)
 # import asyncio
@@ -22,34 +23,6 @@ WPAS_DBUS_BSS_INTERFACE = "fi.w1.wpa_supplicant1.BSS"
 WPAS_DBUS_NETWORK_INTERFACE = "fi.w1.wpa_supplicant1.Network"
 
 API_TIMEOUT = 20
-
-# Define a global debug level variable
-DEBUG_LEVEL = 1
-# Debug Level 0: No messages are printed.
-# Debug Level 1: Only low-level messages (level 1) are printed.
-# Debug Level 2: Low-level and medium-level messages (levels 1 and 2) are printed.
-# Debug Level 3: All messages (levels 1, 2, and 3) are printed.
-
-
-def set_debug_level(level):
-    """
-    Sets the global debug level.
-
-    :param level: The desired debug level (0 for no debug, higher values for more verbosity).
-    """
-    global DEBUG_LEVEL
-    DEBUG_LEVEL = level
-
-
-def debug_print(message, level):
-    """
-    Prints a message to the console based on the global debug level.
-
-    :param message: The message to be printed.
-    :param level: The level of the message (e.g., 1 for low, 2 for medium, 3 for high).
-    """
-    if level <= DEBUG_LEVEL:
-        print(message)
 
 
 allowed_scan_types = [

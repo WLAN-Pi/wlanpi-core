@@ -53,45 +53,46 @@ def setup_parser() -> argparse.ArgumentParser:
         "--reload", dest="livereload", action="store_true", default=False
     )
     parser.add_argument("--port", "-p", dest="port", type=port, default=8000)
-
+    parser.add_argument(
+        "--debug",
+        "-d",
+        dest="debug",
+        action="store_true",
+        default=False,
+        help="Enable debugging",
+    )
     parser.add_argument(
         "--version", "-V", "-v", action="version", version=f"{__version__}"
     )
     return parser
 
 
-def confirm_prompt(question: str) -> bool:
-    reply = None
-    while reply not in ("y", "n"):
-        reply = input(f"{question} (y/n): ").lower()
-    return reply == "y"
-
-
 def main() -> None:
     parser = setup_parser()
     args = parser.parse_args()
 
-    try:
-        lets_go = confirm_prompt(
-            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development and debugging! Continue?"
-        )
-    except KeyboardInterrupt:
-        print("\nInterrupt detected, exiting...")
-        sys.exit(0)
+    print(
+        "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically ONLY for quick testing and debugging!"
+    )
 
     if not args.livereload:
         print(
-            "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
+            "Consider running with --reload for live reload as you iterate on hotfixes or features..."
         )
 
-    if lets_go:
-        uvicorn.run(
-            "wlanpi_core.asgi:app",
-            port=args.port,
-            host="0.0.0.0",
-            reload=args.livereload,
-            log_level="debug",
-        )
+    if os.getenv("WLANPI_CORE_DEBUGGING") == "1":
+        print("WLANPI_CORE_DEBUGGING is set to 1... debugging already enabled...")
+    else:
+        if args.debug:
+            os.environ["WLANPI_CORE_DEBUGGING"] = "1"
+        else:
+            print("Consider running with --debug or -d to increase the debug level...")
+
+    print("\n")
+
+    uvicorn.run(
+        "wlanpi_core.asgi:app", port=args.port, host="0.0.0.0", reload=args.livereload
+    )
 
 
 def init() -> None:
