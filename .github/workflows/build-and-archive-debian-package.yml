@@ -5,6 +5,11 @@ on:
   pull_request:
     paths:
       - 'debian/changelog'
+    paths-ignore: # ignore files that don't change build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .gitignore
+      - LICENSE
 env:
   debpackagename: wlanpi-core
 jobs:
