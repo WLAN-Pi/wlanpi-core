@@ -16,3 +16,5 @@ updates:
       - dependency-name: requests
       - dependency-name: psutil
       - dependency-name: PyGObject
+    ignore:
+      - dependency-name: dbus-python
