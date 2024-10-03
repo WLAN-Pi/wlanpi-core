@@ -62,4 +62,4 @@ async def bt_power(action: str):
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error {ex}", status_code=500)
+        return Response(content=f"Internal Server Error", status_code=500)

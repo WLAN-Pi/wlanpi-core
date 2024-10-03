@@ -63,7 +63,7 @@ async def speedtest():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error {ex}", status_code=500)
+        return Response(content=f"Internal Server Error", status_code=500)
 
 
 # @router.post("/port_blinker/{action}", response_model=utils.PortBlinkerState)
@@ -118,7 +118,7 @@ async def usb_interfaces():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error {ex}", status_code=500)
+        return Response(content=f"Internal Server Error", status_code=500)
 
 
 @router.get("/ufw", response_model=utils.Ufw)
@@ -143,4 +143,4 @@ async def usb_interfaces():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error {ex}", status_code=500)
+        return Response(content=f"Internal Server Error", status_code=500)
