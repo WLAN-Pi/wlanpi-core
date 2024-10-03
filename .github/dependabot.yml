@@ -15,5 +15,4 @@ updates:
       - dependency-name: pydantic-settings
       - dependency-name: requests
       - dependency-name: psutil
-      - dependency-name: dbus-python
       - dependency-name: PyGObject
