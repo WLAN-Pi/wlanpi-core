@@ -1,0 +1,56 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Run Python Tests
+
+on:
+  # Allow manual runs of workflow from Actions tab
+  workflow_dispatch:
+
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
+
+jobs:
+  python:
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install depends
+      run: |
+        sudo apt update
+        python -m ensurepip --upgrade
+        python -m pip install --upgrade pip setuptools wheel
+        pip install tox coverage-badge
+        if [ -f requirements.txt ]; then sudo pip install -r requirements.txt; fi
+  
+    - name: Run tests with tox
+      id: tox-run
+      run: |
+        tox
+
+  slack-workflow-status:
+    if: ${{ always() && (github.repository_owner == 'WLAN-Pi') }}
+    name: Post Workflow Status to Slack
+    needs:
+      - python
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
+    steps:
+      - name: Slack Workflow Notification
+        uses: Gamesight/slack-workflow-status@master
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
