@@ -49,7 +49,7 @@ jobs:
         tox -e formatcheck
 
   slack-workflow-status:
-    if: ${{ always() && (github.repository_owner == 'WLAN-Pi') }}
+    if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Post Workflow Status to Slack
     needs:
       - python-style-police
