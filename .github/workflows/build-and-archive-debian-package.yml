@@ -10,7 +10,7 @@ env:
 jobs:
   format:
     name: Get formatted version for filename
-    uses: WLANi/gh-workflows/.github/workflows/get-formatted-version-string.yml@main
+    uses: WLAN-Pi/gh-workflows/.github/workflows/get-formatted-version-string.yml@main
   sbuild:
     name: sbuild ${{ matrix.distro }}+${{ matrix.arch }} pkg
     runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
