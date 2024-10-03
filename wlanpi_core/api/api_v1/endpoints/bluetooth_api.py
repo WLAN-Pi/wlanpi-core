@@ -20,7 +20,7 @@ async def btstatus():
     try:
         status = bluetooth_service.bluetooth_status()
         if status == False:
-            return Response(content=f"Bluetooth hardware not found", status_code=500)
+            return Response(content=f"Bluetooth hardware not found", status_code=503)
         return status
 
     except ValidationError as ve:
@@ -46,14 +46,14 @@ async def bt_power(action: str):
     state = action == "on"
 
     if not bluetooth_service.bluetooth_present():
-        return Response(content=f"Bluetooth hardware not found", status_code=500)
+        return Response(content=f"Bluetooth hardware not found", status_code=503)
 
     try:
         status = bluetooth_service.bluetooth_set_power(state)
 
         if status == False:
             return Response(
-                content=f"Bluetooth failed to turn {action}", status_code=500
+                content=f"Bluetooth failed to turn {action}", status_code=503
             )
 
         return {"status": "success", "action": action}

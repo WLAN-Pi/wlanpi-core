@@ -28,36 +28,11 @@ async def reachability():
         if reachability.get("error"):
             return Response(
                 content=json.dumps(reachability),
-                status_code=500,
+                status_code=503,
                 media_type="application/json",
             )
 
         return reachability["results"]
-
-    except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
-
-
-@router.get("/speedtest", response_model=utils.SpeedTest)
-async def speedtest():
-    """
-    Runs the network speedtest and returns the results
-    """
-
-    try:
-        speedtest = utils_service.show_speedtest()
-
-        if speedtest.get("error"):
-            return Response(
-                content=json.dumps(speedtest),
-                status_code=500,
-                media_type="application/json",
-            )
-
-        return speedtest
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -85,7 +60,7 @@ async def speedtest():
 #         status = utils_service.port_blinker_state(state)
 
 #         if status == False:
-#             return Response(content=f"Port blinker failed to turn {action}", status_code=500)
+#             return Response(content=f"Port blinker failed to turn {action}", status_code=503)
 
 #         return {"status": "success", "action": action}
 
@@ -108,7 +83,7 @@ async def usb_interfaces():
         if result.get("error"):
             return Response(
                 content=json.dumps(result["error"]),
-                status_code=500,
+                status_code=503,
                 media_type="application/json",
             )
 
@@ -133,7 +108,7 @@ async def usb_interfaces():
         if result.get("error"):
             return Response(
                 content=json.dumps(result["error"]),
-                status_code=500,
+                status_code=503,
                 media_type="application/json",
             )
 

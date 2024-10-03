@@ -91,42 +91,6 @@ def show_reachability():
     return output
 
 
-def show_speedtest():
-    """
-    Run speedtest.net speed test
-    """
-
-    # Command to execute speedtest-cli and process its output
-    speedtest_cmd = "/opt/wlanpi/pipx/bin/speedtest-cli --secure"
-
-    # Run the command
-    speedtest_info = run_command(speedtest_cmd)
-
-    if not speedtest_info:
-        return {"error": "Failed to run speedtest"}
-
-    # Define regex patterns to extract parts from the output
-    patterns = {
-        "ip_address": r"Testing from .*\(([\d\.]+)\)",
-        "download_speed": r"Download:\s+([\d\.]+)\s*Mbit/s",
-        "upload_speed": r"Upload:\s+([\d\.]+)\s*Mbit/s",
-    }
-
-    # Extract information using regex
-    results = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, speedtest_info)
-        if match:
-            # Extract the number and format it
-            number = match.group(1)
-            if key in ["download_speed", "upload_speed"]:
-                results[key] = f"{number} Mbps"
-            else:
-                results[key] = number
-
-    return results
-
-
 def show_usb():
     """
     Return a list of non-Linux USB interfaces found with the lsusb command
