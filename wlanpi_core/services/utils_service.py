@@ -104,8 +104,7 @@ def show_usb():
     try:
         lsusb_output = subprocess.check_output(lsusb, shell=True).decode()
         lsusb_info = lsusb_output.split("\n")
-    except subprocess.CalledProcessError as exc:
-        output = exc.output.decode()
+    except subprocess.CalledProcessError:
         error_descr = "Issue getting usb info using lsusb command"
         interfaces["error"] = {"error": {error_descr}}
         return interfaces
@@ -182,7 +181,7 @@ def show_ufw():
         ).decode()
         ufw_info = parse_ufw(ufw_output)
 
-    except Exception as ex:
+    except:
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
         return
