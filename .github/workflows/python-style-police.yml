@@ -11,7 +11,7 @@ on:
 
 jobs:
   python:
-    runs-on: "${{ vars.RUNS_ON || 'ubuntu-24.04' }}"
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
     strategy:
       fail-fast: false
       matrix:
@@ -25,15 +25,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-
-    - name: Install depends
-      run: |
-        sudo apt update
-        sudo apt install meson dbus libdbus-1-dev libdbus-glib-1-dev libglib2.0-dev libcairo2-dev libgirepository1.0-dev libffi-dev
-        python -m ensurepip --upgrade
-        python -m pip install --upgrade pip setuptools wheel ninja patchelf meson-python
-        pip install tox coverage-badge
-        if [ -f requirements.txt ]; then sudo pip install -r requirements.txt; fi
     
     - name: Run format checker
       id: format-checker
