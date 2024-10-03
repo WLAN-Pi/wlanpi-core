@@ -88,7 +88,6 @@ async def show_device_model():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except subprocess.CalledProcessError as exc:
         log.error(exc)
-        exc.model.decode()
         return Response(content="Internal Server Error", status_code=500)
 
 

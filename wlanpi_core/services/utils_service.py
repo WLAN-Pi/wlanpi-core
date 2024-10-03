@@ -106,8 +106,8 @@ def show_usb():
         lsusb_info = lsusb_output.split("\n")
     except subprocess.CalledProcessError as exc:
         output = exc.output.decode()
-        # error_descr = "Issue getting usb info using lsusb command"
-        interfaces["error"] = {"lsusb error": str(output)}
+        error_descr = "Issue getting usb info using lsusb command"
+        interfaces["error"] = {"error": {error_descr}}
         return interfaces
 
     interfaces["interfaces"] = []
@@ -184,7 +184,7 @@ def show_ufw():
 
     except Exception as ex:
         error_descr = "Issue getting ufw info using ufw command"
-        response["error"] = {"error": error_descr + str(ex)}
+        response["error"] = {"error": error_descr}
         return
 
     # Add in status line
