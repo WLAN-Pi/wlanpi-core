@@ -14,7 +14,9 @@ api_router.include_router(system_api.router, prefix="/system", tags=["system"])
 
 api_router.include_router(network_api.router, prefix="/network", tags=["network"])
 
-api_router.include_router(network_info_api.router, prefix="/network/info", tags=["network_information"])
+api_router.include_router(
+    network_info_api.router, prefix="/network/info", tags=["network_information"]
+)
 
 api_router.include_router(utils_api.router, prefix="/utils", tags=["device utils"])
 
