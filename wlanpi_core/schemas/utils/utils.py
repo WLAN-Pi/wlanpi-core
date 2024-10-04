@@ -19,7 +19,7 @@ class ReachabilityTest(BaseModel):
     arping_gateway: str = Field(example="12.345ms", alias="Arping Gateway")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class SpeedTest(BaseModel):
