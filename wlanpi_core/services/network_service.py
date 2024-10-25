@@ -693,3 +693,6 @@ async def get_systemd_network_currentNetwork_details(
 # if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
 # res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
 # print(getBss(res))
+
+if __name__ == "__main__":
+    print(get_ip_address('eth0'))
