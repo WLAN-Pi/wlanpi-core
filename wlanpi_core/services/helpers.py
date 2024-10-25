@@ -57,7 +57,7 @@ async def run_cli_async(cmd: str, want_stderr: bool = False) -> str:
 
     if stderr:
         raise RunCommandError(
-            status_code=424, error_msg=f"'{cmd}' gave stderr response"
+            return_code=424, error_msg=f"'{cmd}' gave stderr response"
         )
 
 

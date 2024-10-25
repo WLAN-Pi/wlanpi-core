@@ -62,7 +62,7 @@ class TestRunCommandAsync(IsolatedAsyncioTestCase):
                 cmd[0], *cmd[1:], stdin=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             self.assertEqual(str(context.exception), "error")
-            self.assertEqual(context.exception.status_code, 2)
+            self.assertEqual(context.exception.return_code, 2)
 
     async def test_run_command_async_failure_no_raise(self):
         cmd = ["ls", "-z"]
@@ -94,14 +94,14 @@ class TestRunCommandAsync(IsolatedAsyncioTestCase):
                 cmd, stdin=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             self.assertEqual(str(context.exception), "error")
-            self.assertEqual(context.exception.status_code, 2)
+            self.assertEqual(context.exception.return_code, 2)
 
     async def test_run_command_async_input_and_stdin_error(self):
         cmd = ["ls", "-l"]
         with self.assertRaises(RunCommandError) as context:
             await run_command_async(cmd, input="test input", stdin=StringIO("test input"))
         self.assertEqual(str(context.exception), "You cannot use both 'input' and 'stdin' on the same call.")
-        self.assertEqual(context.exception.status_code, -1)
+        self.assertEqual(context.exception.return_code, -1)
 
     async def test_run_command_async_input_and_stdin_pipe_ok(self):
         cmd = ["ls", "-l"]

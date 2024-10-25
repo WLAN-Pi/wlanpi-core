@@ -14,7 +14,7 @@ def run_command(cmd: Union[list, str], input:Optional[str]=None, stdin:Optional[
 
     # cannot have both input and STDIN, unless stdin is the constant for PIPE or /dev/null
     if input and stdin and not isinstance(stdin, int):
-        raise RunCommandError(error_msg="You cannot use both 'input' and 'stdin' on the same call.", status_code=-1)
+        raise RunCommandError(error_msg="You cannot use both 'input' and 'stdin' on the same call.", return_code=-1)
 
     if shell:
         cmd: str
@@ -47,7 +47,7 @@ async def run_command_async(cmd: Union[list, str], input:Optional[str]=None, std
 
     # cannot have both input and STDIN, unless stdin is the constant for PIPE or /dev/null
     if input and stdin and not isinstance(stdin, int):
-        raise RunCommandError(error_msg="You cannot use both 'input' and 'stdin' on the same call.", status_code=-1)
+        raise RunCommandError(error_msg="You cannot use both 'input' and 'stdin' on the same call.", return_code=-1)
 
     # Prepare input data for communicate
     if input:
@@ -85,5 +85,5 @@ async def run_command_async(cmd: Union[list, str], input:Optional[str]=None, std
         stdout, stderr = await proc.communicate(input=input_data)
 
     if raise_on_fail and proc.returncode != 0:
-        raise RunCommandError(error_msg=stderr.decode(), status_code=proc.returncode)
+        raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)
     return CommandResult(stdout.decode(), stderr.decode(), proc.returncode)
