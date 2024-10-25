@@ -47,7 +47,7 @@ class TestRunCommand(unittest.TestCase):
         # Test the warning message when using shell=True
         with self.assertLogs(level='WARNING') as cm:
             run_command("echo test", shell=True)
-        self.assertIn("Command echo test being run as a shell script", cm.stdout[0])
+        self.assertIn("Command echo test being run as a shell script", cm.output[0])
 
     def test_command_result(self):
         # Test the CommandResult class
