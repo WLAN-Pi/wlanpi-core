@@ -1,0 +1,1 @@
+UFW_FILE = "/usr/sbin/ufw"
