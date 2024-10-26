@@ -1,13 +1,13 @@
 import os
 import re
-import subprocess
 
-from .helpers import run_command
+from ..constants import UFW_FILE
+from ..models.runcommand_error import RunCommandError
+from ..utils.general import run_command_async
+from ..utils.network import get_default_gateways
 
-UFW_FILE = "/usr/sbin/ufw"
 
-
-def show_reachability():
+async def show_reachability():
     """
     Check if default gateway, internet and DNS are reachable and working
     """
@@ -16,97 +16,69 @@ def show_reachability():
 
     # --- Variables ---
     try:
-        default_gateway = (
-            subprocess.check_output(
-                "ip route | grep 'default' | grep -E -o '([0-9]{1,3}[\\.]){3}[0-9]{1,3}' | head -n1",
-                shell=True,
-            )
-            .decode()
-            .strip()
-        )
-
-        dg_interface = (
-            subprocess.check_output(
-                "ip route | grep 'default' | head -n1 | cut -d ' ' -f5", shell=True
-            )
-            .decode()
-            .strip()
-        )
+        dg_interface, default_gateway = list(get_default_gateways().items())[0]
 
         dns_servers = [
             line.split()[1]
             for line in open("/etc/resolv.conf")
             if line.startswith("nameserver")
         ]
-    except subprocess.CalledProcessError:
-        return {"error": "Failed to determine network configuration"}
+    except RunCommandError as err:
+        return {"error": "Failed to determine network configuration: {}".format(err)}
 
     # --- Checks ---
     if not default_gateway:
         return {"error": "No default gateway"}
 
+    # Start executing tests in the background
+    ping_google_cr = run_command_async("jc ping -c1 -W2 -q google.com", raise_on_fail=False)
+    browse_google_result_cr = run_command_async("timeout 2 curl -s -L www.google.com", raise_on_fail=False)
+    ping_gateway_cr = run_command_async(f"jc ping -c1 -W2 -q {default_gateway}", raise_on_fail=False)
+    arping_gateway_cr = run_command_async(f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway}",
+                                              raise_on_fail=False)
+    dns_res_crs = [(i, run_command_async(f"dig +short +time=2 +tries=1 @{dns} NS google.com", raise_on_fail=False)) for i,dns in enumerate(dns_servers[:3], start=1)]
+
+
     # Ping Google
-    ping_google = run_command("ping -c1 -W2 -q google.com")
-    try:
-        ping_google_rtt = re.search(
-            r"rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms", ping_google
-        )
-        output["results"]["Ping Google"] = (
-            f"{ping_google_rtt.group(1)}ms" if ping_google_rtt else None
-        )
-    except:
-        output["results"]["Ping Google"] = "FAIL"
+    ping_google = await ping_google_cr
+    output["results"][
+        "Ping Google"] = f"{ping_google.output_from_json()['round_trip_ms_avg']}ms" if ping_google.success else "FAIL"
 
     # Browse Google.com
-    browse_google = run_command(
-        "timeout 2 curl -s -L www.google.com | grep 'google.com'"
-    )
-    output["results"]["Browse Google"] = "OK" if browse_google is not None else "FAIL"
+    browse_google_result = await browse_google_result_cr
+    output["results"]["Browse Google"] = "OK" if (
+            browse_google_result.success and "google.com" in browse_google_result.stdout) else "FAIL"
 
     # Ping default gateway
-    ping_gateway = run_command(f"ping -c1 -W2 -q {default_gateway}")
-    try:
-        ping_gateway_rtt = re.search(
-            r"rtt min/avg/max/mdev = \S+/(\S+)/\S+/\S+ ms", ping_gateway
-        )
-        output["results"]["Ping Gateway"] = (
-            f"{ping_gateway_rtt.group(1)}ms" if ping_gateway_rtt else None
-        )
-    except:
-        output["results"]["Ping Gateway"] = "FAIL"
+    ping_gateway = await ping_gateway_cr
+    output["results"][
+        "Ping Gateway"] = f"{ping_gateway.output_from_json()['round_trip_ms_avg']}ms" if ping_gateway.success else "FAIL"
 
     # DNS resolution checks
-    for i, dns in enumerate(dns_servers[:3], start=1):
-        dns_res = run_command(f"dig +short +time=2 +tries=1 @{dns} NS google.com")
-        if dns_res:
-            output["results"][f"DNS Server {i} Resolution"] = "OK"
+    for i,cr in dns_res_crs:
+        dns_res = await cr
+        output["results"][f"DNS Server {i} Resolution"] = "OK" if dns_res.success else "FAIL"
 
     # ARPing default gateway
-    arping_gateway = run_command(
-        f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway} 2>/dev/null"
-    )
+    arping_gateway = (await arping_gateway_cr).stdout
     arping_rtt = re.search(r"\d+ms", arping_gateway)
     output["results"]["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
 
     return output
 
 
-def show_usb():
+async def show_usb():
     """
     Return a list of non-Linux USB interfaces found with the lsusb command
     """
-
-    lsusb = r"/usr/bin/lsusb | /bin/grep -v Linux | /usr/bin/cut -d\  -f7-"
-    lsusb_info = []
-
     interfaces = {}
 
     try:
-        lsusb_output = subprocess.check_output(lsusb, shell=True).decode()
-        lsusb_info = lsusb_output.split("\n")
-    except subprocess.CalledProcessError:
+        lsusb_output = (await run_command_async("/usr/bin/lsusb", raise_on_fail=True)).stdout.split("\n")
+        lsusb_info = [line.split(" ", 6)[-1].strip() for line in lsusb_output if "Linux" not in line]
+    except RunCommandError as err:
         error_descr = "Issue getting usb info using lsusb command"
-        interfaces["error"] = {"error": {error_descr}}
+        interfaces["error"] = {"error": {error_descr + ": " + err.error_msg}}
         return interfaces
 
     interfaces["interfaces"] = []
@@ -160,7 +132,7 @@ def parse_ufw(output):
     return final_output
 
 
-def show_ufw():
+async def show_ufw():
     """
     Return a list ufw ports
     """
@@ -176,9 +148,9 @@ def show_ufw():
         return response
 
     try:
-        ufw_output = subprocess.check_output(
-            "sudo {} status".format(ufw_file), shell=True
-        ).decode()
+        ufw_output = (await run_command_async(
+            "sudo {} status".format(ufw_file), raise_on_fail=True
+        )).stdout
         ufw_info = parse_ufw(ufw_output)
 
     except:
