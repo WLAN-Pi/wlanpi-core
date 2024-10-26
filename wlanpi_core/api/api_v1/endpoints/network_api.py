@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 from fastapi import APIRouter, Response
 
+from wlanpi_core.constants import API_DEFAULT_TIMEOUT
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
@@ -11,8 +12,6 @@ from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core.services import network_ethernet_service, network_service
 
 router = APIRouter()
-
-API_DEFAULT_TIMEOUT = 20
 
 log = logging.getLogger("uvicorn")
 

@@ -6,6 +6,7 @@ import subprocess
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
+from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
 from wlanpi_core.models.validation_error import ValidationError
 
 bus = SystemBus()
@@ -40,12 +41,6 @@ allowed_services = [
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
-
-# Mode changer scripts
-MODE_FILE = "/etc/wlanpi-state"
-
-# Version file for WLAN Pi image
-WLANPI_IMAGE_FILE = "/etc/wlanpi-release"
 
 
 def get_mode():

@@ -1,8 +1,7 @@
 import re
 
 from .helpers import run_command
-
-BT_ADAPTER = "hci0"
+from wlanpi_core.constants import BT_ADAPTER
 
 
 def bluetooth_present():

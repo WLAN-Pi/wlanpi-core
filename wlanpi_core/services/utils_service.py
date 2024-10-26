@@ -1,7 +1,7 @@
 import os
 import re
 
-from ..constants import UFW_FILE
+from wlanpi_core.constants import UFW_FILE
 from ..models.runcommand_error import RunCommandError
 from ..utils.general import run_command_async
 from ..utils.network import get_default_gateways

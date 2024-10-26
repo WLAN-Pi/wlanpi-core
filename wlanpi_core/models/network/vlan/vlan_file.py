@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Optional, Union
 
+from wlanpi_core.constants import DEFAULT_INTERFACE_FILE, DEFAULT_VLAN_INTERFACE_FILE
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config import Vlan
 from wlanpi_core.services.helpers import run_cli_async
@@ -28,8 +29,7 @@ class VLANFile:
         "wvdial",
         "ipv4ll",
     )
-    DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"
-    DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
+
 
     def __init__(
         self,

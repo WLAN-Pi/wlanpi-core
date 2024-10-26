@@ -6,6 +6,8 @@ from dbus import Interface
 from dbus.exceptions import DBusException
 from gi.repository import GLib
 
+from wlanpi_core.constants import WPAS_DBUS_SERVICE, WPAS_DBUS_INTERFACE, WPAS_DBUS_OPATH, \
+    WPAS_DBUS_INTERFACES_INTERFACE, WPAS_DBUS_BSS_INTERFACE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.models.validation_error import ValidationError
@@ -14,14 +16,6 @@ from wlanpi_core.utils.network import get_interface_addresses
 
 # For running locally (not in API)
 # import asyncio
-
-WPAS_DBUS_SERVICE = "fi.w1.wpa_supplicant1"
-WPAS_DBUS_INTERFACE = "fi.w1.wpa_supplicant1"
-WPAS_DBUS_OPATH = "/fi/w1/wpa_supplicant1"
-WPAS_DBUS_INTERFACES_INTERFACE = "fi.w1.wpa_supplicant1.Interface"
-WPAS_DBUS_INTERFACES_OPATH = "/fi/w1/wpa_supplicant1/Interfaces"
-WPAS_DBUS_BSS_INTERFACE = "fi.w1.wpa_supplicant1.BSS"
-WPAS_DBUS_NETWORK_INTERFACE = "fi.w1.wpa_supplicant1.Network"
 
 API_TIMEOUT = 20
 

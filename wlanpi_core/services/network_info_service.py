@@ -2,16 +2,8 @@ import os
 import re
 import subprocess
 
-from .helpers import (
-    CDPNEIGH_FILE,
-    ETHTOOL_FILE,
-    IFCONFIG_FILE,
-    IPCONFIG_FILE,
-    IW_FILE,
-    LLDPNEIGH_FILE,
-    PUBLICIP6_CMD,
-    PUBLICIP_CMD,
-)
+from wlanpi_core.constants import IFCONFIG_FILE, IW_FILE, ETHTOOL_FILE, LLDPNEIGH_FILE, CDPNEIGH_FILE, IPCONFIG_FILE, \
+    PUBLICIP_CMD, PUBLICIP6_CMD
 
 
 def show_info():
