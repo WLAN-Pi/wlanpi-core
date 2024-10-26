@@ -1,7 +1,9 @@
 import asyncio.subprocess
+import datetime
 import logging
 import shlex
 import subprocess
+import time
 from asyncio.subprocess import Process
 from io import StringIO
 from typing import Union, Optional, TextIO
@@ -154,3 +156,48 @@ async def run_command_async(cmd: Union[list, str], input:Optional[str]=None, std
     if raise_on_fail and proc.returncode != 0:
         raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)
     return CommandResult(stdout.decode(), stderr.decode(), proc.returncode)
+
+def get_model_info() -> dict[str, str]:
+    """Uses wlanpi-model cli command to get model info
+    Returns:
+        dictionary of model info
+    Raises:
+        RunCommandError: If the underlying command failed.
+    """
+
+    model_info = run_command(["wlanpi-model"]).stdout.split("\n")
+    split_model_info = [a.split(":", 1) for a in model_info if a.strip() != ""]
+    model_dict = {}
+    for a, b in split_model_info:
+        model_dict[a.strip()] = b.strip()
+    return model_dict
+
+def get_uptime() -> dict[str, str]:
+    """Gets the system uptime using jc and the uptime command.
+    Returns:
+        dictionary of uptime info
+    Raises:
+        RunCommandError: If the underlying command failed.
+    """
+    cmd = "jc uptime"
+    return run_command(cmd.split(" ")).output_from_json()
+
+def get_hostname() -> str:
+    """Gets the system hostname using hostname command.
+    Returns:
+        The system hostname as a string
+    Raises:
+        RunCommandError: If the underlying command failed.
+    """
+    return run_command(["hostname"]).stdout.strip("\n ")
+
+def get_current_unix_timestamp() -> float:
+    """Gets the current unix timestamp in milliseconds
+    Returns:
+        The current unix timestamp in milliseconds
+    """
+    ms = datetime.datetime.now()
+    return time.mktime(ms.timetuple()) * 1000
+
+
+
