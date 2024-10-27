@@ -1,4 +1,10 @@
-wlanpi-core (1.0.4) UNRELEASED; urgency=medium
+wlanpi-core (1.0.5) unstable; urgency=high
+
+  * API hardening by blocking iptables rule added by pi-gen
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 27 Oct 2024 15:26:42 +0000
+
+wlanpi-core (1.0.4) unstable; urgency=medium
 
   * Add useful core endpoints, similar to the features in FPMS 
 
