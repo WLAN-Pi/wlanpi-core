@@ -45,4 +45,9 @@ if [ $CONF_CHANGED -eq 0 ]; then
     deb-systemd-invoke restart wlanpi-core.service
 fi
 
+# Remove specific iptables rules added during pi-gen versions prior to v3.2.3
+echo "Removing old pi-gen iptables rules in WLAN Pi OS v3.2.2 and earlier"
+iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
+iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
+
 exit 0
