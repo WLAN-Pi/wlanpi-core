@@ -1,0 +1,22 @@
+FROM  mcr.microsoft.com/devcontainers/base:jammy
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && apt install -y --no-install-recommends apt-transport-https ca-certificates \
+  sudo python3.11 python3.11-venv python-is-python3 python3.11-dev git ssh build-essential
+
+# Install wlanpi deps
+RUN apt install -y expat libxml2-dev pkg-config libasound2-dev libssl-dev \
+    cmake libfreetype6-dev libexpat1-dev libxcb-composite0-dev  \
+    libfontconfig-dev cargo git unzip zip nload tree dbus libharfbuzz-dev \
+    pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev \
+    libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan
+
+RUN apt-get update \
+&& apt-get install --no-install-recommends -y rsyslog systemd systemd-cron \
+# Fix a bug with common-debian script
+&& rm -f /usr/local/bin/systemctl \
+#  Clean up
+&& apt-get clean && rm -rf /var/lib/apt/lists/*
+
+CMD ["/lib/systemd/systemd", "--system", "--unit=basic.target"]
