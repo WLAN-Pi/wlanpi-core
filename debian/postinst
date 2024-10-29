@@ -45,4 +45,21 @@ if [ $CONF_CHANGED -eq 0 ]; then
     deb-systemd-invoke restart wlanpi-core.service
 fi
 
+# Remove specific iptables rules added during pi-gen versions prior to v3.2.3
+echo "Attempting to remove old pi-gen iptables rules in WLAN Pi OS v3.2.2 and earlier"
+
+if iptables -C ufw-user-input -p tcp --dport 31415 -j ACCEPT 2>/dev/null; then
+    iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
+    echo "tcp 31415 rule removed."
+else
+    echo "tcp 31415 rule not found; no changes made."
+fi
+
+if iptables -C ufw-user-input -p udp --dport 31415 -j ACCEPT 2>/dev/null; then
+    iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
+    echo "udp 31415 rule removed successfully."
+else
+    echo "udp 31415 rule not found; no changes made."
+fi
+
 exit 0
