@@ -6,12 +6,17 @@ from dbus import Interface
 from dbus.exceptions import DBusException
 from gi.repository import GLib
 
-from wlanpi_core.constants import WPAS_DBUS_SERVICE, WPAS_DBUS_INTERFACE, WPAS_DBUS_OPATH, \
-    WPAS_DBUS_INTERFACES_INTERFACE, WPAS_DBUS_BSS_INTERFACE
+from wlanpi_core.constants import (
+    WPAS_DBUS_BSS_INTERFACE,
+    WPAS_DBUS_INTERFACE,
+    WPAS_DBUS_INTERFACES_INTERFACE,
+    WPAS_DBUS_OPATH,
+    WPAS_DBUS_SERVICE,
+)
 from wlanpi_core.models.runcommand_error import RunCommandError
-from wlanpi_core.utils.general import run_command
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
+from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.network import get_interface_addresses
 
 # For running locally (not in API)
@@ -91,7 +96,9 @@ def renew_dhcp(interface):
         # Obtain a new DHCP lease
         run_command(["sudo", "dhclient", interface], raise_on_fail=True)
     except RunCommandError as err:
-        debug_print(f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}", 1)
+        debug_print(
+            f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}", 1
+        )
 
 
 def get_ip_address(interface):
@@ -99,12 +106,15 @@ def get_ip_address(interface):
     Extract the IP Address from the linux ip add show <if> command
     """
     try:
-        res = get_interface_addresses(interface)[interface]['inet']
+        res = get_interface_addresses(interface)[interface]["inet"]
         if len(res):
             return res[0]
         return None
     except RunCommandError as err:
-        debug_print(f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}", 1)
+        debug_print(
+            f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}",
+            1,
+        )
 
 
 def getBss(bss):
@@ -681,4 +691,4 @@ async def get_systemd_network_currentNetwork_details(
 # print(getBss(res))
 
 if __name__ == "__main__":
-    print(get_ip_address('eth0'))
+    print(get_ip_address("eth0"))

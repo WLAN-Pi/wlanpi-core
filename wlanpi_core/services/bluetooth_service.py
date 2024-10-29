@@ -1,7 +1,7 @@
 import re
 
-from wlanpi_core.utils.general import run_command
 from wlanpi_core.constants import BT_ADAPTER
+from wlanpi_core.utils.general import run_command
 
 
 def bluetooth_present():
@@ -9,25 +9,33 @@ def bluetooth_present():
     We want to use hciconfig here as it works OK when no devices are present
     """
     cmd = f"hciconfig"
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(BT_ADAPTER,)
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
+        BT_ADAPTER,
+    )
     return filtered.strip() if filtered else ""
 
 
 def bluetooth_name():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Name", split=True)
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
+        "Name", split=True
+    )
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
 def bluetooth_alias():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Alias", split=True)
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
+        "Alias", split=True
+    )
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
 def bluetooth_address():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Address", split=True)
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
+        "Address", split=True
+    )
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
@@ -36,7 +44,9 @@ def bluetooth_power():
     We want to use hciconfig here as it works OK when no devices are present
     """
     cmd = f"hciconfig {BT_ADAPTER} "
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(r"^\s+UP", split=True)
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(
+        r"^\s+UP", split=True
+    )
     return filtered[0].strip() if filtered else ""
 
 
@@ -54,7 +64,7 @@ def bluetooth_set_power(power):
         cmd = f"bt-adapter -a {BT_ADAPTER} --set Powered 0"
         bt_state = 0
     result = run_command(cmd, shell=True, raise_on_fail=True).stdout
-    with open('/etc/wlanpi-bluetooth/state', 'w') as bt_state_file:
+    with open("/etc/wlanpi-bluetooth/state", "w") as bt_state_file:
         bt_state_file.write(str(bt_state))
 
     if result:
@@ -71,7 +81,9 @@ def bluetooth_paired_devices():
         return None
 
     cmd = "bluetoothctl -- paired-devices"
-    output = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(r"no default controller", flags=re.I, negate=True, split=False)
+    output = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(
+        r"no default controller", flags=re.I, negate=True, split=False
+    )
     if len(output) > 0:
         output = re.sub("Device *", "", output).split("\n")
         return dict([line.split(" ", 1) for line in output])

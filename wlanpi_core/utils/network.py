@@ -1,9 +1,10 @@
-from typing import Optional, Any
+from typing import Any, Optional
 
 from wlanpi_core.utils.general import run_command
 
+
 def get_default_gateways() -> dict[str, str]:
-    """ Finds the default gateway of each interface on the system using 'ip route show'
+    """Finds the default gateway of each interface on the system using 'ip route show'
     Returns:
         a dictionary mapping interfaces to their default gateways.
     Raises:
@@ -20,6 +21,7 @@ def get_default_gateways() -> dict[str, str]:
             gateways[res[1].strip()] = res[0].strip()
     return gateways
 
+
 def trace_route(target: str) -> dict[str, Any]:
     # Execute 'ip route show' command which lists all network routes
     output = run_command(["jc", "traceroute", target]).output_from_json()
@@ -33,12 +35,15 @@ def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str
     result = run_command(cmd).output_from_json()
     return result
 
-def get_interface_addresses(interface: Optional[str] = None) -> dict[str, dict[str, str]]:
+
+def get_interface_addresses(
+    interface: Optional[str] = None,
+) -> dict[str, dict[str, str]]:
     res = get_interface_address_data(interface=interface)
     out_obj = {}
     for item in res:
-        if item['ifname'] not in out_obj:
-            out_obj[item['ifname']] = {'inet': [], 'inet6': []}
+        if item["ifname"] not in out_obj:
+            out_obj[item["ifname"]] = {"inet": [], "inet6": []}
         for addr in item["addr_info"]:
-            out_obj[item['ifname']][addr['family']].append(addr['local'])
+            out_obj[item["ifname"]][addr["family"]].append(addr["local"])
     return out_obj

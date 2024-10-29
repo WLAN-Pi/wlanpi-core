@@ -2,6 +2,7 @@ import os
 import re
 
 from wlanpi_core.constants import UFW_FILE
+
 from ..models.runcommand_error import RunCommandError
 from ..utils.general import run_command_async
 from ..utils.network import get_default_gateways
@@ -31,33 +32,61 @@ async def show_reachability():
         return {"error": "No default gateway"}
 
     # Start executing tests in the background
-    ping_google_cr = run_command_async("jc ping -c1 -W2 -q google.com", raise_on_fail=False)
-    browse_google_result_cr = run_command_async("timeout 2 curl -s -L www.google.com", raise_on_fail=False)
-    ping_gateway_cr = run_command_async(f"jc ping -c1 -W2 -q {default_gateway}", raise_on_fail=False)
-    arping_gateway_cr = run_command_async(f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway}",
-                                              raise_on_fail=False)
-    dns_res_crs = [(i, run_command_async(f"dig +short +time=2 +tries=1 @{dns} NS google.com", raise_on_fail=False)) for i,dns in enumerate(dns_servers[:3], start=1)]
-
+    ping_google_cr = run_command_async(
+        "jc ping -c1 -W2 -q google.com", raise_on_fail=False
+    )
+    browse_google_result_cr = run_command_async(
+        "timeout 2 curl -s -L www.google.com", raise_on_fail=False
+    )
+    ping_gateway_cr = run_command_async(
+        f"jc ping -c1 -W2 -q {default_gateway}", raise_on_fail=False
+    )
+    arping_gateway_cr = run_command_async(
+        f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway}",
+        raise_on_fail=False,
+    )
+    dns_res_crs = [
+        (
+            i,
+            run_command_async(
+                f"dig +short +time=2 +tries=1 @{dns} NS google.com", raise_on_fail=False
+            ),
+        )
+        for i, dns in enumerate(dns_servers[:3], start=1)
+    ]
 
     # Ping Google
     ping_google = await ping_google_cr
-    output["results"][
-        "Ping Google"] = f"{ping_google.output_from_json()['round_trip_ms_avg']}ms" if ping_google.success else "FAIL"
+    output["results"]["Ping Google"] = (
+        f"{ping_google.output_from_json()['round_trip_ms_avg']}ms"
+        if ping_google.success
+        else "FAIL"
+    )
 
     # Browse Google.com
     browse_google_result = await browse_google_result_cr
-    output["results"]["Browse Google"] = "OK" if (
-            browse_google_result.success and "google.com" in browse_google_result.stdout) else "FAIL"
+    output["results"]["Browse Google"] = (
+        "OK"
+        if (
+            browse_google_result.success and "google.com" in browse_google_result.stdout
+        )
+        else "FAIL"
+    )
 
     # Ping default gateway
     ping_gateway = await ping_gateway_cr
-    output["results"][
-        "Ping Gateway"] = f"{ping_gateway.output_from_json()['round_trip_ms_avg']}ms" if ping_gateway.success else "FAIL"
+    output["results"]["Ping Gateway"] = (
+        f"{ping_gateway.output_from_json()['round_trip_ms_avg']}ms"
+        if ping_gateway.success
+        else "FAIL"
+    )
 
     # DNS resolution checks
-    for i,cr in dns_res_crs:
+    for i, cr in dns_res_crs:
         dns_res = await cr
-        output["results"][f"DNS Server {i} Resolution"] = "OK" if dns_res.success else "FAIL"
+        output["results"][f"DNS Server {i} Resolution"] = (
+            "OK" if dns_res.success else "FAIL"
+        )
 
     # ARPing default gateway
     arping_gateway = (await arping_gateway_cr).stdout
@@ -74,8 +103,14 @@ async def show_usb():
     interfaces = {}
 
     try:
-        lsusb_output = (await run_command_async("/usr/bin/lsusb", raise_on_fail=True)).stdout.split("\n")
-        lsusb_info = [line.split(" ", 6)[-1].strip() for line in lsusb_output if "Linux" not in line]
+        lsusb_output = (
+            await run_command_async("/usr/bin/lsusb", raise_on_fail=True)
+        ).stdout.split("\n")
+        lsusb_info = [
+            line.split(" ", 6)[-1].strip()
+            for line in lsusb_output
+            if "Linux" not in line
+        ]
     except RunCommandError as err:
         error_descr = "Issue getting usb info using lsusb command"
         interfaces["error"] = {"error": {error_descr + ": " + err.error_msg}}
@@ -148,9 +183,11 @@ async def show_ufw():
         return response
 
     try:
-        ufw_output = (await run_command_async(
-            "sudo {} status".format(ufw_file), raise_on_fail=True
-        )).stdout
+        ufw_output = (
+            await run_command_async(
+                "sudo {} status".format(ufw_file), raise_on_fail=True
+            )
+        ).stdout
         ufw_info = parse_ufw(ufw_output)
 
     except:

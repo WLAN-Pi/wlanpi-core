@@ -130,7 +130,9 @@ def get_platform():
         platform = run_command(model_cmd).stdout.strip()
 
     except RunCommandError as exc:
-        logging.warning(f"Issue getting wlanpi model ({exc.return_code}): {exc.error_msg}")
+        logging.warning(
+            f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}"
+        )
         return "Unknown"
     except subprocess.CalledProcessError as exc:
         exc.model.decode()
@@ -162,7 +164,7 @@ def get_stats():
     # cmd = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'"
     cmd = "mpstat 1 1 -o JSON"
     try:
-        CPU_JSON = run_command(cmd).grep_stdout_for_string('idle')
+        CPU_JSON = run_command(cmd).grep_stdout_for_string("idle")
         CPU_IDLE = json.loads(CPU_JSON)["idle"]
         CPU = "{0:.2f}%".format(100 - CPU_IDLE)
         if CPU_IDLE == 100:

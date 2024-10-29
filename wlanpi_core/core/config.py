@@ -1,7 +1,9 @@
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
 from wlanpi_core import constants
+
 
 class Settings(BaseSettings):
     API_V1_STR: str = constants.API_V1_STR

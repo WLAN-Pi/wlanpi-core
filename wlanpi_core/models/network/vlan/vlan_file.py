@@ -30,7 +30,6 @@ class VLANFile:
         "ipv4ll",
     )
 
-
     def __init__(
         self,
         interface_file: str = DEFAULT_INTERFACE_FILE,
@@ -173,9 +172,13 @@ class VLANFile:
 
     @staticmethod
     async def check_interface_exists(interface: str) -> bool:
-        ethernet_interfaces = [x for x in (
-            await run_command_async("ls /sys/class/net/", raise_on_fail=True)
-        ).stdout.split("\n") if "eth" in x]
+        ethernet_interfaces = [
+            x
+            for x in (
+                await run_command_async("ls /sys/class/net/", raise_on_fail=True)
+            ).stdout.split("\n")
+            if "eth" in x
+        ]
         ethernet_interfaces = set([i.split(".")[0] for i in ethernet_interfaces if i])
         return interface in ethernet_interfaces
 

@@ -2,12 +2,21 @@ import os
 import re
 import subprocess
 
+from wlanpi_core.constants import (
+    CDPNEIGH_FILE,
+    ETHTOOL_FILE,
+    IFCONFIG_FILE,
+    IPCONFIG_FILE,
+    IW_FILE,
+    LLDPNEIGH_FILE,
+    PUBLICIP6_CMD,
+    PUBLICIP_CMD,
+)
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command, run_command_async
-from wlanpi_core.constants import IFCONFIG_FILE, IW_FILE, ETHTOOL_FILE, LLDPNEIGH_FILE, CDPNEIGH_FILE, IPCONFIG_FILE, \
-    PUBLICIP_CMD, PUBLICIP6_CMD
 
 # TODO: There is a TON of "except Exception" clauses in here that need worked on. These are generally EVIL and mask real errors that need dealt with.
+
 
 def show_info():
     output = {}
@@ -71,7 +80,10 @@ def show_interfaces():
                 if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
-                        iw_info = run_command("{} {} info".format(iw_file, interface_name), raise_on_fail=True).stdout
+                        iw_info = run_command(
+                            "{} {} info".format(iw_file, interface_name),
+                            raise_on_fail=True,
+                        ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
@@ -112,7 +124,9 @@ def show_wlan_interfaces():
     output = {}
 
     try:
-        interfaces = run_command(f"{IW_FILE} dev 2>&1", shell=True).grep_stdout_for_pattern(r"interface", flags=re.I,split=True)
+        interfaces = run_command(
+            f"{IW_FILE} dev 2>&1", shell=True
+        ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
         interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
     except Exception as e:
         print(e)
@@ -122,7 +136,9 @@ def show_wlan_interfaces():
 
         # Driver
         try:
-            ethtool_output = run_command(f"{ETHTOOL_FILE} -i {interface}").stdout.strip()
+            ethtool_output = run_command(
+                f"{ETHTOOL_FILE} -i {interface}"
+            ).stdout.strip()
             driver = re.search(".*driver:\s+(.*)", ethtool_output).group(1)
             output[interface]["driver"] = driver
         except Exception:
@@ -184,10 +200,14 @@ def show_eth0_ipconfig():
 
     try:
         # Currently, ipconfig_file is a constant with a shell redirect in it, so need shell=True until it can be refactored
-        ipconfig_info = run_command(ipconfig_file, shell=True).stdout.strip().split("\n")
+        ipconfig_info = (
+            run_command(ipconfig_file, shell=True).stdout.strip().split("\n")
+        )
 
     except RunCommandError as exc:
-        eth0_ipconfig_info["error"] = f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
+        eth0_ipconfig_info["error"] = (
+            f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
+        )
         return eth0_ipconfig_info
     except subprocess.CalledProcessError as exc:
         output = exc.output.decode()
@@ -248,12 +268,14 @@ def show_lldp_neighbour():
 
     if os.path.exists(lldpneigh_file):
         try:
-            neighbour_output =  run_command(neighbour_cmd).stdout.strip().split("\n")
+            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
             for line in neighbour_output:
                 neighbour_info["info"].append(line)
 
         except RunCommandError as exc:
-            neighbour_info["error"] = f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
+            neighbour_info["error"] = (
+                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
+            )
             return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting LLDP neighbour"
@@ -281,7 +303,9 @@ def show_cdp_neighbour():
                 neighbour_info["info"].append(line)
 
         except RunCommandError as exc:
-            neighbour_info["error"] = f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
+            neighbour_info["error"] = (
+                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
+            )
             return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting CDP neighbour"

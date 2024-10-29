@@ -20,17 +20,33 @@ class CommandResult:
         except JSONDecodeError:
             return None
 
-
-    def grep_stdout_for_string(self, string:str, negate:bool=False, split:bool=False) -> Union[str, list[str]]:
+    def grep_stdout_for_string(
+        self, string: str, negate: bool = False, split: bool = False
+    ) -> Union[str, list[str]]:
         if negate:
             filtered = list(filter(lambda x: string not in x, self.stdout.split("\n")))
         else:
             filtered = list(filter(lambda x: string in x, self.stdout.split("\n")))
         return filtered if split else "\n".join(filtered)
 
-    def grep_stdout_for_pattern(self, pattern: Union[re.Pattern[str], str], flags: Union[int, RegexFlag] = 0, negate:bool=False, split:bool=False) -> Union[str, list[str]]:
+    def grep_stdout_for_pattern(
+        self,
+        pattern: Union[re.Pattern[str], str],
+        flags: Union[int, RegexFlag] = 0,
+        negate: bool = False,
+        split: bool = False,
+    ) -> Union[str, list[str]]:
         if negate:
-            filtered = list(filter(lambda x: not re.match(pattern, x, flags=flags), self.stdout.split("\n")))
+            filtered = list(
+                filter(
+                    lambda x: not re.match(pattern, x, flags=flags),
+                    self.stdout.split("\n"),
+                )
+            )
         else:
-            filtered = list(filter(lambda x: re.match(pattern, x, flags=flags), self.stdout.split("\n")))
+            filtered = list(
+                filter(
+                    lambda x: re.match(pattern, x, flags=flags), self.stdout.split("\n")
+                )
+            )
         return filtered if split else "\n".join(filtered)
