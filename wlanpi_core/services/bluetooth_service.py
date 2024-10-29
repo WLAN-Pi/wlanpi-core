@@ -9,25 +9,25 @@ def bluetooth_present():
     We want to use hciconfig here as it works OK when no devices are present
     """
     cmd = f"hciconfig"
-    filtered = [x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n") if BT_ADAPTER in x]
-    return filtered[0].strip() if filtered else ""
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(BT_ADAPTER,)
+    return filtered.strip() if filtered else ""
 
 
 def bluetooth_name():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = [x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n") if "Name" in x]
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Name", split=True)
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
 def bluetooth_alias():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = [x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n") if "Alias" in x]
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Alias", split=True)
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
 def bluetooth_address():
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
-    filtered = [x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n") if "Address" in x]
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string("Address", split=True)
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
@@ -36,7 +36,7 @@ def bluetooth_power():
     We want to use hciconfig here as it works OK when no devices are present
     """
     cmd = f"hciconfig {BT_ADAPTER} "
-    filtered = [ x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n") if re.match(r"^\s+UP", x)]
+    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(r"^\s+UP", split=True)
     return filtered[0].strip() if filtered else ""
 
 
@@ -70,13 +70,8 @@ def bluetooth_paired_devices():
     if not bluetooth_present():
         return None
 
-    cmd = "bluetoothctl -- paired-devices | grep -iv 'no default controller'"
-
-    output = "\n".join([
-        x for x in run_command(cmd=cmd, raise_on_fail=True).stdout.split("\n")
-        if not re.match(r"^no default controller", x, re.I)
-    ])
-
+    cmd = "bluetoothctl -- paired-devices"
+    output = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(r"no default controller", flags=re.I, negate=True, split=False)
     if len(output) > 0:
         output = re.sub("Device *", "", output).split("\n")
         return dict([line.split(" ", 1) for line in output])
