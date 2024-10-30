@@ -12,7 +12,11 @@ router = APIRouter()
 log = logging.getLogger("uvicorn")
 
 
-@router.get("/status", response_model=bluetooth.BluetoothStatus, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/status",
+    response_model=bluetooth.BluetoothStatus,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def btstatus():
     """
     Returns the bluetooth status
@@ -31,7 +35,11 @@ async def btstatus():
         return Response(content=f"Internal Server Error", status_code=500)
 
 
-@router.post("/power/{action}", response_model=bluetooth.PowerState, dependencies=[Depends(verify_jwt_token)])
+@router.post(
+    "/power/{action}",
+    response_model=bluetooth.PowerState,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def bt_power(action: str):
     """
     Turns on bluetooth

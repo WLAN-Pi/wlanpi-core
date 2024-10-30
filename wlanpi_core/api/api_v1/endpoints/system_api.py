@@ -13,7 +13,11 @@ router = APIRouter()
 log = logging.getLogger("uvicorn")
 
 
-@router.get("/device/info", response_model=system.DeviceInfo, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/device/info",
+    response_model=system.DeviceInfo,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def show_device_info():
     """
     Returns core information about the PI.
@@ -48,7 +52,11 @@ async def show_device_info():
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get("/device/stats", response_model=system.DeviceStats, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/device/stats",
+    response_model=system.DeviceStats,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def device_stats():
     """
     Returns system stats about the PI.
@@ -69,7 +77,11 @@ async def device_stats():
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get("/device/model", response_model=system.DeviceModel, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/device/model",
+    response_model=system.DeviceModel,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def show_device_model():
     """
     Uses 'wlanpi-model -b' to query the device model.
@@ -92,7 +104,11 @@ async def show_device_model():
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get("/service/status", response_model=system.ServiceStatus, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/service/status",
+    response_model=system.ServiceStatus,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def show_a_systemd_service_status(name: str):
     """
     Queries systemd via dbus to get the current status of an allowed service.
@@ -107,7 +123,11 @@ async def show_a_systemd_service_status(name: str):
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/service/start", response_model=system.ServiceRunning, dependencies=[Depends(verify_jwt_token)])
+@router.post(
+    "/service/start",
+    response_model=system.ServiceRunning,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def start_a_systemd_service(name: str):
     """
     Uses systemd via dbus to start an allowed service.
@@ -122,7 +142,11 @@ async def start_a_systemd_service(name: str):
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/service/stop", response_model=system.ServiceRunning, dependencies=[Depends(verify_jwt_token)])
+@router.post(
+    "/service/stop",
+    response_model=system.ServiceRunning,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def stop_a_systemd_service(name: str):
     """
     Uses systemd via dbus to stop an allowed service.

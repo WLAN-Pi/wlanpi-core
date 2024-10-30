@@ -1,12 +1,12 @@
 from fastapi import APIRouter
 
 from wlanpi_core.api.api_v1.endpoints import (
+    auth_api,
     bluetooth_api,
     network_api,
     network_info_api,
     system_api,
     utils_api,
-    auth_api,
 )
 
 api_router = APIRouter()

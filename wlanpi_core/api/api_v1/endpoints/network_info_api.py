@@ -12,7 +12,11 @@ router = APIRouter()
 log = logging.getLogger("uvicorn")
 
 
-@router.get("/", response_model=network_info.NetworkInfo, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/",
+    response_model=network_info.NetworkInfo,
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def show_network_info():
     """
     Returns information about network related stuff.

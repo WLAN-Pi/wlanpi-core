@@ -453,7 +453,6 @@ async def get_async_systemd_network_scan(
 
     type = type.strip().lower()
     if is_allowed_scan_type(type):
-
         try:
             setup_DBus_Supplicant_Access(interface)
 

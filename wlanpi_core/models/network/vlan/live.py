@@ -14,7 +14,6 @@ from wlanpi_core.utils.general import run_command
 
 
 class LiveVLANs:
-
     def __init__(self):
         self.vlan_interfaces_by_interface = self.get_vlan_interfaces_by_interface()
 
@@ -69,7 +68,6 @@ class LiveVLANs:
     @staticmethod
     # async def create_vlan(configuration: Vlan):
     def create_vlan(if_name: str, vlan_id: int, addresses: List[IPInterfaceAddress]):
-
         # Check if the VLAN already exists:
         if LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
             raise VLANExistsError(f"VLAN {vlan_id} already exists on {if_name}")
@@ -209,7 +207,6 @@ class LiveVLANs:
 # sudo ip link delete eth0.100
 
 if __name__ == "__main__":
-
     live_vlans = LiveVLANs()
     print(live_vlans.get_vlan_interfaces())
     # pp(live_vlans)
