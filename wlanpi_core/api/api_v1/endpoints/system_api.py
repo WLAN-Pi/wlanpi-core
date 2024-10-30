@@ -6,6 +6,7 @@ from fastapi import APIRouter, Response
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import system_service
+from wlanpi_core.utils.general import run_command
 
 router = APIRouter()
 
@@ -77,7 +78,7 @@ async def show_device_model():
     # get output of wlanpi-model
     model_cmd = "wlanpi-model -b"
     try:
-        platform = subprocess.check_output(model_cmd, shell=True).decode().strip()
+        platform = run_command(model_cmd).stdout.strip()
 
         if platform.endswith("?"):
             platform = "Unknown"

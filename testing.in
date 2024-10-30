@@ -5,6 +5,7 @@ autoflake
 mypy
 flake8
 pytest
+pytest-asyncio
 pytest-cov
 coverage-badge
 pytest-mock

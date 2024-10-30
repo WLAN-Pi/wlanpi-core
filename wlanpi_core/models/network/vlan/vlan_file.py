@@ -1,9 +1,10 @@
 from collections import defaultdict
 from typing import Optional, Union
 
+from wlanpi_core.constants import DEFAULT_INTERFACE_FILE, DEFAULT_VLAN_INTERFACE_FILE
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config import Vlan
-from wlanpi_core.services.helpers import run_cli_async
+from wlanpi_core.utils.general import run_command_async
 
 
 class VLANFile:
@@ -28,8 +29,6 @@ class VLANFile:
         "wvdial",
         "ipv4ll",
     )
-    DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"
-    DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
 
     def __init__(
         self,
@@ -173,9 +172,13 @@ class VLANFile:
 
     @staticmethod
     async def check_interface_exists(interface: str) -> bool:
-        ethernet_interfaces = (
-            await run_cli_async("ls /sys/class/net/ | grep eth")
-        ).split("\n")
+        ethernet_interfaces = [
+            x
+            for x in (
+                await run_command_async("ls /sys/class/net/", raise_on_fail=True)
+            ).stdout.split("\n")
+            if "eth" in x
+        ]
         ethernet_interfaces = set([i.split(".")[0] for i in ethernet_interfaces if i])
         return interface in ethernet_interfaces
 
