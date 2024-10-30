@@ -13,10 +13,7 @@ from wlanpi_core.constants import (
     PUBLICIP_CMD,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
-from wlanpi_core.utils.general import run_command, run_command_async
-
-# TODO: There is a TON of "except Exception" clauses in here that need worked on. These are generally EVIL and mask real errors that need dealt with.
-
+from wlanpi_core.utils.general import run_command
 
 def show_info():
     output = {}
