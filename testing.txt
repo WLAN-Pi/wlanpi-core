@@ -4,6 +4,8 @@
 #
 #    pip-compile testing.in
 #
+--extra-index-url https://www.piwheels.org/simple
+
 autoflake==2.3.1
     # via -r testing.in
 black==24.8.0
@@ -72,8 +74,11 @@ pyproject-api==1.8.0
 pytest==8.3.3
     # via
     #   -r testing.in
+    #   pytest-asyncio
     #   pytest-cov
     #   pytest-mock
+pytest-asyncio==0.24.0
+    # via -r testing.in
 pytest-cov==5.0.0
     # via -r testing.in
 pytest-mock==3.14.0
@@ -95,3 +100,6 @@ typing-extensions==4.7.1
     #   mypy
 virtualenv==20.26.6
     # via tox
+
+# The following packages are considered to be unsafe in a requirements file:
+# setuptools

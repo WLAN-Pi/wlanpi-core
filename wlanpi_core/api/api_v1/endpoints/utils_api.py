@@ -25,7 +25,7 @@ async def reachability():
     """
 
     try:
-        reachability = utils_service.show_reachability()
+        reachability = await utils_service.show_reachability()
 
         if reachability.get("error"):
             return Response(
@@ -80,7 +80,7 @@ async def usb_interfaces():
     """
 
     try:
-        result = utils_service.show_usb()
+        result = await utils_service.show_usb()
 
         if result.get("error"):
             return Response(
@@ -105,7 +105,7 @@ async def usb_interfaces():
     """
 
     try:
-        result = utils_service.show_ufw()
+        result = await utils_service.show_ufw()
 
         if result.get("error"):
             return Response(

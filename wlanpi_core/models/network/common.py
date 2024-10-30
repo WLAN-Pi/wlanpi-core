@@ -21,7 +21,7 @@ def get_interfaces(
             interface["link_speed"] = int(
                 run_command(
                     ["cat", f"/sys/class/net/{interface['ifname']}/speed"]
-                ).output
+                ).stdout
             )
 
     if custom_filter:

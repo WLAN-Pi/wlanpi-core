@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 
-from .helpers import (
+from wlanpi_core.constants import (
     CDPNEIGH_FILE,
     ETHTOOL_FILE,
     IFCONFIG_FILE,
@@ -12,6 +12,8 @@ from .helpers import (
     PUBLICIP6_CMD,
     PUBLICIP_CMD,
 )
+from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.utils.general import run_command
 
 
 def show_info():
@@ -39,9 +41,7 @@ def show_interfaces():
     interfaces = {}
 
     try:
-        ifconfig_info = subprocess.check_output(
-            f"{ifconfig_file} -a", shell=True
-        ).decode()
+        ifconfig_info = run_command(f"{ifconfig_file} -a", raise_on_fail=True).stdout
     except Exception as ex:
         interfaces["error"] = "ifconfig error" + str(ex)
         return interfaces
@@ -78,9 +78,10 @@ def show_interfaces():
                 if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
-                        iw_info = subprocess.check_output(
-                            "{} {} info".format(iw_file, interface_name), shell=True
-                        ).decode()
+                        iw_info = run_command(
+                            "{} {} info".format(iw_file, interface_name),
+                            raise_on_fail=True,
+                        ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
@@ -121,15 +122,10 @@ def show_wlan_interfaces():
     output = {}
 
     try:
-        interfaces = (
-            subprocess.check_output(
-                f"{IW_FILE} dev 2>&1 | grep -i interface" + "| awk '{ print $2 }'",
-                shell=True,
-            )
-            .decode()
-            .strip()
-            .split()
-        )
+        interfaces = run_command(
+            f"{IW_FILE} dev 2>&1", shell=True
+        ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
+        interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
     except Exception as e:
         print(e)
 
@@ -138,11 +134,9 @@ def show_wlan_interfaces():
 
         # Driver
         try:
-            ethtool_output = (
-                subprocess.check_output(f"{ETHTOOL_FILE} -i {interface}", shell=True)
-                .decode()
-                .strip()
-            )
+            ethtool_output = run_command(
+                f"{ETHTOOL_FILE} -i {interface}"
+            ).stdout.strip()
             driver = re.search(".*driver:\s+(.*)", ethtool_output).group(1)
             output[interface]["driver"] = driver
         except Exception:
@@ -150,12 +144,7 @@ def show_wlan_interfaces():
 
         # Addr, SSID, Mode, Channel
         try:
-            iw_output = (
-                subprocess.check_output(f"{IW_FILE} {interface} info", shell=True)
-                .decode()
-                .strip()
-            )
-
+            iw_output = run_command(f"{IW_FILE} {interface} info").stdout.strip()
             # Addr
             try:
                 addr = (
@@ -208,11 +197,16 @@ def show_eth0_ipconfig():
     eth0_ipconfig_info = {}
 
     try:
-        ipconfig_output = (
-            subprocess.check_output(ipconfig_file, shell=True).decode().strip()
+        # Currently, ipconfig_file is a constant with a shell redirect in it, so need shell=True until it can be refactored
+        ipconfig_info = (
+            run_command(ipconfig_file, shell=True).stdout.strip().split("\n")
         )
-        ipconfig_info = ipconfig_output.split("\n")
 
+    except RunCommandError as exc:
+        eth0_ipconfig_info["error"] = (
+            f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
+        )
+        return eth0_ipconfig_info
     except subprocess.CalledProcessError as exc:
         output = exc.output.decode()
         eth0_ipconfig_info["error"] = "Issue getting ipconfig" + str(output)
@@ -248,8 +242,8 @@ def show_vlan():
 
     if os.path.exists(lldpneigh_file):
         try:
-            vlan_output = subprocess.check_output(vlan_cmd, shell=True).decode()
-            for line in vlan_output.split("\n"):
+            vlan_output = run_command(vlan_cmd, shell=True).stdout.strip().split("\n")
+            for line in vlan_output:
                 vlan_info["info"].append(line)
 
             if len(vlan_info) == 0:
@@ -272,12 +266,15 @@ def show_lldp_neighbour():
 
     if os.path.exists(lldpneigh_file):
         try:
-            neighbour_output = subprocess.check_output(
-                neighbour_cmd, shell=True
-            ).decode()
-            for line in neighbour_output.split("\n"):
+            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
+            for line in neighbour_output:
                 neighbour_info["info"].append(line)
 
+        except RunCommandError as exc:
+            neighbour_info["error"] = (
+                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
+            )
+            return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting LLDP neighbour"
             return neighbour_info
@@ -299,12 +296,15 @@ def show_cdp_neighbour():
 
     if os.path.exists(cdpneigh_file):
         try:
-            neighbour_output = subprocess.check_output(
-                neighbour_cmd, shell=True
-            ).decode()
-            for line in neighbour_output.split("\n"):
+            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
+            for line in neighbour_output:
                 neighbour_info["info"].append(line)
 
+        except RunCommandError as exc:
+            neighbour_info["error"] = (
+                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
+            )
+            return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting CDP neighbour"
             return neighbour_info
@@ -324,8 +324,8 @@ def show_publicip(ip_version=4):
     cmd = PUBLICIP6_CMD if ip_version == 6 else PUBLICIP_CMD
 
     try:
-        publicip_output = subprocess.check_output(cmd, shell=True).decode().strip()
-        for line in publicip_output.split("\n"):
+        publicip_output = run_command(cmd).stdout.strip().split("\n")
+        for line in publicip_output:
             publicip_info["info"].append(line)
     except subprocess.CalledProcessError:
         publicip_info["error"] = "Failed to detect public IP address"

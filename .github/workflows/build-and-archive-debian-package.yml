@@ -3,8 +3,11 @@ on:
   # Allow manual runs of workflow from Actions tab
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'debian/changelog'
+    paths-ignore: # ignore files that don't change build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .gitignore
+      - LICENSE
 jobs:
   format:
     name: Get formatted version for filename

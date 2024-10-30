@@ -1,4 +1,3 @@
-import subprocess
 import time
 from datetime import datetime
 
@@ -7,19 +6,21 @@ from dbus import Interface
 from dbus.exceptions import DBusException
 from gi.repository import GLib
 
+from wlanpi_core.constants import (
+    WPAS_DBUS_BSS_INTERFACE,
+    WPAS_DBUS_INTERFACE,
+    WPAS_DBUS_INTERFACES_INTERFACE,
+    WPAS_DBUS_OPATH,
+    WPAS_DBUS_SERVICE,
+)
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
+from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.network import get_interface_addresses
 
 # For running locally (not in API)
 # import asyncio
-
-WPAS_DBUS_SERVICE = "fi.w1.wpa_supplicant1"
-WPAS_DBUS_INTERFACE = "fi.w1.wpa_supplicant1"
-WPAS_DBUS_OPATH = "/fi/w1/wpa_supplicant1"
-WPAS_DBUS_INTERFACES_INTERFACE = "fi.w1.wpa_supplicant1.Interface"
-WPAS_DBUS_INTERFACES_OPATH = "/fi/w1/wpa_supplicant1/Interfaces"
-WPAS_DBUS_BSS_INTERFACE = "fi.w1.wpa_supplicant1.BSS"
-WPAS_DBUS_NETWORK_INTERFACE = "fi.w1.wpa_supplicant1.Network"
 
 API_TIMEOUT = 20
 
@@ -90,12 +91,14 @@ def renew_dhcp(interface):
     """
     try:
         # Release the current DHCP lease
-        subprocess.run(["sudo", "dhclient", "-r", interface], check=True)
+        run_command(["sudo", "dhclient", "-r", interface], raise_on_fail=True)
         time.sleep(3)
         # Obtain a new DHCP lease
-        subprocess.run(["sudo", "dhclient", interface], check=True)
-    except subprocess.CalledProcessError as spe:
-        debug_print(f"Failed to renew DHCP. Error {spe}", 1)
+        run_command(["sudo", "dhclient", interface], raise_on_fail=True)
+    except RunCommandError as err:
+        debug_print(
+            f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}", 1
+        )
 
 
 def get_ip_address(interface):
@@ -103,23 +106,15 @@ def get_ip_address(interface):
     Extract the IP Address from the linux ip add show <if> command
     """
     try:
-        # Run the command to get details for a specific interface
-        result = subprocess.run(
-            ["ip", "addr", "show", interface],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        # Process the output to find the inet line which contains the IPv4 address
-        for line in result.stdout.split("\n"):
-            if "inet " in line:
-                # Extract the IP address from the line
-                ip_address = line.strip().split(" ")[1].split("/")[0]
-                return ip_address
-    except subprocess.CalledProcessError as spe:
-        debug_print("Failed to get IP address. Error {spe}", 1)
+        res = get_interface_addresses(interface)[interface]["inet"]
+        if len(res):
+            return res[0]
         return None
+    except RunCommandError as err:
+        debug_print(
+            f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}",
+            1,
+        )
 
 
 def getBss(bss):
@@ -556,10 +551,11 @@ async def set_systemd_network_addNetwork(
             # time.sleep(10)
             debug_print(f"Network selected with result: {selectErr}", 2)
 
+            timeout_check = 0
             if selectErr == None:
                 # The network selection has been successsfully applied (does not mean a network is selected)
                 main_context = GLib.MainContext.default()
-                timeout_check = 0
+
                 while supplicantState == [] and timeout_check <= API_TIMEOUT:
                     time.sleep(1)
                     timeout_check += 1
@@ -692,3 +688,6 @@ async def get_systemd_network_currentNetwork_details(
 # if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
 # res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
 # print(getBss(res))
+
+if __name__ == "__main__":
+    print(get_ip_address("eth0"))

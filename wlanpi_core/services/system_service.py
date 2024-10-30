@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -6,7 +7,10 @@ import subprocess
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
+from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.utils.general import run_command
 
 bus = SystemBus()
 systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
@@ -40,12 +44,6 @@ allowed_services = [
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
-
-# Mode changer scripts
-MODE_FILE = "/etc/wlanpi-state"
-
-# Version file for WLAN Pi image
-WLANPI_IMAGE_FILE = "/etc/wlanpi-release"
 
 
 def get_mode():
@@ -92,17 +90,12 @@ def get_image_ver():
 
 def get_hostname():
     try:
-        hostname = (
-            subprocess.check_output("/usr/bin/hostname", shell=True).decode().strip()
-        )
+
+        hostname = run_command("/usr/bin/hostname").stdout.strip()
         if not "." in hostname:
             domain = "local"
             try:
-                output = (
-                    subprocess.check_output("/usr/bin/hostname -d", shell=True)
-                    .decode()
-                    .strip()
-                )
+                output = run_command("/usr/bin/hostname -d").stdout.strip()
                 if len(output) != 0:
                     domain = output
             except:
@@ -134,7 +127,13 @@ def get_platform():
     # get output of wlanpi-model
     model_cmd = "wlanpi-model -b"
     try:
-        platform = subprocess.check_output(model_cmd, shell=True).decode().strip()
+        platform = run_command(model_cmd).stdout.strip()
+
+    except RunCommandError as exc:
+        logging.warning(
+            f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}"
+        )
+        return "Unknown"
     except subprocess.CalledProcessError as exc:
         exc.model.decode()
         # print("Err: issue running 'wlanpi-model -b' : ", model)
@@ -163,9 +162,9 @@ def get_stats():
 
     # determine CPU load
     # cmd = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'"
-    cmd = "mpstat 1 1 -o JSON | grep idle"
+    cmd = "mpstat 1 1 -o JSON"
     try:
-        CPU_JSON = subprocess.check_output(cmd, shell=True).decode()
+        CPU_JSON = run_command(cmd).grep_stdout_for_string("idle")
         CPU_IDLE = json.loads(CPU_JSON)["idle"]
         CPU = "{0:.2f}%".format(100 - CPU_IDLE)
         if CPU_IDLE == 100:
@@ -178,14 +177,14 @@ def get_stats():
     # determine mem useage
     cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
-        MemUsage = subprocess.check_output(cmd, shell=True).decode()
+        MemUsage = run_command(cmd, shell=True).stdout.strip()
     except Exception:
         MemUsage = "unknown"
 
     # determine disk util
     cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
-        Disk = subprocess.check_output(cmd, shell=True).decode()
+        Disk = run_command(cmd, shell=True).stdout.strip()
     except Exception:
         Disk = "unknown"
 
@@ -202,7 +201,7 @@ def get_stats():
     # determine uptime
     cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
-        uptime = subprocess.check_output(cmd, shell=True).decode().strip()
+        uptime = run_command(cmd, shell=True).stdout.strip()
     except Exception:
         uptime = "unknown"
 
