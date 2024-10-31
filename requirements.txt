@@ -62,6 +62,8 @@ pyasn1==0.6.1
     # via
     #   python-jose
     #   rsa
+pycairo==1.27.0
+    # via pygobject
 pycparser==2.22
     # via cffi
 pydantic==2.3.0
