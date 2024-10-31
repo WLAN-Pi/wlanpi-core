@@ -203,9 +203,9 @@ def show_eth0_ipconfig():
         )
 
     except RunCommandError as exc:
-        eth0_ipconfig_info["error"] = (
-            f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
-        )
+        eth0_ipconfig_info[
+            "error"
+        ] = f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
         return eth0_ipconfig_info
     except subprocess.CalledProcessError as exc:
         output = exc.output.decode()
@@ -271,9 +271,9 @@ def show_lldp_neighbour():
                 neighbour_info["info"].append(line)
 
         except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
+            neighbour_info[
+                "error"
+            ] = f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
             return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting LLDP neighbour"
@@ -301,9 +301,9 @@ def show_cdp_neighbour():
                 neighbour_info["info"].append(line)
 
         except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
+            neighbour_info[
+                "error"
+            ] = f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
             return neighbour_info
         except subprocess.CalledProcessError as exc:
             neighbour_info["error"] = "Issue getting CDP neighbour"
