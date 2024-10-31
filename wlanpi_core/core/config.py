@@ -26,5 +26,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+SECRET_KEY = "temporary_key"
+
 # when app is created, endpoints will be stored here for api landing page
 endpoints = []

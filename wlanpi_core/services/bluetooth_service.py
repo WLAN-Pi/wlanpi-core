@@ -85,8 +85,12 @@ def bluetooth_paired_devices():
         r"no default controller", flags=re.I, negate=True, split=False
     )
     if len(output) > 0:
-        output = re.sub("Device *", "", output).split("\n")
-        return dict([line.split(" ", 1) for line in output])
+        output = re.sub("Device *", "", output).strip().split("\n")
+        return {
+            line.split(" ", 1)[0]: line.split(" ", 1)[1]
+            for line in output
+            if " " in line
+        }
     else:
         return None
 

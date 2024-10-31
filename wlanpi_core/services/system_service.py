@@ -90,7 +90,6 @@ def get_image_ver():
 
 def get_hostname():
     try:
-
         hostname = run_command("/usr/bin/hostname").stdout.strip()
         if not "." in hostname:
             domain = "local"

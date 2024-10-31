@@ -8,7 +8,6 @@ from wlanpi_core.utils.general import get_model_info
 
 
 class TestGeneralUtils(unittest.TestCase):
-
     @unittest.mock.patch("wlanpi_core.utils.general.run_command")
     def test_get_hostname(self, mock_run_command):
         # Mock the run_command function to return a mocked subprocess object with specific attributes
