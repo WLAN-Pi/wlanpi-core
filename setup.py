@@ -18,14 +18,14 @@ with open(os.path.join(here, "wlanpi_core", "__version__.py"), "r", "utf-8") as 
 
 
 def parse_requires(_list):
-    requires = list()
+    require_list = list()
     trims = ["#", "piwheels.org"]
     for require in _list:
         if any(match in require for match in trims):
             continue
-        requires.append(require)
-    requires = list(filter(None, requires))  # remove "" from list
-    return requires
+        require_list.append(require)
+    require_list = list(filter(None, require_list))  # remove "" from list
+    return require_list
 
 
 # important to collect various modules in the package directory

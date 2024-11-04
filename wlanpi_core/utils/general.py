@@ -223,3 +223,15 @@ def get_current_unix_timestamp() -> float:
     """
     ms = datetime.datetime.now()
     return time.mktime(ms.timetuple()) * 1000
+
+
+def byte_array_to_string(s) -> str:
+    """Converts a byte array to string, replacing non-printable characters with spaces."""
+    r = ""
+    for c in s:
+        if 32 <= c < 127:
+            r += "%c" % c
+        else:
+            r += " "
+            # r += urllib.quote(chr(c))
+    return r

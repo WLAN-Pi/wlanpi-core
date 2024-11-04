@@ -1,4 +1,8 @@
+import logging
+import time
 from typing import Any, Optional
+
+from wlanpi_core.models.runcommand_error import RunCommandError
 
 from wlanpi_core.utils.general import run_command
 
@@ -38,12 +42,44 @@ def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str
 
 def get_interface_addresses(
     interface: Optional[str] = None,
-) -> dict[str, dict[str, str]]:
+) -> dict[str, dict[str, list[str]]]:
     res = get_interface_address_data(interface=interface)
     out_obj = {}
     for item in res:
         if item["ifname"] not in out_obj:
-            out_obj[item["ifname"]] = {"inet": [], "inet6": []}
+            ifname:str = item["ifname"]
+            out_obj[ifname] = {"inet": [], "inet6": []}
         for addr in item["addr_info"]:
-            out_obj[item["ifname"]][addr["family"]].append(addr["local"])
+            ifname: str = item["ifname"]
+            out_obj[ifname][addr["family"]].append(addr["local"])
     return out_obj
+
+
+def get_ip_address(interface):
+    """
+    Extract the IPv4 IP Address from the linux ip add show <if> command
+    """
+    try:
+        res = get_interface_addresses(interface)[interface]["inet"]
+        if len(res):
+            return res[0]
+        return None
+    except RunCommandError as err:
+        logging.warning(f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}")
+        return None
+
+
+def renew_dhcp(interface) -> None:
+    """
+    Uses dhclient to release and request a new DHCP lease
+    """
+    try:
+        # Release the current DHCP lease
+        run_command(["sudo", "dhclient", "-r", interface], raise_on_fail=True)
+        time.sleep(3)
+        # Obtain a new DHCP lease
+        run_command(["sudo", "dhclient", interface], raise_on_fail=True)
+    except RunCommandError as err:
+        logging.warning(f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}")
+        return None
+

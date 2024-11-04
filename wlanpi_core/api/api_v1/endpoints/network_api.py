@@ -205,8 +205,8 @@ async def delete_ethernet_vlan(
 ################################
 
 
-@router.get("/wlan/getInterfaces", response_model=network.Interfaces)
-async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
+@router.get("/wlan/interfaces", response_model=network.Interfaces)
+async def get_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
@@ -219,21 +219,19 @@ async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
-
 @router.get(
-    "/wlan/scan", response_model=network.ScanResults, response_model_exclude_none=True
+    "/wlan/{interface}/scan", response_model=network.ScanResults, response_model_exclude_none=True
 )
-async def get_a_systemd_network_scan(
-    type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
+async def do_wireless_network_scan(
+    scan_type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
 
     try:
-        # return await network_service.get_systemd_network_scan(type)
-        return await network_service.get_async_systemd_network_scan(
-            type, interface, timeout
+        return await network_service.get_wireless_network_scan_async(
+            scan_type, interface, timeout
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -242,7 +240,7 @@ async def get_a_systemd_network_scan(
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/wlan/set", response_model=network.NetworkSetupStatus)
+@router.post("/wlan/{interface}/set", response_model=network.NetworkSetupStatus)
 async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
 ):
@@ -251,7 +249,7 @@ async def set_a_systemd_network(
     """
 
     try:
-        return await network_service.set_systemd_network_addNetwork(
+        return await network_service.add_wireless_network(
             setup.interface, setup.netConfig, setup.removeAllFirst, timeout
         )
     except ValidationError as ve:
@@ -262,11 +260,11 @@ async def set_a_systemd_network(
 
 
 @router.get(
-    "/wlan/getConnected",
+    "/wlan/{interface}/connected",
     response_model=network.ConnectedNetwork,
     response_model_exclude_none=True,
 )
-async def get_a_systemd_currentNetwork_details(
+async def get_current_wireless_network_details(
     interface: str, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
@@ -274,7 +272,7 @@ async def get_a_systemd_currentNetwork_details(
     """
 
     try:
-        return await network_service.get_systemd_network_currentNetwork_details(
+        return await network_service.get_current_wireless_network_details(
             interface, timeout
         )
     except ValidationError as ve:
