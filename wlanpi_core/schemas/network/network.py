@@ -62,7 +62,7 @@ class IPInterface(BaseModel, extra=Extra.allow):
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
 
 
-class ScanItem(BaseModel):
+class ScanItem(BaseModel, extra=Extra.allow):
     ssid: str = Field(example="A Network")
     bssid: str = Field(example="11:22:33:44:55")
     key_mgmt: str = Field(example="wpa-psk")
@@ -84,7 +84,6 @@ class WlanConfig(BaseModel):
 
 
 class WlanInterfaceSetup(BaseModel):
-    interface: str = Field(example="wlan0")
     netConfig: WlanConfig
     removeAllFirst: bool
 

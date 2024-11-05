@@ -6,6 +6,7 @@ from typing import Optional, Union
 
 import dbus.proxies
 from dbus import SystemBus, Interface, DBusException
+from dbus.proxies import ProxyObject
 
 from gi.repository import GLib
 
@@ -42,7 +43,7 @@ class WlanDBUSInterface:
             if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceUnknown:"):
                 raise WlanDBUSInterfaceException(f"Interface unknown : {exc}") from exc
             try:
-                interface_path = self.wpa_supplicant.CreateInterface({"Ifname": self.interface_name, "Driver": "test"})
+                interface_path = self.wpa_supplicant.CreateInterface({"Ifname": self.interface_name, "Driver": "nl80211"})
                 time.sleep(1)
             except dbus.DBusException as exc:
                 if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceExists:"):
@@ -51,12 +52,15 @@ class WlanDBUSInterface:
                     ) from exc
         time.sleep(1)
         self.logger.debug(interface_path)
-        self.interface_dbus_object = self.system_bus.get_object(WPAS_DBUS_SERVICE, interface_path)
-        self.interface_dbus_interface = dbus.Interface(self.interface_dbus_object, WPAS_DBUS_INTERFACES_INTERFACE)
+        self.supplicant_dbus_object = self.system_bus.get_object(WPAS_DBUS_SERVICE, interface_path)
+        self.supplicant_dbus_interface = dbus.Interface(self.supplicant_dbus_object, WPAS_DBUS_INTERFACES_INTERFACE)
 
 
         # Transient vars
         self.last_scan = None
+
+    def _get_dbus_object(self, object_path:str)->ProxyObject:
+        return self.system_bus.get_object(WPAS_DBUS_SERVICE, object_path)
 
 
     def _get_from_wpa_supplicant_network(self, bss:str, key:str):
@@ -64,7 +68,7 @@ class WlanDBUSInterface:
         return net_obj.Get(WPAS_DBUS_BSS_INTERFACE, key, dbus_interface=self.DBUS_IFACE )
 
     def _get_from_wpa_supplicant_interface(self, key:str):
-        return self.interface_dbus_object.Get(WPAS_DBUS_INTERFACES_INTERFACE, key, dbus_interface=dbus.PROPERTIES_IFACE)
+        return self.supplicant_dbus_object.Get(WPAS_DBUS_INTERFACES_INTERFACE, key, dbus_interface=dbus.PROPERTIES_IFACE)
 
     def _get_bssid_path(self):
         return self._get_from_wpa_supplicant_interface("CurrentBSS")
@@ -198,7 +202,7 @@ class WlanDBUSInterface:
                 )
 
                 # Start Scan
-                self.interface_dbus_interface.Scan(scan_config)
+                self.supplicant_dbus_interface.Scan(scan_config)
                 # exit after waiting a short time for the signal
                 glib_loop.start_timeout(seconds=timeout, callback=timeout_handler)
 
@@ -338,17 +342,17 @@ class WlanDBUSInterface:
                 # Remove all other connections if requested
                 if remove_others:
                     self.logger.info("Removing existing connections")
-                    self.interface_dbus_interface.RemoveAllNetworks()
+                    self.supplicant_dbus_interface.RemoveAllNetworks()
 
                 wlan_config_cleaned = {k: v for k, v in wlan_config if v is not None}
                 wlan_config_dbus = dbus.Dictionary(wlan_config_cleaned, signature="sv")
-                netw = self.interface_dbus_interface.AddNetwork(wlan_config_dbus)
+                netw = self.supplicant_dbus_interface.AddNetwork(wlan_config_dbus)
 
                 if netw != "/":
                     self.logger.debug("Valid network entry received")
 
                     # Select this network using its full path name
-                    select_err = self.interface_dbus_interface.SelectNetwork(netw)
+                    select_err = self.supplicant_dbus_interface.SelectNetwork(netw)
                     self.logger.debug(f"Network selected with result: {select_err}")
 
                     self.logger.debug(f"Logged connection Events: {connection_events}")
@@ -407,4 +411,27 @@ class WlanDBUSInterface:
             "connectedNet": bssid,
             "input": wlan_config.ssid,
         }
+
+
+    def disconnect(self) -> None:
+        """ Disconnects the given interface from any network it may be associated with"""
+        self.logger.info("Disconnecting WLAN on %s", self.interface_name)
+        self.supplicant_dbus_interface.Disconnect()
+
+    def remove_all_networks(self) -> None:
+        """ Removes all networks from the interface"""
+        self.logger.info("Removing all Networks onon %s", self.interface_name)
+        self.supplicant_dbus_interface.RemoveAllNetworks()
+
+    def remove_network(self, network_id:int) -> None:
+        """ Removes a single network from the interface"""
+        self.logger.info("Removing network %s on %s", network_id, self.interface_name)
+        self.supplicant_dbus_interface.RemoveNetwork(network_id)
+
+    def networks(self):
+        """ Returns a list of available networks """
+        networks = {}
+        for network_path in self._get_from_wpa_supplicant_interface('Networks'):
+            networks[network_path] = self._get_dbus_object(network_path).Get('fi.w1.wpa_supplicant1.Network',  "Properties",dbus_interface=dbus.PROPERTIES_IFACE)
+        return networks
 

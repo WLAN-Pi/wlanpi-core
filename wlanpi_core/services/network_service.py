@@ -8,7 +8,7 @@ from wlanpi_core.models.network.wlan.wlan_dbus import WlanDBUS
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
-
+from wlanpi_core.schemas.network.network import ScanItem
 
 """
 These are the functions used to deliver the API
@@ -46,7 +46,7 @@ async def get_wireless_network_scan_async(
 
         interface_obj = wlan_dbus.get_interface(interface)
         return {"nets": await interface_obj.get_network_scan(scan_type, timeout=timeout)}
-    except [WlanDBUSException, ValueError] as err:
+    except (WlanDBUSException, ValueError) as err:
         # Need to Split exceptions into validation and actual failures
         raise ValidationError(str(err), status_code=400) from err
 
@@ -77,4 +77,57 @@ async def get_current_wireless_network_details(
         return wlan_dbus.get_interface(interface).get_current_network_details()
     except WlanDBUSException as err:
         raise ValidationError(str(err), status_code=400) from err
+
+
+async def disconnect_wireless_network(
+    interface: str,
+    timeout: Optional[int],
+):
+    """
+    Uses wpa_supplicant to disconnect to a WLAN network.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).disconnect()
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
+
+
+async def remove_all_networks(
+    interface: str,
+):
+    """
+    Uses wpa_supplicant to connect to a WLAN network.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).remove_all_networks()
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
+
+async def remove_network(
+    interface: str,
+        network_id: int,
+):
+    """
+    Uses wpa_supplicant to remove a network from the list of known networks.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).remove_network(network_id)
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
+
+
+async def networks(
+    interface: str,
+)->dict[int, ScanItem]:
+    """
+    Uses wpa_supplicant to connect to a WLAN network.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).networks()
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
 

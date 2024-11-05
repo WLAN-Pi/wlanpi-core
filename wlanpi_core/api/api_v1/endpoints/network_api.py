@@ -8,7 +8,7 @@ from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
-from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
+from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress, ScanItem
 from wlanpi_core.services import network_ethernet_service, network_service
 
 router = APIRouter()
@@ -240,9 +240,9 @@ async def do_wireless_network_scan(
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/wlan/{interface}/set", response_model=network.NetworkSetupStatus)
-async def set_a_systemd_network(
-    setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
+@router.post("/wlan/{interface}/add_network", response_model=network.NetworkSetupStatus)
+async def add_wireless_network(
+    interface:str, setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
     Queries systemd via dbus to set a single network.
@@ -250,7 +250,7 @@ async def set_a_systemd_network(
 
     try:
         return await network_service.add_wireless_network(
-            setup.interface, setup.netConfig, setup.removeAllFirst, timeout
+            interface, setup.netConfig, setup.removeAllFirst, timeout
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -280,3 +280,95 @@ async def get_current_wireless_network_details(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+@router.post(
+    "/wlan/{interface}/disconnect",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def disconnect_wireless_network(
+    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.disconnect_wireless_network(
+            interface, timeout
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/wlan/{interface}/networks",
+    response_model=dict[int, ScanItem],
+    response_model_exclude_none=True,
+)
+async def get_all_wireless_networks(
+    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.networks(
+            interface
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+@router.delete(
+    "/wlan/{interface}/networks/{network_id}",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def disconnect_wireless_network(
+    interface: str, network_id: int
+):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.remove_network(
+            interface, network_id,
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+
+@router.post(
+    "/wlan/{interface}/networks/all/remove",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def remove_all_wireless_networks(
+    interface: str
+):
+    """
+    Removes all networks on an interface
+    """
+
+    try:
+        return await network_service.remove_all_networks(
+            interface
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
