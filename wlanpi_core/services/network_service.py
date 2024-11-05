@@ -2,13 +2,12 @@ import logging
 from enum import Enum
 from typing import Optional
 
-
 from wlanpi_core.models.network.wlan.exceptions import WlanDBUSException
 from wlanpi_core.models.network.wlan.wlan_dbus import WlanDBUS
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
-from wlanpi_core.schemas.network.network import ScanItem
+from wlanpi_core.schemas.network.network import SupplicantNetwork
 
 """
 These are the functions used to deliver the API
@@ -30,7 +29,7 @@ async def get_systemd_network_interfaces(timeout: int):
 
 
 async def get_wireless_network_scan_async(
-    scan_type: Enum(*WlanDBUSInterface.ALLOWED_SCAN_TYPES), interface: str, timeout:int
+    scan_type: Enum(*WlanDBUSInterface.ALLOWED_SCAN_TYPES), interface: str, timeout: int
 ):
     """
     Queries systemd via dbus to get a scan of the available networks.
@@ -38,17 +37,22 @@ async def get_wireless_network_scan_async(
     try:
         wlan_dbus = WlanDBUS()
         clean_scan_type = scan_type.strip().lower() if scan_type else None
-        if not clean_scan_type or (clean_scan_type not in WlanDBUSInterface.ALLOWED_SCAN_TYPES):
+        if not clean_scan_type or (
+            clean_scan_type not in WlanDBUSInterface.ALLOWED_SCAN_TYPES
+        ):
             raise ValidationError(
                 f"scan type must be one of: {', '.join(WlanDBUSInterface.ALLOWED_SCAN_TYPES)}",
-                status_code=400
+                status_code=400,
             )
 
         interface_obj = wlan_dbus.get_interface(interface)
-        return {"nets": await interface_obj.get_network_scan(scan_type, timeout=timeout)}
+        return {
+            "nets": await interface_obj.get_network_scan(scan_type, timeout=timeout)
+        }
     except (WlanDBUSException, ValueError) as err:
         # Need to Split exceptions into validation and actual failures
         raise ValidationError(str(err), status_code=400) from err
+
 
 async def add_wireless_network(
     interface: str,
@@ -61,14 +65,14 @@ async def add_wireless_network(
     """
     try:
         wlan_dbus = WlanDBUS()
-        return await wlan_dbus.get_interface(interface).add_network(wlan_config=net_config, remove_others=remove_all_first, timeout=timeout)
+        return await wlan_dbus.get_interface(interface).add_network(
+            wlan_config=net_config, remove_others=remove_all_first, timeout=timeout
+        )
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
 
-async def get_current_wireless_network_details(
-    interface: str, timeout: int
-):
+async def get_current_wireless_network_details(interface: str, timeout: int):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
@@ -105,9 +109,10 @@ async def remove_all_networks(
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
+
 async def remove_network(
     interface: str,
-        network_id: int,
+    network_id: int,
 ):
     """
     Uses wpa_supplicant to remove a network from the list of known networks.
@@ -121,8 +126,8 @@ async def remove_network(
 
 async def get_network(
     interface: str,
-        network_id: int,
-):
+    network_id: int,
+) -> SupplicantNetwork:
     """
     Uses wpa_supplicant to remove a network from the list of known networks.
     """
@@ -135,7 +140,7 @@ async def get_network(
 
 async def networks(
     interface: str,
-)->dict[int, ScanItem]:
+) -> dict[int, SupplicantNetwork]:
     """
     Uses wpa_supplicant to connect to a WLAN network.
     """
@@ -144,4 +149,3 @@ async def networks(
         return wlan_dbus.get_interface(interface).networks()
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
-

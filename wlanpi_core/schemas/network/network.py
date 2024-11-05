@@ -74,6 +74,7 @@ class ScanItem(BaseModel, extra=Extra.allow):
 class ScanResults(BaseModel):
     nets: List[ScanItem]
 
+
 class SupplicantNetwork(BaseModel, extra=Extra.allow):
     ssid: str = Field(example="A Network")
     key_mgmt: str = Field(example="wpa-psk")

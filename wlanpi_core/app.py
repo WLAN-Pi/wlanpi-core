@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 
-# stdlib imports
-
 # third party imports
 import uvicorn
 from fastapi import FastAPI
@@ -15,14 +13,23 @@ from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.views import api
 
+# stdlib imports
+
+
 # setup logger
-logging.basicConfig(level=logging.DEBUG,
-                        format="%(asctime)s - %(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s")
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s",
+)
 
 log_config = uvicorn.config.LOGGING_CONFIG
 log_config["disable_existing_loggers"] = False
-log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelprefix)s - %(message)s"
-log_config["formatters"]["default"]["fmt"] = "%(asctime)s - %(levelprefix)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s"
+log_config["formatters"]["access"][
+    "fmt"
+] = "%(asctime)s - %(levelprefix)s - %(message)s"
+log_config["formatters"]["default"][
+    "fmt"
+] = "%(asctime)s - %(levelprefix)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s"
 
 
 def create_app():

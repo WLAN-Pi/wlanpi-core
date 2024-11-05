@@ -8,7 +8,11 @@ from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
-from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress, SupplicantNetwork
+from wlanpi_core.schemas.network.network import (
+    IPInterface,
+    IPInterfaceAddress,
+    SupplicantNetwork,
+)
 from wlanpi_core.services import network_ethernet_service, network_service
 
 router = APIRouter()
@@ -219,8 +223,11 @@ async def get_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
+
 @router.get(
-    "/wlan/{interface}/scan", response_model=network.ScanResults, response_model_exclude_none=True
+    "/wlan/{interface}/scan",
+    response_model=network.ScanResults,
+    response_model_exclude_none=True,
 )
 async def do_wireless_network_scan(
     scan_type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
@@ -242,7 +249,9 @@ async def do_wireless_network_scan(
 
 @router.post("/wlan/{interface}/add_network", response_model=network.NetworkSetupStatus)
 async def add_wireless_network(
-    interface:str, setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
+    interface: str,
+    setup: network.WlanInterfaceSetup,
+    timeout: int = API_DEFAULT_TIMEOUT,
 ):
     """
     Queries systemd via dbus to set a single network.
@@ -281,6 +290,7 @@ async def get_current_wireless_network_details(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
+
 @router.post(
     "/wlan/{interface}/disconnect",
     response_model=None,
@@ -294,9 +304,7 @@ async def disconnect_wireless_network(
     """
 
     try:
-        return await network_service.disconnect_wireless_network(
-            interface, timeout
-        )
+        return await network_service.disconnect_wireless_network(interface, timeout)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -309,17 +317,13 @@ async def disconnect_wireless_network(
     response_model=dict[int, SupplicantNetwork],
     response_model_exclude_none=True,
 )
-async def get_all_wireless_networks(
-    interface: str, timeout: int = API_DEFAULT_TIMEOUT
-):
+async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
 
     try:
-        return await network_service.networks(
-            interface
-        )
+        return await network_service.networks(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -332,17 +336,13 @@ async def get_all_wireless_networks(
     response_model=SupplicantNetwork,
     response_model_exclude_none=True,
 )
-async def get_wireless_network(
-    interface: str, network_id: int
-):
+async def get_wireless_network(interface: str, network_id: int):
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
 
     try:
-        return await network_service.get_network(
-            interface, network_id
-        )
+        return await network_service.get_network(interface, network_id)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -355,17 +355,13 @@ async def get_wireless_network(
     response_model=None,
     response_model_exclude_none=True,
 )
-async def remove_all_wireless_networks(
-    interface: str
-):
+async def remove_all_wireless_networks(interface: str):
     """
     Removes all networks on an interface
     """
 
     try:
-        return await network_service.remove_all_networks(
-            interface
-        )
+        return await network_service.remove_all_networks(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -378,21 +374,18 @@ async def remove_all_wireless_networks(
     response_model=None,
     response_model_exclude_none=True,
 )
-async def disconnect_wireless_network(
-    interface: str, network_id: int
-):
+async def disconnect_wireless_network(interface: str, network_id: int):
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
 
     try:
         return await network_service.remove_network(
-            interface, network_id,
+            interface,
+            network_id,
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-
-

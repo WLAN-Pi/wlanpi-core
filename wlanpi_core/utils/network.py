@@ -3,7 +3,6 @@ import time
 from typing import Any, Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
-
 from wlanpi_core.utils.general import run_command
 
 
@@ -47,7 +46,7 @@ def get_interface_addresses(
     out_obj = {}
     for item in res:
         if item["ifname"] not in out_obj:
-            ifname:str = item["ifname"]
+            ifname: str = item["ifname"]
             out_obj[ifname] = {"inet": [], "inet6": []}
         for addr in item["addr_info"]:
             ifname: str = item["ifname"]
@@ -65,7 +64,9 @@ def get_ip_address(interface):
             return res[0]
         return None
     except RunCommandError as err:
-        logging.warning(f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}")
+        logging.warning(
+            f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}"
+        )
         return None
 
 
@@ -80,6 +81,7 @@ def renew_dhcp(interface) -> None:
         # Obtain a new DHCP lease
         run_command(["sudo", "dhclient", interface], raise_on_fail=True)
     except RunCommandError as err:
-        logging.warning(f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}")
+        logging.warning(
+            f"Failed to renew DHCP. Code:{err.return_code}, Error: {err.error_msg}"
+        )
         return None
-

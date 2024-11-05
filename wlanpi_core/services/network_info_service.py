@@ -15,6 +15,7 @@ from wlanpi_core.constants import (
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 
+
 def show_info():
     output = {}
 
