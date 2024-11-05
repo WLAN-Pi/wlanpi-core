@@ -5,8 +5,10 @@ class WlanDBUSException(Exception):
 class WlanDBUSInterfaceException(WlanDBUSException):
     pass
 
+
 class WlanDBUSInterfaceCreationError(WlanDBUSInterfaceException):
     pass
+
 
 class WDIScanError(WlanDBUSInterfaceException):
     pass

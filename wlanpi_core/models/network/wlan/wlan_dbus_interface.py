@@ -19,7 +19,8 @@ from wlanpi_core.models.network.wlan.exceptions import (
     WDIConnectionException,
     WDIDisconnectedException,
     WDIScanError,
-    WlanDBUSInterfaceException, WlanDBUSInterfaceCreationError,
+    WlanDBUSInterfaceCreationError,
+    WlanDBUSInterfaceException,
 )
 from wlanpi_core.schemas.network import (
     NetworkSetupStatus,
@@ -63,7 +64,9 @@ class WlanDBUSInterface:
             )
         except dbus.DBusException as exc:
             if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceUnknown:"):
-                raise WlanDBUSInterfaceCreationError(f"Interface unknown : {exc}") from exc
+                raise WlanDBUSInterfaceCreationError(
+                    f"Interface unknown : {exc}"
+                ) from exc
             try:
                 self.interface_dbus_path = self.wpa_supplicant.CreateInterface(
                     {"Ifname": self.interface_name, "Driver": "nl80211"}
