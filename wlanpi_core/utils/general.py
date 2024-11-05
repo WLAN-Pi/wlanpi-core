@@ -13,11 +13,11 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 
 
 def run_command(
-        cmd: Union[list, str],
-        input: Optional[str] = None,
-        stdin: Optional[TextIO] = None,
-        shell=False,
-        raise_on_fail=True,
+    cmd: Union[list, str],
+    input: Optional[str] = None,
+    stdin: Optional[TextIO] = None,
+    shell=False,
+    raise_on_fail=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -69,11 +69,11 @@ def run_command(
             cmd: list[str] = shlex.split(cmd)
         cmd: list[str]
     with subprocess.Popen(
-            cmd,
-            shell=shell,
-            stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        cmd,
+        shell=shell,
+        stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     ) as proc:
         if input:
             input_data = input.encode()
@@ -89,11 +89,11 @@ def run_command(
 
 
 async def run_command_async(
-        cmd: Union[list, str],
-        input: Optional[str] = None,
-        stdin: Optional[TextIO] = None,
-        shell=False,
-        raise_on_fail=True,
+    cmd: Union[list, str],
+    input: Optional[str] = None,
+    stdin: Optional[TextIO] = None,
+    shell=False,
+    raise_on_fail=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
