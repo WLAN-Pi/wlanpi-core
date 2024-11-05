@@ -111,7 +111,7 @@ def init() -> None:
         )
 
     if __name__ == "__main__":
-        sys.exit(main())
+        return sys.exit(main())
 
 
 init()

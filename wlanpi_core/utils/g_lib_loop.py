@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Callable, Optional
 
 from gi.repository import GLib
 
@@ -10,7 +10,7 @@ class GLibLoop:
         self,
         loop: Optional[GLib.MainLoop] = None,
         timeout_seconds: Optional[int] = None,
-        timeout_callback: Optional[callable] = None,
+        timeout_callback: Optional[Callable] = None,
         timeout_callback_args: Optional[list] = None,
         timeout_callback_kwargs: Optional[dict] = None,
     ):
@@ -25,10 +25,10 @@ class GLibLoop:
     def start_timeout(
         self,
         seconds: Optional[int] = None,
-        callback: Optional[callable] = None,
-        *args,
-        **kwargs
-    ):
+        callback: Optional[Callable] = None,
+        *args: tuple[any],
+        **kwargs: dict[str, any]
+    ) -> None:
         self.timeout_source = GLib.timeout_source_new_seconds(
             seconds if seconds else self.timeout_seconds
         )
@@ -41,16 +41,16 @@ class GLibLoop:
             self.loop.get_context()
         )
 
-    def stop_timeout(self):
+    def stop_timeout(self) -> None:
         if self.timeout_source and self.timeout_source_attachment:
             self.timeout_source.remove(self.timeout_source_attachment)
 
-    def finish(self):
+    def finish(self) -> None:
         self.stop_timeout()
         self.loop.quit()
 
-    def run(self, *args, **kwargs):
-        self.loop.run(*args, **kwargs)
+    def run(self, *args: tuple[any], **kwargs: [dict[str, any]]) -> None:
+        return self.loop.run(*args, **kwargs)
 
     def __enter__(self):
         return self

@@ -9,7 +9,9 @@ from wlanpi_core.constants import (
     WPAS_DBUS_OPATH,
     WPAS_DBUS_SERVICE,
 )
+from wlanpi_core.models.network.wlan.exceptions import WlanDBUSInterfaceException
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
+from wlanpi_core.utils.general import run_command
 
 
 class WlanDBUS:
@@ -46,8 +48,21 @@ class WlanDBUS:
             self.interfaces[interface] = new_interface
         return self.interfaces[interface]
 
+    @staticmethod
+    def _fetch_system_interfaces() -> list[str]:
+        return run_command(
+            "ls /sys/class/ieee80211/*/device/net/", shell=True
+        ).grep_stdout_for_string("/", negate=True, split=True)
+
     def fetch_interfaces(self, wpas_obj):
         available_interfaces = []
+        for system_interface in self._fetch_system_interfaces():
+            try:
+                self.get_interface(system_interface)
+            except WlanDBUSInterfaceException as e:
+                self.logger.warning(
+                    f"Error trying to optimistically register interface {system_interface}: {e}"
+                )
 
         ifaces = wpas_obj.Get(
             WPAS_DBUS_INTERFACE, "Interfaces", dbus_interface=self.DBUS_IFACE
@@ -71,7 +86,7 @@ class WlanDBUS:
         """
 
         wpas_obj = self.bus.get_object(WPAS_DBUS_SERVICE, WPAS_DBUS_OPATH)
-        self.logger.debug("Checking available interfaces", 3)
+        self.logger.debug("Checking available interfaces")
         available_interfaces = self.fetch_interfaces(wpas_obj)
-        self.logger.debug(f"Available interfaces: {available_interfaces}", 3)
+        self.logger.debug(f"Available interfaces: {available_interfaces}")
         return available_interfaces
