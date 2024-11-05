@@ -23,7 +23,6 @@ SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 
 # ensure that the systemd services are handled by systemd.
 override_dh_installsystemd:
-	dh_installsystemd --name=wpa_supplicant@wlan0 wpa_supplicant@wlan0.service
 	dh_installsystemd wlanpi-core.service
 	dh_installsystemd wlanpi-core.socket
 

@@ -40,7 +40,6 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-6",
     "wlanpi-grafana-wipry-lp-stop",
     "wpa_supplicant",
-    "wpa_supplicant@wlan0",
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
