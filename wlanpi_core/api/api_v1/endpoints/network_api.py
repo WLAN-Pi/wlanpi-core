@@ -332,6 +332,25 @@ async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_T
 
 
 @router.get(
+    "/wlan/{interface}/networks/current",
+    response_model=Optional[SupplicantNetwork],
+    response_model_exclude_none=True,
+)
+async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.current_network(interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
     "/wlan/{interface}/networks/{network_id}",
     response_model=SupplicantNetwork,
     response_model_exclude_none=True,

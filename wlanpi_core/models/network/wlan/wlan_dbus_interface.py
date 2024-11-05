@@ -19,7 +19,7 @@ from wlanpi_core.models.network.wlan.exceptions import (
     WDIConnectionException,
     WDIDisconnectedException,
     WDIScanError,
-    WlanDBUSInterfaceException,
+    WlanDBUSInterfaceException, WlanDBUSInterfaceCreationError,
 )
 from wlanpi_core.schemas.network import (
     NetworkSetupStatus,
@@ -63,7 +63,7 @@ class WlanDBUSInterface:
             )
         except dbus.DBusException as exc:
             if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceUnknown:"):
-                raise WlanDBUSInterfaceException(f"Interface unknown : {exc}") from exc
+                raise WlanDBUSInterfaceCreationError(f"Interface unknown : {exc}") from exc
             try:
                 self.interface_dbus_path = self.wpa_supplicant.CreateInterface(
                     {"Ifname": self.interface_name, "Driver": "nl80211"}
@@ -71,7 +71,7 @@ class WlanDBUSInterface:
                 time.sleep(1)
             except dbus.DBusException as exc:
                 if not str(exc).startswith("fi.w1.wpa_supplicant1.InterfaceExists:"):
-                    raise WlanDBUSInterfaceException(
+                    raise WlanDBUSInterfaceCreationError(
                         f"Interface cannot be created : {exc}"
                     ) from exc
         time.sleep(1)
@@ -510,6 +510,19 @@ class WlanDBUSInterface:
         return self._get_dbus_object(
             f"{self.interface_dbus_path}/Networks/{network_id}"
         ).Get(
+            "fi.w1.wpa_supplicant1.Network",
+            "Properties",
+            dbus_interface=dbus.PROPERTIES_IFACE,
+        )
+
+    def current_network(
+        self,
+    ) -> Optional[SupplicantNetwork]:
+        """Returns the currently selected network, if any"""
+        net_path = self._get_from_wpa_supplicant_interface("CurrentNetwork")
+        if net_path == "/":
+            return None
+        return self._get_dbus_object(net_path).Get(
             "fi.w1.wpa_supplicant1.Network",
             "Properties",
             dbus_interface=dbus.PROPERTIES_IFACE,

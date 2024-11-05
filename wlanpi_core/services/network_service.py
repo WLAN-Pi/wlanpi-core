@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from wlanpi_core.models.network.wlan.exceptions import WlanDBUSException
+from wlanpi_core.models.network.wlan.exceptions import WlanDBUSException, WlanDBUSInterfaceCreationError
 from wlanpi_core.models.network.wlan.wlan_dbus import WlanDBUS
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
 from wlanpi_core.models.validation_error import ValidationError
@@ -23,6 +23,9 @@ async def get_systemd_network_interfaces(timeout: int):
         available_interfaces = wlan_dbus.get_systemd_network_interfaces(timeout=timeout)
         logging.info(f"Available interfaces: {available_interfaces}")
         return {"interfaces": available_interfaces}
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except WlanDBUSException as err:
         # Need to Split exceptions into validation and actual failures
         raise ValidationError(str(err), status_code=400) from err
@@ -49,6 +52,9 @@ async def get_wireless_network_scan_async(
         return {
             "nets": await interface_obj.get_network_scan(scan_type, timeout=timeout)
         }
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except (WlanDBUSException, ValueError) as err:
         # Need to Split exceptions into validation and actual failures
         raise ValidationError(str(err), status_code=400) from err
@@ -68,6 +74,9 @@ async def add_wireless_network(
         return await wlan_dbus.get_interface(interface).add_network(
             wlan_config=net_config, remove_others=remove_all_first, timeout=timeout
         )
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
@@ -79,6 +88,9 @@ async def get_current_wireless_network_details(interface: str, timeout: int):
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).get_current_network_details()
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except WlanDBUSException as err:
         raise ValidationError(str(err), status_code=400) from err
 
@@ -93,6 +105,9 @@ async def disconnect_wireless_network(
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).disconnect()
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
@@ -106,6 +121,9 @@ async def remove_all_networks(
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).remove_all_networks()
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
@@ -120,6 +138,9 @@ async def remove_network(
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).remove_network(network_id)
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
@@ -134,6 +155,9 @@ async def get_network(
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).get_network(network_id)
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 
@@ -147,5 +171,24 @@ async def networks(
     try:
         wlan_dbus = WlanDBUS()
         return wlan_dbus.get_interface(interface).networks()
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
+
+
+async def current_network(
+    interface: str,
+) -> Optional[SupplicantNetwork]:
+    """
+    Uses wpa_supplicant to connect to a WLAN network.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).current_network()
+    except WlanDBUSInterfaceCreationError as error:
+        raise ValidationError("Could not create interface. Check that the requested interface exists.\n"
+                              f"Original error: {str(error)}", status_code=400)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
