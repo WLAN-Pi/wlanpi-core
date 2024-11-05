@@ -8,7 +8,7 @@ from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
-from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress, ScanItem
+from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress, SupplicantNetwork
 from wlanpi_core.services import network_ethernet_service, network_service
 
 router = APIRouter()
@@ -306,7 +306,7 @@ async def disconnect_wireless_network(
 
 @router.get(
     "/wlan/{interface}/networks",
-    response_model=dict[int, ScanItem],
+    response_model=dict[int, SupplicantNetwork],
     response_model_exclude_none=True,
 )
 async def get_all_wireless_networks(
@@ -325,6 +325,53 @@ async def get_all_wireless_networks(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/wlan/{interface}/networks/{network_id}",
+    response_model=SupplicantNetwork,
+    response_model_exclude_none=True,
+)
+async def get_wireless_network(
+    interface: str, network_id: int
+):
+    """
+    Queries systemd via dbus to get the details of the currently connected network.
+    """
+
+    try:
+        return await network_service.get_network(
+            interface, network_id
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.delete(
+    "/wlan/{interface}/networks/all",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def remove_all_wireless_networks(
+    interface: str
+):
+    """
+    Removes all networks on an interface
+    """
+
+    try:
+        return await network_service.remove_all_networks(
+            interface
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
 
 @router.delete(
     "/wlan/{interface}/networks/{network_id}",
@@ -348,27 +395,4 @@ async def disconnect_wireless_network(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
-
-
-@router.post(
-    "/wlan/{interface}/networks/all/remove",
-    response_model=None,
-    response_model_exclude_none=True,
-)
-async def remove_all_wireless_networks(
-    interface: str
-):
-    """
-    Removes all networks on an interface
-    """
-
-    try:
-        return await network_service.remove_all_networks(
-            interface
-        )
-    except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
-        return Response(content="Internal Server Error", status_code=500)
 

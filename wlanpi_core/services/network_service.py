@@ -119,6 +119,20 @@ async def remove_network(
         raise ValidationError(f"{error}", status_code=400)
 
 
+async def get_network(
+    interface: str,
+        network_id: int,
+):
+    """
+    Uses wpa_supplicant to remove a network from the list of known networks.
+    """
+    try:
+        wlan_dbus = WlanDBUS()
+        return wlan_dbus.get_interface(interface).get_network(network_id)
+    except ValueError as error:
+        raise ValidationError(f"{error}", status_code=400)
+
+
 async def networks(
     interface: str,
 )->dict[int, ScanItem]:
