@@ -13,16 +13,16 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 
 
 def run_command(
-    cmd: Union[list, str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+        cmd: Union[list, str],
+        input: Optional[str] = None,
+        stdin: Optional[TextIO] = None,
+        shell=False,
+        raise_on_fail=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
     This function executes a single CLI command using the the built-in subprocess module.
-    
+
     Args:
         cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
              If it's a string, the command will be executed with its arguments as separate words,
@@ -35,11 +35,11 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-    
+
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
         whether the command was successful or not.
-    
+
     Raises:
         RunCommandError: If `raise_on_fail=True` and the command failed.
     """
@@ -69,11 +69,11 @@ def run_command(
             cmd: list[str] = shlex.split(cmd)
         cmd: list[str]
     with subprocess.Popen(
-        cmd,
-        shell=shell,
-        stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+            cmd,
+            shell=shell,
+            stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
     ) as proc:
         if input:
             input_data = input.encode()
@@ -89,16 +89,16 @@ def run_command(
 
 
 async def run_command_async(
-    cmd: Union[list, str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+        cmd: Union[list, str],
+        input: Optional[str] = None,
+        stdin: Optional[TextIO] = None,
+        shell=False,
+        raise_on_fail=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
     This function executes a single CLI command using the the built-in subprocess module.
-    
+
     Args:
         cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
              If it's a string, the command will be executed with its arguments as separate words,
@@ -111,11 +111,11 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-    
+
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
         whether the command was successful or not.
-    
+
     Raises:
         RunCommandError: If `raise_on_fail=True` and the command failed.
     """
@@ -223,15 +223,3 @@ def get_current_unix_timestamp() -> float:
     """
     ms = datetime.datetime.now()
     return time.mktime(ms.timetuple()) * 1000
-
-
-def byte_array_to_string(s) -> str:
-    """Converts a byte array to string, replacing non-printable characters with spaces."""
-    r = ""
-    for c in s:
-        if 32 <= c < 127:
-            r += "%c" % c
-        else:
-            r += " "
-            # r += urllib.quote(chr(c))
-    return r
