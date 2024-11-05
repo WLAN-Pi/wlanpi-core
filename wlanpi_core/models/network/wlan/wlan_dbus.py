@@ -1,4 +1,5 @@
 import logging
+
 import dbus
 
 from wlanpi_core.constants import (
@@ -47,6 +48,7 @@ class WlanDBUS:
 
     def fetch_interfaces(self, wpas_obj):
         available_interfaces = []
+
         ifaces = wpas_obj.Get(
             WPAS_DBUS_INTERFACE, "Interfaces", dbus_interface=self.DBUS_IFACE
         )
@@ -73,4 +75,3 @@ class WlanDBUS:
         available_interfaces = self.fetch_interfaces(wpas_obj)
         self.logger.debug(f"Available interfaces: {available_interfaces}", 3)
         return available_interfaces
-

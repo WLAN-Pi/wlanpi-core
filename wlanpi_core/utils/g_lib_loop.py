@@ -4,7 +4,7 @@ from gi.repository import GLib
 
 
 class GLibLoop:
-    """ Provides a wrapper to make handling scoped glib loop runs a little easier"""
+    """Provides a wrapper to make handling scoped glib loop runs a little easier"""
 
     def __init__(
         self,
