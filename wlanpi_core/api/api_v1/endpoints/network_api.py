@@ -408,3 +408,26 @@ async def disconnect_wireless_network(interface: str, network_id: int):
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/wlan/{interface}/phy",
+    response_model=Optional[dict[str, dict[str, any]]],
+    response_model_exclude_none=True,
+)
+@router.get(
+    "/wlan/phys",
+    response_model=Optional[dict[str, dict[str, any]]],
+    response_model_exclude_none=True,
+)
+async def get_interface_details(interface: Optional[str] = None):
+    """
+    Gets interface details via iw.
+    """
+    try:
+        return await network_service.interface_details(interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)

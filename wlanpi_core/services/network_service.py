@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Optional
@@ -11,6 +12,9 @@ from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterfac
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.network import SupplicantNetwork
+from wlanpi_core.utils.network import (
+    get_interface_details,
+)
 
 """
 These are the functions used to deliver the API
@@ -225,3 +229,9 @@ async def current_network(
         )
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
+
+
+async def interface_details(
+    interface: Optional[str],
+) -> Optional[dict[str, dict[str, any]]]:
+    return get_interface_details(interface)
