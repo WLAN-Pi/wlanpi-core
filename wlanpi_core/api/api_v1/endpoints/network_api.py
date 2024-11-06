@@ -412,12 +412,14 @@ async def disconnect_wireless_network(interface: str, network_id: int):
 
 @router.get(
     "/wlan/{interface}/phy",
-    response_model=Optional[dict[str, dict[str, any]]],
+    response_model=None,
     response_model_exclude_none=True,
 )
 @router.get(
     "/wlan/phys",
-    response_model=Optional[dict[str, dict[str, any]]],
+    # Want to make a nicer response model for this, but the data returned is very not conducive.
+    # response_model=Optional[dict[str, dict[str, any]]],
+    response_model=None,
     response_model_exclude_none=True,
 )
 async def get_interface_details(interface: Optional[str] = None):
