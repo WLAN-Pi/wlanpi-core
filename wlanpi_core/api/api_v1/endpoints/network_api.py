@@ -290,6 +290,7 @@ async def get_current_wireless_network_details(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
+
 @router.get(
     "/wlan/{interface}/networks",
     response_model=dict[int, SupplicantNetwork],
@@ -385,7 +386,6 @@ async def disconnect_wireless_network(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-
 
 
 @router.delete(
