@@ -8,7 +8,7 @@ uvicorn
 python-dotenv
 pydantic-settings
 requests
-python-jose[cryptography]
+pyjwt
 
 # endpoint requires
 psutil

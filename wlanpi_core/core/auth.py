@@ -1,8 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+import jwt
 
-from fastapi import HTTPException, Request, Security, status
+from fastapi import HTTPException, Request, Security, status, Depends
 from fastapi.security.api_key import APIKeyHeader
-from jose import JWTError, jwt
+from jwt.exceptions import InvalidTokenError
 
 from .config import SECRET_KEY
 
@@ -12,13 +14,15 @@ ACCESS_TOKEN_EXPIRE_DAYS = 7
 API_TOKEN_HEADER = APIKeyHeader(name="Authorization")
 
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.now() + (
-        expires_delta if expires_delta else timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    )
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 
 def verify_localhost(request: Request):
@@ -33,7 +37,7 @@ def verify_jwt_token(api_key: str = Security(API_TOKEN_HEADER)):
     token = api_key.replace("Bearer ", "")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid JWT token",
