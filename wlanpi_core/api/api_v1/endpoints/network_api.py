@@ -14,10 +14,29 @@ from wlanpi_core.schemas.network.network import (
     SupplicantNetwork,
 )
 from wlanpi_core.services import network_ethernet_service, network_service
+from wlanpi_core.utils.network import list_ethernet_interfaces, list_wlan_interfaces
 
 router = APIRouter()
 
 log = logging.getLogger("uvicorn")
+
+
+def validate_wlan_interface(interface: Optional[str], required: bool = True) -> None:
+    if (required or interface is not None) and interface not in list_wlan_interfaces():
+        raise ValidationError(
+            f"Invalid/unavailable interface specified: #{interface}", status_code=400
+        )
+
+
+def validate_ethernet_interface(
+    interface: Optional[str], required: bool = True
+) -> None:
+    if (
+        required or interface is not None
+    ) and interface not in list_ethernet_interfaces():
+        raise ValidationError(
+            f"Invalid/unavailable interface specified: #{interface}", status_code=400
+        )
 
 
 ################################
@@ -25,14 +44,19 @@ log = logging.getLogger("uvicorn")
 ################################
 @router.get("/interfaces", response_model=dict[str, list[IPInterface]])
 @router.get("/interfaces/{interface}", response_model=dict[str, list[IPInterface]])
-async def show_all_interfaces(interface: Optional[str] = None):
+async def show_all_interfaces(
+    interface: Optional[str] = None,
+):
     """
     Returns all network interfaces.
     """
-    if interface and interface.lower() == "all":
-        interface = None
 
     try:
+        if interface and interface.lower() == "all":
+            interface = None
+        else:
+            validate_ethernet_interface(interface, required=False)
+
         return await network_ethernet_service.get_interfaces(interface=interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -52,10 +76,12 @@ async def show_all_ethernet_interfaces(interface: Optional[str] = None):
     """
     Returns all ethernet interfaces.
     """
-    if interface and interface.lower() == "all":
-        interface = None
 
     try:
+        if interface and interface.lower() == "all":
+            interface = None
+        else:
+            validate_ethernet_interface(interface, required=False)
 
         def filterfunc(i):
             iface_obj = i.model_dump()
@@ -96,24 +122,29 @@ async def show_all_ethernet_vlans(
     """
     Returns all VLANS for a given ethernet interface.
     """
-    custom_filter = lambda i: True
-    if not interface or interface.lower() == "all":
-        interface = None
-    if vlan and vlan.lower() == "all":
-        vlan = None
-    if vlan and vlan.lower() != "all":
-
-        def filterfunc(i):
-            return i.model_dump().get("linkinfo", {}).get(
-                "info_kind"
-            ) == "vlan" and i.model_dump().get("linkinfo", {}).get("info_data", {}).get(
-                "id"
-            ) == int(
-                vlan
-            )
-
-        custom_filter = filterfunc
     try:
+        custom_filter = lambda i: True
+        if not interface or interface.lower() == "all":
+            interface = None
+        else:
+            validate_ethernet_interface(interface, required=False)
+        if vlan and vlan.lower() == "all":
+            vlan = None
+        if vlan and vlan.lower() != "all":
+
+            def filterfunc(i):
+                return i.model_dump().get("linkinfo", {}).get(
+                    "info_kind"
+                ) == "vlan" and i.model_dump().get("linkinfo", {}).get(
+                    "info_data", {}
+                ).get(
+                    "id"
+                ) == int(
+                    vlan
+                )
+
+            custom_filter = filterfunc
+
         return await network_ethernet_service.get_vlans(
             interface=interface, custom_filter=custom_filter
         )
@@ -147,6 +178,7 @@ async def create_ethernet_vlan(
         return Response(content=ve.error_msg, status_code=ve.status_code)
 
     try:
+        validate_ethernet_interface(interface, required=True)
         await network_ethernet_service.remove_vlan(
             interface=interface, vlan_id=vlan, allow_missing=True
         )
@@ -187,6 +219,7 @@ async def delete_ethernet_vlan(
         return Response(content=ve.error_msg, status_code=ve.status_code)
 
     try:
+        validate_ethernet_interface(interface, required=True)
         await network_ethernet_service.remove_vlan(
             interface=interface, vlan_id=vlan, allow_missing=allow_missing
         )
@@ -210,7 +243,7 @@ async def delete_ethernet_vlan(
 
 
 @router.get("/wlan/interfaces", response_model=network.Interfaces)
-async def get_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
+async def get_all_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     """
     Queries wpa_supplicant via dbus to get all interfaces known to the supplicant.
     """
@@ -237,6 +270,7 @@ async def do_wireless_network_scan(
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.get_wireless_network_scan_async(
             scan_type, interface, timeout
         )
@@ -258,6 +292,7 @@ async def add_wireless_network(
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.add_wireless_network(
             interface, setup.netConfig, setup.removeAllFirst, timeout
         )
@@ -281,6 +316,7 @@ async def get_current_wireless_network_details(
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.get_current_wireless_network_details(
             interface, timeout
         )
@@ -302,6 +338,7 @@ async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_T
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.networks(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -321,6 +358,7 @@ async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.current_network(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -340,6 +378,7 @@ async def get_wireless_network(interface: str, network_id: int):
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.get_network(interface, network_id)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -359,6 +398,7 @@ async def remove_all_wireless_networks(interface: str):
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.remove_all_networks(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -380,6 +420,7 @@ async def disconnect_wireless_network(
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.disconnect_wireless_network(interface, timeout)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -399,6 +440,7 @@ async def remove_wireless_network(interface: str, network_id: int):
     """
 
     try:
+        validate_wlan_interface(interface)
         return await network_service.remove_network(
             interface,
             network_id,
@@ -426,7 +468,10 @@ async def get_interface_details(interface: Optional[str] = None):
     """
     Gets interface details via iw.
     """
+
     try:
+        validate_wlan_interface(interface, required=False)
+
         return await network_service.interface_details(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

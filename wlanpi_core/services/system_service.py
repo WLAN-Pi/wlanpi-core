@@ -176,14 +176,14 @@ def get_stats():
     # determine mem useage
     cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
-        MemUsage = run_command(cmd, shell=True).stdout.strip()
+        MemUsage = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         MemUsage = "unknown"
 
     # determine disk util
     cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
-        Disk = run_command(cmd, shell=True).stdout.strip()
+        Disk = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         Disk = "unknown"
 
@@ -200,7 +200,7 @@ def get_stats():
     # determine uptime
     cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
-        uptime = run_command(cmd, shell=True).stdout.strip()
+        uptime = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         uptime = "unknown"
 

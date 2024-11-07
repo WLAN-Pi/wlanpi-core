@@ -3,7 +3,7 @@ from typing import Optional, Union
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
 from ..models.network.vlan.vlan_file import VLANFile
-from ..schemas.network.network import IPInterfaceAddress
+from ..schemas.network.network import IPInterface, IPInterfaceAddress
 from ..schemas.network.types import CustomIPInterfaceFilter
 
 # https://man.cx/interfaces(5)
@@ -53,10 +53,10 @@ async def remove_vlan(interface: str, vlan_id: Union[str, int], allow_missing=Fa
 
 
 async def get_interfaces(
-    interface: str,
+    interface: Optional[str],
     allow_missing=False,
     custom_filter: Optional[CustomIPInterfaceFilter] = None,
-):
+) -> dict[str, list[IPInterface]]:
     """
     Returns definitions for all network interfaces known by the `ip` command.
     """

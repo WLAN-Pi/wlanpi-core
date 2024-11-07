@@ -186,6 +186,19 @@ def get_phy_interface_name(phy_num: int) -> Optional[str]:
         return None
 
 
+def list_wlan_interfaces() -> list[str]:
+    return run_command(  # type: ignore
+        ["ls", "-1", "/sys/class/ieee80211/*/device/net/"], use_shlex=False, shell=True
+    ).grep_stdout_for_pattern(r"^$|/", negate=True, split=True)
+
+
+def list_ethernet_interfaces() -> list[str]:
+    res = run_command(  # type: ignore
+        ["ls", "-1", "/sys/class/net/*/device/net/"], use_shlex=False, shell=True
+    ).grep_stdout_for_pattern(r"^$|/", negate=True, split=True)
+    return [x for x in res if "eth" in x]
+
+
 def get_wlan_channels(interface: str) -> list[WlanChannelInfo]:
     phy = get_interface_phy_num(interface)
     if phy is None:
@@ -316,4 +329,4 @@ def get_interface_mac(interface: str) -> str:
 
 
 if __name__ == "__main__":
-    print(json.dumps(get_interface_details()))
+    print(list_wlan_interfaces())

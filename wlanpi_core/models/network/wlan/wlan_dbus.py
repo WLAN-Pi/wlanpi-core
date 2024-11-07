@@ -12,6 +12,7 @@ from wlanpi_core.constants import (
 from wlanpi_core.models.network.wlan.exceptions import WlanDBUSInterfaceException
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.network import list_wlan_interfaces
 
 
 class WlanDBUS:
@@ -48,15 +49,9 @@ class WlanDBUS:
             self.interfaces[interface] = new_interface
         return self.interfaces[interface]
 
-    @staticmethod
-    def _fetch_system_interfaces() -> list[str]:
-        return run_command(
-            "ls /sys/class/ieee80211/*/device/net/", shell=True
-        ).grep_stdout_for_string("/", negate=True, split=True)
-
     def fetch_interfaces(self, wpas_obj):
         available_interfaces = []
-        for system_interface in self._fetch_system_interfaces():
+        for system_interface in list_wlan_interfaces():
             try:
                 self.get_interface(system_interface)
             except WlanDBUSInterfaceException as e:
