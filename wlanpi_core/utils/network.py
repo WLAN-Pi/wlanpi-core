@@ -299,10 +299,20 @@ def get_interface_details(
         iw_list_data = parse_iw_list(run_command(["iw", "list"]).stdout.split("\n"))
 
     return {
-        get_phy_interface_name(k.split(" ")[1].split("phy")[1]): v
+        get_phy_interface_name(k.split(" ")[1].split("phy")[1]): {
+            "phy_name": k.split(" ")[1],
+            "mac": get_interface_mac(
+                get_phy_interface_name(k.split(" ")[1].split("phy")[1])
+            ),
+            "details": v,
+        }
         for k, v in iw_list_data.items()
         if "phy" in k
     }
+
+
+def get_interface_mac(interface: str) -> str:
+    return run_command(["jc", "ifconfig", interface]).output_from_json()[0]["mac_addr"]
 
 
 if __name__ == "__main__":

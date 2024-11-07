@@ -212,7 +212,7 @@ async def delete_ethernet_vlan(
 @router.get("/wlan/interfaces", response_model=network.Interfaces)
 async def get_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Queries wpa_supplicant via dbus to get all interfaces known to the supplicant.
     """
 
     try:
@@ -233,7 +233,7 @@ async def do_wireless_network_scan(
     scan_type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
-    Queries systemd via dbus to get a scan of the available networks.
+    Queries wpa_supplicant via dbus to get a scan of the available networks for an interface.
     """
 
     try:
@@ -254,7 +254,7 @@ async def add_wireless_network(
     timeout: int = API_DEFAULT_TIMEOUT,
 ):
     """
-    Queries systemd via dbus to set a single network.
+    Queries wpa_supplicant via dbus to set a single network.
     """
 
     try:
@@ -277,7 +277,7 @@ async def get_current_wireless_network_details(
     interface: str, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Queries wpa_supplicant via dbus to get the details of the currently connected network.
     """
 
     try:
@@ -300,7 +300,7 @@ async def disconnect_wireless_network(
     interface: str, timeout: int = API_DEFAULT_TIMEOUT
 ):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Disconnects the currently connected network for the specified interface.
     """
 
     try:
@@ -319,7 +319,7 @@ async def disconnect_wireless_network(
 )
 async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Queries wpa_supplicant via dbus to get all network on an interface.
     """
 
     try:
@@ -338,7 +338,7 @@ async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_T
 )
 async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Queries wpa_supplicant via dbus to get the details of the currently selected network.
     """
 
     try:
@@ -357,7 +357,7 @@ async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT
 )
 async def get_wireless_network(interface: str, network_id: int):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Queries wpa_supplicant via dbus to get the details of a specific network.
     """
 
     try:
@@ -395,7 +395,7 @@ async def remove_all_wireless_networks(interface: str):
 )
 async def disconnect_wireless_network(interface: str, network_id: int):
     """
-    Queries systemd via dbus to get the details of the currently connected network.
+    Disconnects the specified wireless network.
     """
 
     try:

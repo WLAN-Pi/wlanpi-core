@@ -12,9 +12,7 @@ from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterfac
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.network import SupplicantNetwork
-from wlanpi_core.utils.network import (
-    get_interface_details,
-)
+from wlanpi_core.utils.network import get_interface_details
 
 """
 These are the functions used to deliver the API
