@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
-import jwt
+from typing import Union
 
-from fastapi import HTTPException, Request, Security, status, Depends
+import jwt
+from fastapi import HTTPException, Request, Security, status
 from fastapi.security.api_key import APIKeyHeader
 from jwt.exceptions import InvalidTokenError
 
@@ -14,7 +14,7 @@ ACCESS_TOKEN_EXPIRE_DAYS = 7
 API_TOKEN_HEADER = APIKeyHeader(name="Authorization")
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta

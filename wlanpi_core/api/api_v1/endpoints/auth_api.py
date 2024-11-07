@@ -1,11 +1,15 @@
 import logging
-
-from fastapi import APIRouter, Depends
 from datetime import timedelta
 
-from wlanpi_core.core.auth import create_access_token, verify_localhost, ACCESS_TOKEN_EXPIRE_DAYS
-from wlanpi_core.services import system_service
+from fastapi import APIRouter, Depends
+
+from wlanpi_core.core.auth import (
+    ACCESS_TOKEN_EXPIRE_DAYS,
+    create_access_token,
+    verify_localhost,
+)
 from wlanpi_core.schemas.auth import auth
+from wlanpi_core.services import system_service
 
 router = APIRouter()
 
