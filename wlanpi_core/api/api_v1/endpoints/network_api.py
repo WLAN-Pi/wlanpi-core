@@ -290,28 +290,6 @@ async def get_current_wireless_network_details(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
-
-@router.post(
-    "/wlan/{interface}/disconnect",
-    response_model=None,
-    response_model_exclude_none=True,
-)
-async def disconnect_wireless_network(
-    interface: str, timeout: int = API_DEFAULT_TIMEOUT
-):
-    """
-    Disconnects the currently connected network for the specified interface.
-    """
-
-    try:
-        return await network_service.disconnect_wireless_network(interface, timeout)
-    except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
-        return Response(content="Internal Server Error", status_code=500)
-
-
 @router.get(
     "/wlan/{interface}/networks",
     response_model=dict[int, SupplicantNetwork],
@@ -388,14 +366,36 @@ async def remove_all_wireless_networks(interface: str):
         return Response(content="Internal Server Error", status_code=500)
 
 
+@router.post(
+    "/wlan/{interface}/disconnect",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def disconnect_wireless_network(
+    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+):
+    """
+    Disconnects the currently connected network for the specified interface.
+    """
+
+    try:
+        return await network_service.disconnect_wireless_network(interface, timeout)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+
 @router.delete(
     "/wlan/{interface}/networks/{network_id}",
     response_model=None,
     response_model_exclude_none=True,
 )
-async def disconnect_wireless_network(interface: str, network_id: int):
+async def remove_wireless_network(interface: str, network_id: int):
     """
-    Disconnects the specified wireless network.
+    Removes the specified wireless network config.
     """
 
     try:
