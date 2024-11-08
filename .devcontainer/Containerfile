@@ -10,8 +10,8 @@ RUN add-apt-repository ppa:deadsnakes/ppa --yes && apt update && apt install  --
 python3.9-dev python3.9-venv
 
 # Set Python 3.9 to be the default version
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 2
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.9 2
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
 # Install wlanpi deps
 RUN apt install --yes expat libxml2-dev pkg-config libasound2-dev libssl-dev \
