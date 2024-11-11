@@ -11,7 +11,6 @@ from wlanpi_core.constants import (
 )
 from wlanpi_core.models.network.wlan.exceptions import WlanDBUSInterfaceException
 from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterface
-from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.network import list_wlan_interfaces
 
 
