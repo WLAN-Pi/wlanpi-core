@@ -88,7 +88,6 @@ def remove_default_routes(interface: str):
     for route in routes:
         if route["dev"] == interface and route["dst"] == "default":
             run_command(["ip", "route", "del", "default", "dev", interface])
-    return routes
 
 
 def add_default_route(
@@ -127,7 +126,7 @@ def add_default_route(
         routes: list[dict[str, Any]] = run_command(  # type: ignore
             ["ip", "--json", "route"]
         ).output_from_json()
-        default_routes = [x["metric"] or 0 for x in routes if x["dst"] == "default"]
+        default_routes = [x.get("metric", 0) for x in routes if x["dst"] == "default"]
         if len(default_routes):
             metric = max(default_routes)
             if metric < 200:
@@ -398,7 +397,3 @@ def get_interface_details(
 
 def get_interface_mac(interface: str) -> str:
     return run_command(["jc", "ifconfig", interface]).output_from_json()[0]["mac_addr"]
-
-
-if __name__ == "__main__":
-    print(add_default_route("wlan0"))

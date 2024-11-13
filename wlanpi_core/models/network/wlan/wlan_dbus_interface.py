@@ -489,15 +489,23 @@ class WlanDBUSInterface:
         """Disconnects the given interface from any network it may be associated with"""
         self.logger.info("Disconnecting WLAN on %s", self.interface_name)
         self.supplicant_dbus_interface.Disconnect()
+        remove_default_routes(interface=self.interface_name)
 
     def remove_all_networks(self) -> None:
         """Removes all networks from the interface"""
         self.logger.info("Removing all Networks onon %s", self.interface_name)
+
+        remove_default_routes(interface=self.interface_name)
         self.supplicant_dbus_interface.RemoveAllNetworks()
 
     def remove_network(self, network_id: int) -> None:
         """Removes a single network from the interface"""
         self.logger.info("Removing network %s on %s", network_id, self.interface_name)
+        if (
+            str(network_id)
+            == self._get_from_wpa_supplicant_interface("CurrentNetwork").split("/")[-1]
+        ):
+            remove_default_routes(interface=self.interface_name)
         self.supplicant_dbus_interface.RemoveNetwork(
             f"{self.interface_dbus_path}/Networks/{network_id}"
         )
