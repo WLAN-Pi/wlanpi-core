@@ -1,15 +1,14 @@
-wlanpi-core (1.0.5-3.3) UNRELEASED; urgency=medium
+wlanpi-core (1.0.5-4.1) UNRELEASED; urgency=medium
 
   [ Michael Ketchel ]
   * Draft build of new wlan control features
   * Fixed an api definition typo
   * More tweaks, and a version bump to fire dev package deploy
   * Increased resistance to injection attacks
-
-  [ _ ]
   * Version bump for build
+  * Add automatic default gateway configuration for wlan api
 
- -- _ <michael.ketchel@gmail.com>  Mon, 11 Nov 2024 21:16:01 +0000
+ -- Michael Ketchel <michael.ketchel@gmail.com>  Wed, 13 Nov 2024 21:01:24 +0000
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 

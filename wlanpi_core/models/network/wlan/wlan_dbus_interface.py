@@ -31,7 +31,12 @@ from wlanpi_core.schemas.network import (
 from wlanpi_core.schemas.network.network import SupplicantNetwork
 from wlanpi_core.utils.g_lib_loop import GLibLoop
 from wlanpi_core.utils.general import byte_array_to_string
-from wlanpi_core.utils.network import get_ip_address, renew_dhcp
+from wlanpi_core.utils.network import (
+    add_default_route,
+    get_ip_address,
+    remove_default_routes,
+    renew_dhcp,
+)
 
 
 class WlanDBUSInterface:
@@ -302,7 +307,9 @@ class WlanDBUSInterface:
                         time.sleep(2)
                         # Is sleeping here really the answer?
                         if self.interface_name:
+                            remove_default_routes(interface=self.interface_name)
                             renew_dhcp(self.interface_name)
+                            add_default_route(interface=self.interface_name)
                             ipaddr = get_ip_address(self.interface_name)
                             connection_events.append(
                                 network.NetworkEvent(

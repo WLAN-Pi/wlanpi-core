@@ -6,6 +6,7 @@ from collections import deque
 from typing import Any, Optional, Union
 
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command
 
 
@@ -71,6 +72,77 @@ def get_ip_address(interface):
             f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}"
         )
         return None
+
+
+def remove_default_routes(interface: str):
+    """
+    Removes the default route for an interface. Primarily used if you used add_default_route for the interface.
+    @param interface: The interface to remove routes for
+    @return: None
+    """
+
+    # Get existing routes for this adapter
+    routes: list[dict[str, Any]] = run_command(  # type: ignore
+        ["ip", "--json", "route"]
+    ).output_from_json()
+    for route in routes:
+        if route["dev"] == interface and route["dst"] == "default":
+            run_command(["ip", "route", "del", "default", "dev", interface])
+    return routes
+
+
+def add_default_route(
+    interface: str,
+    router_address: Optional[str] = None,
+    metric: Optional[int] = None,
+) -> str:
+    """
+    Adds a default route to an interface
+    @param interface: The interface (e.g. 'wlan0') to add the route for
+    @param router_address: Optionally specify which IP this route is via. If left blank, it will be grabbed from the dhclient lease file.
+    @param metric: Optional metric for the route. If left as none, a lowest-priority metric starting at 200 will be calculated unless there are no other default routes.
+    @return: A string representing the new default route.
+    """
+
+    # Validate the interface to protect against arbitrarily reading fs data.
+    if interface not in [*list_wlan_interfaces(), *list_ethernet_interfaces()]:
+        raise ValidationError(
+            f"Invalid/unavailable interface specified: #{interface}",
+            status_code=400,
+        )
+
+    # Obtain the router address if not manually provided
+    if router_address is None:
+        with open(f"/var/lib/dhcp/dhclient.{interface}.leases", "r") as lease_file:
+            lease_data = lease_file.readlines()
+            router_address = (
+                next((s for s in lease_data if "option routers" in s))
+                .strip()
+                .strip(";")
+                .split(" ", 2)[-1]
+            )
+
+    # Calculate a new metric if needed
+    if metric is None:
+        routes: list[dict[str, Any]] = run_command(  # type: ignore
+            ["ip", "--json", "route"]
+        ).output_from_json()
+        default_routes = [x["metric"] or 0 for x in routes if x["dst"] == "default"]
+        if len(default_routes):
+            metric = max(default_routes)
+            if metric < 200:
+                metric = 200
+            else:
+                metric += 1
+
+    # Generate and set new default route
+    new_route = f"default via {router_address} dev {interface}"
+    if metric:
+        new_route += f" metric {metric}"
+
+    command = ["ip", "route", "add", *new_route.split(" ")]
+    run_command(command)
+    return new_route
 
 
 def renew_dhcp(interface) -> None:
@@ -329,4 +401,4 @@ def get_interface_mac(interface: str) -> str:
 
 
 if __name__ == "__main__":
-    print(list_wlan_interfaces())
+    print(add_default_route("wlan0"))

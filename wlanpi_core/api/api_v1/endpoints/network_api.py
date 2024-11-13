@@ -21,22 +21,32 @@ router = APIRouter()
 log = logging.getLogger("uvicorn")
 
 
-def validate_wlan_interface(interface: Optional[str], required: bool = True) -> None:
+def validate_wlan_interface(
+    interface: Optional[str], required: bool = True, raise_on_invalid: bool = True
+) -> bool:
     if (required or interface is not None) and interface not in list_wlan_interfaces():
-        raise ValidationError(
-            f"Invalid/unavailable interface specified: #{interface}", status_code=400
-        )
+        if raise_on_invalid:
+            raise ValidationError(
+                f"Invalid/unavailable interface specified: #{interface}",
+                status_code=400,
+            )
+        return False
+    return True
 
 
 def validate_ethernet_interface(
-    interface: Optional[str], required: bool = True
-) -> None:
+    interface: Optional[str], required: bool = True, raise_on_invalid: bool = True
+) -> bool:
     if (
         required or interface is not None
     ) and interface not in list_ethernet_interfaces():
-        raise ValidationError(
-            f"Invalid/unavailable interface specified: #{interface}", status_code=400
-        )
+        if raise_on_invalid:
+            raise ValidationError(
+                f"Invalid/unavailable interface specified: #{interface}",
+                status_code=400,
+            )
+        return False
+    return True
 
 
 ################################
