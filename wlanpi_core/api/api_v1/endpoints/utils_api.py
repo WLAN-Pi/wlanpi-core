@@ -17,7 +17,7 @@ log = logging.getLogger("uvicorn")
     response_model=utils.ReachabilityTest,
     response_model_exclude_none=True,
 )
-async def reachability():
+async def check_reachability():
     """
     Runs the reachability test and returns the results
     """
@@ -97,7 +97,7 @@ async def usb_interfaces():
 
 
 @router.get("/ufw", response_model=utils.Ufw)
-async def usb_interfaces():
+async def ufw_information():
     """
     Returns the UFW information.
     """
@@ -119,3 +119,41 @@ async def usb_interfaces():
     except Exception as ex:
         log.error(ex)
         return Response(content=f"Internal Server Error", status_code=500)
+
+
+@router.post("/ping", response_model=utils.PingResult)
+async def execute_ping(request: utils.PingRequest):
+    """
+    Pings a target and returns the results
+    """
+
+    try:
+        result = await utils_service.ping(
+            request.destination,
+            request.count,
+            request.interval,
+            request.ttl,
+            request.interface,
+        )
+        return result
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post("/iperf2/client", response_model=utils.Iperf2Result)
+async def execute_iperf(request: utils.IperfRequest):
+    """
+    Runs iperf against a target and returns the results
+    """
+
+    try:
+        return await utils_service.run_iperf2_client(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)

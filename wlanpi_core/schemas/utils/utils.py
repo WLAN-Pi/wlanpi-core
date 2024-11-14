@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Extra, Field
 
 
 class ReachabilityTest(BaseModel):
@@ -40,3 +40,96 @@ class Usb(BaseModel):
 class Ufw(BaseModel):
     status: str = Field()
     ports: list = Field()
+
+
+class PingRequest(BaseModel):
+    destination: str = Field(examples=["google.com", "192.168.1.1"])
+    count: int = Field(
+        examples=[1, 10], description="How many packets to send.", default=1
+    )
+    interval: float = Field(
+        examples=[1], description="The interval between packets, in seconds", default=1
+    )
+    ttl: Optional[int] = Field(
+        examples=[20], description="The Time-to-Live of the ping attempt.", default=None
+    )
+    interface: Optional[str] = Field(
+        examples=["eth0"],
+        description="The interface the ping should originate from",
+        default=None,
+    )
+
+
+class PingResponse(BaseModel):
+    type: str = Field(examples=["reply"])
+    timestamp: float = Field(examples=[1731371899.060181])
+    bytes: int = Field(examples=[64])
+    response_ip: str = Field(examples=["142.250.190.142"])
+    icmp_seq: int = Field(examples=[1])
+    ttl: int = Field(examples=[55])
+    time_ms: float = Field(examples=[26.6])
+    duplicate: bool = Field(examples=[False])
+
+
+class PingResult(
+    BaseModel,
+):
+    destination_ip: str = Field(examples=["142.250.190.142"])
+    interface: Optional[str] = Field(
+        examples=["eth0"],
+        default=None,
+        description="The interface the user specified that the ping be issued from. It will be empty if there wasn't one specified.",
+    )
+    data_bytes: Optional[int] = Field(examples=[56], default=None)
+    pattern: Optional[str] = Field()
+    destination: str = Field(examples=["google.com"])
+    packets_transmitted: int = Field(examples=[10])
+    packets_received: int = Field(examples=[10])
+    packet_loss_percent: float = Field(examples=[0.0])
+    duplicates: int = Field(examples=[0])
+    time_ms: float = Field(examples=[9012.0])
+    round_trip_ms_min: float = Field(examples=[24.108])
+    round_trip_ms_avg: float = Field(examples=[29.318])
+    round_trip_ms_max: float = Field(examples=[37.001])
+    round_trip_ms_stddev: float = Field(examples=[4.496])
+    jitter: Optional[float] = Field(examples=[37.001], default=None)
+    responses: list[PingResponse] = Field()
+
+
+class IperfRequest(BaseModel):
+    host: str = Field(examples=["192.168.1.1"])
+    port: int = Field(examples=[5001], default=5001)
+    time: int = Field(examples=[10], default=10)
+    udp: bool = Field(default=False)
+    reverse: bool = Field(default=False)
+    compatibility: bool = Field(default=False)
+    interface: Optional[str] = Field(examples=["wlan0"], default=None)
+    # version: int = Field(examples=[2, 3], default=3)
+    # interface: Optional[str] = Field(examples=["eth0, wlan0"], default=None)
+    # bind_address: Optional[str] = Field(examples=["192.168.1.12"], default=None)
+    #
+    # @model_validator(mode="after")
+    # def check_dynamic_condition(self) -> Self:
+    #     # print(self)
+    #     if self.version not in [2, 3]:
+    #         raise ValueError("iPerf version can be 2 or 3.")
+    #     if self.bind_address is not None and self.interface is not None:
+    #         raise ValueError("Only interface or bind_address can be specified.")
+    #     return self
+
+
+class Iperf2Result(BaseModel, extra=Extra.allow):
+    timestamp: int = Field()
+    source_address: str = Field(examples=["192.168.1.5"])
+    source_port: int = Field(examples=[5001])
+    destination_address: str = Field(examples=["192.168.1.1"])
+    destination_port: int = Field(examples=[12345])
+    transfer_id: int = Field(examples=[3])
+    interval: list[float] = Field(examples=[0.0, 10.0])
+    transferred_bytes: int = Field()
+    transferred_mbytes: float = Field()
+    bps: int = Field()
+    mbps: float = Field()
+    jitter: Optional[float] = Field(default=None)
+    error_count: Optional[int] = Field(default=None)
+    datagrams: Optional[int] = Field(default=None)

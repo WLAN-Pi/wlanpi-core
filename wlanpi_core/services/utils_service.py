@@ -1,11 +1,13 @@
 import os
 import re
+from typing import Optional
 
 from wlanpi_core.constants import UFW_FILE
 
 from ..models.runcommand_error import RunCommandError
+from ..schemas.utils import PingResult
 from ..utils.general import run_command_async
-from ..utils.network import get_default_gateways
+from ..utils.network import get_default_gateways, get_ip_address
 
 
 async def show_reachability():
@@ -200,3 +202,110 @@ async def show_ufw():
     response = ufw_info
 
     return response
+
+
+async def ping(
+    target: str,
+    count: int = 1,
+    interval: float = 1,
+    ttl: Optional[int] = None,
+    interface: Optional[str] = None,
+) -> PingResult:
+    def calculate_jitter(values: list[float], precision: int = 3) -> float:
+        return round(
+            sum([abs(values[i + 1] - values[i]) for i in range(len(values) - 1)])
+            / len(values),
+            precision,
+        )
+
+    command: list[str] = "jc ping -D".split()
+    command.extend(["-c", str(count), "-i", str(interval)])
+    if ttl is not None:
+        command.extend(["-t", str(ttl)])
+    if interface is not None:
+        command.extend(["-I", str(interface)])
+    command.append(target)
+    res = await run_command_async(command)
+    result: dict = res.output_from_json()  # type: ignore
+    # Calculate jitter if we can
+    result["jitter"] = (
+        calculate_jitter([x["time_ms"] for x in result["responses"]])
+        if len(result["responses"]) > 1
+        else None
+    )
+    result["interface"] = interface
+    return PingResult(**result)
+
+
+async def run_iperf2_client(
+    host: str,
+    port: int = 5001,
+    time: int = 10,
+    reverse: bool = False,
+    bind: Optional[str] = None,
+    interface: Optional[str] = None,
+    udp=False,
+    compatibility=False,
+):
+    command: list[str] = "iperf -y C ".split()
+    command.extend(["-t", str(time), "-c", host, "-p", str(port)])
+
+    if reverse:
+        command.append("-R")
+
+    if compatibility:
+        command.append("-C")
+
+    if bind:
+        command.extend(["-B", bind])
+    elif interface:
+        command.extend(["-B", get_ip_address(interface)])
+
+    if udp:
+        command.append("-u")
+        result = await run_command_async(command)
+        if result.stdout == "" and result.stderr:
+            raise RunCommandError(result.stderr, -1)
+        res = result.stdout.split("\n")[0].split(",")
+        return {
+            "timestamp": int(res[0]),
+            "source_address": res[1],
+            "source_port": int(res[2]),
+            "destination_address": res[3],
+            "destination_port": int(res[4]),
+            "transfer_id": int(res[5]),
+            "interval": [float(x) for x in res[6].split("-")],
+            "transferred_bytes": int(res[7]),
+            "transferred_mbytes": round(float(res[7]) / 1024 / 1024, 3),
+            "bps": int(res[8]),
+            "mbps": round(float(res[8]) / 1024 / 1024, 3),
+            "jitter": float(res[9]) if res[9] != "" else None,
+            "error_count": int(res[10]) if res[10] != "" else None,
+            "datagrams": int(res[11]) if res[11] != "" else None,
+            "extra_1": res[12],
+            "extra_2": res[13],
+        }
+    else:
+        result = await run_command_async(command)
+        if result.stdout == "" and result.stderr:
+            raise RunCommandError(result.stderr, -1)
+        res = result.stdout.split("\n")[0].split(",")
+        return {
+            "timestamp": int(res[0]),
+            "source_address": res[1],
+            "source_port": int(res[2]),
+            "destination_address": res[3],
+            "destination_port": int(res[4]),
+            "transfer_id": int(res[5]),
+            "interval": [float(x) for x in res[6].split("-")],
+            "transferred_bytes": int(res[7]),
+            "transferred_mbytes": round(float(res[7]) / 1024 / 1024, 3),
+            "bps": int(res[8]),
+            "mbps": round(float(res[8]) / 1024 / 1024, 3),
+        }
+
+
+async def run_iperf3_client(host: str, time: int = 10, bind_host: Optional[str] = None):
+    command = ["iperf3", "--json", "-t", str(time), "-c", host]
+    res = await run_command_async(command)
+    return res.output_from_json()
