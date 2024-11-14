@@ -9,7 +9,7 @@ from io import StringIO
 from typing import Optional, TextIO, Union
 
 from wlanpi_core.models.command_result import CommandResult
-from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.models.runcommand_error import RunCommandError, RunCommandTimeout
 
 
 def run_command(
@@ -19,6 +19,7 @@ def run_command(
     shell=False,
     raise_on_fail=True,
     use_shlex=True,
+    timeout: Optional[int] = None,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -35,6 +36,7 @@ def run_command(
         shell: Whether to execute the command using a shell or not. Default is False.
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
+        timeout: The number of seconds after which the command should time out and return.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
         shlex: If shlex should be used to protect input. Set to false if you need support
                 for some shell features like wildcards. 
@@ -86,7 +88,15 @@ def run_command(
             input_data = stdin.read().encode()
         else:
             input_data = None
-        stdout, stderr = proc.communicate(input=input_data)
+
+        try:
+            stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            err_msg = f"Command {cmd} timed out after {timeout} seconds"
+            logging.getLogger().debug(err_msg)
+            proc.terminate()
+            if raise_on_fail:
+                raise RunCommandTimeout(err_msg)
 
         if raise_on_fail and proc.returncode != 0:
             raise RunCommandError(stderr.decode(), proc.returncode)
@@ -100,6 +110,7 @@ async def run_command_async(
     shell=False,
     raise_on_fail=True,
     use_shlex=True,
+    timeout: Optional[int] = None,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -116,6 +127,7 @@ async def run_command_async(
         shell: Whether to execute the command using a shell or not. Default is False.
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
+        timeout: The number of seconds after which the command should time out and return.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
         shlex: If shlex should be used to protect input. Set to false if you need support
                 for some shell features like wildcards. 
@@ -178,29 +190,51 @@ async def run_command_async(
             f"an injection vulnerability. Consider whether you really need to do this."
         )
 
-        proc = await asyncio.subprocess.create_subprocess_shell(
+        proc: Process = await asyncio.subprocess.create_subprocess_shell(
             cmd,
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
+        try:
+
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(
+                    input=input_data,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            err_msg = f"Command {cmd} timed out after {timeout} seconds"
+            logging.getLogger().debug(err_msg)
+            proc.terminate()
+            if raise_on_fail:
+                raise RunCommandTimeout(err_msg)
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
             cmd: str
             cmd: list[str] = use_shlex.split(cmd)
         cmd: list[str]
-        proc = await asyncio.subprocess.create_subprocess_exec(
+        proc: Process = await asyncio.subprocess.create_subprocess_exec(
             cmd[0],
             *cmd[1:],
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
+        try:
+
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=input_data), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            err_msg = f"Command {cmd} timed out after {timeout} seconds"
+            logging.getLogger().debug(err_msg)
+            proc.terminate()
+            if raise_on_fail:
+                raise RunCommandTimeout(err_msg)
 
     if raise_on_fail and proc.returncode != 0:
         raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)
