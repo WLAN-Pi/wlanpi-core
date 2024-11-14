@@ -309,3 +309,7 @@ async def run_iperf3_client(host: str, time: int = 10, bind_host: Optional[str] 
     command = ["iperf3", "--json", "-t", str(time), "-c", host]
     res = await run_command_async(command)
     return res.output_from_json()
+
+
+async def reboot():
+    return (await run_command_async(["reboot"])).success

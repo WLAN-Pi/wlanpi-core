@@ -157,3 +157,17 @@ async def execute_iperf(request: utils.IperfRequest):
     except Exception as ex:
         log.error(ex)
         return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post("/system/reboot", response_model=bool)
+async def execute_reboot():
+    """
+    Reboot the system
+    """
+    try:
+        return await utils_service.reboot()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
