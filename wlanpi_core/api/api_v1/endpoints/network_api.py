@@ -14,7 +14,11 @@ from wlanpi_core.schemas.network.network import (
     SupplicantNetwork,
 )
 from wlanpi_core.services import network_ethernet_service, network_service
-from wlanpi_core.utils.network import list_ethernet_interfaces, list_wlan_interfaces
+from wlanpi_core.utils.network import (
+    list_ethernet_interfaces,
+    list_wlan_interfaces,
+    get_iw_link,
+)
 
 router = APIRouter()
 
@@ -483,6 +487,26 @@ async def get_interface_details(interface: Optional[str] = None):
         validate_wlan_interface(interface, required=False)
 
         return await network_service.interface_details(interface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/wlan/{interface}/link",
+    response_model=None,
+    response_model_exclude_none=True,
+)
+async def get_interface_link_details(interface: str):
+    """
+    Gets interface details via iw.
+    """
+
+    try:
+        validate_wlan_interface(interface, required=True)
+        return get_iw_link(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
