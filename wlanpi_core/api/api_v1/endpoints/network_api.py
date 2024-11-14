@@ -14,11 +14,7 @@ from wlanpi_core.schemas.network.network import (
     SupplicantNetwork,
 )
 from wlanpi_core.services import network_ethernet_service, network_service
-from wlanpi_core.utils.network import (
-    list_ethernet_interfaces,
-    list_wlan_interfaces,
-    get_iw_link,
-)
+from wlanpi_core.utils.network import list_ethernet_interfaces, list_wlan_interfaces
 
 router = APIRouter()
 
@@ -506,7 +502,7 @@ async def get_interface_link_details(interface: str):
 
     try:
         validate_wlan_interface(interface, required=True)
-        return get_iw_link(interface)
+        return network_service.get_iw_link(interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

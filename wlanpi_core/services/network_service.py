@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 from wlanpi_core.models.network.wlan.exceptions import (
     WlanDBUSException,
@@ -11,7 +11,8 @@ from wlanpi_core.models.network.wlan.wlan_dbus_interface import WlanDBUSInterfac
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.network import SupplicantNetwork
-from wlanpi_core.utils.network import get_interface_details
+from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.network import get_interface_details, list_wlan_interfaces
 
 """
 These are the functions used to deliver the API
@@ -232,3 +233,60 @@ async def interface_details(
     interface: Optional[str],
 ) -> Optional[dict[str, dict[str, any]]]:
     return get_interface_details(interface)
+
+
+def get_iw_link(interface: str) -> dict[str, Union[bool, str, int, float, None]]:
+    if interface not in list_wlan_interfaces():
+        raise ValidationError(
+            f"{interface} is not a wireless interface", status_code=400
+        )
+    lines = run_command(["iw", "dev", interface, "link"]).stdout.split("\n")
+    state = lines[0].strip()
+    data: dict[str, Union[bool, str, int, float, None]] = {
+        "connected": state != "Not connected.",
+        "ssid": None,  # SSID # Kronos-5
+        "bssid": None,  # from state line
+        "freq": None,  # freq # 5220.0
+        # "rx": None,  # RX # 402298 bytes (2063 packets)
+        "rx_bytes": None,
+        "rx_packets": None,
+        # "tx": None,  # TX # 19503 bytes (137 packets)
+        "tx_bytes": None,
+        "tx_packets": None,
+        # "signal": None,  # signal # -70 dBm
+        "signal_dbm": None,
+        "rx_bitrate": None,  # rx bitrate # 54.0 MBit/s VHT-MCS 1 40MHz VHT-NSS 2
+        "tx_bitrate": None,  # tx bitrate # 351.0 MBit/s VHT-MCS 4 80MHz VHT-NSS 2
+        "bss_flags": None,  # bss flags # short-slot-time
+        "dtim_period": None,  # dtim period # 3
+        "beacon_int": None,  # beacon int # 100
+    }
+
+    if not data["connected"]:
+        return data
+
+    # Populate the lines as much as possible
+    data["bssid"] = lines[0].strip().split(" ")[2]
+    for line in [x for x in lines[1:] if x != ""]:
+        key, val = line.split(":", 1)
+        data[key.strip().lower().replace(" ", "_")] = val.strip()
+
+    # Rebuild him better, faster, stronger
+    data["freq"] = float(data["freq"])
+    data["signal_dbm"] = int(data["signal"].split()[0])
+    del data["signal"]
+
+    rx_split = data["rx"].split()
+    data["rx_bytes"] = int(rx_split[0])
+    data["rx_packets"] = int(rx_split[2][1:])
+    del data["rx"]
+
+    tx_split = data["tx"].split()
+    data["tx_bytes"] = int(tx_split[0])
+    data["tx_packets"] = int(tx_split[2][1:])
+    del data["tx"]
+
+    data["dtim_period"] = int(data["dtim_period"])
+    data["beacon_int"] = int(data["beacon_int"])
+
+    return data
