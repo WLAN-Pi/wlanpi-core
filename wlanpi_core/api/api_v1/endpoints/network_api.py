@@ -74,7 +74,7 @@ async def show_all_interfaces(
         log.error(ve)
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -111,7 +111,7 @@ async def show_all_ethernet_interfaces(interface: Optional[str] = None):
         log.error(ve)
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -164,7 +164,7 @@ async def show_all_ethernet_vlans(
         log.error(ve)
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -205,7 +205,7 @@ async def create_ethernet_vlan(
         log.error(ve)
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -243,7 +243,7 @@ async def delete_ethernet_vlan(
         log.error(ve)
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -263,7 +263,7 @@ async def get_all_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -287,7 +287,7 @@ async def do_wireless_network_scan(
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -309,7 +309,7 @@ async def add_wireless_network(
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -333,7 +333,7 @@ async def get_current_wireless_network_details(
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -353,7 +353,7 @@ async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_T
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -373,7 +373,7 @@ async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -393,7 +393,7 @@ async def get_wireless_network(interface: str, network_id: int):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -413,7 +413,7 @@ async def remove_all_wireless_networks(interface: str):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -435,7 +435,7 @@ async def disconnect_wireless_network(
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -458,7 +458,7 @@ async def remove_wireless_network(interface: str, network_id: int):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -486,7 +486,7 @@ async def get_interface_details(interface: Optional[str] = None):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -506,5 +506,5 @@ async def get_interface_link_details(interface: str):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content="Internal Server Error", status_code=500)

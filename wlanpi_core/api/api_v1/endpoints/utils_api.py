@@ -5,6 +5,7 @@ from fastapi import APIRouter, Response
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
+from wlanpi_core.schemas.utils.utils import TracerouteResponse
 from wlanpi_core.services import utils_service
 
 router = APIRouter()
@@ -37,7 +38,7 @@ async def check_reachability():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
 
 
@@ -67,7 +68,7 @@ async def check_reachability():
 #     except ValidationError as ve:
 #         return Response(content=ve.error_msg, status_code=ve.status_code)
 #     except Exception as ex:
-#         log.error(ex)
+#         log.error(ex, exc_info=ex)
 #         return Response(content=f"Internal Server Error {ex}", status_code=500)
 
 
@@ -92,7 +93,7 @@ async def usb_interfaces():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
 
 
@@ -117,7 +118,7 @@ async def ufw_information():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
 
 
@@ -129,7 +130,7 @@ async def execute_ping(request: utils.PingRequest):
 
     try:
         result = await utils_service.ping(
-            request.destination,
+            request.host,
             request.count,
             request.interval,
             request.ttl,
@@ -140,7 +141,7 @@ async def execute_ping(request: utils.PingRequest):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error: {ex}", status_code=500)
 
 
@@ -155,19 +156,47 @@ async def execute_iperf(request: utils.IperfRequest):
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error: {ex}", status_code=500)
 
 
-@router.post("/system/reboot", response_model=bool)
-async def execute_reboot():
+@router.post("/traceroute", response_model=TracerouteResponse)
+async def execute_traceroute(request: utils.TracerouteRequest):
     """
-    Reboot the system
+    Run traceroute and return the results
     """
     try:
-        return await utils_service.reboot()
+        return await utils_service.run_traceroute(**request.__dict__)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post("/dhcp/test", response_model=utils.DhcpTestResponse)
+async def execute_dhcp_test(request: utils.DhcpTestRequest):
+    """
+    Run a dhcpcd test and return the results
+    """
+    try:
+        return await utils_service.run_dhcp_test(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post("/dns/dig", response_model=list[utils.DigResponse])
+async def execute_dig(request: utils.DigRequest):
+    """
+    Run a dhcpcd test and return the results
+    """
+    try:
+        return await utils_service.dig(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error: {ex}", status_code=500)

@@ -1,13 +1,13 @@
 import os
 import re
+import time
 from typing import Optional
 
 from wlanpi_core.constants import UFW_FILE
-
-from ..models.runcommand_error import RunCommandError
-from ..schemas.utils import PingResult
-from ..utils.general import run_command_async
-from ..utils.network import get_default_gateways, get_ip_address
+from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.schemas.utils import PingResult
+from wlanpi_core.utils.general import run_command_async
+from wlanpi_core.utils.network import get_default_gateways, get_ip_address
 
 
 async def show_reachability():
@@ -205,7 +205,7 @@ async def show_ufw():
 
 
 async def ping(
-    target: str,
+    host: str,
     count: int = 1,
     interval: float = 1,
     ttl: Optional[int] = None,
@@ -224,7 +224,7 @@ async def ping(
         command.extend(["-t", str(ttl)])
     if interface is not None:
         command.extend(["-I", str(interface)])
-    command.append(target)
+    command.append(host)
     res = await run_command_async(command)
     result: dict = res.output_from_json()  # type: ignore
     # Calculate jitter if we can
@@ -311,5 +311,73 @@ async def run_iperf3_client(host: str, time: int = 10, bind_host: Optional[str] 
     return res.output_from_json()
 
 
-async def reboot():
-    return (await run_command_async(["reboot"])).success
+async def run_traceroute(
+    host: str,
+    interface: Optional[str] = None,
+    bypass_routing: bool = False,
+    queries: Optional[int] = None,
+    max_ttl: Optional[int] = None,
+):
+
+    command = ["jc", "traceroute"]
+
+    if interface:
+        command.extend(["-i", interface])
+    if bypass_routing:
+        command.append("-r")
+    if queries:
+        command.extend(["-q", str(queries)])
+    if max_ttl:
+        command.extend(["-m", str(max_ttl)])
+
+    command.append(host)
+
+    return (await run_command_async(command)).output_from_json()
+
+
+async def run_dhcp_test(interface: Optional[str] = None, timeout: int = 5):
+    start_time = time.time()
+    command = ["dhcpcd", "-T"]
+    if interface:
+        command.extend(["-z", interface])
+
+    res = await run_command_async(command, timeout=timeout)
+
+    events: list[str] = []
+    values: dict[str, str] = {}
+    duid = ""
+
+    for line in res.stderr.split("\n")[1:]:
+        if line.startswith("DUID "):
+            duid = line.split(" ", 1)[1]
+            continue
+        if line.startswith(f"{interface}: "):
+            events.append(line)
+            continue
+    for line in res.stdout.split("\n"):
+        if "=" in line:
+            key, val = line.split("=", 1)
+            values[key] = val.strip("'")
+
+    return {
+        "time": (time.time() - start_time),
+        "duid": duid,
+        "events": events,
+        "data": values,
+    }
+
+
+async def dig(
+    host: str, nameserver: Optional[str] = None, interface: Optional[str] = None
+):
+
+    command = ["jc", "dig"]
+    if interface:
+        command.extend(["-b", get_ip_address(interface)])
+    if nameserver:
+        command.append(f"@nameserver")
+    command.append(host)
+
+    res = await run_command_async(command)
+    data = res.output_from_json()
+    return data

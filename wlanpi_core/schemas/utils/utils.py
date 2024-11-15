@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Extra, Field
 
@@ -43,7 +43,7 @@ class Ufw(BaseModel):
 
 
 class PingRequest(BaseModel):
-    destination: str = Field(examples=["google.com", "192.168.1.1"])
+    host: str = Field(examples=["google.com", "192.168.1.1"])
     count: int = Field(
         examples=[1, 10], description="How many packets to send.", default=1
     )
@@ -133,3 +133,79 @@ class Iperf2Result(BaseModel, extra=Extra.allow):
     jitter: Optional[float] = Field(default=None)
     error_count: Optional[int] = Field(default=None)
     datagrams: Optional[int] = Field(default=None)
+
+
+class TracerouteRequest(BaseModel):
+    host: str = Field(examples=["dns.google.com"])
+    interface: Optional[str] = Field(examples=["wlan0"], default=None)
+    bypass_routing: bool = Field(default=False)
+    queries: Optional[int] = Field(default=3)
+    max_ttl: Optional[int] = Field(default=30)
+
+
+class TracerouteProbes(BaseModel):
+    annotation: Any
+    asn: Any
+    ip: str = Field(examples=["8.8.4.4"])
+    name: str = Field(examples=["syn-098-123-060-049.biz.spectrum.com"])
+    rtt: float = Field(examples=["3.177"])
+
+
+class TracerouteHops(BaseModel):
+    hop: int = Field(examples=[1], default=0)
+    probes: list[TracerouteProbes] = Field()
+
+
+class TracerouteResponse(BaseModel):
+    destination_ip: str = Field(examples=["8.8.4.4"])
+    destination_name: str = Field(examples=["dns.google.com"])
+    hops: list[TracerouteHops] = Field()
+
+
+class DhcpTestResponse(BaseModel):
+    time: float = Field()
+    duid: str = Field(examples=["00:01:00:01:2e:74:ef:71:dc:a6:32:8e:04:17"])
+    events: list[str] = Field()
+    data: dict[str, str] = Field()
+
+
+class DhcpTestRequest(BaseModel):
+    interface: Optional[str] = Field(examples=["wlan0"], default=None)
+    timeout: int = Field(default=5)
+
+
+class DigRequest(BaseModel):
+    interface: Optional[str] = Field(examples=["wlan0"], default=None)
+    nameserver: Optional[str] = Field(examples=["wlan0"], default=None)
+    host: str = Field(examples=["wlanpi.com"])
+
+
+class DigQuestion(BaseModel):
+    name: str = Field(examples=["wlanpi.com."])
+    question_class: str = Field(examples=["IN"], alias="class")
+    type: str = Field(examples=["A"])
+
+
+class DigAnswer(BaseModel):
+    name: str = Field(examples=["wlanpi.com."])
+    answer_class: str = Field(examples=["IN"], alias="class")
+    type: str = Field(examples=["A"])
+    ttl: int = Field(examples=[1795])
+    data: str = Field(examples=["165.227.111.100"])
+
+
+class DigResponse(BaseModel):
+    id: int = Field()
+    opcode: str = Field()
+    status: str = Field()
+    flags: list[str] = Field()
+    query_num: int = Field()
+    answer_num: int = Field()
+    authority_num: int = Field()
+    additional_num: int = Field()
+    question: DigQuestion = Field()
+    answer: list[DigAnswer] = Field()
+    query_time: int = Field(examples=[3])
+    server: str = Field(examples=["192.168.30.1#53(192.168.30.1)"])
+    when: str = Field(examples=["Thu Nov 14 19:15:39 EST 2024"])
+    rcvd: int = Field(examples=[82])

@@ -1,4 +1,4 @@
-wlanpi-core (1.0.5-7) UNRELEASED; urgency=medium
+wlanpi-core (1.0.5-8) UNRELEASED; urgency=medium
 
   [ Michael Ketchel ]
   * Draft build of new wlan control features
@@ -10,8 +10,10 @@ wlanpi-core (1.0.5-7) UNRELEASED; urgency=medium
   * Fix some auto gateway config quirks
   * implement ping and speed test services
   * add reboot command
+  * Add DHCP test, Dig, and traceroute, as well as some other
+    optimizations
 
- -- Michael Ketchel <michael.ketchel@gmail.com>  Thu, 14 Nov 2024 05:24:22 +0000
+ -- Michael Ketchel <michael.ketchel@gmail.com>  Fri, 15 Nov 2024 00:29:44 +0000
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 

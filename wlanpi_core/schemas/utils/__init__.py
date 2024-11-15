@@ -1,4 +1,8 @@
 from .utils import (
+    DhcpTestRequest,
+    DhcpTestResponse,
+    DigRequest,
+    DigResponse,
     Iperf2Result,
     IperfRequest,
     PingRequest,
@@ -6,6 +10,7 @@ from .utils import (
     PingResult,
     ReachabilityTest,
     SpeedTest,
+    TracerouteRequest,
     Ufw,
     Usb,
 )

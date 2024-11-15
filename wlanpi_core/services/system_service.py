@@ -10,7 +10,7 @@ from dbus.exceptions import DBusException
 from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.general import run_command, run_command_async
 
 bus = SystemBus()
 systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
@@ -348,3 +348,7 @@ async def start_systemd_service(name: str):
     raise ValidationError(
         f"starting {name} is restricted or does not exist", status_code=400
     )
+
+
+async def reboot():
+    return (await run_command_async(["reboot"])).success
