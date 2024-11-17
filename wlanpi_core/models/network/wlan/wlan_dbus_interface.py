@@ -309,6 +309,7 @@ class WlanDBUSInterface:
                         if self.interface_name:
                             remove_default_routes(interface=self.interface_name)
                             renew_dhcp(self.interface_name)
+                            time.sleep(3)
                             add_default_route(interface=self.interface_name)
                             ipaddr = get_ip_address(self.interface_name)
                             connection_events.append(
