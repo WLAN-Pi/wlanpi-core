@@ -305,8 +305,27 @@ async def run_iperf2_client(
         }
 
 
-async def run_iperf3_client(host: str, time: int = 10, bind_host: Optional[str] = None):
-    command = ["iperf3", "--json", "-t", str(time), "-c", host]
+async def run_iperf3_client(
+    host: str,
+    port: int = 5001,
+    time: int = 10,
+    reverse: bool = False,
+    bind: Optional[str] = None,
+    interface: Optional[str] = None,
+    udp=False,
+):
+    command = ["iperf3", "--json", "-t", str(time), "-c", host, "-p", str(port)]
+
+    if reverse:
+        command.append("-R")
+
+    if bind:
+        command.extend(["-B", bind])
+    elif interface:
+        command.extend(["-B", get_ip_address(interface)])
+    if udp:
+        command.append("-u")
+
     res = await run_command_async(command)
     return res.output_from_json()
 

@@ -96,7 +96,19 @@ class PingResult(
     responses: list[PingResponse] = Field()
 
 
-class IperfRequest(BaseModel):
+class Iperf3ClientRequest(BaseModel):
+    host: str = Field(examples=["192.168.1.1"])
+    port: int = Field(examples=[5001], default=5001)
+    time: int = Field(examples=[10], default=10)
+    udp: bool = Field(default=False)
+    reverse: bool = Field(default=False)
+    interface: Optional[str] = Field(examples=["wlan0"], default=None)
+
+
+# No Iperf3Result yet as it hasn't been fully modeled and I (MDK) don't know what all potential output forms are in JSON mode.
+
+
+class Iperf2ClientRequest(BaseModel):
     host: str = Field(examples=["192.168.1.1"])
     port: int = Field(examples=[5001], default=5001)
     time: int = Field(examples=[10], default=10)

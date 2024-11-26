@@ -146,13 +146,28 @@ async def execute_ping(request: utils.PingRequest):
 
 
 @router.post("/iperf2/client", response_model=utils.Iperf2Result)
-async def execute_iperf(request: utils.IperfRequest):
+async def execute_iperf(request: utils.Iperf2ClientRequest):
     """
-    Runs iperf against a target and returns the results
+    Runs iperf2 against a target and returns the results
     """
 
     try:
         return await utils_service.run_iperf2_client(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post("/iperf3/client", response_model=None)
+async def execute_iperf3_client(request: utils.Iperf3ClientRequest):
+    """
+    Runs iperf3 against a target and returns the results
+    """
+
+    try:
+        return await utils_service.run_iperf3_client(**request.__dict__)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
