@@ -5,7 +5,7 @@ from typing import Optional, Union
 
 from wlanpi_core.constants import UFW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
-from wlanpi_core.schemas.utils import PingResult, PingFailure
+from wlanpi_core.schemas.utils import PingFailure, PingResult
 from wlanpi_core.utils.general import run_command_async
 from wlanpi_core.utils.network import get_default_gateways, get_ip_address
 
