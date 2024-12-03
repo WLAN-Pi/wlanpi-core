@@ -8,6 +8,7 @@ from .utils import (
     Iperf3ClientRequest,
     PingRequest,
     PingResponse,
+    PingFailure,
     PingResult,
     ReachabilityTest,
     SpeedTest,

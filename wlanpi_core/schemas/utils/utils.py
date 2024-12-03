@@ -88,12 +88,17 @@ class PingResult(
     packet_loss_percent: float = Field(examples=[0.0])
     duplicates: int = Field(examples=[0])
     time_ms: float = Field(examples=[9012.0])
-    round_trip_ms_min: float = Field(examples=[24.108])
-    round_trip_ms_avg: float = Field(examples=[29.318])
-    round_trip_ms_max: float = Field(examples=[37.001])
-    round_trip_ms_stddev: float = Field(examples=[4.496])
+    round_trip_ms_min: Optional[float] = Field(examples=[24.108])
+    round_trip_ms_avg: Optional[float] = Field(examples=[29.318])
+    round_trip_ms_max: Optional[float] = Field(examples=[37.001])
+    round_trip_ms_stddev: Optional[float] = Field(examples=[4.496])
     jitter: Optional[float] = Field(examples=[37.001], default=None)
     responses: list[PingResponse] = Field()
+
+
+class PingFailure(BaseModel):
+    destination: str = Field(examples=["google.com"])
+    message: str = Field(examples=["No route to host"])
 
 
 class Iperf3ClientRequest(BaseModel):

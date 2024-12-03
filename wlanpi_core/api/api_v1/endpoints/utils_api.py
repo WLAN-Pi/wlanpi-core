@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Union
 
 from fastapi import APIRouter, Response
 
@@ -122,7 +123,7 @@ async def ufw_information():
         return Response(content=f"Internal Server Error", status_code=500)
 
 
-@router.post("/ping", response_model=utils.PingResult)
+@router.post("/ping", response_model=Union[utils.PingResult, utils.PingFailure])
 async def execute_ping(request: utils.PingRequest):
     """
     Pings a target and returns the results

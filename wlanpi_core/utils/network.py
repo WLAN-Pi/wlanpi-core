@@ -383,10 +383,10 @@ def get_interface_details(
         iw_list_data = parse_iw_list(run_command(["iw", "list"]).stdout.split("\n"))
 
     return {
-        get_phy_interface_name(k.split(" ")[1].split("phy")[1]): {
+        get_phy_interface_name(k.split(" ")[1].split("phy")[1]).split()[0]: {
             "phy_name": k.split(" ")[1],
             "mac": get_interface_mac(
-                get_phy_interface_name(k.split(" ")[1].split("phy")[1])
+                get_phy_interface_name(k.split(" ")[1].split("phy")[1]).split()[0]
             ),
             "details": v,
         }
