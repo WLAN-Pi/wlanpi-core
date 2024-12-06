@@ -7,6 +7,8 @@ on:
       - main
     paths:
       - 'debian/changelog'
+env:
+  debpackagename: wlanpi-core
 jobs:
   check_version:
     name: Check py & deb pkg versions match
