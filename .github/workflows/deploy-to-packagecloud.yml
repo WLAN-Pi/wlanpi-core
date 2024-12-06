@@ -63,17 +63,8 @@ jobs:
         with:
           name: ${{ env.filename }}
           path: ${{ steps.build-debian-package.outputs.deb-package }}
-      - name: Upload armhf pkg to raspbian/${{ matrix.distro }}
-        if: ${{ matrix.arch == 'armhf' && (github.repository_owner == 'WLAN-Pi') }}
-        uses: danielmundi/upload-packagecloud@main
-        with:
-          package-name: ${{ steps.build-debian-package.outputs.deb-package }}
-          packagecloud-username: wlanpi
-          packagecloud-repo: dev
-          packagecloud-distrib: raspbian/${{ matrix.distro }}
-          packagecloud-token: ${{ secrets.PACKAGECLOUD_TOKEN }}
       - name: Upload arm64 pkg to debian/${{ matrix.distro }}
-        if: ${{ matrix.arch == 'arm64' && (github.repository_owner == 'WLAN-Pi') }}
+        if: ${{ matrix.arch == 'arm64' }}
         uses: danielmundi/upload-packagecloud@main
         with:
           package-name: ${{ steps.build-debian-package.outputs.deb-package }}
