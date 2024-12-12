@@ -1,8 +1,9 @@
-wlanpi-core (1.0.5-11) UNRELEASED; urgency=medium
+wlanpi-core (1.0.5-12) UNRELEASED; urgency=medium
 
   * Fix bluetooth model parsing issue
+  * Always restart
 
- -- Michael Ketchel <michael.ketchel@gmail.com>  Wed, 11 Dec 2024 06:26:38 +0000
+ -- Michael Ketchel <michael.ketchel@gmail.com>  Thu, 12 Dec 2024 04:08:56 +0000
 
 wlanpi-core (1.0.5-10) unstable; urgency=medium
 

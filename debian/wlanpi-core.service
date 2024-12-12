@@ -17,7 +17,7 @@ KillMode=mixed
 TimeoutStopSec=5
 PrivateTmp=true
 
-# Restart=always
+Restart=always
 Type=notify
 NotifyAccess=all
 
