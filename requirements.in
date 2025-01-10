@@ -9,6 +9,7 @@ python-dotenv
 pydantic-settings
 requests
 pyjwt
+Authlib
 
 # endpoint requires
 psutil
