@@ -17,17 +17,19 @@ function unlink_if_existing() {
     fi
 }
 
-unlink_if_existing /opt/wlanpi-core/workingdirectory
-unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    unlink_if_existing /opt/wlanpi-core/workingdirectory
+    unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
 
-if iptables -C ufw-user-input -p tcp --dport 31415 -j ACCEPT 2>/dev/null; then
-    iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
-    echo "[Network] TCP port 31415: Firewall rule removed."
-fi
+    if iptables -C ufw-user-input -p tcp --dport 31415 -j ACCEPT 2>/dev/null; then
+        iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
+        echo "[Network] TCP port 31415: Firewall rule removed."
+    fi
 
-if iptables -C ufw-user-input -p udp --dport 31415 -j ACCEPT 2>/dev/null; then
-    iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
-    echo "[Network] UDP port 31415: Firewall rule removed."
+    if iptables -C ufw-user-input -p udp --dport 31415 -j ACCEPT 2>/dev/null; then
+        iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
+        echo "[Network] UDP port 31415: Firewall rule removed."
+    fi
 fi
 
 exit 0

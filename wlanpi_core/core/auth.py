@@ -1437,8 +1437,39 @@ security = HTTPBearer(auto_error=False)
 
 def is_localhost_request(request: Request) -> bool:
     """Check if request comes from loopback address (127.0.0.1/::1)"""
-    client_ip = ipaddress.ip_address(request.client.host)
-    return client_ip.is_loopback
+    try:
+        log.debug(f"Headers: {request.headers}")
+        log.debug(f"Client: {request.client}")
+        log.debug(f"Scope client: {request.scope.get('client')}")
+        log.debug(f"X-Forwarded-For: {request.headers.get('X-Forwarded-For')}")
+        log.debug(f"X-Real-IP: {request.headers.get('X-Real-IP')}")
+
+        if request.headers.get("X-Real-IP"):
+            client_host = request.headers.get("X-Real-IP")
+            log.debug(f"Using X-Real-IP: {client_host}")
+        elif request.headers.get("X-Forwarded-For"):
+            client_host = request.headers.get("X-Forwarded-For").split(",")[0].strip()
+            log.debug(f"Using X-Forwarded-For: {client_host}")
+        elif request.client and request.client.host:
+            client_host = request.client.host
+            log.debug(f"Using request.client.host: {client_host}")
+        elif request.scope.get("client"):
+            client_tuple = request.scope.get("client")
+            if client_tuple and len(client_tuple) > 0:
+                client_host = client_tuple[0]
+                log.debug(f"Using scope client: {client_host}")
+        else:
+            log.warning("Could not determine client IP address")
+            return False
+
+        client_ip = ipaddress.ip_address(client_host)
+        is_loopback = client_ip.is_loopback
+        log.debug(f"IP: {client_ip}, is_loopback: {is_loopback}")
+        return is_loopback
+
+    except Exception:
+        log.exception("Error in is_localhost_request")
+        return False
 
 
 async def verify_auth_wrapper(

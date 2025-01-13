@@ -3,6 +3,7 @@ project_capsule.json
 debian/wlanpi-core.postinst.debhelper
 debian/wlanpi-core.postrm.debhelper
 debian/wlanpi-core.prerm.debhelper
+debian/wlanpi-core.substvars
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
