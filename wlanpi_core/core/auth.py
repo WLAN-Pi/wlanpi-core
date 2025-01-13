@@ -187,13 +187,13 @@ def validate_and_fix_token(token: Union[str, bytes]) -> str:
             header = decode_jwt_part(parts[0])
             if not header.get("alg") or not header.get("typ", "JWT").upper() == "JWT":
                 raise JWTError("Invalid token header")
-        except Exception as e:
+        except Exception:
             raise JWTError(f"Header validation failed")
 
         return padded_token
     except JWTError:
         raise
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -1111,7 +1111,7 @@ class TokenManager:
             self.key_cache.cache_active_key(key_id, key)
             log.info(f"Loaded and cached key {key_id}")
             return key
-        except Exception as e:
+        except Exception:
             log.exception(f"Failed to load key {key_id} from database")
             return None
         finally:
@@ -1214,7 +1214,7 @@ class TokenManager:
                 try:
                     conn = await self.app_state.db_manager.get_connection()
                     should_close = True
-                except Exception as e:
+                except Exception:
                     log.error("Database connection failed")
                     return TokenValidationResult(
                         is_valid=False, error="Database unavailable"

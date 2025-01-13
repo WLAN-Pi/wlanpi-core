@@ -5,7 +5,6 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from wlanpi_core.core.database import DatabaseManager
 
 log = logging.getLogger("uvicorn")
 

@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime, timezone
 import logging
 import sqlite3
 from pathlib import Path
@@ -14,13 +13,11 @@ log = logging.getLogger("uvicorn")
 class DatabaseError(Exception):
     """Base class for database errors"""
 
-    pass
 
 
 class DatabaseCorruptionError(DatabaseError):
     """Raised when database corruption is detected"""
 
-    pass
 
 
 class DatabaseManager:

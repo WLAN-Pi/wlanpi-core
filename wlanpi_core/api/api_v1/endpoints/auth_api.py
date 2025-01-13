@@ -8,12 +8,10 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from wlanpi_core.core.auth import (
     ACCESS_TOKEN_EXPIRE_DAYS,
     KeyCache,
-    TokenError,
     verify_jwt_token,
     verify_hmac,
 )
 from wlanpi_core.schemas.auth import TokenRequest, Token
-from wlanpi_core.services import system_service
 
 router = APIRouter()
 log = logging.getLogger("uvicorn")
