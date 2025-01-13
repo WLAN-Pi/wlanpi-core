@@ -1,4 +1,4 @@
-#DBUS Managed WPA_Supplicant Service on WLAN0
+# DBUS managed wpa_supplicant service on wlan0
 
 [Unit]
 Description=WPA supplicant daemon (interface-specific version)

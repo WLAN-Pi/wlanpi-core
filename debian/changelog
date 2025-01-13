@@ -1,3 +1,9 @@
+wlanpi-core (2.0.0) unstable; urgency=high
+
+  * Breaking auth changes
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 12 Jan 2025 23:30:42 -0400
+
 wlanpi-core (1.0.5-1) unstable; urgency=high
 
   * API hardening by blocking iptables rule added by pi-gen

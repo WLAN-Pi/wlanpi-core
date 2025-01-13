@@ -8,6 +8,8 @@ uvicorn
 python-dotenv
 pydantic-settings
 requests
+slowapi
+Authlib
 
 # endpoint requires
 psutil
