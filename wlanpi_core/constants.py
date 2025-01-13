@@ -2,7 +2,7 @@
 API_V1_STR: str = "/api/v1"
 PROJECT_NAME: str = "wlanpi-core"
 PROJECT_DESCRIPTION: str = (
-    "The wlanpi-core API provides endpoints for applications on the WLAN Pi to share data. 🚀"
+    "The wlanpi-core API offers endpoints for WLAN Pi apps to get and share data. 🚀"
 )
 
 # Linux programs

@@ -1,6 +1,7 @@
 import logging
 import subprocess
 
+import serial
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_jwt_token

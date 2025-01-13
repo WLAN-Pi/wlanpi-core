@@ -11,6 +11,10 @@ class ServiceRunning(BaseModel):
     active: bool = Field(example=True)
 
 
+class DeviceSerial(BaseModel):
+    serial: str = Field(example="133700330070513050022035384b")
+
+
 class DeviceModel(BaseModel):
     model: str = Field(example="R4")
 

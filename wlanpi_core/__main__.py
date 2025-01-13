@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # wlanpi-core : backend services for the WLAN Pi
-# Copyright : (c) 2023 Josh Schmelzle
+# Copyright : (c) 2025 Josh Schmelzle
 # License : BSD-3-Clause
 # Maintainer : josh@joshschmelzle.com
 
@@ -59,39 +59,22 @@ def setup_parser() -> argparse.ArgumentParser:
     )
     return parser
 
-
-def confirm_prompt(question: str) -> bool:
-    reply = None
-    while reply not in ("y", "n"):
-        reply = input(f"{question} (y/n): ").lower()
-    return reply == "y"
-
-
 def main() -> None:
     parser = setup_parser()
     args = parser.parse_args()
-
-    try:
-        lets_go = confirm_prompt(
-            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development and debugging! Continue?"
-        )
-    except KeyboardInterrupt:
-        print("\nInterrupt detected, exiting...")
-        sys.exit(0)
 
     if not args.livereload:
         print(
             "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
         )
-
-    if lets_go:
-        uvicorn.run(
-            "wlanpi_core.asgi:app",
-            port=args.port,
-            host="0.0.0.0",
-            reload=args.livereload,
-            log_level="debug",
-        )
+        
+    uvicorn.run(
+        "wlanpi_core.asgi:app",
+        port=args.port,
+        host="0.0.0.0",
+        reload=args.livereload,
+        log_level="debug",
+    )
 
 
 def init() -> None:

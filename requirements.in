@@ -8,7 +8,7 @@ uvicorn
 python-dotenv
 pydantic-settings
 requests
-pyjwt
+slowapi
 Authlib
 
 # endpoint requires
