@@ -5,28 +5,23 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List
 
-
 log = logging.getLogger("uvicorn")
 
-IMPORTANT_PATTERNS = ['/auth/', '/network/', '/system/']
+IMPORTANT_PATTERNS = ["/auth/", "/network/", "/system/"]
+
 
 class DeviceActivityManager:
-    def __init__(
-        self, 
-        app_state,
-        buffer_size: int = 1000,
-        flush_interval: int = 3600 
-    ):
+    def __init__(self, app_state, buffer_size: int = 1000, flush_interval: int = 3600):
         self.app_state = app_state
         self.buffer_size = buffer_size
         self.flush_interval = flush_interval
         self.buffer: List[dict] = []
         self.stats_buffer: Dict[str, dict] = defaultdict(
             lambda: {
-                'request_count': 0,
-                'error_count': 0,
-                'endpoints': set(),
-                'last_activity': None
+                "request_count": 0,
+                "error_count": 0,
+                "endpoints": set(),
+                "last_activity": None,
             }
         )
         self.last_flush = time.time()
@@ -54,30 +49,34 @@ class DeviceActivityManager:
 
             async with self._lock:
                 stats = self.stats_buffer[device_id]
-                stats['request_count'] += 1
+                stats["request_count"] += 1
                 if status_code >= 400:
-                    stats['error_count'] += 1
-                stats['endpoints'].add(endpoint)
-                stats['last_activity'] = utc_timestamp
+                    stats["error_count"] += 1
+                stats["endpoints"].add(endpoint)
+                stats["last_activity"] = utc_timestamp
 
                 if status_code >= 400 or self._is_important_endpoint(endpoint):
-                    self.buffer.append({
-                        'device_id': device_id,
-                        'endpoint': endpoint,
-                        'status_code': status_code,
-                        'timestamp': utc_timestamp
-                    })
+                    self.buffer.append(
+                        {
+                            "device_id": device_id,
+                            "endpoint": endpoint,
+                            "status_code": status_code,
+                            "timestamp": utc_timestamp,
+                        }
+                    )
 
                 cursor.execute(
                     """INSERT INTO device_activity 
                     (device_id, endpoint, status_code, timestamp) 
-                    VALUES (?, ?, ?, ?)""", 
-                    (device_id, endpoint, status_code, utc_timestamp)
+                    VALUES (?, ?, ?, ?)""",
+                    (device_id, endpoint, status_code, utc_timestamp),
                 )
                 conn.commit()
 
-                if len(self.buffer) >= self.buffer_size or \
-                   time.time() - self.last_flush > self.flush_interval:
+                if (
+                    len(self.buffer) >= self.buffer_size
+                    or time.time() - self.last_flush > self.flush_interval
+                ):
                     await self.flush_buffers()
 
         except Exception as e:
@@ -105,8 +104,15 @@ class DeviceActivityManager:
                         """INSERT INTO device_activity_recent 
                         (device_id, endpoint, status_code, timestamp)
                         VALUES (?, ?, ?, ?)""",
-                        [(a['device_id'], a['endpoint'], a['status_code'], a['timestamp'])
-                         for a in self.buffer]
+                        [
+                            (
+                                a["device_id"],
+                                a["endpoint"],
+                                a["status_code"],
+                                a["timestamp"],
+                            )
+                            for a in self.buffer
+                        ],
                     )
 
                 for device_id, stats in self.stats_buffer.items():
@@ -121,11 +127,15 @@ class DeviceActivityManager:
                         )""",
                         (
                             device_id,
-                            device_id, stats['request_count'], stats['request_count'],
-                            device_id, stats['error_count'], stats['error_count'],
-                            len(stats['endpoints']),
-                            stats['last_activity']
-                        )
+                            device_id,
+                            stats["request_count"],
+                            stats["request_count"],
+                            device_id,
+                            stats["error_count"],
+                            stats["error_count"],
+                            len(stats["endpoints"]),
+                            stats["last_activity"],
+                        ),
                     )
 
                 cursor.execute("COMMIT")
@@ -153,15 +163,20 @@ class DeviceActivityManager:
                 FROM device_activity
                 WHERE device_id = ?
                 ORDER BY timestamp DESC
-                LIMIT ?""", 
-                (device_id, limit)
+                LIMIT ?""",
+                (device_id, limit),
             )
-            
-            return [{
-                "endpoint": row[0],
-                "status_code": row[1],
-                "timestamp": datetime.fromtimestamp(row[2], tz=timezone.utc).isoformat()
-            } for row in cursor.fetchall()]
+
+            return [
+                {
+                    "endpoint": row[0],
+                    "status_code": row[1],
+                    "timestamp": datetime.fromtimestamp(
+                        row[2], tz=timezone.utc
+                    ).isoformat(),
+                }
+                for row in cursor.fetchall()
+            ]
 
         except Exception as e:
             log.error(f"Failed to get device activity: {str(e)}")
@@ -176,23 +191,23 @@ class DeviceActivityManager:
         try:
             conn = await self.app_state.db_manager.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute(
                 """SELECT request_count, error_count, endpoint_count, last_activity 
                 FROM device_stats 
                 WHERE device_id = ?""",
-                (device_id,)
+                (device_id,),
             )
             stats = cursor.fetchone()
-            
+
             # Get token info
             cursor.execute(
                 """SELECT created_at, expires_at, revoked
                 FROM tokens
                 WHERE device_id = ?
                 ORDER BY created_at DESC
-                LIMIT 1""", 
-                (device_id,)
+                LIMIT 1""",
+                (device_id,),
             )
             token = cursor.fetchone()
 
@@ -206,7 +221,11 @@ class DeviceActivityManager:
                 "total_requests": stats[0],
                 "error_count": stats[1],
                 "unique_endpoints": stats[2],
-                "last_activity": datetime.fromtimestamp(stats[3], tz=timezone.utc).isoformat() if stats[3] else None
+                "last_activity": (
+                    datetime.fromtimestamp(stats[3], tz=timezone.utc).isoformat()
+                    if stats[3]
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -223,7 +242,7 @@ class DeviceActivityManager:
             conn = await self.app_state.db_manager.get_connection()
             cursor = conn.cursor()
             now = int(datetime.now(timezone.utc).timestamp())
-            
+
             cursor.execute(
                 """SELECT 
                     t.device_id,
@@ -234,16 +253,27 @@ class DeviceActivityManager:
                 FROM tokens t
                 LEFT JOIN device_stats ds ON t.device_id = ds.device_id
                 WHERE t.expires_at > ? AND t.revoked = FALSE""",
-                (now,)
+                (now,),
             )
-            
-            return [{
-                "device_id": row[0],
-                "token_created": datetime.fromtimestamp(row[1], tz=timezone.utc).isoformat(),
-                "token_expires": datetime.fromtimestamp(row[2], tz=timezone.utc).isoformat(),
-                "activity_count": row[3] or 0,
-                "last_activity": datetime.fromtimestamp(row[4], tz=timezone.utc).isoformat() if row[4] else None
-            } for row in cursor.fetchall()]
+
+            return [
+                {
+                    "device_id": row[0],
+                    "token_created": datetime.fromtimestamp(
+                        row[1], tz=timezone.utc
+                    ).isoformat(),
+                    "token_expires": datetime.fromtimestamp(
+                        row[2], tz=timezone.utc
+                    ).isoformat(),
+                    "activity_count": row[3] or 0,
+                    "last_activity": (
+                        datetime.fromtimestamp(row[4], tz=timezone.utc).isoformat()
+                        if row[4]
+                        else None
+                    ),
+                }
+                for row in cursor.fetchall()
+            ]
 
         except Exception as e:
             log.error(f"Failed to list active devices: {str(e)}")

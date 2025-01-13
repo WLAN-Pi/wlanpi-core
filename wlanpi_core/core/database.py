@@ -1,11 +1,9 @@
 import asyncio
 import logging
 import sqlite3
-from pathlib import Path
 import threading
+from pathlib import Path
 from typing import Optional
-
-from wlanpi_core.core.auth import to_timestamp
 
 log = logging.getLogger("uvicorn")
 
@@ -14,10 +12,8 @@ class DatabaseError(Exception):
     """Base class for database errors"""
 
 
-
 class DatabaseCorruptionError(DatabaseError):
     """Raised when database corruption is detected"""
-
 
 
 class DatabaseManager:
@@ -25,7 +21,7 @@ class DatabaseManager:
         self,
         app_state,
         db_path: str = "/opt/wlanpi-core/.secrets/tokens.db",
-        max_size_mb: int = 10
+        max_size_mb: int = 10,
     ):
         self.app_state = app_state
         self.db_path = Path(db_path)
@@ -39,8 +35,8 @@ class DatabaseManager:
         ]
         self._local = threading.local()
         self._conn_lock = asyncio.Lock()
-        self._init_lock = asyncio.Lock() 
-        
+        self._init_lock = asyncio.Lock()
+
     async def initialize(self):
         await self._ensure_database_exists()
 
@@ -52,14 +48,14 @@ class DatabaseManager:
         async with self._init_lock:  # Ensure only one thread handles recovery
             try:
                 if not self.db_path.exists():
-                    log.warning(
-                        f"Database does not exist. Creating a new one."
-                    )
+                    log.warning(f"Database does not exist. Creating a new one.")
                     self._create_base_database()
                     return
 
                 if not await self.check_integrity():
-                    log.error(f"Database {self.db_path} failed integrity check. Recreating.")
+                    log.error(
+                        f"Database {self.db_path} failed integrity check. Recreating."
+                    )
                     self._create_base_database()
             except Exception as e:
                 log.exception(f"Unexpected error checking database: {e}")
@@ -80,6 +76,7 @@ class DatabaseManager:
                 conn.execute(setting)
 
             from .migrations import run_migrations
+
             run_migrations(conn)
             conn.close()
 
@@ -95,11 +92,11 @@ class DatabaseManager:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
+
             # Connection test
             cursor.execute("SELECT name FROM sqlite_master")
             cursor.fetchone()
-            
+
             # Check WAL mode
             cursor.execute("PRAGMA journal_mode")
             if cursor.fetchone()[0] != "wal":
@@ -125,9 +122,9 @@ class DatabaseManager:
             if cursor.fetchall():
                 log.error("Database foreign key check failed")
                 return False
-                
+
             return True
-            
+
         except sqlite3.DatabaseError:
             log.error(f"Database {self.db_path} is corrupted")
             return False
@@ -155,7 +152,7 @@ class DatabaseManager:
         thread_id = threading.get_ident()
         if hasattr(self._local, "conn") and self._verify_connection(self._local.conn):
             return self._local.conn
-        
+
         async with self._conn_lock:
             # Check if we have a valid connection
             if hasattr(self._local, "conn"):

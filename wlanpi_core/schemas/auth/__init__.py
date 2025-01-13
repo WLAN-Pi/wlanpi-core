@@ -1,1 +1,1 @@
-from .auth import TokenRequest, Token
+from .auth import KeyResponse, Token, TokenRequest

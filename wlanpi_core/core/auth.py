@@ -1,21 +1,21 @@
 import asyncio
 import base64
+import hashlib
+import hmac
 import ipaddress
 import json
 import logging
-import hmac
-import hashlib
 import secrets
 import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional, Tuple, Union
 from functools import lru_cache
+from typing import Any, Dict, Optional, Tuple, Union
 
 from authlib.jose import jwt
 from authlib.jose.errors import ExpiredTokenError, InvalidTokenError
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from wlanpi_core.services import system_service
@@ -40,45 +40,46 @@ class JWTError(Exception):
 def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int]:
     """
     Convert various datetime formats to Unix timestamp
-    
+
     Args:
         dt: Input datetime (can be datetime object, ISO string, or timestamp)
-        
+
     Returns:
         int: Unix timestamp in seconds
     """
     if dt is None:
         return None
-        
+
     try:
         if isinstance(dt, (int, float)):
             return int(dt)
         elif isinstance(dt, str):
-            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
-        
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+
         if isinstance(dt, datetime):
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return int(dt.timestamp())
-            
+
         raise ValueError(f"Unsupported datetime format: {type(dt)}")
     except Exception as e:
         log.error(f"Failed to convert to timestamp: {e}")
         return None
 
+
 def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
     """
     Convert Unix timestamp to UTC datetime
-    
+
     Args:
         ts: Unix timestamp (seconds since epoch)
-        
+
     Returns:
         datetime: UTC datetime object
     """
     if ts is None:
         return None
-        
+
     try:
         if isinstance(ts, str):
             ts = float(ts)
@@ -86,6 +87,7 @@ def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
     except Exception as e:
         log.error(f"Failed to convert from timestamp: {e}")
         return None
+
 
 def pad_base64(input_str: Union[str, bytes], is_token: bool = False) -> str:
     """
@@ -198,7 +200,7 @@ def validate_and_fix_token(token: Union[str, bytes]) -> str:
 
 
 def normalize_token(token: Union[str, bytes]) -> str:
-    """Normalize token format consistently"""
+    """Normalize token format"""
     if isinstance(token, bytes):
         token = token.decode("utf-8")
     return token.strip("b'\"")
@@ -644,7 +646,8 @@ class TokenManager:
             cursor.execute("UPDATE signing_keys SET active = FALSE")
 
         cursor.execute(
-            "INSERT INTO signing_keys (key, active, created_at) VALUES (?, TRUE, ?)", (encrypted_key, now)
+            "INSERT INTO signing_keys (key, active, created_at) VALUES (?, TRUE, ?)",
+            (encrypted_key, now),
         )
         key_id = cursor.lastrowid
         return key_id, key
@@ -673,26 +676,28 @@ class TokenManager:
         try:
             conn = await self.app_state.db_manager.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("SELECT COUNT(*) FROM signing_keys")
             key_count = cursor.fetchone()[0]
             log.info(f"Current signing_keys count: {key_count}")
-            
+
             if key_count > 0:
                 cursor.execute(
                     "SELECT id, created_at, active FROM signing_keys ORDER BY created_at DESC"
                 )
                 keys = cursor.fetchall()
                 for key in keys:
-                    log.info(f"Found key: id={key[0]}, created={key[1]}, active={key[2]}")
-                
+                    log.info(
+                        f"Found key: id={key[0]}, created={key[1]}, active={key[2]}"
+                    )
+
             log.info("Fetching active key from database")
             cursor.execute(
                 "SELECT id, key, created_at FROM signing_keys WHERE active = TRUE "
                 "ORDER BY created_at DESC LIMIT 1"
             )
             result = cursor.fetchone()
-        
+
             if result:
                 key_id, encrypted_key, created_at = result[0], result[1], result[2]
                 key = self.app_state.security_manager.decrypt(encrypted_key)
@@ -701,7 +706,7 @@ class TokenManager:
                 return
 
             log.info("No active key found, creating new key")
-        
+
             key = secrets.token_bytes(32)
             encrypted_key = self.app_state.security_manager.encrypt(key)
             now = to_timestamp(datetime.now(timezone.utc))
@@ -710,17 +715,21 @@ class TokenManager:
                 (encrypted_key, now),
             )
             key_id = cursor.lastrowid
-            
-            cursor.execute("SELECT id, created_at FROM signing_keys WHERE id = ?", (key_id,))
+
+            cursor.execute(
+                "SELECT id, created_at FROM signing_keys WHERE id = ?", (key_id,)
+            )
             inserted_key = cursor.fetchone()
             if not inserted_key:
-                raise KeyError(f"Failed to insert new key - no record found with id {key_id}")
-                
+                raise KeyError(
+                    f"Failed to insert new key - no record found with id {key_id}"
+                )
+
             conn.commit()
 
             self.key_cache.cache_active_key(key_id, key)
             log.info(f"Created and cached new key {key_id}")
-        
+
             cursor.execute("SELECT COUNT(*) FROM signing_keys")
             final_count = cursor.fetchone()[0]
             log.info(f"Final signing_keys count: {final_count}")
@@ -899,7 +908,7 @@ class TokenManager:
                     {
                         "id": row[0],
                         "created_at": from_timestamp(row[1]),
-                        "active": bool(row[2])
+                        "active": bool(row[2]),
                     }
                     for row in keys
                 ]
@@ -965,7 +974,7 @@ class TokenManager:
             - Checks for existing tokens for the same device
             - Invalidates and replaces existing tokens
             - Handles token expiration automatically
-            - Caches the token to minimize database reads
+            - Caches the token
         """
         log.info(f"Creating/fetching token for device {device_id}")
 
@@ -1155,30 +1164,32 @@ class TokenManager:
         """Store token with proper transaction handling"""
         try:
             token = normalize_token(token)
-            
+
             cursor.execute("SELECT id FROM signing_keys WHERE id = ?", (key_id,))
             if not cursor.fetchone():
-                raise TokenError(f"Cannot store token - signing key {key_id} does not exist")
-            
+                raise TokenError(
+                    f"Cannot store token - signing key {key_id} does not exist"
+                )
+
             cursor.execute("BEGIN TRANSACTION")
-            
+
             # Delete any existing tokens for this device
             cursor.execute("DELETE FROM tokens WHERE device_id = ?", (device_id,))
-            
+
             now = int(datetime.now(timezone.utc).timestamp())
-            expires_at = to_timestamp(claims['exp'])
-            
+            expires_at = to_timestamp(claims["exp"])
+
             cursor.execute(
                 """INSERT INTO tokens 
                 (token, device_id, expires_at, created_at, key_id) 
                 VALUES (?, ?, ?, ?, ?)""",
                 (token, device_id, expires_at, now, key_id),
             )
-            
+
             cursor.execute("SELECT id FROM tokens WHERE token = ?", (token,))
             if not cursor.fetchone():
                 raise TokenError("Token insert failed - no record found after insert")
-                
+
             cursor.execute("COMMIT")
             log.info(f"Token stored for device {device_id}")
         except Exception as e:
@@ -1195,21 +1206,27 @@ class TokenManager:
         conn = provided_conn
         try:
             # Log the token being verified (but mask most of it)
-            masked_token = token[:20] + "..." + token[-20:] if len(token) > 40 else token
+            masked_token = (
+                token[:20] + "..." + token[-20:] if len(token) > 40 else token
+            )
             log.debug(f"Verifying token: {masked_token}")
-            
+
             try:
                 normalized_token = normalize_token(token)
                 validated_token = validate_and_fix_token(normalized_token)
             except JWTError as e:
-                log.error(f"Token validation failed during normalization/validation: {e}")
+                log.error(
+                    f"Token validation failed during normalization/validation: {e}"
+                )
                 return TokenValidationResult(is_valid=False, error=str(e))
 
             cached = self.token_cache.get_cached_token(validated_token)
             if cached:
                 log.debug("Token found in cache")
-                return TokenValidationResult(is_valid=True, payload=cached, token=validated_token)
-            
+                return TokenValidationResult(
+                    is_valid=True, payload=cached, token=validated_token
+                )
+
             if not conn:
                 try:
                     conn = await self.app_state.db_manager.get_connection()
@@ -1236,7 +1253,7 @@ class TokenManager:
                     (validated_token,),
                 )
                 token_info = cursor.fetchone()
-            
+
                 if not token_info:
                     cursor.execute(
                         """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
@@ -1250,14 +1267,16 @@ class TokenManager:
                     log.warning(f"Token not found in database.")
                     log.info(f"Normalized token hash: {hash(normalized_token)}")
                     log.info(f"Validated token hash: {hash(validated_token)}")
-                    
+
                     cursor.execute("SELECT token FROM tokens")
                     db_tokens = cursor.fetchall()
                     log.info(f"Database contains {len(db_tokens)} tokens")
                     for db_token in db_tokens:
                         log.info(f"Database token hash: {hash(db_token['token'])}")
-                    
-                    return TokenValidationResult(is_valid=False, error="Token not found")
+
+                    return TokenValidationResult(
+                        is_valid=False, error="Token not found"
+                    )
 
             except sqlite3.Error as e:
                 log.error(f"Database error during token lookup: {e}")
@@ -1272,7 +1291,7 @@ class TokenManager:
             try:
                 exp_time = from_timestamp(token_info["expires_at"])
                 log.debug(f"Token expires at: {exp_time}")
-                
+
                 header = self._parse_token_header(token)
                 key = await self._get_key_for_token(header)
                 if not key:
@@ -1318,29 +1337,33 @@ class TokenManager:
 
                 now = int(datetime.now(timezone.utc).timestamp())
                 purge_cutoff = now - (30 * 24 * 60 * 60)  # 30 days ago
-                
+
                 cursor.execute(
                     """SELECT COUNT(*) as total,
                     SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
                     SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked
-                    FROM tokens""", 
-                    (now,)
+                    FROM tokens""",
+                    (now,),
                 )
                 stats = cursor.fetchone()
-                log.debug(f"Before purge - Total: {stats['total']}, Expired: {stats['expired']}, Revoked: {stats['revoked']}")
+                log.debug(
+                    f"Before purge - Total: {stats['total']}, Expired: {stats['expired']}, Revoked: {stats['revoked']}"
+                )
 
                 cursor.execute(
                     """DELETE FROM tokens 
                     WHERE (revoked = TRUE AND expires_at < ?) 
-                    OR expires_at < ?""", 
-                    (purge_cutoff, purge_cutoff)
+                    OR expires_at < ?""",
+                    (purge_cutoff, purge_cutoff),
                 )
 
                 deleted_count = cursor.rowcount
 
                 conn.commit()
                 if deleted_count > 0:
-                    log.info(f"Purged {deleted_count} tokens expired before {purge_cutoff}")
+                    log.info(
+                        f"Purged {deleted_count} tokens expired before {purge_cutoff}"
+                    )
 
             except Exception as e:
                 if conn:
@@ -1409,7 +1432,7 @@ class TokenManager:
         return {"cache_stats": cache_stats}
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def is_localhost_request(request: Request) -> bool:
@@ -1418,30 +1441,32 @@ def is_localhost_request(request: Request) -> bool:
     return client_ip.is_loopback
 
 
-async def verify_auth(request: Request, api_key: Optional[str]):
+async def verify_auth_wrapper(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+):
     """
     Use HMAC for internal requests, JWT for external requests
     """
     if is_localhost_request(request):
         return await verify_hmac(request)
     else:
-        if not api_key:
-            raise HTTPException(
-                status_code=401, detail="External requests require authentication"
-            )
-        return await verify_jwt_token(api_key)
+        if not credentials:
+            raise HTTPException(status_code=401, detail="Bearer token required")
+        return await verify_jwt_token(request, credentials)
 
 
 async def verify_jwt_token(
     request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Bearer token required")
     token = credentials.credentials
     try:
         validation_result = await request.app.state.token_manager.verify_token(token)
         if not validation_result.is_valid:
             raise HTTPException(
-                status_code=401, 
-                detail=validation_result.error or "Invalid token"
+                status_code=401, detail=validation_result.error or "Invalid token"
             )
         return validation_result
     except TokenError as e:

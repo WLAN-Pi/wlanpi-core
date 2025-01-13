@@ -7,14 +7,16 @@ from cryptography.fernet import Fernet
 
 log = logging.getLogger("uvicorn")
 
+
 class SecurityInitError(Exception):
     pass
+
 
 class SecurityManager:
     SECRETS_DIR = "/opt/wlanpi-core/.secrets"
     ENCRYPTION_KEY_FILE = "encryption.key"
     SHARED_SECRET_FILE = "shared_secret"
-    
+
     def __init__(self):
         self.secrets_path = Path(self.SECRETS_DIR)
         self._fernet: Optional[Fernet] = None
@@ -35,11 +37,11 @@ class SecurityManager:
         except Exception as e:
             log.exception(f"Failed to create secrets directory: {e}")
             raise
-            
+
     def _setup_shared_secret(self) -> bytes:
         """Generate or load HMAC shared secret"""
         secret_path = self.secrets_path / self.SHARED_SECRET_FILE
-        
+
         try:
             if not secret_path.exists():
                 secret = secrets.token_bytes(32)
@@ -51,9 +53,9 @@ class SecurityManager:
                 if not secret:
                     raise ValueError("Empty shared secret file")
                 log.info("Loaded existing shared secret")
-                
+
             return secret
-            
+
         except Exception as e:
             log.exception(f"Failed to setup shared secret: {e}")
             raise
@@ -61,7 +63,7 @@ class SecurityManager:
     def _setup_encryption_key(self):
         """Generate or load Fernet encryption key"""
         key_path = self.secrets_path / self.ENCRYPTION_KEY_FILE
-        
+
         try:
             if not key_path.exists():
                 key = Fernet.generate_key()
@@ -75,11 +77,11 @@ class SecurityManager:
                 log.info("Loaded existing encryption key")
 
             self._fernet = Fernet(key)
-            
+
         except Exception as e:
             log.exception(f"Failed to setup encryption key: {e}")
             raise
-            
+
     @property
     def fernet(self) -> Fernet:
         """Get initialized Fernet instance"""
@@ -90,7 +92,7 @@ class SecurityManager:
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data using Fernet"""
         return self.fernet.encrypt(data)
-        
+
     def decrypt(self, data: bytes) -> bytes:
         """Decrypt data using Fernet"""
         return self.fernet.decrypt(data)

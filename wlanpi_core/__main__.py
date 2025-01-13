@@ -59,6 +59,7 @@ def setup_parser() -> argparse.ArgumentParser:
     )
     return parser
 
+
 def main() -> None:
     parser = setup_parser()
     args = parser.parse_args()
@@ -67,7 +68,7 @@ def main() -> None:
         print(
             "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
         )
-        
+
     uvicorn.run(
         "wlanpi_core.asgi:app",
         port=args.port,

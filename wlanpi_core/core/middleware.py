@@ -2,6 +2,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+
 class ActivityMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp):
         super().__init__(app)
@@ -20,7 +21,7 @@ class ActivityMiddleware(BaseHTTPMiddleware):
                 await request.app.state.activity_manager.record_activity(
                     token=token,
                     endpoint=str(request.url.path),
-                    status_code=response.status_code
+                    status_code=response.status_code,
                 )
             except Exception as e:
                 request.app.logger.error(f"Failed to record activity: {e}")

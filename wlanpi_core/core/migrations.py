@@ -84,8 +84,9 @@ MIGRATIONS = [
         DELETE FROM device_activity_recent 
         WHERE timestamp < datetime('now', '-1 day');
     END
-    """
+    """,
 ]
+
 
 def get_db_version(cursor) -> int:
     try:
@@ -95,17 +96,18 @@ def get_db_version(cursor) -> int:
     except:
         return 0
 
+
 def run_migrations(conn):
     """Run any pending database migrations.
-    
+
     Args:
         conn: SQLite database connection provided by DatabaseManager
-        
+
     Raises:
         Exception: If any migration fails
     """
     cursor = conn.cursor()
-    
+
     try:
         # Create schema version table if it doesn't exist
         cursor.execute(MIGRATIONS[0])
@@ -113,34 +115,35 @@ def run_migrations(conn):
 
         # Get current version
         current_version = get_db_version(cursor)
-        
+
         # Start transaction for remaining migrations
         conn.execute("BEGIN TRANSACTION")
-        
+
         # Run any new migrations
         for version, migration in enumerate(MIGRATIONS[1:], start=1):
             if version > current_version:
                 log.info(f"Applying migration {version}")
-                
+
                 if "CREATE TRIGGER" in migration:
                     cursor.execute(migration)
                 else:
                     # Split and execute each statement separately for non-trigger migrations
-                    statements = [stmt.strip() for stmt in migration.split(';') if stmt.strip()]
+                    statements = [
+                        stmt.strip() for stmt in migration.split(";") if stmt.strip()
+                    ]
                     for statement in statements:
                         cursor.execute(statement)
-                
+
                 # Record this migration
                 cursor.execute(
-                    "INSERT INTO schema_version (version) VALUES (?)",
-                    (version,)
+                    "INSERT INTO schema_version (version) VALUES (?)", (version,)
                 )
-                
+
                 log.info(f"Successfully applied migration {version}")
-        
+
         # Commit all migrations
         conn.commit()
-        
+
     except Exception as e:
         log.error(f"Migration failed: {e}")
         conn.rollback()
