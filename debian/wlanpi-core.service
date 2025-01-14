@@ -7,7 +7,6 @@ After=network.target var-log-wlanpi_core-debug.mount
 
 [Service]
 Type=notify
-EnvironmentFile=/etc/wlanpi-core/environment
 
 # this is a soft link created via maintainer script
 WorkingDirectory=/opt/wlanpi-core/workingdirectory
