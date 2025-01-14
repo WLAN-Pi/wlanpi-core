@@ -26,7 +26,7 @@ override_dh_installsystemd:
 	dh_installsystemd --name=wpa_supplicant@wlan0 wpa_supplicant@wlan0.service
 	dh_installsystemd wlanpi-core.service
 	dh_installsystemd wlanpi-core.socket
-    dh_installsystemd wlanpi-core-debug.mount
+	dh_installsystemd wlanpi-core-debug.mount
 
 # we don't really want to strip the symbols from our object files.
 override_dh_strip:
