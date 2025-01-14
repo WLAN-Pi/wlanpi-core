@@ -122,7 +122,7 @@ def run_migrations(conn):
         # Run any new migrations
         for version, migration in enumerate(MIGRATIONS[1:], start=1):
             if version > current_version:
-                log.info(f"Applying migration {version}")
+                log.debug(f"Applying migration {version}")
 
                 if "CREATE TRIGGER" in migration:
                     cursor.execute(migration)
@@ -139,7 +139,7 @@ def run_migrations(conn):
                     "INSERT INTO schema_version (version) VALUES (?)", (version,)
                 )
 
-                log.info(f"Successfully applied migration {version}")
+                log.debug(f"Successfully applied migration {version}")
 
         # Commit all migrations
         conn.commit()

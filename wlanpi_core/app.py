@@ -25,9 +25,12 @@ from wlanpi_core.core.monitoring import DeviceActivityManager
 from wlanpi_core.core.security import SecurityManager
 
 
-def create_app():
-    configure_logging()
+def create_app(debug: bool = False):
+    configure_logging(debug_mode=debug)
     log = get_logger(__name__)
+
+    if debug:
+        log.debug("Starting application in DEBUG mode")
 
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -38,6 +41,7 @@ def create_app():
         redoc_url=None,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         openapi_tags=settings.TAGS_METADATA,
+        debug=debug,
     )
 
     # setup slowapi
@@ -70,21 +74,24 @@ def create_app():
         app.state.security_manager = SecurityManager()
 
         app.state.db_manager = DatabaseManager(app.state)
-        run_migrations(await app.state.db_manager.get_connection())
+        async with app.state.db_manager.get_connection() as conn:
+            run_migrations(conn)
+
+        # run_migrations(await app.state.db_manager.get_connection())
 
         await app.state.db_manager.initialize()
-        log.info("Database manager initialization complete")
+        log.debug("Database manager initialization complete")
 
         app.state.retention_manager = RetentionManager(app.state)
-        log.info("Retention manager initialization complete")
+        log.debug("Retention manager initialization complete")
 
         app.state.token_manager = TokenManager(app.state)
 
         await app.state.token_manager.initialize()
-        log.info("Token manager initialization complete")
+        log.debug("Token manager initialization complete")
 
         app.state.activity_manager = DeviceActivityManager(app.state)
-        log.info("Activity manager initialization complete")
+        log.debug("Activity manager initialization complete")
 
         asyncio.create_task(periodic_maintenance())
         asyncio.create_task(app.state.token_manager.purge_expired_tokens())

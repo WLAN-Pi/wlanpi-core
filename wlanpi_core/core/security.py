@@ -25,7 +25,7 @@ class SecurityManager:
             self._setup_secrets_directory()
             self.shared_secret = self._setup_shared_secret()
             self._setup_encryption_key()
-            log.info("Security initialization complete")
+            log.debug("Security initialization complete")
         except Exception as e:
             log.exception(f"Security initialization failed: {e}")
             raise SecurityInitError(f"Failed to initialize security: {e}")
@@ -48,12 +48,12 @@ class SecurityManager:
                 secret = secrets.token_bytes(32)
                 secret_path.write_bytes(secret)
                 secret_path.chmod(0o600)
-                log.info("Generated new shared secret")
+                log.debug("Generated new shared secret")
             else:
                 secret = secret_path.read_bytes()
                 if not secret:
                     raise ValueError("Empty shared secret file")
-                log.info("Loaded existing shared secret")
+                log.debug("Loaded existing shared secret")
 
             return secret
 
@@ -70,12 +70,12 @@ class SecurityManager:
                 key = Fernet.generate_key()
                 key_path.write_bytes(key)
                 key_path.chmod(0o600)
-                log.info("Generated new encryption key")
+                log.debug("Generated new encryption key")
             else:
                 key = key_path.read_bytes()
                 if not key:
                     raise ValueError("Empty encryption key file")
-                log.info("Loaded existing encryption key")
+                log.debug("Loaded existing encryption key")
 
             self._fernet = Fernet(key)
 

@@ -1,2 +1,3 @@
-var/log/wlanpi-core
-var/log/wlanpi-core/debug
+var/log/wlanpi_core
+var/log/wlanpi_core/debug
+etc/wlanpi-core

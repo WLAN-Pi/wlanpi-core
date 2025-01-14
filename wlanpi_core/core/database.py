@@ -1,8 +1,9 @@
 import asyncio
 import sqlite3
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from wlanpi_core.core.logging import get_logger
 
@@ -130,7 +131,7 @@ class DatabaseManager:
             run_migrations(conn)
             conn.close()
 
-            log.info(
+            log.debug(
                 "Created new database",
                 extra={
                     "component": "database",
@@ -280,78 +281,65 @@ class DatabaseManager:
             )
             return False
 
-    async def get_connection(self) -> sqlite3.Connection:
+    @asynccontextmanager
+    async def get_connection(self) -> AsyncGenerator[sqlite3.Connection, None]:
+        """Get a database connection as an async context manager"""
         thread_id = threading.get_ident()
-        log.debug(
-            "Getting connection",
-            extra={
-                "component": "database",
-                "action": "get_connection",
-                "thread_id": thread_id,
-            },
-        )
-        if hasattr(self._local, "conn") and self._verify_connection(self._local.conn):
-            log.debug(
-                "Reusing existing connection",
-                extra={
-                    "component": "database",
-                    "action": "get_connection",
-                    "thread_id": thread_id,
-                    "connection_status": "reused",
-                },
-            )
-            return self._local.conn
+        connection = None
 
-        async with self._conn_lock:
-            # Check if we have a valid connection
+        try:
             if hasattr(self._local, "conn"):
-                if self._verify_connection(self._local.conn):
+                connection = self._local.conn
+                if self._verify_connection(connection):
                     log.debug(
-                        "Connection verified",
+                        "Reusing existing connection",
                         extra={
                             "component": "database",
-                            "action": "verify_connection",
+                            "action": "get_connection",
                             "thread_id": thread_id,
-                            "connection_status": "valid",
+                            "connection_status": "reused",
                         },
                     )
-                    return self._local.conn
-                else:
-                    # Close bad connection
-                    try:
-                        self._local.conn.close()
-                        log.debug(
-                            "Closed invalid connection",
-                            extra={
-                                "component": "database",
-                                "action": "close_connection",
-                                "thread_id": thread_id,
-                                "connection_status": "invalid",
-                            },
-                        )
-                    except:
-                        log.warning(
-                            "Failed to close invalid connection",
-                            extra={
-                                "component": "database",
-                                "action": "close_connection",
-                                "thread_id": thread_id,
-                                "error": str(e),
-                                "connection_status": "close_failed",
-                            },
-                        )
-                    delattr(self._local, "conn")
-            try:
+                    yield connection
+                    return
+
+            async with self._conn_lock:
                 await self._ensure_database_exists()
-                self._local.conn = sqlite3.connect(self.db_path)
-                self._local.conn.row_factory = sqlite3.Row
+                connection = sqlite3.connect(self.db_path)
+                connection.row_factory = sqlite3.Row
+
                 for setting in self.database_settings:
-                    self._local.conn.execute(setting)
-                log.debug(f"Created new connection for thread {thread_id}")
-                return self._local.conn
-            except sqlite3.Error as e:
-                log.exception(f"Database connection error in thread {thread_id}: {e}")
-                raise DatabaseError(f"Could not connect to database: {e}")
+                    connection.execute(setting)
+
+                self._local.conn = connection
+
+                log.debug(
+                    "Created new connection",
+                    extra={
+                        "component": "database",
+                        "action": "get_connection",
+                        "thread_id": thread_id,
+                        "connection_status": "new",
+                    },
+                )
+                yield connection
+
+        except Exception as e:
+            log.exception(
+                "Database connection error",
+                extra={
+                    "component": "database",
+                    "action": "get_connection_error",
+                    "thread_id": thread_id,
+                    "error": str(e),
+                },
+            )
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+            raise DatabaseError(f"Could not connect to database: {e}")
 
     def check_size(self) -> bool:
         """Check if database size is within limits"""
@@ -432,7 +420,8 @@ class DatabaseManager:
                 backup = sqlite3.connect(backup_path)
                 with backup:
                     try:
-                        (await self.get_connection()).backup(backup)
+                        async with self.get_connection() as connection:
+                            connection.backup(backup)
                         log.debug(
                             "Database backup completed",
                             extra={
@@ -461,6 +450,7 @@ class DatabaseManager:
                         "reason": "integrity_check_failed",
                     },
                 )
+                raise DatabaseError("Database integrity check failed")
         except Exception as e:
             log.error(
                 "Database backup failed",
@@ -471,6 +461,7 @@ class DatabaseManager:
                     "error_type": type(e).__name__,
                 },
             )
+            raise
 
     def _check_conn_alive(self) -> bool:
         if not hasattr(self._local, "conn"):
@@ -520,24 +511,23 @@ class DatabaseManager:
 
 
 class RetentionManager:
-    def __init__(self, app: None, retention_days: int = 1):
-        self.app = app
+    def __init__(self, app_state: None, retention_days: int = 1):
+        self.app_state = app_state
         self.retention_days = retention_days
 
     async def cleanup_old_data(self):
         """Remove old activity data"""
         try:
-            conn = await self.app.db_manager.get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                DELETE FROM device_activity_recent 
-                WHERE timestamp < datetime('now', ? || ' days')
-            """,
-                (-self.retention_days,),
-            )
-            conn.commit()
-            log.info(f"Ran clean up data older than {self.retention_days} days")
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    DELETE FROM device_activity_recent 
+                    WHERE timestamp < datetime('now', ? || ' days')
+                """,
+                    (-self.retention_days,),
+                )
+                conn.commit()
+                log.debug(f"Ran clean up data older than {self.retention_days} days")
         except Exception as e:
             log.exception(f"Retention cleanup failed: {e}")
-            conn.rollback()

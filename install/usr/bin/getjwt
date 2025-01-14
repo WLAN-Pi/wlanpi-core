@@ -1,5 +1,8 @@
 #!/bin/bash
 
+RED='\033[0;31m'
+NC='\033[0m' # No Color reset
+
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
     echo "Usage: $0 <device-id> [port]"
     echo "  Example:"
@@ -15,15 +18,20 @@ API_URL="localhost:$PORT"
 AUTH_ENDPOINT="/api/v1/auth/token"
 SECRET_FILE="/opt/wlanpi-core/.secrets/shared_secret"
 
-(echo > /dev/tcp/localhost/$PORT) >/dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo "Error: Nothing appears to be running on port $PORT"
+
+if ! (echo > "/dev/tcp/localhost/$PORT") >/dev/null 2>&1; then
+    echo -e "${RED}Error: Nothing appears to be running on port $PORT${NC}"
     echo "Please ensure the API server is running and using the correct port"
     exit 1
 fi
 
 if ! sudo test -f "$SECRET_FILE"; then
-    echo "Error: Secret file not found at $SECRET_FILE"
+    echo -e "${RED}Error: secret not found at $SECRET_FILE${NC}"
+    exit 1
+fi
+
+if ! sudo test -r "$SECRET_FILE"; then
+    echo -e "${RED}Error: secret exists but is not readable${NC}"
     exit 1
 fi
 

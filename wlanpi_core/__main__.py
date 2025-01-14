@@ -50,10 +50,28 @@ def setup_parser() -> argparse.ArgumentParser:
         description="wlanpi-core provides backend services for the WLAN Pi. Read the manual with: man wlanpi-core",
     )
     parser.add_argument(
-        "--reload", dest="livereload", action="store_true", default=False
+        "--reload",
+        dest="livereload",
+        action="store_true",
+        default=False,
+        help="Enable live reload for development",
     )
-    parser.add_argument("--port", "-p", dest="port", type=port, default=8000)
-
+    parser.add_argument(
+        "--port",
+        "-p",
+        dest="port",
+        type=port,
+        default=8000,
+        help="Port number to run the server on",
+    )
+    parser.add_argument(
+        "--debug",
+        "-d",
+        dest="debug",
+        action="store_true",
+        default=False,
+        help="Enable debug mode with verbose logging",
+    )
     parser.add_argument(
         "--version", "-V", "-v", action="version", version=f"{__version__}"
     )
@@ -69,12 +87,15 @@ def main() -> None:
             "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
         )
 
+    import os
+
+    os.environ["WLANPI_CORE_DEBUG"] = str(args.debug)
+
     uvicorn.run(
         "wlanpi_core.asgi:app",
         port=args.port,
         host="0.0.0.0",
         reload=args.livereload,
-        log_level="debug",
     )
 
 

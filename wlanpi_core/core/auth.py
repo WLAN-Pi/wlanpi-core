@@ -323,7 +323,7 @@ class TokenCache(metaclass=SingletonMeta):
                 "is_valid": True,
             }
             exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-            log.info(f"Cached token expiring at {exp}")
+            log.debug(f"Cached token expiring at {exp}")
 
     def get_cached_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
@@ -372,7 +372,7 @@ class TokenCache(metaclass=SingletonMeta):
             "is_valid": False,
         }
         self._token_cache.pop(token, None)
-        log.info("Token invalidated in cache")
+        log.debug("Token invalidated in cache")
 
     def clear_expired(self) -> None:
         """
@@ -399,7 +399,7 @@ class TokenCache(metaclass=SingletonMeta):
             self._validation_cache.pop(token, None)
 
         if expired_validations or expired_tokens:
-            log.info(
+            log.debug(
                 f"Cleared {len(expired_validations)} expired validation entries and {len(expired_tokens)} expired tokens"
             )
 
@@ -410,7 +410,7 @@ class TokenCache(metaclass=SingletonMeta):
         self._token_cache.clear()
         self._validation_cache.clear()
         self._check_timestamp_expired.cache_clear()
-        log.info("Cleared caches")
+        log.debug("Cleared caches")
 
     def get_cache_stats(self) -> dict:
         """
@@ -669,221 +669,197 @@ class TokenManager:
     async def initialize(self) -> None:
         """Initialize signing key on application start"""
         if self.key_cache.active_key:
-            log.info("Using existing cached key")
+            log.debug("Using existing cached key")
             return
-
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute("SELECT COUNT(*) FROM signing_keys")
-            key_count = cursor.fetchone()[0]
-            log.info(f"Current signing_keys count: {key_count}")
+                cursor.execute("SELECT COUNT(*) FROM signing_keys")
+                key_count = cursor.fetchone()[0]
+                log.debug(f"Current signing_keys count: {key_count}")
 
-            if key_count > 0:
+                if key_count > 0:
+                    cursor.execute(
+                        "SELECT id, created_at, active FROM signing_keys ORDER BY created_at DESC"
+                    )
+                    keys = cursor.fetchall()
+                    for key in keys:
+                        log.debug(
+                            f"Found key: id={key[0]}, created={key[1]}, active={key[2]}"
+                        )
+
+                log.debug("Fetching active key from database")
                 cursor.execute(
-                    "SELECT id, created_at, active FROM signing_keys ORDER BY created_at DESC"
+                    "SELECT id, key, created_at FROM signing_keys WHERE active = TRUE "
+                    "ORDER BY created_at DESC LIMIT 1"
                 )
-                keys = cursor.fetchall()
-                for key in keys:
-                    log.info(
-                        f"Found key: id={key[0]}, created={key[1]}, active={key[2]}"
+                result = cursor.fetchone()
+
+                if result:
+                    key_id, encrypted_key, created_at = result[0], result[1], result[2]
+                    key = self.app_state.security_manager.decrypt(encrypted_key)
+                    self.key_cache.cache_active_key(key_id, key)
+                    log.debug(
+                        f"Retrieved existing key_id {key_id} created at {created_at}"
+                    )
+                    return
+
+                log.debug("No active key found, creating new key")
+
+                key = secrets.token_bytes(32)
+                encrypted_key = self.app_state.security_manager.encrypt(key)
+                now = to_timestamp(datetime.now(timezone.utc))
+                cursor.execute(
+                    "INSERT INTO signing_keys (key, active, created_at) VALUES (?, TRUE, ?)",
+                    (encrypted_key, now),
+                )
+                key_id = cursor.lastrowid
+
+                cursor.execute(
+                    "SELECT id, created_at FROM signing_keys WHERE id = ?", (key_id,)
+                )
+                inserted_key = cursor.fetchone()
+                if not inserted_key:
+                    raise KeyError(
+                        f"Failed to insert new key - no record found with id {key_id}"
                     )
 
-            log.info("Fetching active key from database")
-            cursor.execute(
-                "SELECT id, key, created_at FROM signing_keys WHERE active = TRUE "
-                "ORDER BY created_at DESC LIMIT 1"
-            )
-            result = cursor.fetchone()
+                conn.commit()
 
-            if result:
-                key_id, encrypted_key, created_at = result[0], result[1], result[2]
-                key = self.app_state.security_manager.decrypt(encrypted_key)
                 self.key_cache.cache_active_key(key_id, key)
-                log.info(f"Retrieved existing key_id {key_id} created at {created_at}")
-                return
+                log.debug(f"Created and cached new key {key_id}")
 
-            log.info("No active key found, creating new key")
-
-            key = secrets.token_bytes(32)
-            encrypted_key = self.app_state.security_manager.encrypt(key)
-            now = to_timestamp(datetime.now(timezone.utc))
-            cursor.execute(
-                "INSERT INTO signing_keys (key, active, created_at) VALUES (?, TRUE, ?)",
-                (encrypted_key, now),
-            )
-            key_id = cursor.lastrowid
-
-            cursor.execute(
-                "SELECT id, created_at FROM signing_keys WHERE id = ?", (key_id,)
-            )
-            inserted_key = cursor.fetchone()
-            if not inserted_key:
-                raise KeyError(
-                    f"Failed to insert new key - no record found with id {key_id}"
-                )
-
-            conn.commit()
-
-            self.key_cache.cache_active_key(key_id, key)
-            log.info(f"Created and cached new key {key_id}")
-
-            cursor.execute("SELECT COUNT(*) FROM signing_keys")
-            final_count = cursor.fetchone()[0]
-            log.info(f"Final signing_keys count: {final_count}")
+                cursor.execute("SELECT COUNT(*) FROM signing_keys")
+                final_count = cursor.fetchone()[0]
+                log.debug(f"Final signing_keys count: {final_count}")
         except Exception as e:
-            if conn:
-                conn.rollback()
             log.exception("Failed to initialize key on start")
             raise KeyError("Failed to initialize key on start") from e
-        finally:
-            if conn:
-                conn.close()
 
     async def verify_db_state(self) -> dict:
         """
         Verify the current state of tokens in the database
         """
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
 
-            now = datetime.now(timezone.utc).timestamp()
+                now = datetime.now(timezone.utc).timestamp()
 
-            cursor.execute(
-                """SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked,
-                SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
-                MIN(expires_at) as earliest_expiry,
-                MAX(expires_at) as latest_expiry
-                FROM tokens""",
-                (now,),
-            )
-            stats = cursor.fetchone()
+                cursor.execute(
+                    """SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked,
+                    SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
+                    MIN(expires_at) as earliest_expiry,
+                    MAX(expires_at) as latest_expiry
+                    FROM tokens""",
+                    (now,),
+                )
+                stats = cursor.fetchone()
 
-            cursor.execute(
-                """SELECT token, device_id, expires_at, revoked 
-                FROM tokens 
-                WHERE revoked = FALSE AND expires_at > ?
-                ORDER BY expires_at DESC""",
-                (now,),
-            )
-            active_tokens = cursor.fetchall()
+                cursor.execute(
+                    """SELECT token, device_id, expires_at, revoked 
+                    FROM tokens 
+                    WHERE revoked = FALSE AND expires_at > ?
+                    ORDER BY expires_at DESC""",
+                    (now,),
+                )
+                active_tokens = cursor.fetchall()
 
-            return {
-                "statistics": {
-                    "total_tokens": stats["total"],
-                    "revoked_tokens": stats["revoked"],
-                    "expired_tokens": stats["expired"],
-                    "earliest_expiry": from_timestamp(stats["earliest_expiry"]),
-                    "latest_expiry": from_timestamp(stats["latest_expiry"]),
-                },
-                "active_tokens": [
-                    {
-                        "device_id": token["device_id"],
-                        "expires_at": from_timestamp(token["expires_at"]),
-                        "revoked": token["revoked"],
-                    }
-                    for token in active_tokens
-                ],
-            }
+                return {
+                    "statistics": {
+                        "total_tokens": stats["total"],
+                        "revoked_tokens": stats["revoked"],
+                        "expired_tokens": stats["expired"],
+                        "earliest_expiry": from_timestamp(stats["earliest_expiry"]),
+                        "latest_expiry": from_timestamp(stats["latest_expiry"]),
+                    },
+                    "active_tokens": [
+                        {
+                            "device_id": token["device_id"],
+                            "expires_at": from_timestamp(token["expires_at"]),
+                            "revoked": token["revoked"],
+                        }
+                        for token in active_tokens
+                    ],
+                }
         except Exception as e:
             log.exception("Failed to verify database state")
             return {"error": str(e)}
-        finally:
-            if conn:
-                conn.close()
 
     async def get_key(self) -> Tuple[int, str]:
         """Get active key or create new one if none exists"""
         if self.key_cache.active_key:
             return self.key_cache.active_key
 
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
-            key_data = await self._get_active_key_from_db(cursor)
-            if key_data:
-                key_id, key = key_data
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                key_data = await self._get_active_key_from_db(cursor)
+                if key_data:
+                    key_id, key = key_data
+                    self.key_cache.cache_active_key(key_id, key)
+                    log.debug(f"Retrieved existing key_id {key_id}")
+                    return key_id, key
+                key_id, key = await self._create_new_key(cursor)
+                conn.commit()
                 self.key_cache.cache_active_key(key_id, key)
-                log.info(f"Retrieved existing key_id {key_id}")
+                log.debug(f"Created new key {key_id}")
                 return key_id, key
-            key_id, key = await self._create_new_key(cursor)
-            conn.commit()
-            self.key_cache.cache_active_key(key_id, key)
-            log.info(f"Created new key {key_id}")
-            return key_id, key
         except Exception as e:
             if conn:
                 conn.rollback()
             log.exception(f"Failed to get/create key: {e}")
             raise KeyError(f"Key management failed: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     async def rotate_key(self) -> Tuple[int, str]:
         """Create new key and invalidate old ones"""
-
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
 
-            key_id, key = await self._create_new_key(cursor, invalidate_old=True)
-            conn.commit()
-            cursor.execute(
-                "UPDATE tokens SET revoked = TRUE WHERE key_id != ?", (key_id,)
-            )
-            affected_rows = cursor.rowcount
-            conn.commit()
-            self.key_cache.clear()
-            self.token_cache.clear()
-            self.key_cache.cache_active_key(key_id, key)
+                key_id, key = await self._create_new_key(cursor, invalidate_old=True)
+                conn.commit()
+                cursor.execute(
+                    "UPDATE tokens SET revoked = TRUE WHERE key_id != ?", (key_id,)
+                )
+                affected_rows = cursor.rowcount
+                conn.commit()
+                self.key_cache.clear()
+                self.token_cache.clear()
+                self.key_cache.cache_active_key(key_id, key)
 
-            log.info(f"Revoked {affected_rows} tokens")
-            log.info(f"Successfully rotated to new key {key_id}")
-            return key_id, key
+                log.debug(f"Revoked {affected_rows} tokens")
+                log.debug(f"Successfully rotated to new key {key_id}")
+                return key_id, key
         except Exception as e:
-            if conn:
-                conn.rollback()
             log.exception(f"Failed to create key: {e}")
             raise KeyError(f"Failed to create key: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     async def get_active_key(self) -> Optional[Tuple[int, str]]:
         """Internal only get active key"""
         if self.key_cache.active_key:
             return self.key_cache.active_key
-
-        conn = await self.app_state.db_manager.get_connection()
-        cursor = conn.cursor()
-
         try:
-            cursor.execute(
-                "SELECT id, key FROM signing_keys WHERE active = TRUE "
-                "ORDER BY created_at DESC LIMIT 1"
-            )
-            result = cursor.fetchone()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id, key FROM signing_keys WHERE active = TRUE "
+                    "ORDER BY created_at DESC LIMIT 1"
+                )
+                result = cursor.fetchone()
 
-            if result:
-                key_id, encrypted_key = result
-                key = self.app_state.security_manager.decrypt(encrypted_key)
-                return key_id, key
+                if result:
+                    key_id, encrypted_key = result
+                    key = self.app_state.security_manager.decrypt(encrypted_key)
+                    return key_id, key
 
-            return None
+                return None
         except Exception as e:
             log.exception(f"Failed to get active key: {e}")
             raise KeyError(f"Failed to get active key: {e}")
-        finally:
-            conn.close()
 
     async def get_active_keys(self) -> Optional[Tuple[int, str]]:
         """
@@ -891,33 +867,31 @@ class TokenManager:
         Does not include the actual key material for security reasons.
         """
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
 
-            cursor.execute(
+                cursor.execute(
+                    """
+                    SELECT id, created_at, active 
+                    FROM signing_keys 
+                    ORDER BY created_at DESC
                 """
-                SELECT id, created_at, active 
-                FROM signing_keys 
-                ORDER BY created_at DESC
-            """
-            )
-            keys = cursor.fetchall()
+                )
+                keys = cursor.fetchall()
 
-            return {
-                "keys": [
-                    {
-                        "id": row[0],
-                        "created_at": from_timestamp(row[1]),
-                        "active": bool(row[2]),
-                    }
-                    for row in keys
-                ]
-            }
+                return {
+                    "keys": [
+                        {
+                            "id": row[0],
+                            "created_at": from_timestamp(row[1]),
+                            "active": bool(row[2]),
+                        }
+                        for row in keys
+                    ]
+                }
         except Exception as e:
             log.exception(f"Failed to get active key: {e}")
             raise KeyError(f"Failed to get active key: {e}")
-        finally:
-            conn.close()
 
     async def _get_existing_token(
         self, device_id: str, cursor
@@ -976,84 +950,79 @@ class TokenManager:
             - Handles token expiration automatically
             - Caches the token
         """
-        log.info(f"Creating/fetching token for device {device_id}")
+        log.debug(f"Creating/fetching token for device {device_id}")
 
         if not self.key_cache.active_key:
-            log.info("No active key found, initializing")
+            log.debug("No active key found, initializing")
             await self.initialize()
 
         key_id, key = self.key_cache.active_key
         if isinstance(key, str):
             key = key.encode("utf-8")
 
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
 
-            existing = await self._get_existing_token(device_id, cursor)
-            if existing and existing.is_valid:
-                log.info(f"Reusing valid token for device {device_id}")
-                return existing.token
+                existing = await self._get_existing_token(device_id, cursor)
+                if existing and existing.is_valid:
+                    log.debug(f"Reusing valid token for device {device_id}")
+                    return existing.token
 
-            now = datetime.now(timezone.utc)
-            expire = now + (expires_delta or timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS))
+                now = datetime.now(timezone.utc)
+                expire = now + (
+                    expires_delta or timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+                )
 
-            claims = {
-                "sub": system_service.get_hostname(),
-                "iss": "wlanpi-core",
-                "did": device_id,
-                "exp": int(expire.timestamp()),
-                "iat": int(now.timestamp()),
-            }
+                claims = {
+                    "sub": system_service.get_hostname(),
+                    "iss": "wlanpi-core",
+                    "did": device_id,
+                    "exp": int(expire.timestamp()),
+                    "iat": int(now.timestamp()),
+                }
 
-            token = jwt.encode(
-                header={"alg": "HS256", "kid": str(key_id)}, payload=claims, key=key
-            )
+                token = jwt.encode(
+                    header={"alg": "HS256", "kid": str(key_id)}, payload=claims, key=key
+                )
 
-            await self._store_token(token, device_id, cursor, claims, key_id)
-            self.token_cache.cache_token(token, claims)
+                await self._store_token(token, device_id, cursor, claims, key_id)
+                self.token_cache.cache_token(token, claims)
 
-            log.info(f"Created new token for device {device_id}")
-            return token
+                log.debug(f"Created new token for device {device_id}")
+                return token
         except sqlite3.IntegrityError as ie:
             log.error(f"Integrity error for device {device_id}: {ie}")
             raise TokenError("Device ID conflict")
         except Exception as e:
             log.exception(f"Token creation failed: {e}")
             raise TokenError(f"Token creation failed: {str(e)}")
-        finally:
-            if conn:
-                conn.close()
 
     async def revoke_token(self, token: str) -> dict:
         """
         Revoke a JWT token
         """
-        log.info("Starting token revocation process")
+        log.debug("Starting token revocation process")
 
         token = normalize_token(token)
 
-        conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
-
-            try:
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
                 cursor.execute(
                     "SELECT device_id, revoked FROM tokens WHERE token = ?", (token,)
                 )
                 result = cursor.fetchone()
 
                 if not result:
-                    log.info("Token not found in database")
+                    log.debug("Token not found in database")
                     self.token_cache.invalidate_token(token)
                     return {"status": "warning", "message": "Token not found"}
 
                 device_id = result["device_id"]
 
                 if result["revoked"]:
-                    log.info(f"Token for device {device_id} was already revoked")
+                    log.debug(f"Token for device {device_id} was already revoked")
                     self.token_cache.invalidate_token(token)
                     return {
                         "status": "info",
@@ -1078,54 +1047,47 @@ class TokenManager:
                 conn.commit()
                 self.token_cache.invalidate_token(token)
 
-                log.info(f"Successfully revoked token for device {device_id}")
+                log.debug(f"Successfully revoked token for device {device_id}")
                 return {
                     "status": "success",
                     "message": "Token revoked",
                     "device_id": device_id,
                 }
-            except sqlite3.Error as e:
-                log.error(f"Database error during revocation: {e}")
-                return {
-                    "status": "error",
-                    "message": "Database error during revocation",
-                }
+        except sqlite3.Error as e:
+            log.error(f"Database error during revocation: {e}")
+            return {
+                "status": "error",
+                "message": "Database error during revocation",
+            }
         except Exception as e:
-            if conn:
-                conn.rollback()
             log.exception("Token revocation failed")
             raise HTTPException(
                 status_code=500, detail=f"Failed to revoke token: {str(e)}"
             )
-        finally:
-            if conn:
-                conn.close()
 
     async def _load_key_from_db(self, key_id: int) -> Optional[bytes]:
         """Load and decrypt key from database"""
         conn = None
         try:
-            conn = await self.app_state.db_manager.get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT key FROM signing_keys WHERE id = ? AND active = TRUE", (key_id,)
-            )
-            result = cursor.fetchone()
-            if not result:
-                log.debug(f"No active key found for ID {key_id}")
-                return None
+            async with self.app_state.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT key FROM signing_keys WHERE id = ? AND active = TRUE",
+                    (key_id,),
+                )
+                result = cursor.fetchone()
+                if not result:
+                    log.debug(f"No active key found for ID {key_id}")
+                    return None
 
-            encrypted_key = result[0]
-            key = self.app_state.security_manager.decrypt(encrypted_key)
-            self.key_cache.cache_active_key(key_id, key)
-            log.info(f"Loaded and cached key {key_id}")
-            return key
+                encrypted_key = result[0]
+                key = self.app_state.security_manager.decrypt(encrypted_key)
+                self.key_cache.cache_active_key(key_id, key)
+                log.debug(f"Loaded and cached key {key_id}")
+                return key
         except Exception:
             log.exception(f"Failed to load key {key_id} from database")
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def _parse_token_header(self, token: str) -> dict:
         """Parse and validate token header"""
@@ -1154,7 +1116,7 @@ class TokenManager:
             raise TokenError(f"Invalid key ID format: {key_id}")
         key = self.key_cache.get_cached_key(key_id)
         if not key:
-            log.info(f"Key {key_id} not in cache, attempting database load")
+            log.debug(f"Key {key_id} not in cache, attempting database load")
             key = await self._load_key_from_db(key_id)
         return key
 
@@ -1191,19 +1153,17 @@ class TokenManager:
                 raise TokenError("Token insert failed - no record found after insert")
 
             cursor.execute("COMMIT")
-            log.info(f"Token stored for device {device_id}")
+            log.debug(f"Token stored for device {device_id}")
         except Exception as e:
             cursor.execute("ROLLBACK")
             log.error("Failed to store token")
             raise TokenError(f"Failed to store token: {str(e)}")
 
     async def verify_token(
-        self, token: str, provided_conn=None
+        self, token: str, conn=None
     ) -> TokenValidationResult:
         """Verify JWT token and return validation result"""
-        log.info(f"Starting token verification")
-        should_close = False
-        conn = provided_conn
+        log.debug(f"Starting token verification")
         try:
             # Log the token being verified (but mask most of it)
             masked_token = (
@@ -1225,22 +1185,6 @@ class TokenManager:
                 log.debug("Token found in cache")
                 return TokenValidationResult(
                     is_valid=True, payload=cached, token=validated_token
-                )
-
-            if not conn:
-                try:
-                    conn = await self.app_state.db_manager.get_connection()
-                    should_close = True
-                except Exception:
-                    log.error("Database connection failed")
-                    return TokenValidationResult(
-                        is_valid=False, error="Database unavailable"
-                    )
-
-            if conn is None:
-                log.error("Database connection failed after acquiring connection")
-                return TokenValidationResult(
-                    is_valid=False, error="Invalid database connection"
                 )
 
             cursor = conn.cursor()
@@ -1265,14 +1209,14 @@ class TokenManager:
 
                 if not token_info:
                     log.warning(f"Token not found in database.")
-                    log.info(f"Normalized token hash: {hash(normalized_token)}")
-                    log.info(f"Validated token hash: {hash(validated_token)}")
+                    log.debug(f"Normalized token hash: {hash(normalized_token)}")
+                    log.debug(f"Validated token hash: {hash(validated_token)}")
 
                     cursor.execute("SELECT token FROM tokens")
                     db_tokens = cursor.fetchall()
-                    log.info(f"Database contains {len(db_tokens)} tokens")
+                    log.debug(f"Database contains {len(db_tokens)} tokens")
                     for db_token in db_tokens:
-                        log.info(f"Database token hash: {hash(db_token['token'])}")
+                        log.debug(f"Database token hash: {hash(db_token['token'])}")
 
                     return TokenValidationResult(
                         is_valid=False, error="Token not found"
@@ -1285,7 +1229,7 @@ class TokenManager:
                 )
 
             if token_info["revoked"]:
-                log.info(f"Token is revoked for device {token_info['device_id']}")
+                log.debug(f"Token is revoked for device {token_info['device_id']}")
                 return TokenValidationResult(is_valid=False, error="Token revoked")
 
             try:
@@ -1319,59 +1263,46 @@ class TokenManager:
             return TokenValidationResult(
                 is_valid=False, error=f"Validation failed: {str(e)}"
             )
-        finally:
-            if should_close and conn:
-                try:
-                    conn.close()
-                    log.debug("Database connection closed")
-                except Exception as e:
-                    log.exception(f"Failed to close database connection: {e}")
 
     async def purge_expired_tokens(self):
         """Background task to purge expired/revoked tokens"""
         while True:
-            conn = None
             try:
-                conn = await self.app_state.db_manager.get_connection()
-                cursor = conn.cursor()
+                async with self.app_state.db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
 
-                now = int(datetime.now(timezone.utc).timestamp())
-                purge_cutoff = now - (30 * 24 * 60 * 60)  # 30 days ago
+                    now = int(datetime.now(timezone.utc).timestamp())
+                    purge_cutoff = now - (30 * 24 * 60 * 60)  # 30 days ago
 
-                cursor.execute(
-                    """SELECT COUNT(*) as total,
-                    SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
-                    SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked
-                    FROM tokens""",
-                    (now,),
-                )
-                stats = cursor.fetchone()
-                log.debug(
-                    f"Before purge - Total: {stats['total']}, Expired: {stats['expired']}, Revoked: {stats['revoked']}"
-                )
-
-                cursor.execute(
-                    """DELETE FROM tokens 
-                    WHERE (revoked = TRUE AND expires_at < ?) 
-                    OR expires_at < ?""",
-                    (purge_cutoff, purge_cutoff),
-                )
-
-                deleted_count = cursor.rowcount
-
-                conn.commit()
-                if deleted_count > 0:
-                    log.info(
-                        f"Purged {deleted_count} tokens expired before {purge_cutoff}"
+                    cursor.execute(
+                        """SELECT COUNT(*) as total,
+                        SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
+                        SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked
+                        FROM tokens""",
+                        (now,),
+                    )
+                    stats = cursor.fetchone()
+                    log.debug(
+                        f"Before purge - Total: {stats['total']}, Expired: {stats['expired']}, Revoked: {stats['revoked']}"
                     )
 
+                    cursor.execute(
+                        """DELETE FROM tokens 
+                        WHERE (revoked = TRUE AND expires_at < ?) 
+                        OR expires_at < ?""",
+                        (purge_cutoff, purge_cutoff),
+                    )
+
+                    deleted_count = cursor.rowcount
+
+                    conn.commit()
+                    if deleted_count > 0:
+                        log.debug(
+                            f"Purged {deleted_count} tokens expired before {purge_cutoff}"
+                        )
             except Exception as e:
-                if conn:
-                    conn.rollback()
                 log.exception(f"Failed to purge tokens: {e}")
             finally:
-                if conn:
-                    conn.close()
                 await asyncio.sleep(3600)
 
     async def verify_cache_state(self, token: str = None) -> dict:
@@ -1390,42 +1321,38 @@ class TokenManager:
             token = normalize_token(token)
             token_state = self.token_cache.debug_token_state(token)
 
-            conn = None
             try:
-                conn = await self.app_state.db_manager.get_connection()
-                cursor = conn.cursor()
+                async with self.app_state.db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
 
-                cursor.execute(
-                    """SELECT revoked, expires_at 
-                    FROM tokens 
-                    WHERE token = ?""",
-                    (token,),
-                )
-                db_info = cursor.fetchone()
+                    cursor.execute(
+                        """SELECT revoked, expires_at 
+                        FROM tokens 
+                        WHERE token = ?""",
+                        (token,),
+                    )
+                    db_info = cursor.fetchone()
 
-                if db_info:
-                    token_state.update(
-                        {
-                            "in_database": True,
-                            "db_revoked": bool(db_info["revoked"]),
-                            "db_expires_at": db_info["expires_at"],
-                        }
-                    )
-                else:
-                    token_state.update(
-                        {
-                            "in_database": False,
-                            "db_revoked": None,
-                            "db_expires_at": None,
-                        }
-                    )
+                    if db_info:
+                        token_state.update(
+                            {
+                                "in_database": True,
+                                "db_revoked": bool(db_info["revoked"]),
+                                "db_expires_at": db_info["expires_at"],
+                            }
+                        )
+                    else:
+                        token_state.update(
+                            {
+                                "in_database": False,
+                                "db_revoked": None,
+                                "db_expires_at": None,
+                            }
+                        )
 
             except Exception as e:
                 log.error(f"Failed to check database state: {e}")
                 token_state.update({"database_error": str(e)})
-            finally:
-                if conn:
-                    conn.close()
 
             return {"cache_stats": cache_stats, "token_state": token_state}
 

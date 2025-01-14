@@ -29,7 +29,6 @@ The primary goals include:
 - System (/system)
 - Bluetooth (/bluetooth)
 - Utils (/utils)
-- Logging (/logging)
 
 ### Database
 
@@ -55,6 +54,19 @@ The primary goals include:
 4. Request routing to appropriate service
 5. Service processing with optional database interaction
 6. Response formatting and delivery
+
+## Logging behavior
+
+1. Console/journalctl:
+    - INFO and above by default
+    - DEBUG and above when run with --debug flag
+2. /var/log/wlanpi_core/app.log:
+    - Always INFO and above
+    - Never changes
+3. /var/log/wlanpi_core/debug/debug.log:
+    - Always DEBUG and above
+    - Never changes
+    - tmpfs (not persistent on reboot)
 
 ## Server Stack
 

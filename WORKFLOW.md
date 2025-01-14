@@ -233,7 +233,54 @@ Follow with:
 
 ```
 journalctl --follow --unit wlanpi-core
-journalctl -f -u wlanpi-core
+journalctl -f -b -u wlanpi-core
+journalctl -f -n 10 -u wlanpi-core
+```
+
+Check last 20 lines and then follow the logs
+
+```
+tail -n 20 -f /var/log/wlanpi_core/app.log
+tail -n 20 -f /var/log/wlanpi_core/debug/debug.log
+```
+
+## tmpfs debugging
+
+```
+systemctl status var-log-wlanpi_core-debug.mount
+mount | grep wlanpi_core/debug
+df -h /var/log/wlanpi_core/debug
+ls -la /var/log/wlanpi_core/debug
+```
+
+Example:
+
+```
+$ systemctl status var-log-wlanpi_core-debug.mount
+● var-log-wlanpi_core-debug.mount - Debug log tmpfs mount for wlanpi-core
+     Loaded: loaded (/lib/systemd/system/var-log-wlanpi_core-debug.mount; enabled; vendor preset: enabled)
+     Active: active (mounted) since Tue 2025-01-14 09:25:03 CST; 2min 44s ago
+      Where: /var/log/wlanpi_core/debug
+       What: tmpfs
+      Tasks: 0 (limit: 1655)
+        CPU: 5ms
+     CGroup: /system.slice/var-log-wlanpi_core-debug.mount
+
+Jan 14 09:25:03 wlanpi-573 systemd[1]: Mounting Debug log tmpfs mount for wlanpi-core...
+Jan 14 09:25:03 wlanpi-573 systemd[1]: Mounted Debug log tmpfs mount for wlanpi-core.
+
+$ mount | grep wlanpi_core/debug
+tmpfs on /var/log/wlanpi_core/debug type tmpfs (rw,relatime,size=25600k,mode=750,uid=1000)
+
+$ df -h /var/log/wlanpi_core/debug
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            25M   12K   25M   1% /var/log/wlanpi_core/debug
+
+$ ls -la /var/log/wlanpi_core/debug
+total 16
+drwxr-x--- 2 wlanpi root   60 Jan 14 09:25 .
+drwxr-xr-x 3 root   root 4096 Jan 14 09:25 ..
+-rw-r--r-- 1 root   root 8249 Jan 14 09:25 debug.log
 ```
 
 ## Tagging

@@ -1,6 +1,9 @@
+/debian/var-log-wlanpi_core-debug.mount /lib/systemd/system
 /install/etc/wlanpi-core/nginx/nginx-sample.conf /etc/wlanpi-core/nginx
 /install/etc/wlanpi-core/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/environment /etc/wlanpi-core
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
-debian/wlanpi-core-debug.mount /lib/systemd/system
+/install/usr/bin/getjwt /usr/bin
+/install/usr/bin/lhapitest /usr/bin

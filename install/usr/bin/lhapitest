@@ -1,6 +1,8 @@
 #!/bin/bash
 
-PORT=8000
+# lsapitest.sh: Localhost API test script for wlanpi-core
+
+PORT=31415
 BASE_URL="/api/v1"
 SECRETS_PATH="/opt/wlanpi-core/.secrets/shared_secret"
 METHOD="GET"
@@ -91,14 +93,19 @@ api_call() {
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -p, --port PORT     Set the port (default: 8000)"
+    echo "  -p, --port PORT     Set the port (default: 31415)"
     echo "  -b, --base BASE     Set the base URL path (default: /api/v1)"
     echo "  -s, --secrets PATH  Set the path to shared secrets (default: /opt/wlanpi-core/.secrets/shared_secret)"
-    echo "  -X, --method METHOD Set HTTP method (GET, POST, PUT, DELETE)"
+    echo "  -X, --method METHOD Set HTTP method (GET, POST, PUT, DELETE) (default: GET)"
     echo "  -e, --endpoint ENDPOINT Specify the API endpoint"
     echo "  -P, --payload PAYLOAD JSON payload for POST/PUT requests"
     echo "  -H, --headers HEADERS Comma-separated additional headers"
     echo "  -h, --help         Show this help message"
+    echo ""
+    echo "  Get model:              $0 -e /system/device/model"
+    echo "  Get model (:8000):      $0 -e /system/device/model -p 8000"
+    echo ""
+    echo "  Set debug level:        $0 -X POST -e /logging/level -P '{\"level\": \"DEBUG\"}'"
     echo ""
     echo "  Get Token:              $0 -X POST -e /auth/token -P '{\"device_id\": \"1\"}'"
     exit 1
