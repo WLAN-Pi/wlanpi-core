@@ -18,7 +18,7 @@ RUN apt install --yes expat libxml2-dev pkg-config libasound2-dev libssl-dev \
     cmake libfreetype6-dev libexpat1-dev libxcb-composite0-dev  \
     libfontconfig-dev cargo git unzip zip nload tree dbus libharfbuzz-dev \
     pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev \
-    libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan
+    libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan sqlite3
 
 RUN apt-get update \
 && apt-get install --no-install-recommends --yes rsyslog systemd systemd-cron \
