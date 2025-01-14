@@ -1,9 +1,8 @@
-import logging
 import subprocess
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_jwt_token
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import system_service
@@ -11,13 +10,15 @@ from wlanpi_core.utils.general import run_command
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @router.get(
     "/device/info",
     response_model=system.DeviceInfo,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_info():
     """
@@ -56,7 +57,7 @@ async def show_device_info():
 @router.get(
     "/device/stats",
     response_model=system.DeviceStats,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def device_stats():
     """
@@ -81,7 +82,7 @@ async def device_stats():
 @router.get(
     "/device/model",
     response_model=system.DeviceModel,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_model():
     """
@@ -108,7 +109,7 @@ async def show_device_model():
 @router.get(
     "/service/status",
     response_model=system.ServiceStatus,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_a_systemd_service_status(name: str):
     """
@@ -127,7 +128,7 @@ async def show_a_systemd_service_status(name: str):
 @router.post(
     "/service/start",
     response_model=system.ServiceRunning,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_a_systemd_service(name: str):
     """
@@ -146,7 +147,7 @@ async def start_a_systemd_service(name: str):
 @router.post(
     "/service/stop",
     response_model=system.ServiceRunning,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def stop_a_systemd_service(name: str):
     """

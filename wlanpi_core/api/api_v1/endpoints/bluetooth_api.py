@@ -1,21 +1,21 @@
-import logging
-
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_jwt_token
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import bluetooth
 from wlanpi_core.services import bluetooth_service
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @router.get(
     "/status",
     response_model=bluetooth.BluetoothStatus,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def btstatus():
     """
@@ -38,7 +38,7 @@ async def btstatus():
 @router.post(
     "/power/{action}",
     response_model=bluetooth.PowerState,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def bt_power(action: str):
     """

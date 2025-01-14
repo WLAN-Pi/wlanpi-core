@@ -3,3 +3,4 @@
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
+debian/wlanpi-core-debug.mount /lib/systemd/system

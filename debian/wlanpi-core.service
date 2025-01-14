@@ -2,15 +2,24 @@
 
 [Unit]
 Description=gunicorn daemon which manages uvicorn workers for wlanpi-core
-Requires=wlanpi-core.socket
-After=network.target
+Requires=wlanpi-core.socket wlanpi-core-debug.mount
+After=network.target wlanpi-core-debug.mount
 
 [Service]
 Type=notify
 
 # this is a soft link created via maintainer script
 WorkingDirectory=/opt/wlanpi-core/workingdirectory
-ExecStart=/opt/wlanpi-core/bin/gunicorn --workers 1 -k uvicorn.workers.UvicornWorker --bind unix:wlanpi_core.sock asgi:app --name wlanpi_core_svc --access-logfile /var/log/wlanpi-core/gunicorn_access.log --error-logfile /var/log/wlanpi-core/gunicorn_error.log
+
+ExecStart=/opt/wlanpi-core/bin/gunicorn \
+    --workers 1 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind unix:wlanpi_core.sock asgi:app \
+    --name wlanpi_core_svc \
+    --access-logfile /var/log/wlanpi-core/gunicorn_access.log \
+    --error-logfile /var/log/wlanpi-core/gunicorn_error.log \
+    --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(L)s' \
+    --log-level warning 
 
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

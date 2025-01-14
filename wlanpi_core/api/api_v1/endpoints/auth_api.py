@@ -6,7 +6,6 @@ signing key rotation, and authentication-related debug operations.
 """
 
 import base64
-import logging
 from datetime import timedelta
 from typing import Optional
 
@@ -22,7 +21,9 @@ from wlanpi_core.core.auth import (
 from wlanpi_core.schemas.auth import KeyResponse, Token, TokenRequest
 
 router = APIRouter()
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @router.post("/token", dependencies=[Depends(verify_auth_wrapper)])

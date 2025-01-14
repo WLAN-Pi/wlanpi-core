@@ -2,7 +2,6 @@
 
 # stdlib imports
 import asyncio
-import logging
 
 # third party imports
 from fastapi import FastAPI
@@ -19,14 +18,16 @@ from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.core.auth import TokenManager
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseManager, RetentionManager
+from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.migrations import run_migrations
 from wlanpi_core.core.monitoring import DeviceActivityManager
 from wlanpi_core.core.security import SecurityManager
 
 
-def create_app(debug=False):
-    log = logging.getLogger("uvicorn")
+def create_app():
+    configure_logging()
+    log = get_logger(__name__)
 
     app = FastAPI(
         title=settings.PROJECT_NAME,

@@ -1,23 +1,24 @@
 import json
-import logging
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_jwt_token
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
 from wlanpi_core.services import utils_service
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @router.get(
     "/reachability",
     response_model=utils.ReachabilityTest,
     response_model_exclude_none=True,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def reachability():
     """
@@ -73,7 +74,9 @@ async def reachability():
 #         return Response(content=f"Internal Server Error {ex}", status_code=500)
 
 
-@router.get("/usb", response_model=utils.Usb, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/usb", response_model=utils.Usb, dependencies=[Depends(verify_auth_wrapper)]
+)
 async def usb_interfaces():
     """
     Gets a list of usb interfaces and returns them.
@@ -98,7 +101,9 @@ async def usb_interfaces():
         return Response(content=f"Internal Server Error", status_code=500)
 
 
-@router.get("/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_jwt_token)])
+@router.get(
+    "/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_auth_wrapper)]
+)
 async def usb_interfaces():
     """
     Returns the UFW information.

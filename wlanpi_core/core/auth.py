@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import ipaddress
 import json
-import logging
 import secrets
 import sqlite3
 import threading
@@ -18,9 +17,10 @@ from authlib.jose.errors import ExpiredTokenError, InvalidTokenError
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.services import system_service
 
-log = logging.getLogger("uvicorn")
+log = get_logger(__name__)
 
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 

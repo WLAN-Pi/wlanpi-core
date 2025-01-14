@@ -1,11 +1,12 @@
 import asyncio
-import logging
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 IMPORTANT_PATTERNS = ["/auth/", "/network/", "/system/"]
 
