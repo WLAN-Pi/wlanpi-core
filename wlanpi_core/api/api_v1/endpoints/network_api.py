@@ -1,10 +1,9 @@
-import logging
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.constants import API_DEFAULT_TIMEOUT
-from wlanpi_core.core.auth import verify_jwt_token
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
@@ -14,7 +13,9 @@ from wlanpi_core.services import network_ethernet_service, network_service
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 ################################
@@ -23,12 +24,12 @@ log = logging.getLogger("uvicorn")
 @router.get(
     "/interfaces",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 @router.get(
     "/interfaces/{interface}",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_interfaces(interface: Optional[str] = None):
     """
@@ -55,7 +56,7 @@ async def show_all_interfaces(interface: Optional[str] = None):
 @router.get(
     "/ethernet/{interface}",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_ethernet_interfaces(interface: Optional[str] = None):
     """
@@ -96,22 +97,22 @@ async def show_all_ethernet_interfaces(interface: Optional[str] = None):
 @router.get(
     "/ethernet/all/vlan",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 @router.get(
     "/ethernet/all/vlan/{vlan}",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 @router.get(
     "/ethernet/{interface}/vlan",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 @router.get(
     "/ethernet/{interface}/vlan/{vlan}",
     response_model=dict[str, list[IPInterface]],
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_ethernet_vlans(
     interface: Optional[str] = None, vlan: Optional[str] = None
@@ -153,7 +154,7 @@ async def show_all_ethernet_vlans(
 @router.post(
     "/ethernet/{interface}/vlan/{vlan}",
     response_model=network.config.NetworkConfigResponse,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def create_ethernet_vlan(
     interface: str, vlan: Union[str, int], addresses: list[IPInterfaceAddress]
@@ -194,7 +195,7 @@ async def create_ethernet_vlan(
 @router.delete(
     "/ethernet/{interface}/vlan/{vlan}",
     response_model=network.config.NetworkConfigResponse,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_ethernet_vlan(
     interface: str, vlan: Union[str, int], allow_missing=False
@@ -237,7 +238,7 @@ async def delete_ethernet_vlan(
 @router.get(
     "/wlan/getInterfaces",
     response_model=network.Interfaces,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     """
@@ -257,7 +258,7 @@ async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     "/wlan/scan",
     response_model=network.ScanResults,
     response_model_exclude_none=True,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_a_systemd_network_scan(
     type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
@@ -281,7 +282,7 @@ async def get_a_systemd_network_scan(
 @router.post(
     "/wlan/set",
     response_model=network.NetworkSetupStatus,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
@@ -305,7 +306,7 @@ async def set_a_systemd_network(
     "/wlan/getConnected",
     response_model=network.ConnectedNetwork,
     response_model_exclude_none=True,
-    dependencies=[Depends(verify_jwt_token)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = API_DEFAULT_TIMEOUT

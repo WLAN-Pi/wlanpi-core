@@ -1,6 +1,6 @@
-import logging
+from wlanpi_core.core.logging import get_logger
 
-log = logging.getLogger("uvicorn")
+log = get_logger(__name__)
 
 MIGRATIONS = [
     """

@@ -1,11 +1,12 @@
-import logging
 import secrets
 from pathlib import Path
 from typing import Optional
 
 from cryptography.fernet import Fernet
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class SecurityInitError(Exception):

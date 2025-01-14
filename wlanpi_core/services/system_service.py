@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import socket
 import subprocess
@@ -8,9 +7,12 @@ from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
 from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command
+
+log = get_logger(__name__)
 
 bus = SystemBus()
 systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
@@ -129,9 +131,7 @@ def get_platform():
         platform = run_command(model_cmd).stdout.strip()
 
     except RunCommandError as exc:
-        logging.warning(
-            f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}"
-        )
+        log.warning(f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}")
         return "Unknown"
     except subprocess.CalledProcessError as exc:
         exc.model.decode()
@@ -219,10 +219,20 @@ def get_stats():
 
 
 def is_allowed_service(service: str):
-    for allowed_service in allowed_services:
-        if service.replace(".service", "") == allowed_service:
-            return True
-    return False
+    """Check if service is in allowed services list"""
+    service_name = service.replace(".service", "")
+    is_allowed = service_name in allowed_services
+
+    log.debug(
+        "Checking service permissions",
+        extra={
+            "action": "check_service_permission",
+            "service": service_name,
+            "allowed": is_allowed,
+        },
+    )
+
+    return is_allowed
 
 
 def check_service_status(service: str):

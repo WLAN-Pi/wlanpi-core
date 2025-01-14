@@ -1,0 +1,13 @@
+[Unit]
+Description=Debug log tmpfs mount for wlanpi-core
+DefaultDependencies=no
+Before=wlanpi-core.service
+
+[Mount]
+What=tmpfs
+Where=/var/log/wlanpi-core/debug
+Type=tmpfs
+Options=size=25M,uid=wlanpi,gid=root,mode=0750
+
+[Install]
+WantedBy=multi-user.target

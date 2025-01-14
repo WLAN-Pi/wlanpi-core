@@ -1,5 +1,4 @@
 # stdlib imports
-import logging
 
 # third party imports
 import fastapi
@@ -8,8 +7,9 @@ from starlette.templating import Jinja2Templates
 
 # app imports
 from wlanpi_core.core.config import endpoints, settings
+from wlanpi_core.core.logging import get_logger
 
-log = logging.getLogger("uvicorn")
+log = get_logger(__name__)
 
 templates = Jinja2Templates(settings.Config.base_dir / "templates")
 router = fastapi.APIRouter()
