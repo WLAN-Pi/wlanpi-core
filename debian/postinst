@@ -5,6 +5,11 @@
 
 #DEBHELPER#
 
+if systemctl is-masked var-log-wlanpi_core-debug.mount >/dev/null 2>&1; then
+    echo "Unmasking var-log-wlanpi_core-debug.mount..."
+    systemctl unmask var-log-wlanpi_core-debug.mount || true
+fi
+
 # function to check if a path is a symlink
 function isValidSymlink() {
     if [ -L "$1" ]; then
@@ -42,6 +47,7 @@ fi
 
 if [ $CONF_CHANGED -eq 0 ]; then
     echo "Restarting wlanpi-core ..."
+    systemctl start var-log-wlanpi_core-debug.mount || true
     deb-systemd-invoke restart wlanpi-core.service
 fi
 
