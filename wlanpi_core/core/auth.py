@@ -155,7 +155,12 @@ def decode_jwt_part(part: str) -> dict:
         std_b64 = padded.replace("-", "+").replace("_", "/")
 
         decoded_bytes = base64.b64decode(std_b64)
-        decoded_str = decoded_bytes.decode("utf-8")
+
+        try:
+            decoded_str = decoded_bytes.decode("utf-8")
+        except UnicodeDecodeError as e:
+            log.error(f"Invalid token encoding: {e}")
+            raise JWTError(f"Failed to decode JWT part: {str(e)}")
 
         return json.loads(decoded_str)
 
@@ -1159,9 +1164,7 @@ class TokenManager:
             log.error("Failed to store token")
             raise TokenError(f"Failed to store token: {str(e)}")
 
-    async def verify_token(
-        self, token: str, conn=None
-    ) -> TokenValidationResult:
+    async def verify_token(self, token: str) -> TokenValidationResult:
         """Verify JWT token and return validation result"""
         log.debug(f"Starting token verification")
         try:
@@ -1187,46 +1190,53 @@ class TokenManager:
                     is_valid=True, payload=cached, token=validated_token
                 )
 
-            cursor = conn.cursor()
+            async with self.app_state.db_manager.get_connection() as conn:
+                if not conn:
+                    log.error("Failed to establish database connection")
+                    return TokenValidationResult(
+                        is_valid=False, error="Database connection failed"
+                    )
 
-            try:
-                cursor.execute(
-                    """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
-                    FROM tokens t 
-                    WHERE t.token = ?""",
-                    (validated_token,),
-                )
-                token_info = cursor.fetchone()
+                cursor = conn.cursor()
 
-                if not token_info:
+                try:
                     cursor.execute(
                         """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
                         FROM tokens t 
                         WHERE t.token = ?""",
-                        (normalized_token,),
+                        (validated_token,),
                     )
                     token_info = cursor.fetchone()
 
-                if not token_info:
-                    log.warning(f"Token not found in database.")
-                    log.debug(f"Normalized token hash: {hash(normalized_token)}")
-                    log.debug(f"Validated token hash: {hash(validated_token)}")
+                    if not token_info:
+                        cursor.execute(
+                            """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
+                            FROM tokens t 
+                            WHERE t.token = ?""",
+                            (normalized_token,),
+                        )
+                        token_info = cursor.fetchone()
 
-                    cursor.execute("SELECT token FROM tokens")
-                    db_tokens = cursor.fetchall()
-                    log.debug(f"Database contains {len(db_tokens)} tokens")
-                    for db_token in db_tokens:
-                        log.debug(f"Database token hash: {hash(db_token['token'])}")
+                    if not token_info:
+                        log.warning(f"Token not found in database.")
+                        log.debug(f"Normalized token hash: {hash(normalized_token)}")
+                        log.debug(f"Validated token hash: {hash(validated_token)}")
 
+                        cursor.execute("SELECT token FROM tokens")
+                        db_tokens = cursor.fetchall()
+                        log.debug(f"Database contains {len(db_tokens)} tokens")
+                        for db_token in db_tokens:
+                            log.debug(f"Database token hash: {hash(db_token['token'])}")
+
+                        return TokenValidationResult(
+                            is_valid=False, error="Token not found"
+                        )
+
+                except sqlite3.Error as e:
+                    log.error(f"Database error during token lookup: {e}")
                     return TokenValidationResult(
-                        is_valid=False, error="Token not found"
+                        is_valid=False, error="Database error during validation"
                     )
-
-            except sqlite3.Error as e:
-                log.error(f"Database error during token lookup: {e}")
-                return TokenValidationResult(
-                    is_valid=False, error="Database error during validation"
-                )
 
             if token_info["revoked"]:
                 log.debug(f"Token is revoked for device {token_info['device_id']}")
