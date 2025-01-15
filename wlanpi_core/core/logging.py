@@ -1,9 +1,9 @@
 import json
 import logging
-import pathlib
-import traceback
-import sys
 import os
+import pathlib
+import sys
+import traceback
 from typing import Dict, Optional
 
 LOG_LEVELS = {
@@ -14,16 +14,18 @@ LOG_LEVELS = {
     "CRITICAL": logging.CRITICAL,
 }
 
+
 class ContextualLogRecord(logging.LogRecord):
     """
     Custom LogRecord that captures additional context information
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         if not self.exc_info and sys.exc_info()[0] is not None:
             self.exc_info = sys.exc_info()
-            
+
         if self.levelno >= logging.ERROR and self.exc_info:
             try:
                 exc_type, exc_value, exc_traceback = self.exc_info
@@ -34,13 +36,13 @@ class ContextualLogRecord(logging.LogRecord):
                     self.line_number = last_frame.lineno
                     self.source_function = last_frame.name
                 else:
-                    self.source_file = 'Unknown'
+                    self.source_file = "Unknown"
                     self.line_number = 0
-                    self.source_function = 'Unknown'
+                    self.source_function = "Unknown"
             except Exception:
-                self.source_file = 'Unknown'
+                self.source_file = "Unknown"
                 self.line_number = 0
-                self.source_function = 'Unknown'
+                self.source_function = "Unknown"
         else:
             try:
                 stack = traceback.extract_stack()
@@ -48,33 +50,39 @@ class ContextualLogRecord(logging.LogRecord):
                     filename = os.path.basename(frame.filename)
                     lineno = frame.lineno
                     function = frame.name
-                    if all(module not in filename for module in ['logging', __file__, 'contextlib']):
+                    if all(
+                        module not in filename
+                        for module in ["logging", __file__, "contextlib"]
+                    ):
                         self.source_file = os.path.basename(filename)
                         self.line_number = lineno
                         self.source_function = function
                         break
                 else:
-                    self.source_file = 'Unknown'
+                    self.source_file = "Unknown"
                     self.line_number = 0
-                    self.source_function = 'Unknown'
+                    self.source_function = "Unknown"
             except Exception:
-                self.source_file = 'Unknown'
+                self.source_file = "Unknown"
                 self.line_number = 0
-                self.source_function = 'Unknown'
-                
+                self.source_function = "Unknown"
+
+
 class ContextFilter(logging.Filter):
     """
     A logging filter that ensures contextual information is added to log records
     """
+
     def filter(self, record):
-        if not hasattr(record, 'source_file'):
-            record.source_file = 'Unknown'
-        if not hasattr(record, 'line_number'):
+        if not hasattr(record, "source_file"):
+            record.source_file = "Unknown"
+        if not hasattr(record, "line_number"):
             record.line_number = 0
-        if not hasattr(record, 'source_function'):
-            record.source_function = 'Unknown'
+        if not hasattr(record, "source_function"):
+            record.source_function = "Unknown"
         return True
-    
+
+
 class JsonFormatter(logging.Formatter):
     """JSON log formatter"""
 
@@ -143,7 +151,7 @@ def configure_logging(debug_mode: bool = False):
         debug_mode: Whether to force DEBUG level logging
     """
     logging.setLogRecordFactory(ContextualLogRecord)
-    
+
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
@@ -152,7 +160,7 @@ def configure_logging(debug_mode: bool = False):
     debug_log_dir.mkdir(parents=True, exist_ok=True)
 
     context_filter = ContextFilter()
-    
+
     console_stream_handler = logging.StreamHandler()
     app_file_handler = logging.FileHandler("/var/log/wlanpi_core/app.log")
     debug_file_handler = logging.FileHandler("/var/log/wlanpi_core/debug/debug.log")
