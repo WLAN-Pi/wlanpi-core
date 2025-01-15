@@ -1428,17 +1428,18 @@ async def verify_jwt_token(
     request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     if not credentials:
-        raise HTTPException(status_code=401, detail="Bearer token required")
+        log.error("Authentication failed: No bearer token provided")
+        raise HTTPException(status_code=401, detail="Unauthorized")
     token = credentials.credentials
     try:
         validation_result = await request.app.state.token_manager.verify_token(token)
         if not validation_result.is_valid:
-            raise HTTPException(
-                status_code=401, detail=validation_result.error or "Invalid token"
-            )
+            log.error(f"Token validation failed: {validation_result.error}")
+            raise HTTPException(status_code=401, detail="Unauthorized")
         return validation_result
     except TokenError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        log.error(f"Token verification failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 async def verify_hmac(request: Request):

@@ -50,7 +50,7 @@ class SecurityManager:
         try:
             dir_stat = secrets_dir.stat()
             dir_gid = grp.getgrnam("wlanpi").gr_gid
-            
+
             if dir_stat.st_gid != dir_gid or dir_stat.st_mode & 0o777 != 0o710:
                 os.chown(str(secrets_dir), 0, dir_gid)  # root:wlanpi
                 secrets_dir.chmod(0o710)  # rwx--x---
