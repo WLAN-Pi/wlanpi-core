@@ -1451,7 +1451,11 @@ async def verify_hmac(request: Request):
 
     signature = request.headers.get("X-Request-Signature")
     if not signature:
-        raise HTTPException(status_code=401, detail="Missing signature header")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing signature header",
+            headers={"X-Requires-Signature": "true"},
+        )
 
     secret = request.app.state.security_manager.shared_secret
     body = await request.body()
@@ -1463,5 +1467,10 @@ async def verify_hmac(request: Request):
     log.debug(f"Client provided signature: {signature}")
 
     if not hmac.compare_digest(signature, calculated):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid signature",
+            headers={"X-Requires-Signature": "true"},
+        )
+
     return True
