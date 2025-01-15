@@ -71,7 +71,7 @@ pip install .[testing]
 
 Once you've 1) setup the virtualenv and installed Python requirements, and 2) setup OS and package requirements, you can start developing by running wlanpi_core directly. There are two options:
 
-1. `WLANPI_LOG_LEVEL=DEBUG sudo -E venv/bin/python -m wlanpi_core --reload` from the root of the repo:
+1. `sudo -E venv/bin/python -m wlanpi_core --debug --reload` from the root of the repo:
 
 ```
 $ WLANPI_LOG_LEVEL=DEBUG sudo -E venv/bin/python -m wlanpi_core 
