@@ -45,8 +45,17 @@ class SecurityManager:
     def _setup_shared_secret(self) -> bytes:
         """Generate or load HMAC shared secret"""
         secret_path = self.secrets_path / self.SHARED_SECRET_FILE
+        secrets_dir = self.secrets_path
 
         try:
+            dir_stat = secrets_dir.stat()
+            dir_gid = grp.getgrnam("wlanpi").gr_gid
+            
+            if dir_stat.st_gid != dir_gid or dir_stat.st_mode & 0o777 != 0o710:
+                os.chown(str(secrets_dir), 0, dir_gid)  # root:wlanpi
+                secrets_dir.chmod(0o710)  # rwx--x---
+                log.debug("Updated secrets directory permissions")
+
             if not secret_path.exists():
                 secret = secrets.token_bytes(32)
                 secret_path.write_bytes(secret)
