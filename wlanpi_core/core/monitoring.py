@@ -68,8 +68,8 @@ class DeviceActivityManager:
                         )
 
                     cursor.execute(
-                        """INSERT INTO device_activity 
-                        (device_id, endpoint, status_code, timestamp) 
+                        """INSERT INTO device_activity
+                        (device_id, endpoint, status_code, timestamp)
                         VALUES (?, ?, ?, ?)""",
                         (device_id, endpoint, status_code, utc_timestamp),
                     )
@@ -98,7 +98,7 @@ class DeviceActivityManager:
 
                     if self.buffer:
                         cursor.executemany(
-                            """INSERT INTO device_activity_recent 
+                            """INSERT INTO device_activity_recent
                             (device_id, endpoint, status_code, timestamp)
                             VALUES (?, ?, ?, ?)""",
                             [
@@ -114,9 +114,9 @@ class DeviceActivityManager:
 
                     for device_id, stats in self.stats_buffer.items():
                         cursor.execute(
-                            """INSERT OR REPLACE INTO device_stats 
+                            """INSERT OR REPLACE INTO device_stats
                             (device_id, request_count, error_count, endpoint_count, last_activity)
-                            VALUES (?, 
+                            VALUES (?,
                                 COALESCE((SELECT request_count FROM device_stats WHERE device_id = ?) + ?, ?),
                                 COALESCE((SELECT error_count FROM device_stats WHERE device_id = ?) + ?, ?),
                                 ?,
@@ -181,8 +181,8 @@ class DeviceActivityManager:
                 cursor = conn.cursor()
 
                 cursor.execute(
-                    """SELECT request_count, error_count, endpoint_count, last_activity 
-                    FROM device_stats 
+                    """SELECT request_count, error_count, endpoint_count, last_activity
+                    FROM device_stats
                     WHERE device_id = ?""",
                     (device_id,),
                 )
@@ -228,7 +228,7 @@ class DeviceActivityManager:
                 now = int(datetime.now(timezone.utc).timestamp())
 
                 cursor.execute(
-                    """SELECT 
+                    """SELECT
                         t.device_id,
                         t.created_at,
                         t.expires_at,

@@ -81,7 +81,7 @@ MIGRATIONS = [
     CREATE TRIGGER IF NOT EXISTS cleanup_old_activity
     AFTER INSERT ON device_activity_recent
     BEGIN
-        DELETE FROM device_activity_recent 
+        DELETE FROM device_activity_recent
         WHERE timestamp < datetime('now', '-1 day');
     END
     """,

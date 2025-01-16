@@ -522,7 +522,7 @@ class RetentionManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    DELETE FROM device_activity_recent 
+                    DELETE FROM device_activity_recent
                     WHERE timestamp < datetime('now', ? || ' days')
                 """,
                     (-self.retention_days,),

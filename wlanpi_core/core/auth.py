@@ -753,7 +753,7 @@ class TokenManager:
                 now = datetime.now(timezone.utc).timestamp()
 
                 cursor.execute(
-                    """SELECT 
+                    """SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN revoked = TRUE THEN 1 ELSE 0 END) as revoked,
                     SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expired,
@@ -765,8 +765,8 @@ class TokenManager:
                 stats = cursor.fetchone()
 
                 cursor.execute(
-                    """SELECT token, device_id, expires_at, revoked 
-                    FROM tokens 
+                    """SELECT token, device_id, expires_at, revoked
+                    FROM tokens
                     WHERE revoked = FALSE AND expires_at > ?
                     ORDER BY expires_at DESC""",
                     (now,),
@@ -877,8 +877,8 @@ class TokenManager:
 
                 cursor.execute(
                     """
-                    SELECT id, created_at, active 
-                    FROM signing_keys 
+                    SELECT id, created_at, active
+                    FROM signing_keys
                     ORDER BY created_at DESC
                 """
                 )
@@ -904,7 +904,7 @@ class TokenManager:
         """Check for existing valid token for device"""
         try:
             cursor.execute(
-                """SELECT t.token, t.key_id, k.key 
+                """SELECT t.token, t.key_id, k.key
                 FROM tokens t
                 JOIN signing_keys k ON t.key_id = k.id
                 WHERE t.device_id = ? AND t.revoked = FALSE""",
@@ -1036,8 +1036,8 @@ class TokenManager:
                     }
 
                 cursor.execute(
-                    """UPDATE tokens 
-                    SET revoked = TRUE 
+                    """UPDATE tokens
+                    SET revoked = TRUE
                     WHERE token = ?""",
                     (token,),
                 )
@@ -1147,8 +1147,8 @@ class TokenManager:
             expires_at = to_timestamp(claims["exp"])
 
             cursor.execute(
-                """INSERT INTO tokens 
-                (token, device_id, expires_at, created_at, key_id) 
+                """INSERT INTO tokens
+                (token, device_id, expires_at, created_at, key_id)
                 VALUES (?, ?, ?, ?, ?)""",
                 (token, device_id, expires_at, now, key_id),
             )
@@ -1202,7 +1202,7 @@ class TokenManager:
                 try:
                     cursor.execute(
                         """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
-                        FROM tokens t 
+                        FROM tokens t
                         WHERE t.token = ?""",
                         (validated_token,),
                     )
@@ -1211,7 +1211,7 @@ class TokenManager:
                     if not token_info:
                         cursor.execute(
                             """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
-                            FROM tokens t 
+                            FROM tokens t
                             WHERE t.token = ?""",
                             (normalized_token,),
                         )
@@ -1297,8 +1297,8 @@ class TokenManager:
                     )
 
                     cursor.execute(
-                        """DELETE FROM tokens 
-                        WHERE (revoked = TRUE AND expires_at < ?) 
+                        """DELETE FROM tokens
+                        WHERE (revoked = TRUE AND expires_at < ?)
                         OR expires_at < ?""",
                         (purge_cutoff, purge_cutoff),
                     )
@@ -1336,8 +1336,8 @@ class TokenManager:
                     cursor = conn.cursor()
 
                     cursor.execute(
-                        """SELECT revoked, expires_at 
-                        FROM tokens 
+                        """SELECT revoked, expires_at
+                        FROM tokens
                         WHERE token = ?""",
                         (token,),
                     )

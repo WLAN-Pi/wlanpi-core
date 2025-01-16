@@ -22,7 +22,7 @@ def run_command(
     """Run a single CLI command with subprocess and returns the output"""
     """
     This function executes a single CLI command using the the built-in subprocess module.
-    
+
     Args:
         cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
              If it's a string, the command will be executed with its arguments as separate words,
@@ -35,11 +35,11 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-    
+
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
         whether the command was successful or not.
-    
+
     Raises:
         RunCommandError: If `raise_on_fail=True` and the command failed.
     """
@@ -98,7 +98,7 @@ async def run_command_async(
     """Run a single CLI command with subprocess and returns the output"""
     """
     This function executes a single CLI command using the the built-in subprocess module.
-    
+
     Args:
         cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
              If it's a string, the command will be executed with its arguments as separate words,
@@ -111,11 +111,11 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-    
+
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
         whether the command was successful or not.
-    
+
     Raises:
         RunCommandError: If `raise_on_fail=True` and the command failed.
     """
