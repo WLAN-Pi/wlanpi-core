@@ -1,8 +1,9 @@
-wlanpi-core (2.0.0) unstable; urgency=high
+wlanpi-core (2.0.0~dev20250115.1) unstable; urgency=high
 
+  * Development build towards 2.0.0
   * Breaking auth changes
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 12 Jan 2025 23:30:42 -0400
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 15 Jan 2025 19:30:42 -0400
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 
