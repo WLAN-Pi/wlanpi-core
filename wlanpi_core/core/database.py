@@ -3,7 +3,7 @@ import sqlite3
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from wlanpi_core.core.logging import get_logger
 
@@ -35,7 +35,7 @@ class DatabaseManager:
 
     def __init__(
         self,
-        app_state,
+        app_state: Any,
         db_path: str = "/opt/wlanpi-core/.secrets/tokens.db",
         max_size_mb: int = 10,
     ):
@@ -53,7 +53,7 @@ class DatabaseManager:
         self._conn_lock = asyncio.Lock()
         self._init_lock = asyncio.Lock()
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         log.debug(
             "Starting database initialization",
             extra={
@@ -69,7 +69,7 @@ class DatabaseManager:
             extra={"component": "database", "action": "initialize_complete"},
         )
 
-    async def _ensure_database_exists(self):
+    async def _ensure_database_exists(self) -> None:
         """
         Ensure the database file exists and is accessible.
         Create it if it doesn't exist or is corrupted.
@@ -100,11 +100,11 @@ class DatabaseManager:
                         },
                     )
                     self._create_base_database()
-            except Exception as e:
-                log.exception(f"Unexpected error checking database: {e}")
-                raise DatabaseError(f"Cannot ensure or verify database integrity: {e}")
+            except Exception:
+                log.exception("Unexpected error checking database")
+                raise DatabaseError("Cannot ensure or verify database integrity")
 
-    def _create_base_database(self):
+    def _create_base_database(self) -> None:
         """
         Create a new database with base schema
         """
@@ -140,22 +140,21 @@ class DatabaseManager:
                 },
             )
 
-        except Exception as e:
-            log.error(
+        except Exception:
+            log.exception(
                 "Database creation failed",
                 extra={
                     "component": "database",
                     "action": "create_database_error",
                     "db_path": str(self.db_path),
-                    "error": str(e),
-                    "error_type": type(e).__name__,
                 },
             )
-            raise DatabaseError(f"Database creation failed: {e}")
+            raise DatabaseError("Database creation failed")
 
     async def check_integrity(self) -> bool:
         """Check database integrity and required structure
-        Returns True if database checks pass, False if not"""
+        Returns True if database checks pass, False if not
+        """
         conn = None
         try:
             conn = sqlite3.connect(self.db_path)
@@ -243,17 +242,19 @@ class DatabaseManager:
             return True
 
         except sqlite3.DatabaseError:
-            log.error(f"Database {self.db_path} is corrupted")
+            log.error("Database %s is corrupted", self.db_path)
             return False
-        except Exception as e:
-            log.exception(f"Unexpected error checking database: {e}")
-            raise DatabaseError(f"Cannot verify database: {e}")
+        except Exception:
+            log.exception("Unexpected error checking database")
+            raise DatabaseError("Cannot verify database")
         finally:
             if conn:
                 try:
                     conn.close()
-                except Exception as e:
-                    log.warning(f"Error closing connection during verification: {e}")
+                except Exception:
+                    log.warning(
+                        "Error closing connection during verification", exc_info=True
+                    )
 
     def _verify_connection(self, conn: sqlite3.Connection) -> bool:
         """Verify that a connection is alive and the database is valid"""
@@ -324,22 +325,20 @@ class DatabaseManager:
                 )
                 yield connection
 
-        except Exception as e:
+        except Exception:
             log.exception(
                 "Database connection error",
                 extra={
                     "component": "database",
                     "action": "get_connection_error",
                     "thread_id": thread_id,
-                    "error": str(e),
                 },
             )
             if connection:
                 try:
                     connection.close()
-                except:
-                    pass
-            raise DatabaseError(f"Could not connect to database: {e}")
+                except Exception:
+                    raise DatabaseError("Could not connect to database")
 
     def check_size(self) -> bool:
         """Check if database size is within limits"""
@@ -357,20 +356,18 @@ class DatabaseManager:
                 },
             )
             return within_limits
-        except Exception as e:
-            log.error(
+        except Exception:
+            log.exception(
                 "Database size check failed",
                 extra={
                     "component": "database",
                     "action": "check_size_error",
                     "db_path": str(self.db_path),
-                    "error": str(e),
-                    "error_type": type(e).__name__,
                 },
             )
             return False
 
-    async def vacuum(self):
+    async def vacuum(self) -> None:
         async with self._conn_lock:
             try:
                 log.debug(
@@ -381,26 +378,24 @@ class DatabaseManager:
                         "db_path": str(self.db_path),
                     },
                 )
-                conn = await self.get_connection()
-                conn.execute("VACUUM")
-                conn.commit()
-                log.debug(
-                    "Database vacuum completed successfully",
-                    extra={"component": "database", "action": "vacuum_complete"},
-                )
+                async with self.get_connection() as conn:
+                    conn.execute("VACUUM")
+                    conn.commit()
+                    log.debug(
+                        "Database vacuum completed successfully",
+                        extra={"component": "database", "action": "vacuum_complete"},
+                    )
             except Exception as e:
-                log.error(
+                log.exception(
                     "Database vacuum failed",
                     extra={
                         "component": "database",
                         "action": "vacuum_failed",
-                        "error": str(e),
-                        "error_type": type(e).__name__,
                     },
                 )
                 raise DatabaseError(f"Vacuum failed: {e}")
 
-    async def backup(self, backup_path: Optional[Path] = None):
+    async def backup(self, backup_path: Optional[Path] = None) -> None:
         """Create a backup of the database"""
         if not backup_path:
             backup_path = self.db_path.with_suffix(".db.backup")
@@ -431,18 +426,16 @@ class DatabaseManager:
                             },
                         )
                     except sqlite3.Error as e:
-                        log.error(
+                        log.exception(
                             "Backup API error",
                             extra={
                                 "component": "database",
                                 "action": "backup_api_error",
-                                "error": str(e),
-                                "error_type": type(e).__name__,
                             },
                         )
                         raise DatabaseError(f"Backup failed: {e}")
             else:
-                log.error(
+                log.exception(
                     "Cannot backup corrupted database",
                     extra={
                         "component": "database",
@@ -451,14 +444,12 @@ class DatabaseManager:
                     },
                 )
                 raise DatabaseError("Database integrity check failed")
-        except Exception as e:
-            log.error(
+        except Exception:
+            log.exception(
                 "Database backup failed",
                 extra={
                     "component": "database",
                     "action": "backup_failed",
-                    "error": str(e),
-                    "error_type": type(e).__name__,
                 },
             )
             raise
@@ -472,7 +463,7 @@ class DatabaseManager:
         except sqlite3.Error:
             return False
 
-    async def close(self):
+    async def close(self) -> None:
         """Close database connection"""
         thread_id = threading.get_ident()
 
@@ -495,15 +486,13 @@ class DatabaseManager:
                         "thread_id": thread_id,
                     },
                 )
-            except sqlite3.Error as e:
-                log.warning(
+            except sqlite3.Error:
+                log.exception(
                     "Error closing database connection",
                     extra={
                         "component": "database",
                         "action": "close_error",
                         "thread_id": thread_id,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
                     },
                 )
             finally:
@@ -511,11 +500,11 @@ class DatabaseManager:
 
 
 class RetentionManager:
-    def __init__(self, app_state: None, retention_days: int = 1):
+    def __init__(self, app_state: Any, retention_days: int = 1):
         self.app_state = app_state
         self.retention_days = retention_days
 
-    async def cleanup_old_data(self):
+    async def cleanup_old_data(self) -> None:
         """Remove old activity data"""
         try:
             async with self.app_state.db_manager.get_connection() as conn:
@@ -529,5 +518,5 @@ class RetentionManager:
                 )
                 conn.commit()
                 log.debug(f"Ran clean up data older than {self.retention_days} days")
-        except Exception as e:
-            log.exception(f"Retention cleanup failed: {e}")
+        except Exception:
+            log.exception("Retention cleanup failed")

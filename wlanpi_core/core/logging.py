@@ -128,7 +128,14 @@ class JsonFormatter(logging.Formatter):
             message[key] = value
 
         if record.exc_info:
+            exc_type, exc_value, _ = record.exc_info
             message["exc_info"] = self.formatException(record.exc_info)
+            if not hasattr(record, "extra_fields"):
+                record.extra_fields = {}
+            if "error" not in record.extra_fields:
+                record.extra_fields["error"] = str(exc_value)
+            if "error_type" not in record.extra_fields:
+                record.extra_fields["error_type"] = exc_type.__name__
 
         if hasattr(record, "extra_fields"):
             message.update(record.extra_fields)
