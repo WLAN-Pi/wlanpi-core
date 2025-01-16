@@ -9,8 +9,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Generic, Optional, Tuple, Type, TypeVar, Union
 
 from authlib.jose import jwt
 from authlib.jose.errors import ExpiredTokenError, InvalidTokenError
@@ -29,7 +28,7 @@ class TokenError(Exception):
     pass
 
 
-class KeyError(Exception):
+class SKeyError(Exception):
     pass
 
 
@@ -62,8 +61,8 @@ def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int
             return int(dt.timestamp())
 
         raise ValueError(f"Unsupported datetime format: {type(dt)}")
-    except Exception as e:
-        log.error(f"Failed to convert to timestamp: {e}")
+    except Exception:
+        log.exception("Failed to convert to timestamp")
         return None
 
 
@@ -84,8 +83,8 @@ def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
         if isinstance(ts, str):
             ts = float(ts)
         return datetime.fromtimestamp(ts, tz=timezone.utc)
-    except Exception as e:
-        log.error(f"Failed to convert from timestamp: {e}")
+    except Exception:
+        log.exception(f"Failed to convert from timestamp")
         return None
 
 
@@ -120,8 +119,8 @@ def pad_base64(input_str: Union[str, bytes], is_token: bool = False) -> str:
                     padding_needed = (4 - len(unpadded) % 4) % 4
                     padded = unpadded + ("=" * padding_needed)
                     padded_parts.append(padded)
-                except Exception as e:
-                    raise JWTError(f"Failed to pad token part: {str(e)}")
+                except Exception:
+                    raise
 
             return ".".join(padded_parts)
 
@@ -129,14 +128,12 @@ def pad_base64(input_str: Union[str, bytes], is_token: bool = False) -> str:
             unpadded = input_str.rstrip("=")
             padding_needed = (4 - len(unpadded) % 4) % 4
             return unpadded + ("=" * padding_needed)
-    except JWTError:
-        raise
-    except Exception as e:
-        log.error(f"Base64 padding error: {str(e)}")
-        raise JWTError(f"Base64 padding failed: {str(e)}")
+    except Exception:
+        log.exception("Base64 padding error")
+        raise JWTError("Base64 padding error")
 
 
-def decode_jwt_part(part: str) -> dict:
+def decode_jwt_part(part: str) -> dict[str, Any]:
     """
     Decode a single JWT part (header or payload)
 
@@ -158,14 +155,14 @@ def decode_jwt_part(part: str) -> dict:
 
         try:
             decoded_str = decoded_bytes.decode("utf-8")
-        except UnicodeDecodeError as e:
-            log.error(f"Invalid token encoding: {e}")
-            raise JWTError(f"Failed to decode JWT part: {str(e)}")
+        except UnicodeDecodeError:
+            log.exception("Invalid token encoding")
+            raise JWTError("Failed to decode JWT part")
 
         return json.loads(decoded_str)
 
-    except Exception as e:
-        raise JWTError(f"Failed to decode JWT part: {str(e)}")
+    except Exception:
+        raise
 
 
 def validate_and_fix_token(token: Union[str, bytes]) -> str:
@@ -195,7 +192,7 @@ def validate_and_fix_token(token: Union[str, bytes]) -> str:
             if not header.get("alg") or not header.get("typ", "JWT").upper() == "JWT":
                 raise JWTError("Invalid token header")
         except Exception:
-            raise JWTError(f"Header validation failed")
+            raise JWTError("Header validation failed")
 
         return padded_token
     except JWTError:
@@ -211,11 +208,14 @@ def normalize_token(token: Union[str, bytes]) -> str:
     return token.strip("b'\"")
 
 
-class SingletonMeta(type):
-    _instances = {}
+T = TypeVar("T")
+
+
+class SingletonMeta(type, Generic[T]):
+    _instances: Dict[Type[Any], Any] = {}
     _lock = threading.Lock()
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         if cls not in cls._instances:
             with cls._lock:
                 if cls not in cls._instances:
@@ -228,11 +228,11 @@ class KeyCache(metaclass=SingletonMeta):
     Cache for keys
     """
 
-    def __init__(self):
-        self._active_key = None
-        self._key_cache = {}
+    def __init__(self) -> None:
+        self._active_key: Optional[Tuple[int, bytes]] = ()
+        self._key_cache: Dict[int, bytes] = {}
 
-    def cache_active_key(self, key_id: int, key: str):
+    def cache_active_key(self, key_id: int, key: bytes) -> None:
         """
         Cache the current active key
 
@@ -243,7 +243,7 @@ class KeyCache(metaclass=SingletonMeta):
         self._active_key = (key_id, key)
         self._key_cache[key_id] = key
 
-    def get_cached_key(self, key_id: int) -> Optional[str]:
+    def get_cached_key(self, key_id: int) -> Optional[bytes]:
         """
         Retrieve a cached key
 
@@ -256,7 +256,7 @@ class KeyCache(metaclass=SingletonMeta):
         return self._key_cache.get(key_id)
 
     @property
-    def active_key(self) -> Optional[Tuple[int, str]]:
+    def active_key(self) -> Optional[Tuple[int, bytes]]:
         """
         Get the currently active key
 
@@ -265,7 +265,7 @@ class KeyCache(metaclass=SingletonMeta):
         """
         return self._active_key
 
-    def clear(self):
+    def clear(self) -> None:
         """
         Clear all cached keys
         """
@@ -278,12 +278,16 @@ class TokenCache(metaclass=SingletonMeta):
     Cache for tokens
     """
 
-    def __init__(self):
-        self._token_cache = {}
-        self._validation_cache = {}
-        self._cache_ttl = 300  # 5 minute TTL for validation results
+    _token_cache: Dict[str, Dict[str, Any]] = {}  # Positive caching
+    _validation_cache: Dict[str, Dict[str, Union[datetime, bool]]] = (
+        {}
+    )  # Negative caching
+    _cache_ttl: int = 300  # 5 minute TTL for validation results
+    _timestamp_cache: Dict[int, bool] = {}
 
-    @lru_cache(maxsize=100)
+    def __init__(self) -> None:
+        pass
+
     def _check_timestamp_expired(self, exp_timestamp: int) -> bool:
         """
         Check if a timestamp is expired.
@@ -294,12 +298,21 @@ class TokenCache(metaclass=SingletonMeta):
         Returns:
             bool: True if expired, False if still valid
         """
-        try:
-            now = int(datetime.now(timezone.utc).timestamp())
-            return exp_timestamp <= now
-        except (TypeError, ValueError) as e:
-            log.error(f"Error checking timestamp expiry: {e}")
-            return True
+        if exp_timestamp in self._timestamp_cache:
+            return self._timestamp_cache[exp_timestamp]
+
+        now = int(datetime.now(timezone.utc).timestamp())
+        result = exp_timestamp <= now
+        self._timestamp_cache[exp_timestamp] = result
+
+        if len(self._timestamp_cache) > 100:
+            oldest_keys = list(self._timestamp_cache.keys())[
+                : len(self._timestamp_cache) - 100
+            ]
+            for key in oldest_keys:
+                del self._timestamp_cache[key]
+
+        return result
 
     def _is_token_expired(self, payload: dict) -> bool:
         """
@@ -307,8 +320,8 @@ class TokenCache(metaclass=SingletonMeta):
         """
         try:
             return self._check_timestamp_expired(payload["exp"])
-        except (KeyError, TypeError) as e:
-            log.error(f"Error extracting expiry from payload: {e}")
+        except (SKeyError, TypeError):
+            log.exception("Error extracting expiry from payload")
             return True
 
     def cache_token(self, token: str, payload: Dict[str, Any]) -> None:
@@ -319,8 +332,20 @@ class TokenCache(metaclass=SingletonMeta):
             token: Token string
             payload: Decoded token payload
         """
+        original_token = token
         token = normalize_token(token)
-
+        log.debug(
+            "Storing token in cache",
+            extra={
+                "component": "auth",
+                "action": "cache_store",
+                "details": {
+                    "original": original_token[:20] + "...",
+                    "normalized": token[:20] + "...",
+                    "cache_size_before": len(self._token_cache),
+                },
+            },
+        )
         if not self._is_token_expired(payload):
             self._token_cache[token] = payload
             self._validation_cache[token] = {
@@ -328,7 +353,22 @@ class TokenCache(metaclass=SingletonMeta):
                 "is_valid": True,
             }
             exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-            log.debug(f"Cached token expiring at {exp}")
+            log.debug(
+                "Cache state after store",
+                extra={
+                    "component": "auth",
+                    "action": "cache_state",
+                    "details": {
+                        "token_cache_keys": [
+                            k[:20] + "..." for k in self._token_cache.keys()
+                        ],
+                        "validation_cache_keys": [
+                            k[:20] + "..." for k in self._validation_cache.keys()
+                        ],
+                        "new_size": len(self._token_cache),
+                    },
+                },
+            )
 
     def get_cached_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
@@ -341,9 +381,38 @@ class TokenCache(metaclass=SingletonMeta):
             Cached token payload or None
         """
         token = normalize_token(token)
+
+        log.debug(
+            "Looking up token in cache",
+            extra={
+                "component": "auth",
+                "action": "cache_lookup",
+                "details": {
+                    "token_prefix": token[:20],
+                    "cache_size": len(self._token_cache),
+                    "in_token_cache": token in self._token_cache,
+                    "cache_keys": [k[:20] for k in self._token_cache.keys()],
+                },
+            },
+        )
         validation = self._validation_cache.get(token)
 
+        if self._token_cache:
+            sample_key = next(iter(self._token_cache))
+            log.debug(
+                "Sample cache key details",
+                extra={
+                    "component": "auth",
+                    "action": "cache_diagnosis",
+                    "sample_key_details": {
+                        "length": len(sample_key),
+                        "first_20_chars": sample_key[:20],
+                        "type": type(sample_key).__name__,
+                    },
+                },
+            )
         if validation:
+            log.debug("Found validation entry", extra={"validation": validation})
             cache_age = (
                 datetime.now(timezone.utc) - validation["timestamp"]
             ).total_seconds()
@@ -414,6 +483,7 @@ class TokenCache(metaclass=SingletonMeta):
         """
         self._token_cache.clear()
         self._validation_cache.clear()
+        self._timestamp_cache.clear()
         self._check_timestamp_expired.cache_clear()
         log.debug("Cleared caches")
 
@@ -505,7 +575,7 @@ class InMemoryCache(metaclass=SingletonMeta):
     In-memory cache with optional timeout and maximum size
     """
 
-    def __init__(self, maxsize: int = 128, default_timeout: int = 3600):
+    def __init__(self, maxsize: int = 128, default_timeout: int = 3600) -> None:
         """
         Initialize the cache
 
@@ -517,7 +587,7 @@ class InMemoryCache(metaclass=SingletonMeta):
         self._maxsize = maxsize
         self._default_timeout = default_timeout
 
-    def set(self, key: str, value: Any, timeout: Optional[int] = None):
+    def _set(self, key: str, value: Any, timeout: Optional[int] = None) -> None:
         """
         Set a value in the cache
 
@@ -553,7 +623,7 @@ class InMemoryCache(metaclass=SingletonMeta):
 
         return entry["value"]
 
-    def delete(self, key: str):
+    def delete(self, key: str) -> None:
         """
         Remove a key from the cache
 
@@ -574,7 +644,7 @@ class TokenValidationResult:
     device_id: Optional[str] = None
     key_id: Optional[int] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate required fields based on validation status"""
         if self.is_valid:
             if not self.token:
@@ -726,7 +796,7 @@ class TokenManager:
                 )
                 inserted_key = cursor.fetchone()
                 if not inserted_key:
-                    raise KeyError(
+                    raise SKeyError(
                         f"Failed to insert new key - no record found with id {key_id}"
                     )
 
@@ -740,7 +810,7 @@ class TokenManager:
                 log.debug(f"Final signing_keys count: {final_count}")
         except Exception as e:
             log.exception("Failed to initialize key on start")
-            raise KeyError("Failed to initialize key on start") from e
+            raise SKeyError("Failed to initialize key on start") from e
 
     async def verify_db_state(self) -> dict:
         """
@@ -813,11 +883,9 @@ class TokenManager:
                 self.key_cache.cache_active_key(key_id, key)
                 log.debug(f"Created new key {key_id}")
                 return key_id, key
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            log.exception(f"Failed to get/create key: {e}")
-            raise KeyError(f"Key management failed: {e}")
+        except Exception:
+            log.exception("Failed to get/create key")
+            raise SKeyError(f"Key management failed")
 
     async def rotate_key(self) -> Tuple[int, str]:
         """Create new key and invalidate old ones"""
@@ -839,9 +907,9 @@ class TokenManager:
                 log.debug(f"Revoked {affected_rows} tokens")
                 log.debug(f"Successfully rotated to new key {key_id}")
                 return key_id, key
-        except Exception as e:
-            log.exception(f"Failed to create key: {e}")
-            raise KeyError(f"Failed to create key: {e}")
+        except Exception:
+            log.exception("Failed to create key")
+            raise SKeyError("Failed to create key")
 
     async def get_active_key(self) -> Optional[Tuple[int, str]]:
         """Internal only get active key"""
@@ -862,9 +930,9 @@ class TokenManager:
                     return key_id, key
 
                 return None
-        except Exception as e:
-            log.exception(f"Failed to get active key: {e}")
-            raise KeyError(f"Failed to get active key: {e}")
+        except Exception:
+            log.exception("Failed to get active key")
+            raise SKeyError("Failed to get active key")
 
     async def get_active_keys(self) -> Optional[Tuple[int, str]]:
         """
@@ -894,9 +962,9 @@ class TokenManager:
                         for row in keys
                     ]
                 }
-        except Exception as e:
-            log.exception(f"Failed to get active key: {e}")
-            raise KeyError(f"Failed to get active key: {e}")
+        except Exception:
+            log.exception("Failed to get active key")
+            raise SKeyError("Failed to get active key")
 
     async def _get_existing_token(
         self, device_id: str, cursor
@@ -925,8 +993,8 @@ class TokenManager:
                 )
             except (ExpiredTokenError, InvalidTokenError) as e:
                 return TokenValidationResult(is_valid=False, error=str(e))
-        except Exception as e:
-            log.exception(f"Error checking existing token: {e}")
+        except Exception:
+            log.exception("Error checking existing token")
             return None
 
     async def create_token(
@@ -999,9 +1067,9 @@ class TokenManager:
         except sqlite3.IntegrityError as ie:
             log.error(f"Integrity error for device {device_id}: {ie}")
             raise TokenError("Device ID conflict")
-        except Exception as e:
-            log.exception(f"Token creation failed: {e}")
-            raise TokenError(f"Token creation failed: {str(e)}")
+        except Exception:
+            log.exception("Token creation failed")
+            raise TokenError("Token creation failed")
 
     async def revoke_token(self, token: str) -> dict:
         """
@@ -1058,21 +1126,18 @@ class TokenManager:
                     "message": "Token revoked",
                     "device_id": device_id,
                 }
-        except sqlite3.Error as e:
-            log.error(f"Database error during revocation: {e}")
+        except sqlite3.Error:
+            log.error("Database error during revocation")
             return {
                 "status": "error",
                 "message": "Database error during revocation",
             }
-        except Exception as e:
+        except Exception:
             log.exception("Token revocation failed")
-            raise HTTPException(
-                status_code=500, detail=f"Failed to revoke token: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail="Failed to revoke token")
 
-    async def _load_key_from_db(self, key_id: int) -> Optional[bytes]:
+    async def _load_key_from_db(self, key_id: int) -> bytes:
         """Load and decrypt key from database"""
-        conn = None
         try:
             async with self.app_state.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1083,7 +1148,7 @@ class TokenManager:
                 result = cursor.fetchone()
                 if not result:
                     log.debug(f"No active key found for ID {key_id}")
-                    return None
+                    return b""
 
                 encrypted_key = result[0]
                 key = self.app_state.security_manager.decrypt(encrypted_key)
@@ -1091,8 +1156,8 @@ class TokenManager:
                 log.debug(f"Loaded and cached key {key_id}")
                 return key
         except Exception:
-            log.exception(f"Failed to load key {key_id} from database")
-            return None
+            log.exception("Failed to load key %s from database", key_id)
+            return b""
 
     def _parse_token_header(self, token: str) -> dict:
         """Parse and validate token header"""
@@ -1109,8 +1174,9 @@ class TokenManager:
             if header.get("alg") != "HS256":
                 raise TokenError("Invalid algorithm")
             return header
-        except Exception as e:
-            raise TokenError(f"Invalid token header: {str(e)}")
+        except Exception:
+            log.exception("Invalid token header")
+            raise TokenError("Invalid token header")
 
     async def _get_key_for_token(self, header: dict) -> bytes:
         """Get key for token verification"""
@@ -1159,28 +1225,26 @@ class TokenManager:
 
             cursor.execute("COMMIT")
             log.debug(f"Token stored for device {device_id}")
-        except Exception as e:
+        except Exception:
             cursor.execute("ROLLBACK")
-            log.error("Failed to store token")
-            raise TokenError(f"Failed to store token: {str(e)}")
+            log.exception("Failed to store token")
+            raise TokenError("Failed to store token")
 
     async def verify_token(self, token: str) -> TokenValidationResult:
         """Verify JWT token and return validation result"""
-        log.debug(f"Starting token verification")
+        log.debug("Starting token verification")
         try:
             # Log the token being verified (but mask most of it)
             masked_token = (
                 token[:20] + "..." + token[-20:] if len(token) > 40 else token
             )
-            log.debug(f"Verifying token: {masked_token}")
+            log.debug("Verifying token: %s", masked_token)
 
             try:
                 normalized_token = normalize_token(token)
                 validated_token = validate_and_fix_token(normalized_token)
             except JWTError as e:
-                log.error(
-                    f"Token validation failed during normalization/validation: {e}"
-                )
+                log.exception("Token validation failed during normalization/validation")
                 return TokenValidationResult(is_valid=False, error=str(e))
 
             cached = self.token_cache.get_cached_token(validated_token)
@@ -1189,6 +1253,15 @@ class TokenManager:
                 return TokenValidationResult(
                     is_valid=True, payload=cached, token=validated_token
                 )
+
+            log.debug(
+                "Cache miss - reading from database",
+                extra={
+                    "component": "auth",
+                    "action": "db_read",
+                    "operation": "token_verification",
+                },
+            )
 
             async with self.app_state.db_manager.get_connection() as conn:
                 if not conn:
@@ -1208,7 +1281,24 @@ class TokenManager:
                     )
                     token_info = cursor.fetchone()
 
+                    log.debug(
+                        "Executing token lookup query",
+                        extra={
+                            "component": "auth",
+                            "action": "db_read",
+                            "operation": "token_lookup",
+                        },
+                    )
+
                     if not token_info:
+                        log.debug(
+                            "Token not found, trying normalized token",
+                            extra={
+                                "component": "auth",
+                                "action": "db_read",
+                                "operation": "normalized_token_lookup",
+                            },
+                        )
                         cursor.execute(
                             """SELECT t.revoked, t.device_id, t.key_id, t.token, t.expires_at
                             FROM tokens t
@@ -1218,9 +1308,10 @@ class TokenManager:
                         token_info = cursor.fetchone()
 
                     if not token_info:
-                        log.warning(f"Token not found in database.")
-                        log.debug(f"Normalized token hash: {hash(normalized_token)}")
-                        log.debug(f"Validated token hash: {hash(validated_token)}")
+                        log.warning("Token not found in database.")
+                        log.debug("Token hash: %s", hash(token))
+                        log.debug("Normalized token hash: %s", hash(normalized_token))
+                        log.debug("Validated token hash: %s", hash(validated_token))
 
                         cursor.execute("SELECT token FROM tokens")
                         db_tokens = cursor.fetchall()
@@ -1232,8 +1323,8 @@ class TokenManager:
                             is_valid=False, error="Token not found"
                         )
 
-                except sqlite3.Error as e:
-                    log.error(f"Database error during token lookup: {e}")
+                except sqlite3.Error:
+                    log.error("Database error during token lookup")
                     return TokenValidationResult(
                         is_valid=False, error="Database error during validation"
                     )
@@ -1266,7 +1357,7 @@ class TokenManager:
                     key_id=token_info["key_id"],
                 )
             except (TokenError, JWTError) as e:
-                log.warning(f"Token validation failed: {e}")
+                log.exception("Token validation failed")
                 return TokenValidationResult(is_valid=False, error=str(e))
         except Exception as e:
             log.exception("Unexpected error during token verification")
@@ -1274,7 +1365,7 @@ class TokenManager:
                 is_valid=False, error=f"Validation failed: {str(e)}"
             )
 
-    async def purge_expired_tokens(self):
+    async def purge_expired_tokens(self) -> None:
         """Background task to purge expired/revoked tokens"""
         while True:
             try:
@@ -1310,12 +1401,12 @@ class TokenManager:
                         log.debug(
                             f"Purged {deleted_count} tokens expired before {purge_cutoff}"
                         )
-            except Exception as e:
-                log.exception(f"Failed to purge tokens: {e}")
+            except Exception:
+                log.exception("Failed to purge tokens")
             finally:
                 await asyncio.sleep(3600)
 
-    async def verify_cache_state(self, token: str = None) -> dict:
+    async def verify_cache_state(self, token: Optional[str] = None) -> Dict[str, Any]:
         """
         Verify the cache state, optionally for a specific token
 
@@ -1361,7 +1452,7 @@ class TokenManager:
                         )
 
             except Exception as e:
-                log.error(f"Failed to check database state: {e}")
+                log.exception("Failed to check database state")
                 token_state.update({"database_error": str(e)})
 
             return {"cache_stats": cache_stats, "token_state": token_state}
@@ -1369,13 +1460,10 @@ class TokenManager:
         return {"cache_stats": cache_stats}
 
 
-security = HTTPBearer(auto_error=False)
-
-
 def is_localhost_request(request: Request) -> bool:
     """Check if request comes from loopback address (127.0.0.1/::1)"""
     try:
-        log.debug(f"Headers: {request.headers}")
+        # log.debug(f"Headers: {request.headers}")
         log.debug(f"Client: {request.client}")
         log.debug(f"Scope client: {request.scope.get('client')}")
         log.debug(f"X-Forwarded-For: {request.headers.get('X-Forwarded-For')}")
@@ -1409,9 +1497,15 @@ def is_localhost_request(request: Request) -> bool:
         return False
 
 
+security = HTTPBearer(auto_error=False)
+
+default_security = Security(security)
+default_depends = Depends(security)
+
+
 async def verify_auth_wrapper(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = default_security,
 ):
     """
     Use HMAC for internal requests, JWT for external requests
@@ -1425,7 +1519,8 @@ async def verify_auth_wrapper(
 
 
 async def verify_jwt_token(
-    request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = default_depends,
 ):
     if not credentials:
         log.error("Authentication failed: No bearer token provided")
@@ -1437,8 +1532,8 @@ async def verify_jwt_token(
             log.error(f"Token validation failed: {validation_result.error}")
             raise HTTPException(status_code=401, detail="Unauthorized")
         return validation_result
-    except TokenError as e:
-        log.error(f"Token verification failed: {str(e)}")
+    except TokenError:
+        log.exception("Token verification failed")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
