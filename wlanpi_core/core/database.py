@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.constants import DATABASE_PATH
 
 log = get_logger(__name__)
 
@@ -36,7 +37,7 @@ class DatabaseManager:
     def __init__(
         self,
         app_state: Any,
-        db_path: str = "/opt/wlanpi-core/.secrets/tokens.db",
+        db_path: str = DATABASE_PATH,
         max_size_mb: int = 10,
     ):
         self.app_state = app_state

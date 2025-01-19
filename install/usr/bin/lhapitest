@@ -4,7 +4,7 @@
 
 PORT=31415
 BASE_URL="/api/v1"
-SECRETS_PATH="/opt/wlanpi-core/.secrets/shared_secret"
+SECRETS_PATH="/etc/wlanpi-core/.secrets/shared_secret.bin"
 METHOD="GET"
 ENDPOINT=""
 PAYLOAD=""
@@ -95,7 +95,7 @@ usage() {
     echo "Options:"
     echo "  -p, --port PORT     Set the port (default: 31415)"
     echo "  -b, --base BASE     Set the base URL path (default: /api/v1)"
-    echo "  -s, --secrets PATH  Set the path to shared secrets (default: /opt/wlanpi-core/.secrets/shared_secret)"
+    echo "  -s, --secrets PATH  Set the path to shared secrets (default: /etc/wlanpi-core/.secrets/shared_secret)"
     echo "  -X, --method METHOD Set HTTP method (GET, POST, PUT, DELETE) (default: GET)"
     echo "  -e, --endpoint ENDPOINT Specify the API endpoint"
     echo "  -P, --payload PAYLOAD JSON payload for POST/PUT requests"

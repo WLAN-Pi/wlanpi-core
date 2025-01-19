@@ -56,7 +56,7 @@ def list_table_records(db_path, table_name):
 
 
 def main():
-    database_path = "/opt/wlanpi-core/.secrets/tokens.db"
+    database_path = "/etc/wlanpi-core/.secrets/tokens.db"
     tables = list_all_tables(database_path)
     if not tables:
         print("No tables found in the database.")

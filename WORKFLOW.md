@@ -82,7 +82,7 @@ Consider running with --reload for live reload as you iterate on hotfixes or fea
 2025-01-14 00:55:23,731 - wlanpi_core.app - DEBUG - Debug level logging
 INFO:     Started server process [77189]
 INFO:     Waiting for application startup.
-2025-01-14 00:55:23,904 - wlanpi_core.core.security - DEBUG - Secured secrets directory: /opt/wlanpi-core/.secrets
+2025-01-14 00:55:23,904 - wlanpi_core.core.security - DEBUG - Secured secrets directory: /etc/wlanpi-core/.secrets
 2025-01-14 00:55:23,905 - wlanpi_core.core.security - INFO - Loaded existing shared secret
 2025-01-14 00:55:23,905 - wlanpi_core.core.security - INFO - Loaded existing encryption key
 2025-01-14 00:55:23,906 - wlanpi_core.core.security - INFO - Security initialization complete
@@ -133,7 +133,7 @@ If you are running directly, now you can open your browser and interact with the
 
 ```
 canonical_string="POST\n/api/v1/auth/token\n{\"device_id\": \"testing\"}"
-signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /opt/wlanpi-core/.secrets/shared_secret)" -binary | xxd -p -c 256)
+signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /etc/wlanpi-core/.secrets/shared_secret)" -binary | xxd -p -c 256)
 
 curl -X 'POST' \
   -H "X-Request-Signature: $signature" \

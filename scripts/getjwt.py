@@ -15,7 +15,7 @@ except ImportError:
 
 DEFAULT_PORT = 31415
 AUTH_ENDPOINT = "/api/v1/auth/token"
-SECRET_PATH = "/opt/wlanpi-core/.secrets/shared_secret"
+SECRET_PATH = "/etc/wlanpi-core/.secrets/shared_secret.bin"
 RED = "\033[0;31m"
 BLUE = "\033[0;34m"
 GREEN = "\033[0;32m"

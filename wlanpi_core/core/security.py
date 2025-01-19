@@ -8,6 +8,7 @@ from typing import Optional
 from cryptography.fernet import Fernet
 
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.constants import SHARED_SECRET_FILE, SECRETS_DIR, ENCRYPTION_KEY_FILE
 
 log = get_logger(__name__)
 
@@ -17,10 +18,6 @@ class SecurityInitError(Exception):
 
 
 class SecurityManager:
-    SECRETS_DIR = "/opt/wlanpi-core/.secrets"
-    ENCRYPTION_KEY_FILE = "encryption.key"
-    SHARED_SECRET_FILE = "shared_secret"
-
     def __init__(self):
         self.secrets_path = Path(self.SECRETS_DIR)
         self._fernet: Optional[Fernet] = None

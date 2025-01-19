@@ -8,7 +8,7 @@
 #DEBHELPER#
 
 if [ "$1" = "purge" ]; then
-    rm -rf /opt/wlanpi-core/.secrets
+    rm -rf /etc/wlanpi-core/.secrets
 fi
 
 function unlink_if_existing() {

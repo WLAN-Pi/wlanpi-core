@@ -5,6 +5,11 @@ PROJECT_DESCRIPTION: str = (
     "The wlanpi-core API offers endpoints for WLAN Pi apps to get and share data. 🚀"
 )
 
+SECRETS_DIR = "/etc/wlanpi-core/.secrets"
+ENCRYPTION_KEY_FILE = "fernet_key.b64"
+SHARED_SECRET_FILE = "shared_secret.bin"
+DATABASE_PATH = "/etc/wlanpi-core/.secrets/tokens.db"
+
 # Linux programs
 IFCONFIG_FILE: str = "/sbin/ifconfig"
 IW_FILE: str = "/sbin/iw"
