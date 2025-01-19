@@ -305,10 +305,13 @@ class DatabaseManager:
             log.exception("WAL checkpoint failed")
 
     @asynccontextmanager
-    async def get_connection(self) -> AsyncGenerator[sqlite3.Connection, None]:
+    async def get_connection(
+        self, timeout: float = 5.0
+    ) -> AsyncGenerator[sqlite3.Connection, None]:
         """Get a database connection as an async context manager"""
         thread_id = threading.get_ident()
         connection = None
+        start_time = asyncio.get_event_loop().time()
 
         try:
             if hasattr(self._local, "conn"):
@@ -327,24 +330,37 @@ class DatabaseManager:
                     return
 
             async with self._conn_lock:
-                await self._ensure_database_exists()
-                connection = sqlite3.connect(self.db_path)
-                connection.row_factory = sqlite3.Row
+                while True:
+                    try:
+                        current_time = asyncio.get_event_loop().time()
+                        if current_time - start_time > timeout:
+                            raise DatabaseError("Connection timeout")
 
-                for setting in self.database_settings:
-                    connection.execute(setting)
+                        await self._ensure_database_exists()
+                        connection = sqlite3.connect(self.db_path, timeout=timeout)
+                        connection.row_factory = sqlite3.Row
 
-                self._local.conn = connection
+                        for setting in self.database_settings:
+                            connection.execute(setting)
 
-                log.debug(
-                    "Created new connection",
-                    extra={
-                        "component": "database",
-                        "action": "get_connection",
-                        "thread_id": thread_id,
-                        "connection_status": "new",
-                    },
-                )
+                        self._local.conn = connection
+
+                        log.debug(
+                            "Created new connection",
+                            extra={
+                                "component": "database",
+                                "action": "get_connection",
+                                "thread_id": thread_id,
+                                "connection_status": "new",
+                            },
+                        )
+                        break
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e):
+                            await asyncio.sleep(0.1)
+                            continue
+                        raise
+
                 yield connection
 
         except Exception:
@@ -360,7 +376,8 @@ class DatabaseManager:
                 try:
                     connection.close()
                 except Exception:
-                    raise DatabaseError("Could not connect to database")
+                    pass
+                raise DatabaseError("Could not connect to database")
 
     def check_size(self) -> bool:
         """Check if database size is within limits"""
