@@ -20,11 +20,11 @@ MIGRATIONS = [
     """
     CREATE TABLE IF NOT EXISTS tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        token TEXT NOT NULL UNIQUE,
+        token TEXT NOT NULL UNIQUE ON CONFLICT REPLACE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         expires_at TIMESTAMP NOT NULL,
         key_id INTEGER NOT NULL,
-        device_id TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL UNIQUE ON CONFLICT REPLACE,
         revoked BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (key_id) REFERENCES signing_keys (id)
     )
