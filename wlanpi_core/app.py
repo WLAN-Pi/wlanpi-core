@@ -109,6 +109,7 @@ def create_app(debug: bool = False):
 
                 await app.state.db_manager.backup()
 
+                await app.state.db_manager.checkpoint_wal()
             except Exception as e:
                 log.error(f"Maintenance task failed: {e}")
             finally:

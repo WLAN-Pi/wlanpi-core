@@ -282,6 +282,28 @@ class DatabaseManager:
             )
             return False
 
+    async def checkpoint_wal(self) -> None:
+        """Perform a WAL checkpoint to minimize WAL file size"""
+        try:
+            async with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                result = cursor.fetchone()
+                if result:
+                    busy, log_size, frames = result
+                    log.debug(
+                        "WAL checkpoint stats",
+                        extra={
+                            "component": "database",
+                            "action": "checkpoint",
+                            "busy": busy,
+                            "log_size": log_size,
+                            "frames": frames,
+                        },
+                    )
+        except Exception:
+            log.exception("WAL checkpoint failed")
+
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[sqlite3.Connection, None]:
         """Get a database connection as an async context manager"""
