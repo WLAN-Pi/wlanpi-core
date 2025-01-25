@@ -22,6 +22,7 @@ from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityManager
 from wlanpi_core.core.tokenmanager import TokenManager
+from wlanpi_core.views.api import router as views_router
 
 
 def create_app(debug: bool = False):
@@ -68,6 +69,8 @@ def create_app(debug: bool = False):
                     "description": route.description.split("\n")[0],
                 }
             )
+
+    app.include_router(views_router)
 
     app.mount(
         "/static",

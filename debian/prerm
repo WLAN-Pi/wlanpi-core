@@ -9,7 +9,7 @@ case "$1" in
         fi
         # Force unmount if still mounted
         if mountpoint -q /var/log/wlanpi_core/debug; then
-            umount -f /var/log/wlanpi_core/debug || true
+            umount -l -f /var/log/wlanpi_core/debug || true
         fi
     ;;
     failed-upgrade)

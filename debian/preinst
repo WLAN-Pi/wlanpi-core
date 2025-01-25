@@ -5,4 +5,9 @@
 
 set -e
 
+if dpkg -s nginx-full >/dev/null 2>&1; then
+    # Remove nginx-full if it's installed
+    dpkg -r --force-depends nginx-full
+fi
+
 #DEBHELPER#
