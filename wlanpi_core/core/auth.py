@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import ipaddress
+import urllib
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Security
@@ -71,12 +72,22 @@ async def verify_hmac(request: Request):
 
     secret = request.app.state.security_manager.shared_secret
     body = await request.body()
-    canonical_string = f"{request.method}\n{request.url.path}\n{body.decode()}"
+    query_string = urllib.parse.urlencode(request.query_params) if request.query_params else ""
+    # verify path + query
+    canonical_string = f"{request.method}\n{request.url.path}\n{query_string}\n{body.decode()}"
 
     calculated = hmac.new(secret, canonical_string.encode(), hashlib.sha256).hexdigest()
 
-    log.debug(f"Server calculated signature: {calculated}")
     log.debug(f"Client provided signature: {signature}")
+    log.debug(f"Server calculated signature: {calculated}")
+
+    log.debug(f"Backend HMAC components:")
+    log.debug(f"Method: {request.method}")
+    log.debug(f"Path: {request.url.path}")
+    log.debug(f"Query string: {query_string}")
+    log.debug(f"Body string: {body.decode()}")
+
+    log.debug(f"Backend canonical string (hex): {canonical_string.encode().hex()}")
 
     if not hmac.compare_digest(signature, calculated):
         raise HTTPException(
