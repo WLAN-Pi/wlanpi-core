@@ -2,8 +2,8 @@ from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.constants import API_DEFAULT_TIMEOUT
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
@@ -240,7 +240,7 @@ async def delete_ethernet_vlan(
     response_model=network.Interfaces,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
+async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_TIMEOUT):
     """
     Queries systemd via dbus to get the details of the currently connected network.
     """
@@ -261,7 +261,7 @@ async def get_a_systemd_network_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_a_systemd_network_scan(
-    type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
+    type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Queries systemd via dbus to get a scan of the available networks.
@@ -285,7 +285,7 @@ async def get_a_systemd_network_scan(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_a_systemd_network(
-    setup: network.WlanInterfaceSetup, timeout: int = API_DEFAULT_TIMEOUT
+    setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Queries systemd via dbus to set a single network.
@@ -309,7 +309,7 @@ async def set_a_systemd_network(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_a_systemd_currentNetwork_details(
-    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+    interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Queries systemd via dbus to get the details of the currently connected network.

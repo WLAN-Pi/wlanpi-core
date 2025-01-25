@@ -6,6 +6,10 @@ from wlanpi_core import constants
 
 
 class Settings(BaseSettings):
+    API_DEFAULT_TIMEOUT: int = 20
+
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+
     API_V1_STR: str = constants.API_V1_STR
 
     PROJECT_NAME: str = constants.PROJECT_NAME

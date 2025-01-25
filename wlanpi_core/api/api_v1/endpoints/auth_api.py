@@ -5,19 +5,13 @@ This module provides API endpoints for token management,
 signing key rotation, and authentication-related debug operations.
 """
 
-import base64
 from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from wlanpi_core.core.auth import (
-    ACCESS_TOKEN_EXPIRE_DAYS,
-    KeyCache,
-    verify_auth_wrapper,
-    verify_hmac,
-    verify_jwt_token,
-)
+from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
+from wlanpi_core.core.config import settings
 from wlanpi_core.schemas.auth import KeyResponse, Token, TokenRequest
 
 router = APIRouter()
@@ -33,17 +27,15 @@ async def generate_token(request: Request, token_request: TokenRequest):
         if not token_request.device_id:
             raise HTTPException(status_code=412, detail="Device ID (did) is required")
 
-        access_token_expires = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+        access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         token = await request.app.state.token_manager.create_token(
             device_id=token_request.device_id, expires_delta=access_token_expires
         )
         return Token(access_token=token, token_type="bearer")
-    except HTTPException:
-        raise
     except Exception:
         log.exception("Unexpected error during token generation")
         raise HTTPException(
-            status_code=500, detail="Internal server error during token generation"
+            status_code=500, detail=f"Internal server error during token generation"
         )
 
 
@@ -89,14 +81,10 @@ async def revoke_token(request: Request, token_request: TokenRequest):
 async def new_signing_key(request: Request):
     """Create new signing key and invalidate old one"""
     try:
-        key_cache = KeyCache()
-        key_cache.clear()
+        key_id, key_str = await request.app.state.token_manager.rotate_key()
 
-        key_id, key = await request.app.state.token_manager.rotate_key()
-
-        key_b64 = base64.b64encode(key).decode("ascii") if key else None
         return KeyResponse(
-            key_id=key_id, message="New signing key created", key=key_b64
+            key_id=key_id, message="New signing key created", key=key_str
         )
     except Exception:
         log.exception("Unexpected error during signing key generation")
@@ -113,7 +101,8 @@ async def new_signing_key(request: Request):
 async def list_all_signing_keys(request: Request):
     """List all signing keys"""
     try:
-        return await request.app.state.token_manager.get_active_keys()
+        keys = await request.app.state.token_manager.get_active_keys()
+        return keys
     except Exception:
         log.exception("Unexpected error getting keys")
         raise HTTPException(status_code=500, detail="Internal server error")

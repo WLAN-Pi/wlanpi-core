@@ -10,17 +10,8 @@ if systemctl is-masked var-log-wlanpi_core-debug.mount >/dev/null 2>&1; then
     systemctl unmask var-log-wlanpi_core-debug.mount || true
 fi
 
-# function to check if a path is a symlink
-function isValidSymlink() {
-    if [ -L "$1" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 # get python version, remove spaces, get Python3.7 or Python3.9, lowercase
-PYTHONSTUB=`python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p'`
+PYTHONSTUB=$(python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p')
 
 # the actual target working directory (this is a workaround so we can support multiple Python versions at build)
 TARGET_DIR=/opt/wlanpi-core/lib/$PYTHONSTUB/site-packages/wlanpi_core
@@ -31,18 +22,25 @@ LINK=/opt/wlanpi-core/workingdirectory
 # this is the path that we need to check if is already a link
 TEST_PATH=/opt/wlanpi-core/workingdirectory/wlanpi_core
 
-CONF_CHANGED=1
-
 # if link doesn't exist, create it
 if ! isValidSymlink $TEST_PATH; then
-    ln -s $TARGET_DIR $LINK
+    ln -sf "$TARGET_DIR" "$LINK"
 fi
-# if wlanpi_core.conf is not a symlink, create symlink.
+
+CONF_CHANGED=1
+
+# Ensure nginx sites-enabled directory exists
+mkdir -p /etc/nginx/sites-enabled
+
+# if source configuration file exists, create symlink
 WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
-if ! isValidSymlink $WLANPI_CORE; then
-    echo "Linking wlanpi_core.conf ..."
-    ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
+SOURCE_CONF=/etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf
+
+if [ -f "$SOURCE_CONF" ]; then
+    ln -sf "$SOURCE_CONF" "$WLANPI_CORE" || true
     CONF_CHANGED=0
+else
+    echo "Warning: source nginx site configuration at $SOURCE_CONF not found"
 fi
 
 if [ $CONF_CHANGED -eq 0 ]; then

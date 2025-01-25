@@ -8,7 +8,7 @@ PROJECT_DESCRIPTION: str = (
 SECRETS_DIR = "/etc/wlanpi-core/.secrets"
 ENCRYPTION_KEY_FILE = "fernet_key.b64"
 SHARED_SECRET_FILE = "shared_secret.bin"
-DATABASE_PATH = "/etc/wlanpi-core/.secrets/tokens.db"
+DATABASE_PATH = f"{SECRETS_DIR}/tokens.db"
 
 # Linux programs
 IFCONFIG_FILE: str = "/sbin/ifconfig"
@@ -40,9 +40,6 @@ WPAS_DBUS_INTERFACES_INTERFACE: str = "fi.w1.wpa_supplicant1.Interface"
 WPAS_DBUS_INTERFACES_OPATH: str = "/fi/w1/wpa_supplicant1/Interfaces"
 WPAS_DBUS_BSS_INTERFACE: str = "fi.w1.wpa_supplicant1.BSS"
 WPAS_DBUS_NETWORK_INTERFACE: str = "fi.w1.wpa_supplicant1.Network"
-
-# Core API configuration
-API_DEFAULT_TIMEOUT: int = 20
 
 # VLAN model constants
 DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"

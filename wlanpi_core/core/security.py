@@ -7,8 +7,8 @@ from typing import Optional
 
 from cryptography.fernet import Fernet
 
+from wlanpi_core.constants import ENCRYPTION_KEY_FILE, SECRETS_DIR, SHARED_SECRET_FILE
 from wlanpi_core.core.logging import get_logger
-from wlanpi_core.constants import SHARED_SECRET_FILE, SECRETS_DIR, ENCRYPTION_KEY_FILE
 
 log = get_logger(__name__)
 
@@ -19,7 +19,7 @@ class SecurityInitError(Exception):
 
 class SecurityManager:
     def __init__(self):
-        self.secrets_path = Path(self.SECRETS_DIR)
+        self.secrets_path = Path(SECRETS_DIR)
         self._fernet: Optional[Fernet] = None
         try:
             self._setup_secrets_directory()
@@ -34,14 +34,13 @@ class SecurityManager:
         """Create and secure secrets directory"""
         try:
             self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
-            log.debug(f"Secured secrets directory: {self.SECRETS_DIR}")
         except Exception as e:
             log.exception(f"Failed to create secrets directory: {e}")
             raise
 
     def _setup_shared_secret(self) -> bytes:
         """Generate or load HMAC shared secret"""
-        secret_path = self.secrets_path / self.SHARED_SECRET_FILE
+        secret_path = self.secrets_path / SHARED_SECRET_FILE
         secrets_dir = self.secrets_path
 
         try:
@@ -86,7 +85,7 @@ class SecurityManager:
 
     def _setup_encryption_key(self):
         """Generate or load Fernet encryption key"""
-        key_path = self.secrets_path / self.ENCRYPTION_KEY_FILE
+        key_path = self.secrets_path / ENCRYPTION_KEY_FILE
 
         try:
             if not key_path.exists():

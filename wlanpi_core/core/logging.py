@@ -7,65 +7,72 @@ import traceback
 from typing import Dict, Optional
 
 LOG_LEVELS = {
-    "DEBUG": logging.DEBUG,
-    "INFO": logging.INFO,
-    "WARNING": logging.WARNING,
-    "ERROR": logging.ERROR,
-    "CRITICAL": logging.CRITICAL,
+    "DEBUG": 10,
+    "INFO": 20,
+    "WARNING": 30,
+    "ERROR": 40,
+    "CRITICAL": 50,
 }
 
 
-class ContextualLogRecord(logging.LogRecord):
+def create_contextual_log_record():
     """
-    Custom LogRecord that captures additional context information
+    Create ContextualLogRecord class dynamically to avoid circular import
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    class ContextualLogRecord(logging.LogRecord):
+        """
+        Custom LogRecord that captures additional context information
+        """
 
-        if not self.exc_info and sys.exc_info()[0] is not None:
-            self.exc_info = sys.exc_info()
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
 
-        if self.levelno >= logging.ERROR and self.exc_info:
-            try:
-                exc_type, exc_value, exc_traceback = self.exc_info
-                tb = traceback.extract_tb(exc_traceback)
-                if tb:
-                    last_frame = tb[-1]
-                    self.source_file = os.path.basename(last_frame.filename)
-                    self.line_number = last_frame.lineno
-                    self.source_function = last_frame.name
-                else:
+            if not self.exc_info and sys.exc_info()[0] is not None:
+                self.exc_info = sys.exc_info()
+
+            if self.levelno >= logging.ERROR and self.exc_info:
+                try:
+                    exc_type, exc_value, exc_traceback = self.exc_info
+                    tb = traceback.extract_tb(exc_traceback)
+                    if tb:
+                        last_frame = tb[-1]
+                        self.source_file = os.path.basename(last_frame.filename)
+                        self.line_number = last_frame.lineno
+                        self.source_function = last_frame.name
+                    else:
+                        self.source_file = "Unknown"
+                        self.line_number = 0
+                        self.source_function = "Unknown"
+                except Exception:
                     self.source_file = "Unknown"
                     self.line_number = 0
                     self.source_function = "Unknown"
-            except Exception:
-                self.source_file = "Unknown"
-                self.line_number = 0
-                self.source_function = "Unknown"
-        else:
-            try:
-                stack = traceback.extract_stack()
-                for frame in reversed(stack[:-2]):  # Exclude the last two frames
-                    filename = os.path.basename(frame.filename)
-                    lineno = frame.lineno
-                    function = frame.name
-                    if all(
-                        module not in filename
-                        for module in ["logging", __file__, "contextlib"]
-                    ):
-                        self.source_file = os.path.basename(filename)
-                        self.line_number = lineno
-                        self.source_function = function
-                        break
-                else:
+            else:
+                try:
+                    stack = traceback.extract_stack()
+                    for frame in reversed(stack[:-2]):  # Exclude the last two frames
+                        filename = os.path.basename(frame.filename)
+                        lineno = frame.lineno
+                        function = frame.name
+                        if all(
+                            module not in filename
+                            for module in ["logging", __file__, "contextlib"]
+                        ):
+                            self.source_file = os.path.basename(filename)
+                            self.line_number = lineno
+                            self.source_function = function
+                            break
+                    else:
+                        self.source_file = "Unknown"
+                        self.line_number = 0
+                        self.source_function = "Unknown"
+                except Exception:
                     self.source_file = "Unknown"
                     self.line_number = 0
                     self.source_function = "Unknown"
-            except Exception:
-                self.source_file = "Unknown"
-                self.line_number = 0
-                self.source_function = "Unknown"
+
+    return ContextualLogRecord
 
 
 class ContextFilter(logging.Filter):
@@ -157,7 +164,9 @@ def configure_logging(debug_mode: bool = False):
     Args:
         debug_mode: Whether to force DEBUG level logging
     """
-    logging.setLogRecordFactory(ContextualLogRecord)
+    create_contextual_log_record()
+
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:

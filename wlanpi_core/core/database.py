@@ -1,12 +1,22 @@
+from __future__ import annotations
+
 import asyncio
-import sqlite3
-import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, TypeVar
 
-from wlanpi_core.core.logging import get_logger
+from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
+
 from wlanpi_core.constants import DATABASE_PATH
+from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -15,548 +25,200 @@ class DatabaseError(Exception):
     """Base class for database errors"""
 
 
-class DatabaseCorruptionError(DatabaseError):
-    """Raised when database corruption is detected"""
+# Naming convention for database constraints to support migrations
+convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+metadata = MetaData(naming_convention=convention)
+
+
+class Base(AsyncAttrs, DeclarativeBase):
+    """
+    Base class for SQLAlchemy models with additional helper methods
+
+    Provides:
+    - Automatic table naming (snake_case)
+    - Metadata with naming conventions
+    - Timestamps for created/updated records
+    """
+
+    metadata = metadata
+
+    @declared_attr.directive
+    def __tablename__(cls) -> str:
+        """
+        Convert CamelCase class names to snake_case table names
+        e.g. DeviceActivity -> device_activity
+        """
+        return "".join(
+            ["_" + c.lower() if c.isupper() else c for c in cls.__name__]
+        ).lstrip("_")
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[Optional[DateTime]] = mapped_column(
+        DateTime, onupdate=func.now(), nullable=True
+    )
+
+
+ModelType = TypeVar("ModelType", bound=Base)
 
 
 class DatabaseManager:
-    """Database management class with structured logging
+    """
+    Async database management class with connection pooling and session handling
 
-    All database operations are logged with the following context:
-    - component: always "database"
-    - action: specific operation being performed
-    - Additional context specific to the operation
-
-    Log levels:
-    - DEBUG: Connection management, routine checks
-    - INFO: Database creation, significant state changes
-    - WARNING: Recoverable errors
-    - ERROR: Operation failures
+    Supports:
+    - Async engine creation
+    - Connection pooling
+    - Session management
+    - Logging and error handling
     """
 
     def __init__(
         self,
-        app_state: Any,
-        db_path: str = DATABASE_PATH,
-        max_size_mb: int = 10,
+        database_url: Optional[str] = None,
+        echo: bool = False,
+        pool_recycle: int = 1800,
     ):
-        self.app_state = app_state
-        self.db_path = Path(db_path)
-        self.max_size_mb = max_size_mb
-        self.database_settings = [
-            "PRAGMA foreign_keys=ON",
-            "PRAGMA journal_mode=WAL",
-            "PRAGMA synchronous=NORMAL",
-            "PRAGMA temp_store=MEMORY",
-            "PRAGMA cache_size=-2000",
-        ]
-        self._local = threading.local()
-        self._conn_lock = asyncio.Lock()
-        self._init_lock = asyncio.Lock()
-
-    async def initialize(self) -> None:
-        log.debug(
-            "Starting database initialization",
-            extra={
-                "component": "database",
-                "action": "initialize",
-                "db_path": str(self.db_path),
-                "max_size_mb": self.max_size_mb,
-            },
-        )
-        await self._ensure_database_exists()
-        log.debug(
-            "Database initialization complete",
-            extra={"component": "database", "action": "initialize_complete"},
-        )
-
-    async def _ensure_database_exists(self) -> None:
         """
-        Ensure the database file exists and is accessible.
-        Create it if it doesn't exist or is corrupted.
-        """
-        async with self._init_lock:  # Ensure only one thread handles recovery
-            try:
-                if not self.db_path.exists():
-                    log.warning(
-                        "Database creation needed",
-                        extra={
-                            "component": "database",
-                            "action": "create_database",
-                            "db_path": str(self.db_path),
-                            "reason": "not_exists",
-                        },
-                    )
-                    self._create_base_database()
-                    return
+        Initialize async database engine and session factory
 
-                if not await self.check_integrity():
-                    log.error(
-                        "Database integrity check failed",
-                        extra={
-                            "component": "database",
-                            "action": "recreate_database",
-                            "db_path": str(self.db_path),
-                            "reason": "integrity_check_failed",
-                        },
-                    )
-                    self._create_base_database()
-            except Exception:
-                log.exception("Unexpected error checking database")
-                raise DatabaseError("Cannot ensure or verify database integrity")
+        Args:
+            database_url: Database connection URL (defaults to sqlite+aiosqlite)
+            echo: Whether to log SQL statements
+            pool_recycle: Recycle connections after this many seconds (optional)
+        """
+        if database_url is None:
+            database_url = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 
-    def _create_base_database(self) -> None:
-        """
-        Create a new database with base schema
-        """
         try:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._engine = create_async_engine(database_url, echo=echo)
 
-            if self.db_path.exists():
-                log.debug(
-                    "Removing existing database",
-                    extra={
-                        "component": "database",
-                        "action": "create_database",
-                        "db_path": str(self.db_path),
-                    },
-                )
-                self.db_path.unlink()
+            self._async_session_factory = async_sessionmaker(
+                bind=self._engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autoflush=False,
+            )
 
-            conn = sqlite3.connect(self.db_path)
-            for setting in self.database_settings:
-                conn.execute(setting)
-
-            from .migrations import run_migrations
-
-            run_migrations(conn)
-            conn.close()
+            self._initialized = False
+            self._lock = asyncio.Lock()
 
             log.debug(
-                "Created new database",
+                "Database engine initialized",
                 extra={
                     "component": "database",
-                    "action": "create_database",
-                    "db_path": str(self.db_path),
+                    "action": "initialize",
+                    "database_url": database_url,
+                    "echo": echo,
                 },
             )
 
-        except Exception:
-            log.exception(
-                "Database creation failed",
+        except Exception as e:
+            log.error(
+                "Database engine initialization failed",
                 extra={
                     "component": "database",
-                    "action": "create_database_error",
-                    "db_path": str(self.db_path),
-                },
-            )
-            raise DatabaseError("Database creation failed")
-
-    async def check_integrity(self) -> bool:
-        """Check database integrity and required structure
-        Returns True if database checks pass, False if not
-        """
-        conn = None
-        try:
-            conn = sqlite3.connect(self.db_path)
-
-            if conn is None:
-                log.error(
-                    "Unable to connect to database",
-                    extra={
-                        "component": "database",
-                        "action": "check_integrity",
-                    },
-                )
-                return False
-
-            cursor = conn.cursor()
-
-            log.debug(
-                "Starting database integrity check",
-                extra={
-                    "component": "database",
-                    "action": "check_integrity",
-                    "db_path": str(self.db_path),
-                },
-            )
-
-            # Connection test
-            cursor.execute("SELECT name FROM sqlite_master")
-            cursor.fetchone()
-
-            # Check WAL mode
-            cursor.execute("PRAGMA journal_mode")
-            journal_mode_result = cursor.fetchone()
-            if journal_mode_result is None:
-                log.error(
-                    "Unable to retrieve journal mode",
-                    extra={
-                        "component": "database",
-                        "action": "check_journal_mode",
-                    },
-                )
-                return False
-
-            journal_mode = journal_mode_result[0]
-
-            if journal_mode != "wal":
-                log.error(
-                    "Invalid journal mode",
-                    extra={
-                        "component": "database",
-                        "action": "check_journal_mode",
-                        "expected": "wal",
-                        "actual": journal_mode,
-                    },
-                )
-                return False
-
-            # Check required indexes
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
-            indexes = {row[0] for row in cursor.fetchall()}
-            required_indexes = {"idx_tokens_device_id", "idx_tokens_expires"}
-            if not required_indexes.issubset(indexes):
-                missing_indexes = required_indexes - indexes
-                log.error(
-                    "Missing required indexes",
-                    extra={
-                        "component": "database",
-                        "action": "check_indexes",
-                        "missing_indexes": list(missing_indexes),
-                    },
-                )
-                return False
-
-            # Check database integrity
-            cursor.execute("PRAGMA integrity_check")
-            if cursor.fetchone()[0] != "ok":
-                log.error("Database integrity check failed")
-                return False
-
-            # Check foreign key constraints
-            cursor.execute("PRAGMA foreign_key_check")
-            if cursor.fetchall():
-                log.error("Database foreign key check failed")
-                return False
-
-            return True
-
-        except sqlite3.DatabaseError:
-            log.error("Database %s is corrupted", self.db_path)
-            return False
-        except Exception:
-            log.exception("Unexpected error checking database")
-            raise DatabaseError("Cannot verify database")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    log.warning(
-                        "Error closing connection during verification", exc_info=True
-                    )
-
-    def _verify_connection(self, conn: sqlite3.Connection) -> bool:
-        """Verify that a connection is alive and the database is valid"""
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master")
-            cursor.fetchone()
-            log.debug(
-                "Database connection verified",
-                extra={
-                    "component": "database",
-                    "action": "verify_connection",
-                    "status": "valid",
-                },
-            )
-            return True
-        except sqlite3.DatabaseError:
-            log.debug(
-                "Database connection invalid",
-                extra={
-                    "component": "database",
-                    "action": "verify_connection",
-                    "status": "invalid",
-                },
-            )
-            return False
-
-    async def checkpoint_wal(self) -> None:
-        """Perform a WAL checkpoint to minimize WAL file size"""
-        try:
-            async with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
-                result = cursor.fetchone()
-                if result:
-                    busy, log_size, frames = result
-                    log.debug(
-                        "WAL checkpoint stats",
-                        extra={
-                            "component": "database",
-                            "action": "checkpoint",
-                            "busy": busy,
-                            "log_size": log_size,
-                            "frames": frames,
-                        },
-                    )
-        except Exception:
-            log.exception("WAL checkpoint failed")
-
-    @asynccontextmanager
-    async def get_connection(
-        self, timeout: float = 5.0
-    ) -> AsyncGenerator[sqlite3.Connection, None]:
-        """Get a database connection as an async context manager"""
-        thread_id = threading.get_ident()
-        connection = None
-        start_time = asyncio.get_event_loop().time()
-
-        try:
-            if hasattr(self._local, "conn"):
-                connection = self._local.conn
-                if self._verify_connection(connection):
-                    log.debug(
-                        "Reusing existing connection",
-                        extra={
-                            "component": "database",
-                            "action": "get_connection",
-                            "thread_id": thread_id,
-                            "connection_status": "reused",
-                        },
-                    )
-                    yield connection
-                    return
-
-            async with self._conn_lock:
-                while True:
-                    try:
-                        current_time = asyncio.get_event_loop().time()
-                        if current_time - start_time > timeout:
-                            raise DatabaseError("Connection timeout")
-
-                        await self._ensure_database_exists()
-                        connection = sqlite3.connect(self.db_path, timeout=timeout)
-                        connection.row_factory = sqlite3.Row
-
-                        for setting in self.database_settings:
-                            connection.execute(setting)
-
-                        self._local.conn = connection
-
-                        log.debug(
-                            "Created new connection",
-                            extra={
-                                "component": "database",
-                                "action": "get_connection",
-                                "thread_id": thread_id,
-                                "connection_status": "new",
-                            },
-                        )
-                        break
-                    except sqlite3.OperationalError as e:
-                        if "database is locked" in str(e):
-                            await asyncio.sleep(0.1)
-                            continue
-                        raise
-
-                yield connection
-
-        except Exception:
-            log.exception(
-                "Database connection error",
-                extra={
-                    "component": "database",
-                    "action": "get_connection_error",
-                    "thread_id": thread_id,
-                },
-            )
-            if connection:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
-                raise DatabaseError("Could not connect to database")
-
-    def check_size(self) -> bool:
-        """Check if database size is within limits"""
-        try:
-            size_mb = self.db_path.stat().st_size / (1024 * 1024)
-            within_limits = size_mb <= self.max_size_mb
-            log.debug(
-                "Checked database size",
-                extra={
-                    "component": "database",
-                    "action": "check_size",
-                    "current_size_mb": round(size_mb, 2),
-                    "max_size_mb": self.max_size_mb,
-                    "within_limits": within_limits,
-                },
-            )
-            return within_limits
-        except Exception:
-            log.exception(
-                "Database size check failed",
-                extra={
-                    "component": "database",
-                    "action": "check_size_error",
-                    "db_path": str(self.db_path),
-                },
-            )
-            return False
-
-    async def vacuum(self) -> None:
-        async with self._conn_lock:
-            try:
-                log.debug(
-                    "Starting database vacuum",
-                    extra={
-                        "component": "database",
-                        "action": "vacuum",
-                        "db_path": str(self.db_path),
-                    },
-                )
-                async with self.get_connection() as conn:
-                    conn.execute("VACUUM")
-                    conn.commit()
-                    log.debug(
-                        "Database vacuum completed successfully",
-                        extra={"component": "database", "action": "vacuum_complete"},
-                    )
-            except Exception as e:
-                log.exception(
-                    "Database vacuum failed",
-                    extra={
-                        "component": "database",
-                        "action": "vacuum_failed",
-                    },
-                )
-                raise DatabaseError(f"Vacuum failed: {e}")
-
-    async def backup(self, backup_path: Optional[Path] = None) -> None:
-        """Create a backup of the database"""
-        if not backup_path:
-            backup_path = self.db_path.with_suffix(".db.backup")
-
-        log.debug(
-            "Starting database backup",
-            extra={
-                "component": "database",
-                "action": "backup_start",
-                "source_path": str(self.db_path),
-                "backup_path": str(backup_path),
-            },
-        )
-
-        try:
-            if await self.check_integrity():
-                backup = sqlite3.connect(backup_path)
-                with backup:
-                    try:
-                        async with self.get_connection() as connection:
-                            connection.backup(backup)
-                        log.debug(
-                            "Database backup completed",
-                            extra={
-                                "component": "database",
-                                "action": "backup_complete",
-                                "backup_path": str(backup_path),
-                            },
-                        )
-                    except sqlite3.Error as e:
-                        log.exception(
-                            "Backup API error",
-                            extra={
-                                "component": "database",
-                                "action": "backup_api_error",
-                            },
-                        )
-                        raise DatabaseError(f"Backup failed: {e}")
-            else:
-                log.exception(
-                    "Cannot backup corrupted database",
-                    extra={
-                        "component": "database",
-                        "action": "backup_failed",
-                        "reason": "integrity_check_failed",
-                    },
-                )
-                raise DatabaseError("Database integrity check failed")
-        except Exception:
-            log.exception(
-                "Database backup failed",
-                extra={
-                    "component": "database",
-                    "action": "backup_failed",
+                    "action": "init_error",
+                    "error": str(e),
                 },
             )
             raise
 
-    def _check_conn_alive(self) -> bool:
-        if not hasattr(self._local, "conn"):
-            return False
-        try:
-            self._local.conn.execute("SELECT 1").fetchone()
-            return True
-        except sqlite3.Error:
-            return False
+    @property
+    def engine(self) -> AsyncEngine:
+        return self._engine
 
-    async def close(self) -> None:
-        """Close database connection"""
-        thread_id = threading.get_ident()
+    @asynccontextmanager
+    async def session(self) -> AsyncGenerator[AsyncSession, None]:
+        """
+        Async context manager for database sessions
 
-        if hasattr(self._local, "conn"):
-            log.debug(
-                "Closing database connection",
-                extra={
-                    "component": "database",
-                    "action": "close_connection",
-                    "thread_id": thread_id,
-                },
-            )
+        Yields:
+            An async database session
+        """
+        async with self._async_session_factory() as session:
             try:
-                self._local.conn.close()
-                log.debug(
-                    "Database connection closed successfully",
-                    extra={
-                        "component": "database",
-                        "action": "close_complete",
-                        "thread_id": thread_id,
-                    },
-                )
-            except sqlite3.Error:
-                log.exception(
-                    "Error closing database connection",
-                    extra={
-                        "component": "database",
-                        "action": "close_error",
-                        "thread_id": thread_id,
-                    },
-                )
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
             finally:
-                del self._local.conn
+                await session.close()
 
+    async def initialize_models(self):
+        """
+        Create all database tables defined in models
+        """
+        async with self._lock:
+            if self._initialized:
+                return
 
-class RetentionManager:
-    def __init__(self, app_state: Any, retention_days: int = 1):
-        self.app_state = app_state
-        self.retention_days = retention_days
+            log.info("Initializing database")
+            try:
+                db_path = Path(DATABASE_PATH).parent
+                db_path.mkdir(parents=True, exist_ok=True)
 
-    async def cleanup_old_data(self) -> None:
-        """Remove old activity data"""
-        try:
-            async with self.app_state.db_manager.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    DELETE FROM device_activity_recent
-                    WHERE timestamp < datetime('now', ? || ' days')
-                """,
-                    (-self.retention_days,),
+                async with self._engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+
+                self._initialized = True
+
+                log.debug(
+                    "Database tables initialized",
+                    extra={"component": "database", "action": "initialize_models"},
                 )
-                conn.commit()
-                log.debug(f"Ran clean up data older than {self.retention_days} days")
-        except Exception:
-            log.exception("Retention cleanup failed")
+            except Exception as e:
+                log.error(
+                    "Database tables initialization failed",
+                    extra={"component": "database", "action": "initialize_models"},
+                    exc_info=e,
+                )
+                raise
+
+    async def cleanup(self) -> None:
+        """Cleanup database connections"""
+        if self._engine:
+            await self._engine.dispose()
+            log.debug("Database connections cleaned up")
+
+
+class BaseRepository:
+    """
+    Generic async repository with common CRUD operations
+
+    Can be inherited by specific model repositories
+    """
+
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def add(self, model: ModelType) -> ModelType:
+        """Add a new model instance to the database"""
+        self._session.add(model)
+        await self._session.flush()
+        return model
+
+    async def add_all(self, models: list[ModelType]) -> list[ModelType]:
+        """Add multiple model instances to the database"""
+        self._session.add_all(models)
+        await self._session.flush()
+        return models
+
+    async def delete(self, model: ModelType) -> None:
+        """Delete a model instance from the database"""
+        await self._session.delete(model)
+        await self._session.flush()
+
+    async def merge(self, model: ModelType) -> ModelType:
+        """Update an existing model instance"""
+        model = await self._session.merge(model)
+        await self._session.flush()
+        return model
