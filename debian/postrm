@@ -7,15 +7,6 @@
 
 #DEBHELPER#
 
-if [ "$1" = "purge" ]; then
-    rm -rf /etc/wlanpi-core/.secrets
-    iptables -D wlanpi_core -p tcp --dport 31415 -j ACCEPT 2>/dev/null || true
-    iptables -D wlanpi_core -p udp --dport 31415 -j ACCEPT 2>/dev/null || true
-    iptables -D INPUT -j wlanpi_core 2>/dev/null || true
-    iptables -F wlanpi_core 2>/dev/null || true 
-    iptables -X wlanpi_core 2>/dev/null || true
-fi
-
 function unlink_if_existing() {
     if [ -L "$1" ]; then
         unlink "$1"
@@ -23,6 +14,14 @@ function unlink_if_existing() {
 }
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    iptables -D wlanpi_core -p tcp --dport 31415 -j ACCEPT 2>/dev/null || true
+    iptables -D wlanpi_core -p udp --dport 31415 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -j wlanpi_core 2>/dev/null || true
+    iptables -F wlanpi_core 2>/dev/null || true 
+    iptables -X wlanpi_core 2>/dev/null || true
+
+    rm -rf /etc/wlanpi-core/.secrets
+
     if [ -d /var/log/wlanpi_core/debug ] && [ -z "$(ls -A /var/log/wlanpi_core/debug)" ]; then
         rmdir /var/log/wlanpi_core/debug || true
     fi
