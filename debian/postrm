@@ -9,6 +9,11 @@
 
 if [ "$1" = "purge" ]; then
     rm -rf /etc/wlanpi-core/.secrets
+    iptables -D wlanpi_core -p tcp --dport 31415 -j ACCEPT 2>/dev/null || true
+    iptables -D wlanpi_core -p udp --dport 31415 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -j wlanpi_core 2>/dev/null || true
+    iptables -F wlanpi_core 2>/dev/null || true 
+    iptables -X wlanpi_core 2>/dev/null || true
 fi
 
 function unlink_if_existing() {
