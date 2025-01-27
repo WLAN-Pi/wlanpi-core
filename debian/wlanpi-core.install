@@ -7,3 +7,4 @@
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
 /install/usr/bin/getjwt /usr/bin
 /install/usr/bin/lhapitest /usr/bin
+/install/etc/nftables.d/31-wlanpi-core.nft /etc/nftables.d/

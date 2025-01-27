@@ -1,0 +1,11 @@
+# IPv4 rules
+add table ip wlanpi_core
+add chain ip wlanpi_core input { type filter hook input priority 0; }
+add rule ip wlanpi_core input tcp dport 31415 accept
+add rule ip wlanpi_core input udp dport 31415 accept
+
+# IPv6 rules
+add table ip6 wlanpi_core
+add chain ip6 wlanpi_core input { type filter hook input priority 0; }
+add rule ip6 wlanpi_core input tcp dport 31415 accept
+add rule ip6 wlanpi_core input udp dport 31415 accept

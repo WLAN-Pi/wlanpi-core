@@ -1,4 +1,4 @@
-wlanpi-core (2.0.0~dev20250126.2) unstable; urgency=high
+wlanpi-core (2.0.0~dev20250126.3) unstable; urgency=high
 
   * Development build towards 2.0.0
   * Breaking auth changes

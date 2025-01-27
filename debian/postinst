@@ -5,26 +5,9 @@
 
 #DEBHELPER#
 
-WLANPI_PORT=31415
 CONF_CHANGED=0
 
 set -e
-
-function cleanup() {
-    if command -v nft >/dev/null 2>&1; then
-        nft delete table ip wlanpi_core 2>/dev/null
-        nft delete table ip6 wlanpi_core 2>/dev/null
-    elif command -v iptables >/dev/null 2>&1; then
-        iptables -D INPUT -j wlanpi_core 2>/dev/null
-        iptables -X wlanpi_core 2>/dev/null
-        ip6tables -D INPUT -j wlanpi_core 2>/dev/null
-        ip6tables -X wlanpi_core 2>/dev/null
-    fi
-    echo "Error: wlanpi-core postinst failed" >&2
-    exit 1
-}
-
-trap cleanup INT TERM
 
 function isValidSymlink() {
     if [ -L "$1" ]; then
@@ -153,126 +136,6 @@ fi
 
 if [ -f /usr/bin/lhapitest ]; then
     chmod 755 /usr/bin/lhapitest
-fi
-
-if command -v nft >/dev/null 2>&1; then
-    # Use nftables for IPv4
-    if ! nft list table ip wlanpi_core >/dev/null 2>&1; then
-        if ! nft add table ip wlanpi_core; then
-            echo "Error: Failed to create IPv4 nftables table" >&2
-            exit 1
-        fi
-        if ! nft "add chain ip wlanpi_core input { type filter hook input priority 0; }"; then
-            echo "Error: Failed to create IPv4 nftables chain" >&2
-            nft delete table ip wlanpi_core
-            exit 1
-        fi
-        if ! nft "add rule ip wlanpi_core input tcp dport ${WLANPI_PORT} accept"; then
-            echo "Error: Failed to add IPv4 TCP rule" >&2
-            nft delete table ip wlanpi_core
-            exit 1
-        fi
-        if ! nft "add rule ip wlanpi_core input udp dport ${WLANPI_PORT} accept"; then
-            echo "Error: Failed to add IPv4 UDP rule" >&2
-            nft delete table ip wlanpi_core
-            exit 1
-        fi
-        echo "[Network] Port ${WLANPI_PORT}: IPv4 firewall rules successfully configured with nftables."
-    fi
-
-    # Use nftables for IPv6
-    if ! nft list table ip6 wlanpi_core >/dev/null 2>&1; then
-        if ! nft add table ip6 wlanpi_core; then
-            echo "Error: Failed to create IPv6 nftables table" >&2
-            exit 1
-        fi
-        if ! nft "add chain ip6 wlanpi_core input { type filter hook input priority 0; }"; then
-            echo "Error: Failed to create IPv6 nftables chain" >&2
-            nft delete table ip6 wlanpi_core
-            exit 1
-        fi
-        if ! nft "add rule ip6 wlanpi_core input tcp dport ${WLANPI_PORT} accept"; then
-            echo "Error: Failed to add IPv6 TCP rule" >&2
-            nft delete table ip6 wlanpi_core
-            exit 1
-        fi
-        if ! nft "add rule ip6 wlanpi_core input udp dport ${WLANPI_PORT} accept"; then
-            echo "Error: Failed to add IPv6 UDP rule" >&2
-            nft delete table ip6 wlanpi_core
-            exit 1
-        fi
-        echo "[Network] Port ${WLANPI_PORT}: IPv6 firewall rules successfully configured with nftables."
-    fi
-# Fall back to iptables if nft isn't available
-elif command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
-    # IPv4 Configuration
-    if ! iptables -L wlanpi_core >/dev/null 2>&1; then
-        if ! iptables -N wlanpi_core; then
-            echo "Error: Failed to create IPv4 iptables chain" >&2
-            exit 1
-        fi
-        if ! iptables -A INPUT -j wlanpi_core; then
-            echo "Error: Failed to add IPv4 chain to INPUT" >&2
-            iptables -X wlanpi_core
-            exit 1
-        fi
-    fi
-    
-    if ! iptables -C wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
-        if ! iptables -I wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT; then
-            echo "Error: Failed to add IPv4 TCP rule" >&2
-            iptables -D INPUT -j wlanpi_core
-            iptables -X wlanpi_core
-            exit 1
-        fi
-        echo "[Network] TCP port ${WLANPI_PORT}: IPv4 firewall rule successfully configured."
-    fi
-
-    if ! iptables -C wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
-        if ! iptables -I wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT; then
-            echo "Error: Failed to add IPv4 UDP rule" >&2
-            iptables -D INPUT -j wlanpi_core
-            iptables -X wlanpi_core
-            exit 1
-        fi
-        echo "[Network] UDP port ${WLANPI_PORT}: IPv4 firewall rule successfully configured."
-    fi
-
-    # IPv6 Configuration
-    if ! ip6tables -L wlanpi_core >/dev/null 2>&1; then
-        if ! ip6tables -N wlanpi_core; then
-            echo "Error: Failed to create IPv6 iptables chain" >&2
-            exit 1
-        fi
-        if ! ip6tables -A INPUT -j wlanpi_core; then
-            echo "Error: Failed to add IPv6 chain to INPUT" >&2
-            ip6tables -X wlanpi_core
-            exit 1
-        fi
-    fi
-    
-    if ! ip6tables -C wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
-        if ! ip6tables -I wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT; then
-            echo "Error: Failed to add IPv6 TCP rule" >&2
-            ip6tables -D INPUT -j wlanpi_core
-            ip6tables -X wlanpi_core
-            exit 1
-        fi
-        echo "[Network] TCP port ${WLANPI_PORT}: IPv6 firewall rule successfully configured."
-    fi
-
-    if ! ip6tables -C wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
-        if ! ip6tables -I wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT; then
-            echo "Error: Failed to add IPv6 UDP rule" >&2
-            ip6tables -D INPUT -j wlanpi_core
-            ip6tables -X wlanpi_core
-            exit 1
-        fi
-        echo "[Network] UDP port ${WLANPI_PORT}: IPv6 firewall rule successfully configured."
-    fi
-else
-    echo "Warning: Neither nftables nor iptables found" >&2
-    exit 1
 fi
 
 exit 0
