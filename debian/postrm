@@ -27,6 +27,54 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     unlink_if_existing /etc/nginx/nginx.conf
     unlink_if_existing /opt/wlanpi-core/workingdirectory
     unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
+
+    if [ -f /etc/nftables.conf ]; then
+        if ! sed -i '/include "\/etc\/wlanpi-core\/nftables\/wlanpi-core.nft"/d' /etc/nftables.conf; then
+            echo "Error: Failed to remove include line from nftables.conf" >&2
+            exit 1
+        fi
+        if ! ischroot; then
+            echo "Reloading nftables service..."
+            systemctl reload nftables.service || true
+        fi
+    fi
+fi
+
+if [ "$1" = "purge" ]; then
+    # Find the most recent backup
+    BACKUP=$(ls -t /etc/nftables.conf.wlanpi.*.bak 2>/dev/null | head -1)
+    if [ -n "$BACKUP" ]; then
+        # Create temporary files without our include line for comparison
+        CURRENT_CLEAN=$(mktemp)
+        BACKUP_CLEAN=$(mktemp)
+        
+        if ! grep -v 'include "\/etc\/wlanpi-core\/nftables\/wlanpi-core.nft"' /etc/nftables.conf > "$CURRENT_CLEAN"; then
+            echo "Error: Failed to process current nftables.conf" >&2
+            rm -f "$CURRENT_CLEAN" "$BACKUP_CLEAN"
+            exit 1
+        fi
+        
+        if ! grep -v 'include "\/etc\/wlanpi-core\/nftables\/wlanpi-core.nft"' "$BACKUP" > "$BACKUP_CLEAN"; then
+            echo "Error: Failed to process backup file" >&2
+            rm -f "$CURRENT_CLEAN" "$BACKUP_CLEAN"
+            exit 1
+        fi
+        
+        if diff "$CURRENT_CLEAN" "$BACKUP_CLEAN" >/dev/null; then
+            # Files match except for our include, safe to restore original
+            if ! mv "$BACKUP" /etc/nftables.conf; then
+                echo "Error: Failed to restore nftables.conf from backup" >&2
+                rm -f "$CURRENT_CLEAN" "$BACKUP_CLEAN"
+                exit 1
+            fi
+        fi
+        
+        # Clean up temp files
+        rm -f "$CURRENT_CLEAN" "$BACKUP_CLEAN"
+        
+        # Remove all our backup files
+        rm -f /etc/nftables.conf.wlanpi.*.bak
+    fi
 fi
 
 exit 0

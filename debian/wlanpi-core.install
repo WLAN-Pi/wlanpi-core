@@ -4,7 +4,7 @@
 /install/etc/wlanpi-core/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/nftables/wlanpi-core.nft /etc/wlanpi-core/nftables/wlanpi-core.nft
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
 /install/usr/bin/getjwt /usr/bin
 /install/usr/bin/lhapitest /usr/bin
-/install/etc/nftables.d/31-wlanpi-core.nft /etc/nftables.d/

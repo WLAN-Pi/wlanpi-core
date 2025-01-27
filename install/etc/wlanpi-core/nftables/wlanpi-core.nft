@@ -1,0 +1,9 @@
+#!/usr/sbin/nft -f
+
+table inet wlanpi_core {
+    chain input {
+        type filter hook input priority 0;
+        tcp dport 31415 accept
+        udp dport 31415 accept
+    }
+}
