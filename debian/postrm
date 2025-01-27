@@ -7,18 +7,55 @@
 
 #DEBHELPER#
 
+WLANPI_PORT=31415
+
 function unlink_if_existing() {
     if [ -L "$1" ]; then
-        unlink "$1"
+        unlink "$1" || true
     fi
 }
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    iptables -D wlanpi_core -p tcp --dport 31415 -j ACCEPT 2>/dev/null || true
-    iptables -D wlanpi_core -p udp --dport 31415 -j ACCEPT 2>/dev/null || true
-    iptables -D INPUT -j wlanpi_core 2>/dev/null || true
-    iptables -F wlanpi_core 2>/dev/null || true 
-    iptables -X wlanpi_core 2>/dev/null || true
+    if command -v nft >/dev/null 2>&1; then
+        if nft list table ip wlanpi_core >/dev/null 2>&1; then
+            nft delete table ip wlanpi_core 2>/dev/null || true
+            echo "[Network] IPv4 nftables rules removed."
+        fi
+        if nft list table ip6 wlanpi_core >/dev/null 2>&1; then
+            nft delete table ip6 wlanpi_core 2>/dev/null || true
+            echo "[Network] IPv6 nftables rules removed."
+        fi
+    elif command -v iptables >/dev/null 2>&1; then
+        if iptables -L wlanpi_core >/dev/null 2>&1; then
+            iptables -D wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null || true
+            iptables -D wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null || true
+            iptables -D INPUT -j wlanpi_core 2>/dev/null || true
+            iptables -F wlanpi_core 2>/dev/null || true 
+            iptables -X wlanpi_core 2>/dev/null || true
+            echo "[Network] IPv4 iptables rules removed."
+        fi
+
+        if command -v ip6tables >/dev/null 2>&1; then
+            if ip6tables -L wlanpi_core >/dev/null 2>&1; then
+                ip6tables -D wlanpi_core -p tcp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null || true
+                ip6tables -D wlanpi_core -p udp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null || true
+                ip6tables -D INPUT -j wlanpi_core 2>/dev/null || true
+                ip6tables -F wlanpi_core 2>/dev/null || true 
+                ip6tables -X wlanpi_core 2>/dev/null || true
+                echo "[Network] IPv6 iptables rules removed."
+            fi
+        fi
+
+        if iptables -C ufw-user-input -p tcp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
+            iptables -D ufw-user-input -p tcp --dport ${WLANPI_PORT} -j ACCEPT || true
+            echo "[Network] TCP port ${WLANPI_PORT}: UFW rule removed."
+        fi
+
+        if iptables -C ufw-user-input -p udp --dport ${WLANPI_PORT} -j ACCEPT 2>/dev/null; then
+            iptables -D ufw-user-input -p udp --dport ${WLANPI_PORT} -j ACCEPT || true
+            echo "[Network] UDP port ${WLANPI_PORT}: UFW rule removed."
+        fi
+    fi
 
     rm -rf /etc/wlanpi-core/.secrets
 
@@ -33,16 +70,6 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     unlink_if_existing /etc/nginx/nginx.conf
     unlink_if_existing /opt/wlanpi-core/workingdirectory
     unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
-
-    if iptables -C ufw-user-input -p tcp --dport 31415 -j ACCEPT 2>/dev/null; then
-        iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
-        echo "[Network] TCP port 31415: Firewall rule removed."
-    fi
-
-    if iptables -C ufw-user-input -p udp --dport 31415 -j ACCEPT 2>/dev/null; then
-        iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
-        echo "[Network] UDP port 31415: Firewall rule removed."
-    fi
 fi
 
 exit 0
