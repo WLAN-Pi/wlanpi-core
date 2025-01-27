@@ -138,28 +138,15 @@ if [ -f /usr/bin/lhapitest ]; then
     chmod 755 /usr/bin/lhapitest
 fi
 
-if [ -f /etc/nftables.conf ]; then
-   # Check if our include line is already present
-   if ! grep -q "include \"/etc/wlanpi-core/nftables/wlanpi-core.nft\"" /etc/nftables.conf; then
-       # Only create backup if we haven't backed up before
-       if ! ls /etc/nftables.conf.wlanpi.*.bak >/dev/null 2>&1; then
-           TSTAMP=$(date '+%s')
-           if ! cp /etc/nftables.conf "/etc/nftables.conf.wlanpi.${TSTAMP}.bak"; then
-               echo "Error: Failed to create backup of nftables.conf" >&2
-               exit 1
-           fi
-       fi
-       
-       if ! sed -i '/flush ruleset/a include "\/etc\/wlanpi-core\/nftables\/wlanpi-core.nft"' /etc/nftables.conf; then
-           echo "Error: Failed to modify nftables.conf" >&2
-           exit 1
-       fi
-       
-       if ! ischroot; then
-           echo "Reloading nftables service..."
-           systemctl reload nftables.service || true
-       fi
-   fi
+if ! ischroot; then
+    if [ -f /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh ]; then
+        chmod +x /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
+        /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
+    fi
+else
+    if [ -f /lib/systemd/system/wlanpi-core-ufw-first-boot.service ]; then
+        systemctl enable wlanpi-core-ufw-first-boot.service
+    fi
 fi
 
 exit 0
