@@ -227,7 +227,7 @@ def get_current_unix_timestamp() -> float:
     Returns:
         The current unix timestamp in milliseconds
     """
-    ms = datetime.datetime.now()
+    ms = datetime.now()
     return time.mktime(ms.timetuple()) * 1000
 
 
