@@ -6,6 +6,7 @@
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh /etc/wlanpi-core/ufw
 /install/etc/wlanpi-core/ufw/wlanpi-core.rules /etc/wlanpi-core/ufw
+/install/lib/systemd/system/wlanpi-core-ufw-first-boot.service /lib/systemd/system
 /install/etc/wlanpi-core/ufw/current-rules-version /etc/wlanpi-core/ufw
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
 /install/usr/bin/getjwt /usr/bin
