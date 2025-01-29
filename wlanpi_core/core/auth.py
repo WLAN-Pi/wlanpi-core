@@ -72,9 +72,13 @@ async def verify_hmac(request: Request):
 
     secret = request.app.state.security_manager.shared_secret
     body = await request.body()
-    query_string = urllib.parse.urlencode(request.query_params) if request.query_params else ""
+    query_string = (
+        urllib.parse.urlencode(request.query_params) if request.query_params else ""
+    )
     # verify path + query
-    canonical_string = f"{request.method}\n{request.url.path}\n{query_string}\n{body.decode()}"
+    canonical_string = (
+        f"{request.method}\n{request.url.path}\n{query_string}\n{body.decode()}"
+    )
 
     calculated = hmac.new(secret, canonical_string.encode(), hashlib.sha256).hexdigest()
 

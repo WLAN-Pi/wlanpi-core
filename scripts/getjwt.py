@@ -61,7 +61,8 @@ class DeviceAuthClient:
         """
         Generates HMAC signature for the request using SHA256.
         """
-        canonical_string = f"POST\n{self.auth_endpoint}\n{request_body}"
+        print(self.auth_endpoint)
+        canonical_string = f"POST\n{self.auth_endpoint}\n\n{request_body}"
         secret = self.secret_file.read_bytes()
         signature = hmac.new(
             secret, canonical_string.encode(), hashlib.sha256
