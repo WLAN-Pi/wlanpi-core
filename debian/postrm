@@ -31,9 +31,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     rm -f /etc/wlanpi-core/installed-rules-version
     rm -f /etc/ufw/wlanpi-core.rules
 
-    if ! ufw status | grep -q "Status: active"; then
-        echo "enabling ufw..."
-        ufw enable
+    if command -v ufw &> /dev/null; then
         ufw delete allow wlanpi-core
         ufw delete allow wlanpi-webui
     fi
