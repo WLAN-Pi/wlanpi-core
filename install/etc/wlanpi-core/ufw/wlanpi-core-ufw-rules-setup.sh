@@ -86,13 +86,6 @@ check_prerequisites() {
     fi
 }
 
-enable_ufw() {
-    log_info "Enabling UFW..."
-    if ! yes | ufw enable >/dev/null 2>&1; then
-        error "Failed to enable UFW"
-    fi
-}
-
 apply_ufw_rules() {
     local current_version
     local installed_version
@@ -109,10 +102,6 @@ apply_ufw_rules() {
             log_info "UFW rules are up to date (version: ${current_version})"
             return 0
         fi
-    fi
-
-    if ! check_ufw_status; then
-        enable_ufw
     fi
 
     check_dir_writable "$UFW_APPS_DIR" "UFW applications directory"
