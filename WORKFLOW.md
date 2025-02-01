@@ -27,25 +27,11 @@ So, this meaning you should have some hope that your hotfix or feature works as 
 
 Thus, you should not make changes to the `changelog` until you are ready to deploy.
 
-## Server setup
+## Quick setup
 
-Install depends:
+Run `./init` from the base folder of this repo to install system depends, create the virtual environment (venv), install Python depends, and run the `wlanpi_core` module directly on the default port.
 
-```
-sudo apt update 
-sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan libdbus-1-dev
-sudo apt-get install -y -q python3-pip python3-dev python3-venv python3-wheel
-```
-
-Setup ufw (if not done already for you):
-
-```
-ufw allow 22
-ufw allow 80
-ufw allow 8000
-ufw allow 31415
-ufw enable
-```
+After you've done `./init`, you can use `./run` to skip all the staging. You may need to run `./init` again if depends are updated in the future.
 
 ## Setup development environment
 
@@ -71,11 +57,10 @@ pip install .[testing]
 
 Once you've 1) setup the virtualenv and installed Python requirements, and 2) setup OS and package requirements, you can start developing by running wlanpi_core directly. There are two options:
 
-1. `sudo -E venv/bin/python -m wlanpi_core --debug --reload` from the root of the repo:
+1. `sudo venv/bin/python -m wlanpi_core --debug --reload` from the root of the repo:
 
 ```
-$ WLANPI_LOG_LEVEL=DEBUG sudo -E venv/bin/python -m wlanpi_core 
-Consider running with --reload for live reload as you iterate on hotfixes or features...
+$ sudo venv/bin/python -m wlanpi_core --debug --reload
 
 2025-01-14 00:55:23,729 - root - INFO - Logging configured at DEBUG level
 2025-01-14 00:55:23,731 - wlanpi_core.app - INFO - Logging configuration started
@@ -129,11 +114,31 @@ If you are running directly, now you can open your browser and interact with the
 
 - ReDoc has been disabled with `redoc_url=None` in app.py ~~Alternative automatic documentation with ReDoc (from the OpenAPI backend): http://localhost:8000/redoc~~
 
-## creating JWT token from localhost
+## Creating JWT token from localhost
+
+There is a helper script located at ./install/usr/bin/getjwt which generates JSON Web Tokens (JWTs) specifically for bootstrapping authentication in external applications. On package install, this is put on the path and can then be run with `getjwt`. 
+
+This script serves as a foundation for secure communication - it creates the initial JWT that external applications need before they can establish their own authentication flow.
+
+Think of it like creating a secure "first key" that applications can use to safely request additional access tokens.
+
+Without this bootstrap JWT, external applications would lack the initial credentials needed to securely integrate with the main system.
+
+This script simplifies the onboarding process while maintaining security best practices.
 
 ```
-canonical_string="POST\n/api/v1/auth/token\n{\"device_id\": \"testing\"}"
-signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /etc/wlanpi-core/.secrets/shared_secret)" -binary | xxd -p -c 256)
+Usage: /usr/bin/getjwt <device-id> [port]
+  Example:
+    /usr/bin/getjwt my-device-123
+  Example with custom port:
+    /usr/bin/getjwt my-device-123 8000
+```
+
+Basic test using bash:
+
+```
+canonical_string="POST\n/api/v1/auth/token\n\n{\"device_id\": \"testing\"}"
+signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /etc/wlanpi-core/.secrets/shared_secret.bin)" -binary | xxd -p -c 256)
 
 curl -X 'POST' \
   -H "X-Request-Signature: $signature" \
@@ -143,18 +148,23 @@ curl -X 'POST' \
   -d '{"device_id": "testing"}'
 ```
 
-## apitest.sh
+## lhapitest.sh
+
+The script ./install/usr/bin/lhapitest.sh demonstrates how to interact with core services from localhost using HMAC signatures for authentication. While localhost applications use HMAC signatures, any applications running outside the WLAN Pi must authenticate using JWT tokens instead.
+
+Default uses :31415
 
 ```
-./apitest.sh -X POST -e /auth/token -P '{"device_id": "testing"}'
-./apitest.sh -e /system/device/model
+./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}'
+./install/usr/bin/lhapitest -e /system/device/model
 ```
 
-### Ports
+Custom port :8000
 
-In production, the port is :31415.
-
-In developement, the default port is :8000, but you can change this with `--port <port>` argument.
+```
+./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}' -p 8000
+./install/usr/bin/lhapitest -e /system/device/model -p 8000
+```
 
 ### Running your development version in place (method 1)
 
@@ -319,17 +329,18 @@ Before committing, please lint, format, and test your code with tox.
 0. `tox -e lint`
 0. `tox -e test`
 
-### Linting and formatting
-
-You should install depends with `pip install .[testing]` and then you will be able to run `tox -e format` and `tox -e lint` to format and lint respectively.
+### Linting, formatting, and testing
 
 `tox` will automatically run a few tools such as black, flake8, and isort in a consistent manner. 
 
-### Testing
+You should install depends with either 1) `pip install .[testing]` or 2) `./init`
 
-You should install depends with `pip install .[testing]` and then you will be able to run `tox` to run tests.
+When the venv is active:
 
-## Building the Debian Package
+- Run `tox -e format` and `tox -e lint` to format and lint respectively 
+- Run  `tox` to run tests.
+
+## Building the Debian package
 
 From the root directory of this repository run:
 
