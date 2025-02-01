@@ -27,7 +27,6 @@ install_dependencies() {
         nftables \
         vlan \
         sqlite3 \
-        nginx-light \
         lldpd \
         xxd; then
         echo "Error: Failed to install build essentials and tools"
