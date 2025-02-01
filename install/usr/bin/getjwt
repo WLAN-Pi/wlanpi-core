@@ -43,10 +43,28 @@ SIGNATURE=$(printf "$CANONICAL_STRING" | \
            openssl dgst -sha256 -hmac "$(sudo cat $SECRET_FILE)" -binary | \
            xxd -p -c 256)
 
-curl -s -X 'POST' \
+RESPONSE=$(curl -s -w "\n%{http_code}" -X 'POST' \
     "http://$API_URL$AUTH_ENDPOINT" \
     -H "X-Request-Signature: $SIGNATURE" \
     -H 'accept: application/json' \
     -H 'Content-Type: application/json' \
-    -d "$REQUEST_BODY" | \
-    jq '.'
+    -d "$REQUEST_BODY")
+
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+case $HTTP_CODE in
+    200)
+        echo "$BODY" | jq '.'
+        ;;
+    502)
+        echo -e "${RED}Error: Bad Gateway (502)${NC}"
+        echo "The API server is not responding correctly"
+        exit 1
+        ;;
+    *)
+        echo -e "${RED}Error: HTTP $HTTP_CODE${NC}"
+        echo "$BODY"
+        exit 1
+        ;;
+esac
