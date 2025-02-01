@@ -16,7 +16,7 @@ from wlanpi_core.core.cache import SKeyCache, TokenCache
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.models import SigningKey, Token
-from wlanpi_core.core.repositories import TokenRepository
+from wlanpi_core.core.repositories import DeviceRepository, TokenRepository
 from wlanpi_core.services import system_service
 
 log = get_logger(__name__)
@@ -244,58 +244,83 @@ class TokenManager:
         Returns:
             JWT token string
         """
-        async with self.app_state.db_manager.session() as session:
-            try:
-                signing_key = await self._get_or_create_signing_key(session)
+        max_retries = 3
+        retry_count = 0
 
-                now = datetime.now(timezone.utc)
-                expires = now + (
-                    expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
-                )
+        while retry_count < max_retries:
+            async with self.app_state.db_manager.session() as session:
+                try:
+                    device_repo = DeviceRepository(session)
+                    await device_repo.get_or_create_device(device_id)
 
-                claims = {
-                    "sub": system_service.get_hostname(),
-                    "iss": "wlanpi-core",
-                    "did": device_id,
-                    "exp": int(expires.timestamp()),
-                    "iat": int(now.timestamp()),
-                    "kid": str(signing_key.id),
-                }
+                    signing_key = await self._get_or_create_signing_key(session)
 
-                jwt_token = jwt.encode(
-                    header={"alg": "HS256", "kid": str(signing_key.id)},
-                    payload=claims,
-                    key=signing_key.key,
-                ).decode("utf-8")
+                    now = datetime.now(timezone.utc)
+                    expires = now + (
+                        expires_delta
+                        or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+                    )
 
-                token_model = Token(
-                    token=jwt_token,
-                    device_id=device_id,
-                    key_id=signing_key.id,
-                    expires_at=expires,
-                )
-                session.add(token_model)
-                await session.commit()
+                    claims = {
+                        "sub": system_service.get_hostname(),
+                        "iss": "wlanpi-core",
+                        "did": device_id,
+                        "exp": int(expires.timestamp()),
+                        "iat": int(now.timestamp()),
+                        "kid": str(signing_key.id),
+                        "jti": secrets.token_hex(8),
+                    }
 
-                log.debug(token_model)
-                log.debug(vars(token_model))
+                    jwt_token = jwt.encode(
+                        header={"alg": "HS256", "kid": str(signing_key.id)},
+                        payload=claims,
+                        key=signing_key.key,
+                    ).decode("utf-8")
 
-                self.token_cache.cache_token(jwt_token, claims)
+                    token_model = Token(
+                        token=jwt_token,
+                        device_id=device_id,
+                        key_id=signing_key.id,
+                        expires_at=expires,
+                    )
+                    session.add(token_model)
+                    await session.commit()
 
-                return jwt_token
+                    log.debug(token_model)
+                    log.debug(vars(token_model))
 
-            except Exception as e:
-                await session.rollback()
-                log.exception(
-                    "Token creation failed",
-                    extra={
-                        "component": "auth",
-                        "action": "create_token_error",
-                        "device_id": device_id,
-                        "error": str(e),
-                    },
-                )
-                raise HTTPException(status_code=500, detail=str(e))
+                    self.token_cache.cache_token(jwt_token, claims)
+
+                    return jwt_token
+
+                except sqlalchemy.exc.IntegrityError as e:
+                    await session.rollback()
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        log.exception(
+                            "Token creation failed after retries",
+                            extra={
+                                "component": "auth",
+                                "action": "create_token_error",
+                                "device_id": device_id,
+                                "error": str(e),
+                                "retries": retry_count,
+                            },
+                        )
+                        raise HTTPException(status_code=500, detail=str(e))
+                    continue
+                except Exception as e:
+                    await session.rollback()
+                    log.exception(
+                        "Token creation failed",
+                        extra={
+                            "component": "auth",
+                            "action": "create_token_error",
+                            "device_id": device_id,
+                            "error": str(e),
+                        },
+                    )
+                    raise HTTPException(status_code=500, detail=str(e))
 
     async def verify_token(self, token: str) -> TokenValidationResult:
         """Verify JWT token and return validation result"""
