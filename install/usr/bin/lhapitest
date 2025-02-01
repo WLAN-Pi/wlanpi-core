@@ -129,8 +129,6 @@ usage() {
     echo "  Get model:              $0 -e /system/device/model"
     echo "  Get model (:8000):      $0 -e /system/device/model -p 8000"
     echo ""
-    echo "  Set debug level:        $0 -X POST -e /logging/level -P '{\"level\": \"DEBUG\"}'"
-    echo ""
     echo "  Get Token:              $0 -X POST -e /auth/token -P '{\"device_id\": \"1\"}'"
     exit 1
 }
