@@ -37,10 +37,12 @@ fi
 
 REQUEST_BODY="{\"device_id\": \"$DEVICE_ID\"}"
 
-CANONICAL_STRING="POST\n$AUTH_ENDPOINT\n\n$REQUEST_BODY"
+CANONICAL_STRING=$(printf "POST\n%s\n\n%s" "$AUTH_ENDPOINT" "$REQUEST_BODY")
+
+SECRET_HEX=$(xxd -p -c 256 "$SECRET_FILE")
 
 SIGNATURE=$(printf "$CANONICAL_STRING" | \
-           openssl dgst -sha256 -hmac "$(sudo cat $SECRET_FILE)" -binary | \
+           openssl dgst -sha256 -mac HMAC -macopt "hexkey:$SECRET_HEX" -binary | \
            xxd -p -c 256)
 
 RESPONSE=$(curl -s -w "\n%{http_code}" -X 'POST' \
