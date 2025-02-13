@@ -2,8 +2,9 @@
 
 [Unit]
 Description=gunicorn daemon which manages uvicorn workers for wlanpi-core
-Requires=nginx.service wlanpi-core.socket var-log-wlanpi_core-debug.mount
-After=network.target var-log-wlanpi_core-debug.mount nginx.service
+Wants=nginx.service
+Requires=wlanpi-core.socket var-log-wlanpi_core-debug.mount
+After=network-pre.target var-log-wlanpi_core-debug.mount nginx.service
 
 [Service]
 Type=notify
