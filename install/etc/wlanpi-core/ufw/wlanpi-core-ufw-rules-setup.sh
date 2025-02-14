@@ -15,6 +15,11 @@ log_info() {
     echo "INFO: $1"
 }
 
+if ischroot; then
+    log_info "Running in chroot environment, skipping wlanpi-core UFW setup"
+    exit 0
+fi
+
 log_error() {
     echo "ERROR: $1" >&2
 }
