@@ -146,7 +146,6 @@ fi
 
 if ! ischroot; then
     if [ -f /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh ]; then
-        chmod +x /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
         /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
     fi
 else
