@@ -1,3 +1,10 @@
+wlanpi-core (2.0.0~dev20250214.2) unstable; urgency=high
+
+  * Development build towards 2.0.0
+  * Breaking auth changes
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 14 Jan 2025 00:00:00 -0400
+
 wlanpi-core (2.0.0~dev20250214.1) UNRELEASED; urgency=medium
 
   [ Michael Ketchel ]
@@ -10,13 +17,6 @@ wlanpi-core (2.0.0~dev20250214.1) UNRELEASED; urgency=medium
   * Fix some auto gateway config quirks
 
  -- Michael Ketchel <michael.ketchel@gmail.com>  Wed, 13 Nov 2024 21:22:34 +0000
-
-wlanpi-core (2.0.0~dev20250214.1) unstable; urgency=high
-
-  * Development build towards 2.0.0
-  * Breaking auth changes
-
- -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 14 Jan 2025 00:00:00 -0400
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 
