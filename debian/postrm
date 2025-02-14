@@ -9,11 +9,37 @@
 
 function unlink_if_existing() {
     if [ -L "$1" ]; then
-        unlink $1
+        unlink "$1" || true
     fi
 }
 
-unlink_if_existing /opt/wlanpi-core/workingdirectory
-unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    rm -rf /etc/wlanpi-core/.secrets
+
+    if [ -d /var/log/wlanpi_core/debug ] && [ -z "$(ls -A /var/log/wlanpi_core/debug)" ]; then
+        rmdir /var/log/wlanpi_core/debug || true
+    fi
+
+    if [ -d /var/log/wlanpi_core ] && [ -z "$(ls -A /var/log/wlanpi_core)" ]; then
+        rmdir /var/log/wlanpi_core || true
+    fi
+
+    unlink_if_existing /etc/nginx/nginx.conf
+    unlink_if_existing /opt/wlanpi-core/workingdirectory
+    unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
+
+    rm -f /etc/wlanpi-core/installed-rules-version
+    rm -f /etc/ufw/wlanpi-core.rules
+
+    if command -v ufw &> /dev/null; then
+        ufw delete allow wlanpi-core
+        ufw delete allow wlanpi-webui
+    fi
+fi
+
+if [ "$1" = "purge" ]; then
+    rm -rf /etc/wlanpi-core/ufw
+    rm -rf /etc/wlanpi-core
+fi
 
 exit 0

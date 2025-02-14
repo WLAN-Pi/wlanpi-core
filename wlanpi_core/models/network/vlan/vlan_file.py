@@ -89,7 +89,6 @@ class VLANFile:
 
         # This likely can be abstracted up to being a standard interface parser
         for stanza in raw_if_data:
-
             first_line = stanza[0].strip()
             verb, device, *rest = first_line.split()
             # This might not be the best approach if renames get used, but it works for now

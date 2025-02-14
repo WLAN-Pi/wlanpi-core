@@ -1,19 +1,8 @@
-wlanpi-core (1.0.5-12) UNRELEASED; urgency=medium
+wlanpi-core (2.0.0~dev20250214.1) UNRELEASED; urgency=medium
 
   * Fix bluetooth model parsing issue
   * Always restart
-
- -- Michael Ketchel <michael.ketchel@gmail.com>  Thu, 12 Dec 2024 04:08:56 +0000
-
-wlanpi-core (1.0.5-10) unstable; urgency=medium
-
   * Fixed default values on PingResult
-
- -- Michael Ketchel <michael.ketchel@gmail.com>  Thu, 05 Dec 2024 01:11:59 +0000
-
-wlanpi-core (1.0.5-9) unstable; urgency=medium
-
-  [ Michael Ketchel ]
   * Draft build of new wlan control features
   * Fixed an api definition typo
   * More tweaks, and a version bump to fire dev package deploy
@@ -25,15 +14,18 @@ wlanpi-core (1.0.5-9) unstable; urgency=medium
   * add reboot command
   * Add DHCP test, Dig, and traceroute, as well as some other
     optimizations
-
-  [ _ ]
   * Add a sleep to give enough time for lease data to appear.
-
-  [ Michael Ketchel ]
   * Add a sleep to give enough time for lease data to appear.
   * Number of bugfixes
 
  -- Michael Ketchel <michael.ketchel@gmail.com>  Tue, 03 Dec 2024 18:10:20 +0000
+
+wlanpi-core (2.0.0~dev20250214.1) unstable; urgency=high
+
+  * Development build towards 2.0.0
+  * Breaking auth changes
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 14 Jan 2025 00:00:00 -0400
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 

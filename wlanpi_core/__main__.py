@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # wlanpi-core : backend services for the WLAN Pi
-# Copyright : (c) 2023 Josh Schmelzle
+# Copyright : (c) 2025 Josh Schmelzle
 # License : BSD-3-Clause
 # Maintainer : josh@joshschmelzle.com
 
@@ -51,48 +51,57 @@ def setup_parser() -> argparse.ArgumentParser:
         description="wlanpi-core provides backend services for the WLAN Pi. Read the manual with: man wlanpi-core",
     )
     parser.add_argument(
-        "--reload", dest="livereload", action="store_true", default=False
+        "--reload",
+        dest="livereload",
+        action="store_true",
+        default=False,
+        help="Enable live reload for development",
     )
-    parser.add_argument("--port", "-p", dest="port", type=check_port, default=8000)
-
     parser.add_argument(
-        "--version", "-V", "-v", action="version", version=f"{__version__}"
+        "--port",
+        "-p",
+        dest="port",
+        type=check_port,
+        default=8000,
+        help="Port number to run the server on",
+    )
+    parser.add_argument(
+        "--debug",
+        "-d",
+        dest="debug",
+        action="store_true",
+        default=False,
+        help="Enable debug mode with verbose logging",
+    )
+    parser.add_argument(
+        "--version",
+        "-V",
+        "-v",
+        action="version",
+        version=f"{__version__}"
     )
     return parser
-
-
-def confirm_prompt(question: str) -> bool:
-    reply = None
-    while reply not in ("y", "n"):
-        reply = input(f"{question} (y/n): ").lower()
-    return reply == "y"
 
 
 def main() -> None:
     parser = setup_parser()
     args = parser.parse_args()
 
-    try:
-        lets_go = confirm_prompt(
-            "WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development and debugging! Continue?"
-        )
-    except KeyboardInterrupt:
-        print("\nInterrupt detected, exiting...")
-        sys.exit(0)
-
     if not args.livereload:
         print(
             "Consider running with --reload for live reload as you iterate on hotfixes or features...\n"
         )
 
-    if lets_go:
-        uvicorn.run(
-            "wlanpi_core.asgi:app",
-            port=args.port,
-            host="0.0.0.0",
-            reload=args.livereload,
-            log_level="debug",
-        )
+    import os
+
+    os.environ["WLANPI_CORE_DEBUG"] = str(args.debug)
+
+    uvicorn.run(
+        "wlanpi_core.asgi:app",
+        port=args.port,
+        host="0.0.0.0",
+        reload=args.livereload,
+    )
 
 
 def init() -> None:

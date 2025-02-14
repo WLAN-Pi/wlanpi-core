@@ -1,15 +1,21 @@
 import asyncio.subprocess
-import datetime
 import logging
 import shlex
 import subprocess
+import threading
 import time
 from asyncio.subprocess import Process
+from datetime import datetime, timezone
 from io import StringIO
-from typing import Optional, TextIO, Union
+from typing import Any, Dict, Generic, Optional, TextIO, Type, TypeVar, Union
 
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError, RunCommandTimeout
+
+log = get_logger(__name__)
+
+T = TypeVar("T")
 
 
 def run_command(
@@ -285,7 +291,7 @@ def get_current_unix_timestamp() -> float:
     Returns:
         The current unix timestamp in milliseconds
     """
-    ms = datetime.datetime.now()
+    ms = datetime.now()
     return time.mktime(ms.timetuple()) * 1000
 
 
@@ -299,3 +305,74 @@ def byte_array_to_string(s) -> str:
             r += " "
             # r += urllib.quote(chr(c))
     return r
+
+
+def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int]:
+    """
+    Convert various datetime formats to Unix timestamp
+
+    Args:
+        dt: Input datetime (can be datetime object, ISO string, or timestamp)
+
+    Returns:
+        int: Unix timestamp in seconds
+    """
+    if dt is None:
+        return None
+
+    try:
+        if isinstance(dt, (int, float)):
+            return int(dt)
+        elif isinstance(dt, str):
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+
+        if isinstance(dt, datetime):
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+
+        raise ValueError(f"Unsupported datetime format: {type(dt)}")
+    except Exception:
+        log.exception("Failed to convert to timestamp")
+        return None
+
+
+def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
+    """
+    Convert Unix timestamp to UTC datetime
+
+    Args:
+        ts: Unix timestamp (seconds since epoch)
+
+    Returns:
+        datetime: UTC datetime object
+    """
+    if ts is None:
+        return None
+
+    try:
+        if isinstance(ts, str):
+            ts = float(ts)
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except Exception:
+        log.exception(f"Failed to convert from timestamp")
+        return None
+
+
+class SingletonMeta(type, Generic[T]):
+    _instances: Dict[Type[Any], Any] = {}
+    _lock = threading.Lock()
+
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+    @classmethod
+    def reset_instance(cls, singleton_cls: Type[T]) -> None:
+        """Reset the singleton instance for the given class."""
+        with cls._lock:
+            if singleton_cls in cls._instances:
+                del cls._instances[singleton_cls]

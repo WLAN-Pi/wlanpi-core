@@ -8,27 +8,27 @@
 
 autoflake==2.3.1
     # via -r testing.in
-black==24.8.0
+black==24.10.0
     # via -r testing.in
-cachetools==5.5.0
+cachetools==5.5.1
     # via tox
 chardet==5.2.0
     # via tox
-click==8.1.7
+click==8.1.8
     # via black
 colorama==0.4.6
     # via tox
-coverage[toml]==7.3.0
+coverage[toml]==7.6.10
     # via
     #   coverage-badge
     #   pytest-cov
 coverage-badge==1.1.2
     # via -r testing.in
-distlib==0.3.7
+distlib==0.3.9
     # via virtualenv
-exceptiongroup==1.1.3
+exceptiongroup==1.2.2
     # via pytest
-filelock==3.16.1
+filelock==3.17.0
     # via
     #   tox
     #   virtualenv
@@ -36,23 +36,23 @@ flake8==7.1.1
     # via -r testing.in
 iniconfig==2.0.0
     # via pytest
-isort==5.13.2
+isort==6.0.0
     # via -r testing.in
 mccabe==0.7.0
     # via flake8
-mypy==1.11.2
+mypy==1.14.1
     # via -r testing.in
 mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-packaging==24.1
+packaging==24.2
     # via
     #   black
     #   pyproject-api
     #   pytest
     #   tox
-pathspec==0.11.2
+pathspec==0.12.1
     # via black
 platformdirs==4.3.6
     # via
@@ -69,21 +69,21 @@ pyflakes==3.2.0
     # via
     #   autoflake
     #   flake8
-pyproject-api==1.8.0
+pyproject-api==1.9.0
     # via tox
-pytest==8.3.3
+pytest==8.3.4
     # via
     #   -r testing.in
     #   pytest-asyncio
     #   pytest-cov
     #   pytest-mock
-pytest-asyncio==0.24.0
+pytest-asyncio==0.25.3
     # via -r testing.in
-pytest-cov==5.0.0
+pytest-cov==6.0.0
     # via -r testing.in
 pytest-mock==3.14.0
     # via -r testing.in
-tomli==2.0.1
+tomli==2.2.1
     # via
     #   autoflake
     #   black
@@ -92,13 +92,14 @@ tomli==2.0.1
     #   pyproject-api
     #   pytest
     #   tox
-tox==4.20.0
+tox==4.24.1
     # via -r testing.in
-typing-extensions==4.7.1
+typing-extensions==4.12.2
     # via
     #   black
     #   mypy
-virtualenv==20.26.6
+    #   tox
+virtualenv==20.29.1
     # via tox
 
 # The following packages are considered to be unsafe in a requirements file:

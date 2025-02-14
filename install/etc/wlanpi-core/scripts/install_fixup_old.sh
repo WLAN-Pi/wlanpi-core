@@ -41,7 +41,7 @@ sshd -t
 fi
 
 # create log directory and set permissions for apiuser
-DIR="/var/log/wlanpi-core/"
+DIR="/var/log/wlanpi_core/"
 
 # if DIR does not exist, create it
 if [ ! -d "$DIR" ]; then

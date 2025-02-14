@@ -8,6 +8,11 @@ uvicorn
 python-dotenv
 pydantic-settings
 requests
+slowapi
+Authlib
+aiosqlite
+sqlalchemy[asyncio]
+alembic
 
 # endpoint requires
 psutil

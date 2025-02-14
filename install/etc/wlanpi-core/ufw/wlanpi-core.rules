@@ -1,0 +1,9 @@
+[wlanpi-core]
+title=wlanpi-core API server with custom port
+description=wlanpi-core API server
+ports=31415/udp|31415/tcp
+
+[wlanpi-webui]
+title=wlanpi-webui server with HTTP + HTTPS
+description=wlanpi-webui server
+ports=80,443/tcp

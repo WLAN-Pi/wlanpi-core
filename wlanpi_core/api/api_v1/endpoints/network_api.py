@@ -1,9 +1,9 @@
-import logging
 from typing import Optional, Union
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.constants import API_DEFAULT_TIMEOUT
+from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
@@ -18,7 +18,9 @@ from wlanpi_core.utils.network import list_ethernet_interfaces, list_wlan_interf
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 def validate_wlan_interface(
@@ -52,11 +54,17 @@ def validate_ethernet_interface(
 ################################
 # General Network Management   #
 ################################
-@router.get("/interfaces", response_model=dict[str, list[IPInterface]])
-@router.get("/interfaces/{interface}", response_model=dict[str, list[IPInterface]])
-async def show_all_interfaces(
-    interface: Optional[str] = None,
-):
+@router.get(
+    "/interfaces",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+@router.get(
+    "/interfaces/{interface}",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_all_interfaces(interface: Optional[str] = None):
     """
     Returns all network interfaces.
     """
@@ -81,7 +89,11 @@ async def show_all_interfaces(
 ################################
 # Ethernet Management          #
 ################################
-@router.get("/ethernet/{interface}", response_model=dict[str, list[IPInterface]])
+@router.get(
+    "/ethernet/{interface}",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def show_all_ethernet_interfaces(interface: Optional[str] = None):
     """
     Returns all ethernet interfaces.
@@ -120,11 +132,25 @@ async def show_all_ethernet_interfaces(interface: Optional[str] = None):
 ################################
 
 
-@router.get("/ethernet/all/vlan", response_model=dict[str, list[IPInterface]])
-@router.get("/ethernet/all/vlan/{vlan}", response_model=dict[str, list[IPInterface]])
-@router.get("/ethernet/{interface}/vlan", response_model=dict[str, list[IPInterface]])
 @router.get(
-    "/ethernet/{interface}/vlan/{vlan}", response_model=dict[str, list[IPInterface]]
+    "/ethernet/all/vlan",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+@router.get(
+    "/ethernet/all/vlan/{vlan}",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+@router.get(
+    "/ethernet/{interface}/vlan",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+@router.get(
+    "/ethernet/{interface}/vlan/{vlan}",
+    response_model=dict[str, list[IPInterface]],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_ethernet_vlans(
     interface: Optional[str] = None, vlan: Optional[str] = None
@@ -171,6 +197,7 @@ async def show_all_ethernet_vlans(
 @router.post(
     "/ethernet/{interface}/vlan/{vlan}",
     response_model=network.config.NetworkConfigResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def create_ethernet_vlan(
     interface: str, vlan: Union[str, int], addresses: list[IPInterfaceAddress]
@@ -212,6 +239,7 @@ async def create_ethernet_vlan(
 @router.delete(
     "/ethernet/{interface}/vlan/{vlan}",
     response_model=network.config.NetworkConfigResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_ethernet_vlan(
     interface: str, vlan: Union[str, int], allow_missing=False
@@ -252,8 +280,12 @@ async def delete_ethernet_vlan(
 ################################
 
 
-@router.get("/wlan/interfaces", response_model=network.Interfaces)
-async def get_all_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
+@router.get(
+    "/wlan/interfaces",
+    response_model=network.Interfaces,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def get_all_wireless_interfaces(timeout: int = settings.API_DEFAULT_TIMEOUT):
     """
     Queries wpa_supplicant via dbus to get all interfaces known to the supplicant.
     """
@@ -271,9 +303,10 @@ async def get_all_wireless_interfaces(timeout: int = API_DEFAULT_TIMEOUT):
     "/wlan/{interface}/scan",
     response_model=network.ScanResults,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def do_wireless_network_scan(
-    scan_type: str, interface: str, timeout: int = API_DEFAULT_TIMEOUT
+    scan_type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Queries wpa_supplicant via dbus to get a scan of the available networks for an interface.
@@ -291,11 +324,15 @@ async def do_wireless_network_scan(
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post("/wlan/{interface}/add_network", response_model=network.NetworkSetupStatus)
+@router.post(
+    "/wlan/{interface}/add_network",
+    response_model=network.NetworkSetupStatus,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def add_wireless_network(
     interface: str,
     setup: network.WlanInterfaceSetup,
-    timeout: int = API_DEFAULT_TIMEOUT,
+    timeout: int = settings.API_DEFAULT_TIMEOUT,
 ):
     """
     Queries wpa_supplicant via dbus to set a single network.
@@ -317,9 +354,10 @@ async def add_wireless_network(
     "/wlan/{interface}/connected",
     response_model=network.ConnectedNetwork,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_current_wireless_network_details(
-    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+    interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Queries wpa_supplicant via dbus to get the details of the currently connected network.
@@ -341,8 +379,9 @@ async def get_current_wireless_network_details(
     "/wlan/{interface}/networks",
     response_model=dict[int, SupplicantNetwork],
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
+async def get_all_wireless_networks(interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT):
     """
     Queries wpa_supplicant via dbus to get all network on an interface.
     """
@@ -361,8 +400,9 @@ async def get_all_wireless_networks(interface: str, timeout: int = API_DEFAULT_T
     "/wlan/{interface}/networks/current",
     response_model=Optional[SupplicantNetwork],
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT):
+async def get_current_network(interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT):
     """
     Queries wpa_supplicant via dbus to get the details of the currently selected network.
     """
@@ -381,6 +421,7 @@ async def get_current_network(interface: str, timeout: int = API_DEFAULT_TIMEOUT
     "/wlan/{interface}/networks/{network_id}",
     response_model=SupplicantNetwork,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_wireless_network(interface: str, network_id: int):
     """
@@ -401,6 +442,7 @@ async def get_wireless_network(interface: str, network_id: int):
     "/wlan/{interface}/networks/all",
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def remove_all_wireless_networks(interface: str):
     """
@@ -421,9 +463,10 @@ async def remove_all_wireless_networks(interface: str):
     "/wlan/{interface}/disconnect",
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def disconnect_wireless_network(
-    interface: str, timeout: int = API_DEFAULT_TIMEOUT
+    interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Disconnects the currently connected network for the specified interface.
@@ -443,6 +486,7 @@ async def disconnect_wireless_network(
     "/wlan/{interface}/networks/{network_id}",
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def remove_wireless_network(interface: str, network_id: int):
     """
@@ -466,6 +510,7 @@ async def remove_wireless_network(interface: str, network_id: int):
     "/wlan/{interface}/phy",
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 @router.get(
     "/wlan/phys",
@@ -473,6 +518,7 @@ async def remove_wireless_network(interface: str, network_id: int):
     # response_model=Optional[dict[str, dict[str, any]]],
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_interface_details(interface: Optional[str] = None):
     """
@@ -494,6 +540,7 @@ async def get_interface_details(interface: Optional[str] = None):
     "/wlan/{interface}/link",
     response_model=None,
     response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_interface_link_details(interface: str):
     """

@@ -1,17 +1,22 @@
-import logging
+from fastapi import APIRouter, Depends, Response
 
-from fastapi import APIRouter, Response
-
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import bluetooth
 from wlanpi_core.services import bluetooth_service
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
-@router.get("/status", response_model=bluetooth.BluetoothStatus)
+@router.get(
+    "/status",
+    response_model=bluetooth.BluetoothStatus,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def btstatus():
     """
     Returns the bluetooth status
@@ -30,7 +35,11 @@ async def btstatus():
         return Response(content=f"Internal Server Error", status_code=500)
 
 
-@router.post("/power/{action}", response_model=bluetooth.PowerState)
+@router.post(
+    "/power/{action}",
+    response_model=bluetooth.PowerState,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def bt_power(action: str):
     """
     Turns on bluetooth

@@ -5,7 +5,10 @@
 
 #DEBHELPER#
 
-# function to check if a path is a symlink
+CONF_CHANGED=0
+
+set -e
+
 function isValidSymlink() {
     if [ -L "$1" ]; then
         return 0
@@ -14,8 +17,25 @@ function isValidSymlink() {
     fi
 }
 
-# get python version, remove spaces, get Python3.7 or Python3.9, lowercase
-PYTHONSTUB=`python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p'`
+if systemctl is-masked var-log-wlanpi_core-debug.mount >/dev/null 2>&1; then
+    echo "Unmasking var-log-wlanpi_core-debug.mount..."
+    systemctl unmask var-log-wlanpi_core-debug.mount || true
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 not found" >&2
+    exit 1
+fi
+
+if ! PYTHONSTUB=$(python3 -V 2>&1 | sed 's/ //g' | grep -oP '(\w+\.\d+)' | tr 'P' 'p'); then
+    echo "Error: Failed to determine Python version" >&2
+    exit 1
+fi
+
+if [ -z "$PYTHONSTUB" ]; then
+    echo "Error: Could not parse Python version" >&2
+    exit 1
+fi
 
 # the actual target working directory (this is a workaround so we can support multiple Python versions at build)
 TARGET_DIR=/opt/wlanpi-core/lib/$PYTHONSTUB/site-packages/wlanpi_core
@@ -26,40 +46,112 @@ LINK=/opt/wlanpi-core/workingdirectory
 # this is the path that we need to check if is already a link
 TEST_PATH=/opt/wlanpi-core/workingdirectory/wlanpi_core
 
-CONF_CHANGED=1
-
 # if link doesn't exist, create it
 if ! isValidSymlink $TEST_PATH; then
-    ln -s $TARGET_DIR $LINK
+    ln -sf "$TARGET_DIR" "$LINK"
 fi
-# if wlanpi_core.conf is not a symlink, create symlink.
+
+# if conf is not a symlink, and exists as a file, create backup.
+NGINX_CONF=/etc/nginx/nginx.conf
+if ! isValidSymlink $NGINX_CONF; then
+    if [ -f "$NGINX_CONF" ]; then
+        TSTAMP=$(date '+%s')
+        NEW_CONF="$NGINX_CONF.$TSTAMP"
+        echo "Existing nginx.conf detected; backing it up and moving it to $NEW_CONF..."
+        mv "$NGINX_CONF" "$NEW_CONF"
+    fi
+    echo "Linking our nginx.conf config ..."
+    ln -s /etc/wlanpi-core/nginx/nginx.conf $NGINX_CONF
+    CONF_CHANGED=1
+fi
+
+# if default site is enabled, disable it.
+DEFAULT_FILE=/etc/nginx/sites-enabled/default
+if isValidSymlink $DEFAULT_FILE; then
+    echo "Unlinking $DEFAULT_FILE"
+    unlink $DEFAULT_FILE
+fi
+
+if [ ! -f /etc/nginx/ssl/self-signed-wlanpi.cert ] || [ ! -f /etc/nginx/ssl/self-signed-grafana.cert ] || [ ! -f /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert ]; then
+    mkdir -p /etc/nginx/ssl
+    mkdir -p /etc/cockpit/ws-certs.d
+    if ! openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
+        -nodes -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
+        -out /etc/nginx/ssl/self-signed-wlanpi.cert \
+        -subj "/CN=wlanpi.local/O=wlanpi/OU=wlanpi"; then
+        echo "Error: Failed to generate SSL certificate"
+        exit 1
+    fi
+    chmod 654 /etc/nginx/ssl/self-signed-wlanpi.cert
+    chmod 650 /etc/nginx/ssl/self-signed-wlanpi.key
+    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.key
+    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert
+    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/nginx/ssl/self-signed-grafana.key
+    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/nginx/ssl/self-signed-grafana.cert
+    chmod 654 /etc/nginx/ssl/self-signed-grafana.cert
+    chmod 650 /etc/nginx/ssl/self-signed-grafana.key
+    getent group grafana || groupadd grafana
+    chgrp grafana /etc/nginx/ssl/self-signed-grafana.key
+    chgrp grafana /etc/nginx/ssl/self-signed-grafana.cert
+    CONF_CHANGED=1
+fi
+
+if ! getent group wlanpi >/dev/null; then
+    echo "Error: wlanpi group does not exist" >&2
+    exit 1
+fi
+
+chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.key
+chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.cert
+
+# Ensure nginx sites-enabled directory exists
+mkdir -p /etc/nginx/sites-enabled
+
+# if source configuration file exists, create symlink
 WLANPI_CORE=/etc/nginx/sites-enabled/wlanpi_core.conf
-if ! isValidSymlink $WLANPI_CORE; then
-    echo "Linking wlanpi_core.conf ..."
-    ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
-    CONF_CHANGED=0
-fi
+SOURCE_CONF=/etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf
 
-if [ $CONF_CHANGED -eq 0 ]; then
-    echo "Restarting wlanpi-core ..."
-    deb-systemd-invoke restart wlanpi-core.service
-fi
-
-# Remove specific iptables rules added during pi-gen versions prior to v3.2.3
-echo "Attempting to remove old pi-gen iptables rules in WLAN Pi OS v3.2.2 and earlier"
-
-if iptables -C ufw-user-input -p tcp --dport 31415 -j ACCEPT 2>/dev/null; then
-    iptables -D ufw-user-input -p tcp --dport 31415 -j ACCEPT
-    echo "tcp 31415 rule removed."
+if [ -f "$SOURCE_CONF" ]; then
+    ln -sf "$SOURCE_CONF" "$WLANPI_CORE" || true
+    CONF_CHANGED=1
 else
-    echo "tcp 31415 rule not found; no changes made."
+    echo "Warning: source nginx site configuration at $SOURCE_CONF not found"
 fi
 
-if iptables -C ufw-user-input -p udp --dport 31415 -j ACCEPT 2>/dev/null; then
-    iptables -D ufw-user-input -p udp --dport 31415 -j ACCEPT
-    echo "udp 31415 rule removed successfully."
+if ! ischroot; then
+    if [ $CONF_CHANGED -eq 1 ]; then
+        echo "Restarting wlanpi-core ..."
+
+        if ! deb-systemd-invoke start var-log-wlanpi_core-debug.mount; then
+            echo "Warning: var-log-wlanpi_core-debug.mount failed to start" >&2
+        fi
+        if ! deb-systemd-invoke restart wlanpi-core.service; then
+            echo "Warning: wlanpi-core.service restart failed, continuing installation..." >&2
+            systemctl status wlanpi-core.service >&2 || true
+        fi
+        if which nginx >/dev/null 2>&1; then
+            echo "Restarting nginx ..."
+            deb-systemd-invoke restart nginx.service || true
+        fi
+    fi
+fi
+
+if [ -f /usr/bin/getjwt ]; then
+    chmod 755 /usr/bin/getjwt
+fi
+
+if [ -f /usr/bin/lhapitest ]; then
+    chmod 755 /usr/bin/lhapitest
+fi
+
+if ! ischroot; then
+    if [ -f /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh ]; then
+        /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
+    fi
 else
-    echo "udp 31415 rule not found; no changes made."
+    if [ -f /lib/systemd/system/wlanpi-core-ufw-first-boot.service ]; then
+        systemctl enable wlanpi-core-ufw-first-boot.service
+    fi
 fi
 
 exit 0
