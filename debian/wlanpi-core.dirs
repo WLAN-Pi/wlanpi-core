@@ -1,1 +1,5 @@
-var/log/wlanpi-core
+var/log/wlanpi_core
+var/log/wlanpi_core/debug
+etc/wlanpi-core
+etc/wlanpi-core/.secrets
+etc/wlanpi-core/ufw

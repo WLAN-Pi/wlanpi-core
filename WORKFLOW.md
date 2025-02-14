@@ -27,25 +27,11 @@ So, this meaning you should have some hope that your hotfix or feature works as 
 
 Thus, you should not make changes to the `changelog` until you are ready to deploy.
 
-## Server setup
+## Quick setup
 
-Install depends:
+Run `./init` from the base folder of this repo to install system depends, create the virtual environment (venv), install Python depends, and run the `wlanpi_core` module directly on the default port.
 
-```
-sudo apt update 
-sudo apt-get install -y -q build-essential git unzip zip nload tree ufw dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev libcairo2-dev libgirepository1.0-dev libffi-dev cmake vlan 
-sudo apt-get install -y -q python3-pip python3-dev python3-venv python3-wheel
-```
-
-Setup ufw (if not done already for you):
-
-```
-ufw allow 22
-ufw allow 80
-ufw allow 8000
-ufw allow 31415
-ufw enable
-```
+After you've done `./init`, you can use `./run` to skip all the staging. You may need to run `./init` again if depends are updated in the future.
 
 ## Setup development environment
 
@@ -71,43 +57,53 @@ pip install .[testing]
 
 Once you've 1) setup the virtualenv and installed Python requirements, and 2) setup OS and package requirements, you can start developing by running wlanpi_core directly. There are two options:
 
-1. `python -m wlanpi_core --reload` from the root of the repo:
+1. `sudo venv/bin/python -m wlanpi_core --debug --reload` from the root of the repo:
 
 ```
-(venv) wlanpi@rbpi4b-8gb:[~/dev/wlanpi-core]: python -m wlanpi_core --reload
-WARNING!!! Starting wlanpi-core directly with uvicorn. This is typically for development. Are you sure? (y/n): y
-INFO:     Will watch for changes in these directories: ['/home/wlanpi/dev/wlanpi-core']
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [25475] using statreload
-INFO:     Started server process [25494]
+$ sudo venv/bin/python -m wlanpi_core --debug --reload
+
+2025-01-14 00:55:23,729 - root - INFO - Logging configured at DEBUG level
+2025-01-14 00:55:23,731 - wlanpi_core.app - INFO - Logging configuration started
+2025-01-14 00:55:23,731 - wlanpi_core.app - DEBUG - Debug level logging
+INFO:     Started server process [77189]
 INFO:     Waiting for application startup.
+2025-01-14 00:55:23,904 - wlanpi_core.core.security - DEBUG - Secured secrets directory: /etc/wlanpi-core/.secrets
+2025-01-14 00:55:23,905 - wlanpi_core.core.security - INFO - Loaded existing shared secret
+2025-01-14 00:55:23,905 - wlanpi_core.core.security - INFO - Loaded existing encryption key
+2025-01-14 00:55:23,906 - wlanpi_core.core.security - INFO - Security initialization complete
+2025-01-14 00:55:23,907 - wlanpi_core.core.database - DEBUG - Starting database integrity check
+2025-01-14 00:55:23,911 - wlanpi_core.core.database - DEBUG - Created new connection for thread 548160708672
+2025-01-14 00:55:23,912 - wlanpi_core.core.database - DEBUG - Starting database initialization
+2025-01-14 00:55:23,912 - wlanpi_core.core.database - DEBUG - Starting database integrity check
+2025-01-14 00:55:23,914 - wlanpi_core.core.database - DEBUG - Database initialization complete
+2025-01-14 00:55:23,915 - wlanpi_core.app - INFO - Database manager initialization complete
+2025-01-14 00:55:23,915 - wlanpi_core.app - INFO - Retention manager initialization complete
+2025-01-14 00:55:23,916 - wlanpi_core.core.database - DEBUG - Database connection verified
+2025-01-14 00:55:23,916 - wlanpi_core.core.database - DEBUG - Reusing existing connection
+2025-01-14 00:55:23,917 - wlanpi_core.core.auth - INFO - Current signing_keys count: 2
+2025-01-14 00:55:23,917 - wlanpi_core.core.auth - INFO - Found key: id=2, created=1736739278, active=1
+2025-01-14 00:55:23,918 - wlanpi_core.core.auth - INFO - Found key: id=1, created=1736739244, active=0
+2025-01-14 00:55:23,918 - wlanpi_core.core.auth - INFO - Fetching active key from database
+2025-01-14 00:55:23,924 - wlanpi_core.core.auth - INFO - Retrieved existing key_id 2 created at 1736739278
+2025-01-14 00:55:23,925 - wlanpi_core.app - INFO - Token manager initialization complete
+2025-01-14 00:55:23,925 - wlanpi_core.app - INFO - Activity manager initialization complete
+2025-01-14 00:55:23,926 - wlanpi_core.core.database - DEBUG - Database connection invalid
+2025-01-14 00:55:23,927 - wlanpi_core.core.database - DEBUG - Database connection invalid
+2025-01-14 00:55:23,927 - wlanpi_core.core.database - DEBUG - Closed invalid connection
+2025-01-14 00:55:23,928 - wlanpi_core.core.database - DEBUG - Starting database integrity check
+2025-01-14 00:55:23,932 - wlanpi_core.core.database - DEBUG - Created new connection for thread 548160708672
+2025-01-14 00:55:23,933 - wlanpi_core.core.database - INFO - Ran clean up data older than 1 days
+2025-01-14 00:55:23,933 - wlanpi_core.core.database - DEBUG - Checked database size
+2025-01-14 00:55:23,934 - wlanpi_core.core.database - DEBUG - Starting database backup
+2025-01-14 00:55:23,934 - wlanpi_core.core.database - DEBUG - Starting database integrity check
+2025-01-14 00:55:23,937 - wlanpi_core.core.database - DEBUG - Database connection verified
+2025-01-14 00:55:23,937 - wlanpi_core.core.database - DEBUG - Reusing existing connection
+2025-01-14 00:55:23,960 - wlanpi_core.core.database - DEBUG - Database backup completed
+2025-01-14 00:55:23,967 - wlanpi_core.core.database - DEBUG - Database connection verified
+2025-01-14 00:55:23,968 - wlanpi_core.core.database - DEBUG - Reusing existing connection
+2025-01-14 00:55:23,969 - wlanpi_core.core.auth - DEBUG - Before purge - Total: 5, Expired: 0, Revoked: 0
 INFO:     Application startup complete.
-```
-
-2. Or use `scripts/run.sh`:
-
-```
-cd {repo}
-./scripts/run.sh 
-```
-
-output should look like:
-
-```
-(venv) wlanpi@rbpi4b-8gb:[~/dev/wlanpi-core]: ./scripts/run.sh 
-INFO:     Will watch for changes in these directories: ['/home/wlanpi/dev/wlanpi-core']
-INFO:     Loading environment from '.env'
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [25969] using statreload
-INFO:     Started server process [25971]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-```
-
-You may need to make scripts executable prior to first run.
-
-```
-chmod +x ./scripts/run.sh 
 ```
 
 If you are running directly, now you can open your browser and interact with these URLs:
@@ -118,9 +114,93 @@ If you are running directly, now you can open your browser and interact with the
 
 - ReDoc has been disabled with `redoc_url=None` in app.py ~~Alternative automatic documentation with ReDoc (from the OpenAPI backend): http://localhost:8000/redoc~~
 
-In production, the port will be different.
+## Creating JWT token from localhost
 
-### Protip
+There is a helper script located at ./install/usr/bin/getjwt which generates JSON Web Tokens (JWTs) specifically for bootstrapping authentication in external applications. On package install, this is put on the path and can then be run with `getjwt`. 
+
+This script serves as a foundation for secure communication - it creates the initial JWT that external applications need before they can establish their own authentication flow.
+
+Think of it like creating a secure "first key" that applications can use to safely request additional access tokens.
+
+Without this bootstrap JWT, external applications would lack the initial credentials needed to securely integrate with the main system.
+
+This script simplifies the onboarding process while maintaining security best practices.
+
+```
+Usage: /usr/bin/getjwt <device-id> [port]
+  Example:
+    /usr/bin/getjwt my-device-123
+  Example with custom port:
+    /usr/bin/getjwt my-device-123 8000
+```
+
+Basic test using bash:
+
+```
+canonical_string="POST\n/api/v1/auth/token\n\n{\"device_id\": \"testing\"}"
+signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /etc/wlanpi-core/.secrets/shared_secret.bin)" -binary | xxd -p -c 256)
+
+curl -X 'POST' \
+  -H "X-Request-Signature: $signature" \
+  'localhost:31415/api/v1/auth/token' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"device_id": "testing"}'
+```
+
+## lhapitest.sh
+
+The script ./install/usr/bin/lhapitest.sh demonstrates how to interact with core services from localhost using HMAC signatures for authentication. While localhost applications use HMAC signatures, any applications running outside the WLAN Pi must authenticate using JWT tokens instead.
+
+Default uses :31415
+
+```
+./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}'
+./install/usr/bin/lhapitest -e /system/device/model
+```
+
+Custom port :8000
+
+```
+./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}' -p 8000
+./install/usr/bin/lhapitest -e /system/device/model -p 8000
+```
+
+### Running your development version in place (method 1)
+
+Doing some development on the backend and want run your version in place instead of a different port? Use this trick to start it the way it's started in `debian/wlanpi-core.service`.
+
+Change the workingdirectory symlink.
+
+Verify where to restore before modifying with `ls -l /opt/wlanpi-core/workingdirectory`:
+
+```
+(venv) wlanpi@wlanpi-573:~ $ ls -l /opt/wlanpi-core/workingdirectory
+lrwxrwxrwx 1 root root 56 Jan 13 13:36 /opt/wlanpi-core/workingdirectory -> /opt/wlanpi-core/lib/python3.9/site-packages/wlanpi_core
+```
+
+Link to your development location:
+
+```
+sudo ln -sfn /home/wlanpi/wlanpi-core/wlanpi_core /opt/wlanpi-core/workingdirectory
+```
+
+Reboot service:
+
+```
+sudo systemctl restart wlanpi-core.service
+sudo systemctl status wlanpi-core.service
+```
+
+Do things.
+
+Done? Restore and reboot services.
+
+```
+sudo ln -sfn /opt/wlanpi-core/lib/python3.9/site-packages/wlanpi_core /opt/wlanpi-core/workingdirectory
+```
+
+### Running your development version in place (method 2)
 
 Doing some development on the backend and want run your version in place instead of a different port? Use this trick to start it the way it's started in `debian/wlanpi-core.service`.
 
@@ -142,7 +222,7 @@ Doing some development on the backend and want run your version in place instead
        ```
        ufw allow 31415
        ```
-    2. Now you can go to http://wlanpi-###.local:31415/ 
+    2. Now you can go to `http://wlanpi-###.local:31415/` or `http://<ip>:31415/`
 5. Occasionally, changes may not get picked up as reloads happen. If so, either restart the process or send a HUP with `kill -HUP <gunicorn PID>`.
 6. When you're done, restart the original core services:
     ```
@@ -159,11 +239,65 @@ Problems with the unit file? Check out the journal for the service:
 journalctl -u wlanpi-core
 ```
 
+Follow with:
+
+```
+journalctl --follow --unit wlanpi-core
+journalctl -f -b -u wlanpi-core
+journalctl -f -n 10 -u wlanpi-core
+```
+
+Check last 20 lines and then follow the logs
+
+```
+tail -n 20 -f /var/log/wlanpi_core/app.log
+tail -n 20 -f /var/log/wlanpi_core/debug/debug.log
+```
+
+## tmpfs debugging
+
+```
+systemctl status var-log-wlanpi_core-debug.mount
+mount | grep wlanpi_core/debug
+df -h /var/log/wlanpi_core/debug
+ls -la /var/log/wlanpi_core/debug
+```
+
+Example:
+
+```
+$ systemctl status var-log-wlanpi_core-debug.mount
+● var-log-wlanpi_core-debug.mount - Debug log tmpfs mount for wlanpi-core
+     Loaded: loaded (/lib/systemd/system/var-log-wlanpi_core-debug.mount; enabled; vendor preset: enabled)
+     Active: active (mounted) since Tue 2025-01-14 09:25:03 CST; 2min 44s ago
+      Where: /var/log/wlanpi_core/debug
+       What: tmpfs
+      Tasks: 0 (limit: 1655)
+        CPU: 5ms
+     CGroup: /system.slice/var-log-wlanpi_core-debug.mount
+
+Jan 14 09:25:03 wlanpi-573 systemd[1]: Mounting Debug log tmpfs mount for wlanpi-core...
+Jan 14 09:25:03 wlanpi-573 systemd[1]: Mounted Debug log tmpfs mount for wlanpi-core.
+
+$ mount | grep wlanpi_core/debug
+tmpfs on /var/log/wlanpi_core/debug type tmpfs (rw,relatime,size=25600k,mode=750,uid=1000)
+
+$ df -h /var/log/wlanpi_core/debug
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            25M   12K   25M   1% /var/log/wlanpi_core/debug
+
+$ ls -la /var/log/wlanpi_core/debug
+total 16
+drwxr-x--- 2 wlanpi root   60 Jan 14 09:25 .
+drwxr-xr-x 3 root   root 4096 Jan 14 09:25 ..
+-rw-r--r-- 1 root   root 8249 Jan 14 09:25 debug.log
+```
+
 ## Tagging
 
-Each release version should have a git tag.
+Each release should have a git tag.
 
-Example: `git tag v1.2.3 -m "Release version 1.2.3"`, in which case `v1.2.3` is a tag name and the semantic version is `1.2.3`.
+Example: `git tag v1.2.3 -m "Release 1.2.3"`, in which case `v1.2.3` is a tag name and the semantic version is `1.2.3`.
 
 Use `git push origin <tag_name>` to push your local tag to the remote repository (Github).
 
@@ -189,27 +323,24 @@ Please note that Python package versioning should follow PEP 440. https://www.py
 
 ## Commiting
 
-Before committing, please lint, format, and test your code.
+Before committing, please lint, format, and test your code with tox.
 
-### Linting and formatting
+0. `tox -e format`
+0. `tox -e lint`
+0. `tox -e test`
 
-You should install depends with `pip install .[testing]` and then you will be able to run `tox -e format` and `tox -e lint` to format and lint respectively.
+### Linting, formatting, and testing
 
-For reference, there are `format.sh`, `lint.sh`, and `test.sh` scripts found in `{repo}/scripts`.
+`tox` will automatically run a few tools such as black, flake8, and isort in a consistent manner. 
 
-Here are some of the tools used:
+You should install depends with either 1) `pip install .[testing]` or 2) `./init`
 
-* autoflake
-* black
-* flake8
-* isort
-* mypy
+When the venv is active:
 
-### Testing
+- Run `tox -e format` and `tox -e lint` to format and lint respectively 
+- Run  `tox` to run tests.
 
-You should install depends with `pip install .[testing]` and then you will be able to run `tox` to run tests.
-
-## Building the Debian Package
+## Building the Debian package
 
 From the root directory of this repository run:
 

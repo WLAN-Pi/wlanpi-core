@@ -1,0 +1,14 @@
+# wlanpi-core-ufw-first-boot.service
+
+[Unit]
+Description=wlanpi-core ufw first boot setup
+After=network.target
+Before=wlanpi-core.service
+
+[Service]
+Type=oneshot
+ExecStart=/etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

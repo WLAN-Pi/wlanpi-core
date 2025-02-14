@@ -1,0 +1,112 @@
+#!/bin/bash
+
+check_sudo() {
+    if ! command -v sudo &> /dev/null; then
+        echo "Error: sudo is not installed. Please run as root or install sudo and try again."
+        exit 1
+    fi
+}
+
+install_dependencies() {
+    echo "Installing required depends ..."
+    check_sudo
+    
+    if ! sudo apt-get update; then
+        echo "Error: Failed to update package lists"
+        exit 1
+    fi
+
+    if ! sudo apt-get install -y -q \
+        build-essential \
+        git \
+        unzip \
+        zip \
+        nload \
+        tree \
+        ufw \
+        nftables \
+        vlan \
+        sqlite3 \
+        lldpd \
+        xxd; then
+        echo "Error: Failed to install build essentials and tools"
+        exit 1
+    fi
+
+    if ! sudo apt-get install -y -q \
+        dbus \
+        pkg-config \
+        gcc \
+        libpq-dev \
+        libdbus-glib-1-dev \
+        libglib2.0-dev \
+        libcairo2-dev \
+        libgirepository1.0-dev \
+        libffi-dev \
+        cmake \
+        libdbus-1-dev; then
+        echo "Error: Failed to install development libraries"
+        exit 1
+    fi
+
+    if ! sudo apt-get install -y -q \
+        python3-pip \
+        python3-dev \
+        python3-venv \
+        python3-wheel \
+        python3-setuptools \
+        python3-distutils \
+        python3-gi \
+        dh-python; then
+        echo "Error: Failed to install Python packages"
+        exit 1
+    fi
+}
+
+if [ -d "venv" ]; then
+    echo "Virtual environment 'venv' already exists. Skipping creation."
+else
+    echo "Creating new virtual environment ..."
+    if ! python3 -m venv venv; then
+        echo "Error: Failed to create virtual environment"
+        exit 1
+    fi
+fi
+
+install_dependencies
+
+# shellcheck disable=SC1091
+source venv/bin/activate
+
+if [ -f "requirements.txt" ]; then
+    echo "Installing dependencies from requirements.txt ..."
+    if ! pip install -r requirements.txt; then
+        echo "Error: Failed to install Python requirements"
+        exit 1
+    fi
+else
+    echo "Warning: requirements.txt not found in current directory"
+fi
+
+if [ -f "testing.txt" ]; then
+    echo "Installing dependencies from testing.txt ..."
+    if ! pip install -r testing.txt; then
+        echo "Error: Failed to install testing Python requirements"
+        exit 1
+    fi
+else
+    echo "Warning: testing.txt not found in current directory"
+fi
+
+echo "Configuring firewall to allow port 8000..."
+if ! sudo ufw allow 8000; then
+    echo "Error: Failed to configure firewall rule for port 8000"
+    exit 1
+fi
+
+echo "Starting wlanpi_core in debug mode..."
+echo "Executing: sudo venv/bin/python -m wlanpi_core --reload --debug"
+if ! sudo venv/bin/python -m wlanpi_core --reload --debug; then
+    echo "Error: Failed to start wlanpi_core"
+    exit 1
+fi

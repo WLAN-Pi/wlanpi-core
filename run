@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo "Starting wlanpi_core in debug mode..."
+echo "Executing: sudo venv/bin/python -m wlanpi_core --reload --debug"
+if ! sudo venv/bin/python -m wlanpi_core --reload --debug; then
+    echo "Error: Failed to start wlanpi_core"
+    exit 1
+fi

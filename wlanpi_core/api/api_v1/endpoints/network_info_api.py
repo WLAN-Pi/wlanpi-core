@@ -1,17 +1,22 @@
-import logging
+from fastapi import APIRouter, Depends, Response
 
-from fastapi import APIRouter, Response
-
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network_info
 from wlanpi_core.services import network_info_service
 
 router = APIRouter()
 
-log = logging.getLogger("uvicorn")
+from wlanpi_core.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
-@router.get("/", response_model=network_info.NetworkInfo)
+@router.get(
+    "/",
+    response_model=network_info.NetworkInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def show_network_info():
     """
     Returns information about network related stuff.

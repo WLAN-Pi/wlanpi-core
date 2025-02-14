@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Try to unmount gracefully first
+        if systemctl is-active wlanpi-core-debug.mount >/dev/null 2>&1; then
+            systemctl stop wlanpi-core-debug.mount || true
+        fi
+        # Force unmount if still mounted
+        if mountpoint -q /var/log/wlanpi_core/debug; then
+            umount -l -f /var/log/wlanpi_core/debug || true
+        fi
+    ;;
+    failed-upgrade)
+    ;;
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0

@@ -6,85 +6,119 @@
 #
 --extra-index-url https://www.piwheels.org/simple
 
-aiofiles==23.2.1
+aiofiles==24.1.0
     # via -r requirements.in
-annotated-types==0.5.0
+aiosqlite==0.20.0
+    # via -r requirements.in
+alembic==1.14.1
+    # via -r requirements.in
+annotated-types==0.7.0
     # via pydantic
-anyio==4.0.0
+anyio==4.8.0
     # via
-    #   httpcore
+    #   httpx
     #   starlette
-certifi==2024.8.30
+authlib==1.4.0
+    # via -r requirements.in
+certifi==2024.12.14
     # via
     #   httpcore
     #   httpx
     #   requests
-charset-normalizer==3.2.0
+cffi==1.17.1
+    # via cryptography
+charset-normalizer==3.4.1
     # via requests
-click==8.1.7
+click==8.1.8
     # via uvicorn
+cryptography==44.0.0
+    # via authlib
 dbus-python==1.3.2
     # via -r requirements.in
-exceptiongroup==1.1.3
+deprecated==1.2.15
+    # via limits
+exceptiongroup==1.2.2
     # via anyio
-fastapi==0.103.0
+fastapi==0.115.6
     # via -r requirements.in
+greenlet==3.1.1
+    # via sqlalchemy
 gunicorn==23.0.0
     # via -r requirements.in
 h11==0.14.0
     # via
     #   httpcore
     #   uvicorn
-httpcore==0.17.3
+httpcore==1.0.7
     # via httpx
-httpx==0.24.1
+httpx==0.28.1
     # via -r requirements.in
-idna==3.4
+idna==3.10
     # via
     #   anyio
     #   httpx
     #   requests
-jinja2==3.1.4
+jinja2==3.1.5
     # via -r requirements.in
-markupsafe==2.1.3
-    # via jinja2
-packaging==23.1
-    # via gunicorn
-psutil==5.9.5
+limits==4.0.0
+    # via slowapi
+mako==1.3.8
+    # via alembic
+markupsafe==3.0.2
+    # via
+    #   jinja2
+    #   mako
+packaging==24.2
+    # via
+    #   gunicorn
+    #   limits
+psutil==6.1.1
     # via -r requirements.in
-pycairo==1.25.1
+pycairo==1.27.0
     # via pygobject
-pydantic==2.3.0
+pycparser==2.22
+    # via cffi
+pydantic==2.10.5
     # via
     #   fastapi
     #   pydantic-settings
-pydantic-core==2.6.3
+pydantic-core==2.27.2
     # via pydantic
-pydantic-settings==2.0.3
+pydantic-settings==2.7.1
     # via -r requirements.in
-pygobject==3.46.0
+pygobject==3.50.0
     # via -r requirements.in
-python-dotenv==1.0.0
+python-dotenv==1.0.1
     # via
     #   -r requirements.in
     #   pydantic-settings
 requests==2.32.3
     # via -r requirements.in
-sniffio==1.3.0
+slowapi==0.1.9
+    # via -r requirements.in
+sniffio==1.3.1
+    # via anyio
+sqlalchemy[asyncio]==2.0.37
     # via
-    #   anyio
-    #   httpcore
-    #   httpx
-starlette==0.27.0
+    #   -r requirements.in
+    #   alembic
+starlette==0.41.3
     # via fastapi
-typing-extensions==4.7.1
+typing-extensions==4.12.2
     # via
+    #   aiosqlite
+    #   alembic
+    #   anyio
     #   fastapi
+    #   limits
     #   pydantic
     #   pydantic-core
+    #   sqlalchemy
     #   starlette
     #   uvicorn
-urllib3==2.2.3
+urllib3==2.3.0
     # via requests
-uvicorn==0.23.2
+uvicorn==0.34.0
     # via -r requirements.in
+wrapt==1.17.1
+    # via deprecated

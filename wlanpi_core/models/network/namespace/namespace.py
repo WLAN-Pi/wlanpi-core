@@ -9,7 +9,8 @@ from wlanpi_core.models.network.namespace.namespace_errors import (
 )
 from wlanpi_core.utils.general import run_command
 
-# log = logging.getLogger("uvicorn")
+# from wlanpi_core.core.logging import get_logger
+log = get_logger(__name__)
 
 
 class NetworkNamespace:

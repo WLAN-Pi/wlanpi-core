@@ -25,6 +25,7 @@ SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 override_dh_installsystemd:
 	dh_installsystemd wlanpi-core.service
 	dh_installsystemd wlanpi-core.socket
+	dh_installsystemd var-log-wlanpi_core-debug.mount
 
 # we don't really want to strip the symbols from our object files.
 override_dh_strip:

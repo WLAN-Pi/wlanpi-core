@@ -1,7 +1,31 @@
 # Contribution Guidelines
 
-For the greatest chance of helpful responses, please observe the
-following additional notes.
+For the greatest chance of helpful responses, please observe the following guidelines.
+
+## Repository Structure
+
+We maintain two primary branches:
+- `main`: considered as the stable / release branch for wlanpi-core.
+- `dev`: development branch where all contributions are integrated, made stable, and then PR'd into main.
+
+## Types of Contributors
+
+### Internal Contributors (with repo write access)
+
+1. Create feature branches from dev:
+   ```bash
+   git checkout dev
+   git pull origin dev
+   git checkout -b feature/descriptive-name
+   ```
+2. Make changes and push to your feature branch
+3. Create PR from feature branch to dev
+
+### External Contributors (without write access)
+
+1. Fork the repository
+2. Work in your fork's dev branch
+3. Create PR from your fork's dev to this repository's dev branch
 
 ## Questions
 
@@ -50,17 +74,29 @@ will close your issue without fixing it.
 
 ## Code Contributions
 
-Some tips to consider.
+Some tips to _consider_.
 
 ### Before You Start Coding
 
-To increase the chances of Pull Request (PR) approval, first, talk to one of the core [WLAN Pi](https://github.com/WLAN-Pi/) [team members](https://github.com/orgs/WLAN-Pi/people).
+To increase the chances of Pull Request (PR) approval, first, talk to one of the core [WLAN Pi](https://github.com/WLAN-Pi/) [team members](https://github.com/orgs/WLAN-Pi/people) or open an issue so we can discuss them. It's also a great idea to review the [organization contributing guidelines](https://github.com/WLAN-Pi/.github/blob/main/docs/contributing.md).
 
 Aligning your ideas with the project team (before doing the work) will save everybody's time.
 
+### Commit Messages
+
+Follow the conventional commits format:
+
+```
+feat: new feature
+fix: bug fix
+docs: documentation changes
+refactor: code restructuring
+test: adding tests
+```
+
 ### Development Environment
 
-Use whatever environment you want to develop.
+Use whatever tooling you want for developing.
 
 Need help? Consider using PyCharm or Visual Studio Code (VSC) with the official Python and Pylance extensions from Microsoft.
 
@@ -72,12 +108,29 @@ Before submitting a PR perform the following:
 
 2. Format your code with `tox -e format`.
 
-3. Create a test that validates your changes. this test should go in `/tests`.
+3. Create a test that validates your changes. This test should go in `/tests`.
 
 4. Ensure all tests pass by running `tox`.
 
-These steps are done from the root directory of the repo. You may need to first setup and activate the virtualenv.
+These steps are done from the root directory of the repo. 
+
+Depending on how you're testing your changes, you may need to first setup and activate the virtualenv.
 
 Failure to do so means it will take longer to test, validate, and merge your PR into the repo.
 
 CI/CD workflows will also fail if tox fails.
+
+## Code Review Process
+
+1. All changes require at least one review
+2. Address any feedback from reviewers
+3. CI checks must pass
+4. Maintainers will handle the final merge
+
+## Release Process
+
+Maintainers handle releases by:
+
+1. Merging `dev` into `main`
+2. Creating a new version tag
+3. Publishing release notes
