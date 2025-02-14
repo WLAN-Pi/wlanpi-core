@@ -123,7 +123,7 @@ def show_wlan_interfaces():
 
     try:
         interfaces = run_command(
-            f"{IW_FILE} dev 2>&1", shell=True
+            f"{IW_FILE} dev 2>&1", shell=True, use_shlex=False
         ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
         interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
     except Exception as e:

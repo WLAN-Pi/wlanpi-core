@@ -24,6 +24,7 @@ def run_command(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    use_shlex=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -41,6 +42,8 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        shlex: If shlex should be used to protect input. Set to false if you need support
+                for some shell features like wildcards. 
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -56,13 +59,15 @@ def run_command(
             error_msg="You cannot use both 'input' and 'stdin' on the same call.",
             return_code=-1,
         )
-
-    # Todo: explore using shlex to always split to protect against injections
+    if not use_shlex:
+        logging.getLogger().warning(
+            f"shlex protection disabled for command--make sure this command is otherwise protected from injections:\n {cmd}"
+        )
     if shell:
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
             cmd: list
-            cmd: str = shlex.join(cmd)
+            cmd: str = shlex.join(cmd) if use_shlex else " ".join(cmd)
         cmd: str
         logging.getLogger().warning(
             f"Command {cmd} being run as a shell script. This could present "
@@ -72,7 +77,7 @@ def run_command(
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
             cmd: str
-            cmd: list[str] = shlex.split(cmd)
+            cmd: list[str] = shlex.split(cmd) if use_shlex else cmd.split()
         cmd: list[str]
     with subprocess.Popen(
         cmd,
@@ -100,6 +105,7 @@ async def run_command_async(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    use_shlex=True,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -117,6 +123,8 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        shlex: If shlex should be used to protect input. Set to false if you need support
+                for some shell features like wildcards. 
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -132,6 +140,26 @@ async def run_command_async(
             error_msg="You cannot use both 'input' and 'stdin' on the same call.",
             return_code=-1,
         )
+    if not use_shlex:
+        logging.getLogger().warning(
+            f"shlex protection disabled for command--make sure this command is otherwise protected from injections:\n {cmd}"
+        )
+    if shell:
+        # If a list was passed in shell mode, safely join using shlex to protect against injection.
+        if isinstance(cmd, list):
+            cmd: list
+            cmd: str = shlex.join(cmd) if use_shlex else " ".join(cmd)
+        cmd: str
+        logging.getLogger().warning(
+            f"Command {cmd} being run as a shell script. This could present "
+            f"an injection vulnerability. Consider whether you really need to do this."
+        )
+    else:
+        # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
+        if isinstance(cmd, str):
+            cmd: str
+            cmd: list[str] = shlex.split(cmd) if use_shlex else cmd.split()
+        cmd: list[str]
 
     # Prepare input data for communicate
     if input:
@@ -149,7 +177,7 @@ async def run_command_async(
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
             cmd: list
-            cmd: str = shlex.join(cmd)
+            cmd: str = use_shlex.join(cmd)
         cmd: str
         logging.getLogger().warning(
             f"Command {cmd} being run as a shell script. This could present "
@@ -168,7 +196,7 @@ async def run_command_async(
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
             cmd: str
-            cmd: list[str] = shlex.split(cmd)
+            cmd: list[str] = use_shlex.split(cmd)
         cmd: list[str]
         proc = await asyncio.subprocess.create_subprocess_exec(
             cmd[0],
@@ -229,6 +257,18 @@ def get_current_unix_timestamp() -> float:
     """
     ms = datetime.now()
     return time.mktime(ms.timetuple()) * 1000
+
+
+def byte_array_to_string(s) -> str:
+    """Converts a byte array to string, replacing non-printable characters with spaces."""
+    r = ""
+    for c in s:
+        if 32 <= c < 127:
+            r += "%c" % c
+        else:
+            r += " "
+            # r += urllib.quote(chr(c))
+    return r
 
 
 def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int]:
