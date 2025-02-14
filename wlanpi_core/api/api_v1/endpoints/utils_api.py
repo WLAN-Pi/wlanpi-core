@@ -104,7 +104,7 @@ async def usb_interfaces():
 @router.get(
     "/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_auth_wrapper)]
 )
-async def usb_interfaces():
+async def ufw_information():
     """
     Returns the UFW information.
     """
