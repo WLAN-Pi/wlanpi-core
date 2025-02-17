@@ -1,8 +1,8 @@
-wlanpi-core (2.0.0) unstable; urgency=high
+wlanpi-core (2.0.0-1) unstable; urgency=high
 
   * Breaking auth changes requiring jwt for external and hmac signatures for local requests
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 16 Jan 2025 00:00:00 -0400
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 17 Jan 2025 00:00:00 -0400
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 
