@@ -1,7 +1,6 @@
-wlanpi-core (2.0.0~dev20250216.2) unstable; urgency=high
+wlanpi-core (2.0.0) unstable; urgency=high
 
-  * Development build towards 2.0.0
-  * Breaking auth changes
+  * Breaking auth changes requiring jwt for external and hmac signatures for local requests
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 16 Jan 2025 00:00:00 -0400
 
