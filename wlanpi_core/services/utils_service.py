@@ -20,7 +20,7 @@ async def show_reachability():
         gateways = get_default_gateways()
         if not gateways:
             return {"error": "No default gateway found"}
-        
+
         dg_interface, default_gateway = list(gateways.items())[0]
 
         dns_servers = [
