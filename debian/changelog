@@ -1,3 +1,14 @@
+wlanpi-core (2.0.0-2) unstable; urgency=medium
+
+  * Add iptables-persistent and netfilter-persistent as dependencies for
+    firewall compatibility between Bullseye and Bookworm
+  * Add debconf preseeding in preinst to avoid interactive prompts during
+    iptables-persistent installation
+  * Fix ufw initialization issues during package installation on Bullseye
+    by ensuring iptables 'comment' module is available (iptables-persistent)
+
+-- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 26 Feb 2025 02:52:00 -0000
+
 wlanpi-core (2.0.0-1) unstable; urgency=high
 
   * Breaking auth changes requiring jwt for external and hmac signatures for local requests

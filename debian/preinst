@@ -5,6 +5,10 @@
 
 #DEBHELPER#
 
+# Set default answers for iptables-persistent
+echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections
+echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections
+
 if ! ischroot; then
     echo "Stopping wlanpi-core service..."
     deb-systemd-invoke stop wlanpi-core.service || true
