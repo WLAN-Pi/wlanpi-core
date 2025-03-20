@@ -62,7 +62,7 @@ class IPInterface(BaseModel, extra=Extra.allow):
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
 
 
-class ScanItem(BaseModel):
+class ScanItem(BaseModel, extra=Extra.allow):
     ssid: str = Field(example="A Network")
     bssid: str = Field(example="11:22:33:44:55")
     key_mgmt: str = Field(example="wpa-psk")
@@ -75,6 +75,11 @@ class ScanResults(BaseModel):
     nets: List[ScanItem]
 
 
+class SupplicantNetwork(BaseModel, extra=Extra.allow):
+    ssid: str = Field(example="A Network")
+    key_mgmt: str = Field(example="wpa-psk")
+
+
 class WlanConfig(BaseModel):
     ssid: str = Field(example="SSID Name")
     psk: Union[str, None] = None
@@ -84,7 +89,6 @@ class WlanConfig(BaseModel):
 
 
 class WlanInterfaceSetup(BaseModel):
-    interface: str = Field(example="wlan0")
     netConfig: WlanConfig
     removeAllFirst: bool
 
@@ -102,7 +106,7 @@ class NetworkSetupLog(BaseModel):
 class NetworkSetupStatus(BaseModel):
     status: str = Field(example="connected")
     response: NetworkSetupLog
-    connectedNet: ScanItem
+    connectedNet: Optional[ScanItem]
     input: str
 
 

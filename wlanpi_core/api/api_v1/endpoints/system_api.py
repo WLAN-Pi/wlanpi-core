@@ -105,6 +105,22 @@ async def show_device_model():
         log.error(exc)
         return Response(content="Internal Server Error", status_code=500)
 
+@router.post(
+    "/power/reboot",
+    response_model=bool,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_reboot():
+    """
+    Reboot the system
+    """
+    try:
+        return await system_service.reboot()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
 
 @router.get(
     "/service/status",

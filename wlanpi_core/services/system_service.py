@@ -10,7 +10,7 @@ from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.general import run_command, run_command_async
 
 log = get_logger(__name__)
 
@@ -42,7 +42,6 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-6",
     "wlanpi-grafana-wipry-lp-stop",
     "wpa_supplicant",
-    "wpa_supplicant@wlan0",
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
@@ -176,14 +175,14 @@ def get_stats():
     # determine mem useage
     cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
-        MemUsage = run_command(cmd, shell=True).stdout.strip()
+        MemUsage = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         MemUsage = "unknown"
 
     # determine disk util
     cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
-        Disk = run_command(cmd, shell=True).stdout.strip()
+        Disk = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         Disk = "unknown"
 
@@ -200,7 +199,7 @@ def get_stats():
     # determine uptime
     cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
-        uptime = run_command(cmd, shell=True).stdout.strip()
+        uptime = run_command(cmd, shell=True, use_shlex=False).stdout.strip()
     except Exception:
         uptime = "unknown"
 
@@ -358,3 +357,7 @@ async def start_systemd_service(name: str):
     raise ValidationError(
         f"starting {name} is restricted or does not exist", status_code=400
     )
+
+
+async def reboot():
+    return (await run_command_async(["reboot"])).success

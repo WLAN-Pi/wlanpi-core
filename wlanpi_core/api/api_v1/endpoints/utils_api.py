@@ -1,10 +1,11 @@
 import json
-
+from typing import Union
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
+from wlanpi_core.schemas.utils.utils import TracerouteResponse
 from wlanpi_core.services import utils_service
 
 router = APIRouter()
@@ -20,7 +21,7 @@ log = get_logger(__name__)
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def reachability():
+async def check_reachability():
     """
     Runs the reachability test and returns the results
     """
@@ -40,7 +41,7 @@ async def reachability():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
 
 
@@ -70,7 +71,7 @@ async def reachability():
 #     except ValidationError as ve:
 #         return Response(content=ve.error_msg, status_code=ve.status_code)
 #     except Exception as ex:
-#         log.error(ex)
+#         log.error(ex, exc_info=ex)
 #         return Response(content=f"Internal Server Error {ex}", status_code=500)
 
 
@@ -97,12 +98,13 @@ async def usb_interfaces():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
 
 
 @router.get(
-    "/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_auth_wrapper)]
+    "/ufw", response_model=utils.Ufw,
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def ufw_information():
     """
@@ -124,5 +126,124 @@ async def ufw_information():
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
-        log.error(ex)
+        log.error(ex, exc_info=ex)
         return Response(content=f"Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/ping",
+    response_model=Union[utils.PingResult, utils.PingFailure],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_ping(request: utils.PingRequest):
+    """
+    Pings a target and returns the results
+    """
+
+    try:
+        result = await utils_service.ping(
+            request.host,
+            request.count,
+            request.interval,
+            request.ttl,
+            request.interface,
+        )
+        return result
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post(
+    "/iperf2/client",
+    response_model=utils.Iperf2Result,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_iperf(request: utils.Iperf2ClientRequest):
+    """
+    Runs iperf2 against a target and returns the results
+    """
+
+    try:
+        return await utils_service.run_iperf2_client(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post(
+    "/iperf3/client",
+    response_model=None,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_iperf3_client(request: utils.Iperf3ClientRequest):
+    """
+    Runs iperf3 against a target and returns the results
+    """
+
+    try:
+        return await utils_service.run_iperf3_client(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post(
+    "/traceroute",
+    response_model=TracerouteResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_traceroute(request: utils.TracerouteRequest):
+    """
+    Run traceroute and return the results
+    """
+    try:
+        return await utils_service.run_traceroute(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post(
+    "/dhcp/test",
+    response_model=utils.DhcpTestResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_dhcp_test(request: utils.DhcpTestRequest):
+    """
+    Run a dhcpcd test and return the results
+    """
+    try:
+        return await utils_service.run_dhcp_test(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
+
+
+@router.post(
+    "/dns/dig",
+    response_model=list[utils.DigResponse],
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def execute_dig(request: utils.DigRequest):
+    """
+    Run a dhcpcd test and return the results
+    """
+    try:
+        return await utils_service.dig(**request.__dict__)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex, exc_info=ex)
+        return Response(content=f"Internal Server Error: {ex}", status_code=500)
