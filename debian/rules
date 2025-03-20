@@ -35,7 +35,7 @@ override_dh_strip:
 override_dh_dwz:
 
 override_dh_installexamples:
-	dh_installexamples -A -X__pycache__
+	dh_installexamples -A --exclude=__pycache__
 
 override_dh_virtualenv:
 	dh_virtualenv \
@@ -46,7 +46,7 @@ override_dh_virtualenv:
 		--preinstall="setuptools==65.5.0" \
 		--preinstall="wheel==0.37.1"
 		--preinstall="mock" \
-		--extra-pip-arg="--compile" \
+		--extra-pip-arg="--no-cache-dir" \
 		--extras="all,systemd,test"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
