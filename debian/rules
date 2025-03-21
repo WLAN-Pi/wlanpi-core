@@ -54,11 +54,17 @@ override_dh_virtualenv:
 		--preinstall="wheel==0.37.1"
 		--preinstall="mock" \
 		--extra-pip-arg="--no-cache-dir" \
+		--extra-pip-arg --no-compile\
 		--extras="all,systemd,test"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip download $(DBUS_PYTHON_SPEC) --no-binary dbus-python ${DBUS_PYTHON_SPEC} --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install dbus-python-$(DBUS_VERSION).tar.gz --verbose
+
+	@echo "BYTECODE CLEANUP:"
+	find $(DH_VENV_DIR)/lib -type d -name "__pycache__" -exec rm -rf {} + -print 2>/dev/null || true
+	find $(DH_VENV_DIR)/lib -name "*.pyc" -delete -print
+	find $(DH_VENV_DIR)/lib -name "*.pyo" -delete -print
 
 	@echo "BEFORE BUILD TOOLS CLEANUP:"
 	du -sh $(DH_VENV_DIR)/bin/pip* || echo "No pip binaries found"
