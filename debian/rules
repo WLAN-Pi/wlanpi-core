@@ -53,8 +53,8 @@ override_dh_virtualenv:
 		--preinstall="setuptools==65.5.0" \
 		--preinstall="wheel==0.37.1"
 		--preinstall="mock" \
-		--extra-pip-arg="--no-cache-dir" \
-		--extra-pip-arg --no-compile\
+		--extra-pip-arg "--no-cache-dir" \
+		--extra-pip-arg "--no-compile" \
 		--extras="all,systemd,test"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
