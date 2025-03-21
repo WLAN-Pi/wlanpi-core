@@ -61,12 +61,12 @@ override_dh_virtualenv:
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip install dbus-python-$(DBUS_VERSION).tar.gz --verbose
 
 	@echo "BEFORE BUILD TOOLS CLEANUP:"
-	du -sh $(DH_VENV_DIR)/bin/pip* || @echo "No pip binaries found"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/pip || @echo "No pip package found"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/setuptools || @echo "No setuptools found"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/wheel || @echo "No wheel found"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack || @echo "No _distutils_hack found"
-	du -sh $(DH_VENV_DIR) || @echo "Cannot determine total venv size"
+	du -sh $(DH_VENV_DIR)/bin/pip* || echo "No pip binaries found"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/pip || echo "No pip package found"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/setuptools || echo "No setuptools found"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/wheel || echo "No wheel found"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack || echo "No _distutils_hack found"
+	du -sh $(DH_VENV_DIR) || echo "Cannot determine total venv size"
 
 	rm -rfv $(DH_VENV_DIR)/bin/pip*
 	rm -rfv $(DH_VENV_DIR)/bin/easy_install*
@@ -78,9 +78,9 @@ override_dh_virtualenv:
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/*.dist-info
 
 	@echo "AFTER BUILD TOOLS CLEANUP:"
-	du -sh $(DH_VENV_DIR)/bin/pip* 2>/dev/null || @echo "No pip binaries found - good!"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/pip 2>/dev/null || @echo "No pip package found - good!"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/setuptools 2>/dev/null || @echo "No setuptools found - good!"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/wheel 2>/dev/null || @echo "No wheel found - good!"
-	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack 2>/dev/null || @echo "No _distutils_hack found - good!"
-	du -sh $(DH_VENV_DIR) || @echo "Cannot determine total venv size"
+	du -sh $(DH_VENV_DIR)/bin/pip* 2>/dev/null || echo "No pip binaries found - good!"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/pip 2>/dev/null || echo "No pip package found - good!"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/setuptools 2>/dev/null || echo "No setuptools found - good!"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/wheel 2>/dev/null || echo "No wheel found - good!"
+	du -sh $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack 2>/dev/null || echo "No _distutils_hack found - good!"
+	du -sh $(DH_VENV_DIR) || echo "Cannot determine total venv size"
