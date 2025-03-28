@@ -19,7 +19,7 @@ SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 %:
 	dh $@ --with python-virtualenv --buildsystem=pybuild
 
-.PHONY: override_dh_virtualenv override_dh_installexamples 
+.PHONY: override_dh_installsystemd override_dh_strip override_dh_dwz override_dh_lintian override_dh_virtualenv override_dh_installexamples 
 
 # ensure that the systemd services are handled by systemd.
 override_dh_installsystemd:
