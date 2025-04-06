@@ -104,6 +104,7 @@ def bluetooth_status():
     status["name"] = bluetooth_name()
     status["alias"] = bluetooth_alias()
     status["addr"] = bluetooth_address()
+    status["paired_devices"] = []
 
     if bluetooth_power():
         status["power"] = "On"
@@ -112,8 +113,7 @@ def bluetooth_status():
 
     paired_devices = bluetooth_paired_devices()
 
-    if paired_devices != None:
-        status["paired_devices"] = []
+    if paired_devices:
         for mac in paired_devices:
             status["paired_devices"].append({"name": paired_devices[mac], "addr": mac})
 

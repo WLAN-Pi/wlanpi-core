@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from authlib.jose import jwt
 from fastapi import HTTPException
-from sqlalchemy import Integer, func, select, update
+from sqlalchemy import Integer
+from sqlalchemy import exc as sqlalchemy_exc
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -156,7 +158,9 @@ class TokenManager:
 
         return token
 
-    async def _get_or_create_signing_key(self, session: AsyncSession) -> SigningKey:
+    async def _get_or_create_signing_key(
+        self, session: AsyncSession, in_transaction: bool = False
+    ) -> SigningKey:
         """
         Retrieve an existing active signing key or create a new one
 
@@ -169,10 +173,14 @@ class TokenManager:
         # 1. check cache
         active_key = self.skey_cache.active_key
         if active_key:
-            log.debug(
-                "Got active signing key from cache", extra={"key_id": active_key.id}
-            )
-            return active_key
+            merged_key = await self._safely_merge_cached_key(session, active_key.id)
+            if merged_key is not None:
+                log.debug(
+                    "Got active signing key from cache", extra={"key_id": merged_key.id}
+                )
+                return merged_key
+
+            log.debug("Cached active key invalid, checking database")
 
         # 2. check database
         query = select(SigningKey).where(SigningKey.active == True)
@@ -212,7 +220,10 @@ class TokenManager:
             .values(revoked=True)
         )
         await session.execute(revoke_tokens)
-        await session.commit()
+        if in_transaction:
+            await session.flush()
+        else:
+            await session.commit()
 
         self.skey_cache.clear()
         self.token_cache.clear()
@@ -230,6 +241,44 @@ class TokenManager:
         )
 
         return new_key
+
+    async def _safely_merge_cached_key(
+        self, session: AsyncSession, key_id: int
+    ) -> Optional[SigningKey]:
+        """
+        Safely merge a cached signing key with the current session.
+        Returns None if key cannot be merged or doesn't exist.
+        """
+        cached_key = self.skey_cache.get_key(key_id)
+        if cached_key is not None:
+            try:
+                merged_key = await session.merge(cached_key)
+                if merged_key is None:
+                    log.warning("Merge returned None for key")
+                    return None
+                log.debug(
+                    "Successfully merged cached key",
+                    extra={"key_id": key_id, "active": merged_key.active},
+                )
+                return merged_key
+            except Exception as e:
+                log.warning(
+                    "Failed to merge cached key",
+                    extra={
+                        "key_id": key_id,
+                        "error": str(e),
+                        "type": "cache_merge_error",
+                    },
+                )
+                self.skey_cache._cache.pop(key_id, None)
+                if self.skey_cache._active_key_id == key_id:
+                    log.info(
+                        "Clearing active key reference after merge failure",
+                        extra={"key_id": key_id},
+                    )
+                    self.skey_cache._active_key_id = None
+
+        return None
 
     async def create_token(
         self, device_id: str, expires_delta: Optional[timedelta] = None
@@ -250,10 +299,12 @@ class TokenManager:
         while retry_count < max_retries:
             async with self.app_state.db_manager.session() as session:
                 try:
-                    device_repo = DeviceRepository(session)
-                    await device_repo.get_or_create_device(device_id)
-
-                    signing_key = await self._get_or_create_signing_key(session)
+                    async with session.begin():
+                        device_repo = DeviceRepository(session)
+                        await device_repo.get_or_create_device(device_id)
+                        signing_key = await self._get_or_create_signing_key(
+                            session, in_transaction=True
+                        )
 
                     now = datetime.now(timezone.utc)
                     expires = now + (
@@ -293,7 +344,7 @@ class TokenManager:
 
                     return jwt_token
 
-                except sqlalchemy.exc.IntegrityError as e:
+                except sqlalchemy_exc.IntegrityError as e:
                     await session.rollback()
                     retry_count += 1
                     if retry_count >= max_retries:
@@ -372,7 +423,19 @@ class TokenManager:
                     return TokenValidationResult(is_valid=False, error="Token revoked")
 
                 signing_key = self.skey_cache.get_key(token_model.key_id)
-                if not signing_key:
+                if signing_key:
+                    signing_key = await self._safely_merge_cached_key(
+                        session, token_model.key_id
+                    )
+                    if signing_key is None:
+                        log.warning(
+                            "Failed to validate signing key",
+                            extra={"key_id": token_model.key_id},
+                        )
+                        return TokenValidationResult(
+                            is_valid=False, error="Failed to validate signing key"
+                        )
+                else:
                     skey_query = select(SigningKey).where(
                         SigningKey.id == token_model.key_id
                     )
@@ -462,6 +525,16 @@ class TokenManager:
         while True:
             try:
                 async with self.app_state.db_manager.session() as session:
+                    affected_key_ids = set()
+                    expired_query = select(Token).where(
+                        Token.expires_at < datetime.now(timezone.utc)
+                    )
+                    result = await session.execute(expired_query)
+                    expired_tokens = result.scalars().all()
+
+                    for token in expired_tokens:
+                        affected_key_ids.add(token.key_id)
+
                     deleted_count = await TokenRepository(
                         session
                     ).purge_expired_tokens()
@@ -471,6 +544,18 @@ class TokenManager:
                             f"Purged {deleted_count} expired tokens",
                             extra={"component": "auth", "action": "token_purge"},
                         )
+
+                        for key_id in affected_key_ids:
+                            merged_key = await self._safely_merge_cached_key(
+                                session, key_id
+                            )
+                            if merged_key is None:
+                                log.debug(
+                                    "Removing key from cache after token purge",
+                                    extra={"key_id": key_id},
+                                )
+
+                        self.token_cache.clear()
 
             except Exception as e:
                 log.exception(
@@ -629,15 +714,33 @@ class TokenManager:
         """
         cache_info = {
             "active_key_id": self.skey_cache._active_key_id,
-            "cached_keys": list(self.skey_cache._cache.keys()),
+            "cached_keys": [],
+            "errors": [],
         }
-        if token:
-            token_state = {"in_cache": False}
-            try:
-                async with self.app_state.db_manager.session() as session:
+
+        async with self.app_state.db_manager.session() as session:
+            for key_id in list(self.skey_cache._cache.keys()):
+                merged_key = await self._safely_merge_cached_key(session, key_id)
+                if merged_key is not None:
+                    cache_info["cached_keys"].append(key_id)
+                else:
+                    error_info = {"key_id": key_id, "type": "cache_merge_error"}
+                    cache_info["errors"].append(error_info)
+
+            if token:
+                token_state = {
+                    "in_cache": False,
+                    "cache_payload": self.token_cache.get_cached_token(
+                        token
+                    ),  # Add cache info
+                }
+                try:
                     token_repo = TokenRepository(session)
-                    if token_model := await token_repo.get_token_by_value(token):
+                    token_model = await token_repo.get_token_by_value(token)
+                    if token_model:
                         signing_key = self.skey_cache.get_key(token_model.key_id)
+                        if signing_key is not None:
+                            signing_key = await session.merge(signing_key)
                         token_state.update(
                             {
                                 "in_database": True,
@@ -649,9 +752,10 @@ class TokenManager:
                         )
                     else:
                         token_state["in_database"] = False
-            except Exception as e:
-                token_state["error"] = str(e)
-            cache_info["token_state"] = token_state
+                except Exception as e:
+                    token_state["error"] = str(e)
+                cache_info["token_state"] = token_state
+            cache_info["validation_time"] = datetime.now(timezone.utc).isoformat()
         return cache_info
 
     async def verify_db_state(self) -> dict:

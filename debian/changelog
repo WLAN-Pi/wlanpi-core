@@ -1,31 +1,20 @@
-wlanpi-core (2.0.0~dev20250214.2) unstable; urgency=high
+wlanpi-core (2.0.0-4) unstable; urgency=low
 
-  * Development build towards 2.0.0
-  * Breaking auth changes
+  * Package size reduction
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 14 Jan 2025 00:00:00 -0400
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 20 Mar 2025 00:00:00 -0400
 
-wlanpi-core (2.0.0~dev20250214.1) UNRELEASED; urgency=medium
+wlanpi-core (2.0.0-3) unstable; urgency=low
 
-  * Fix bluetooth model parsing issue
-  * Always restart
-  * Fixed default values on PingResult
-  * Draft build of new wlan control features
-  * Fixed an api definition typo
-  * More tweaks, and a version bump to fire dev package deploy
-  * Increased resistance to injection attacks
-  * Version bump for build
-  * Add automatic default gateway configuration for wlan api
-  * Fix some auto gateway config quirks
-  * implement ping and speed test services
-  * add reboot command
-  * Add DHCP test, Dig, and traceroute, as well as some other
-    optimizations
-  * Add a sleep to give enough time for lease data to appear.
-  * Add a sleep to give enough time for lease data to appear.
-  * Number of bugfixes
+  * Revert 2.0.0-2
 
- -- Michael Ketchel <michael.ketchel@gmail.com>  Tue, 03 Dec 2024 18:10:20 +0000
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 20 Mar 2025 00:00:00 -0400
+
+wlanpi-core (2.0.0-1) unstable; urgency=high
+
+  * Breaking auth changes requiring jwt for external and hmac signatures for local requests
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 17 Jan 2025 00:00:00 -0400
 
 wlanpi-core (1.0.5-1) unstable; urgency=high
 
