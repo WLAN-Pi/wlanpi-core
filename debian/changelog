@@ -1,4 +1,4 @@
-wlanpi-core (2.0.0-3) unstable; urgency=medium
+wlanpi-core (2.0.1-1) unstable; urgency=medium
 
   * Adds support for multiple interfaces for Grafana WLAN Scanner
 
