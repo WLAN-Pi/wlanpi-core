@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from wlanpi_core.core.logging import get_logger
-from wlanpi_core.core.tokenmanager import TokenError
+from wlanpi_core.core.token import TokenError
 
 log = get_logger(__name__)
 

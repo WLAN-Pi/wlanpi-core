@@ -131,6 +131,39 @@ class DatabaseManager:
             )
             raise
 
+    async def initialize_with_retry(self, max_retries=3, retry_delay=2):
+        """Initialize database with retry mechanism"""
+        attempt = 0
+        last_error = None
+
+        while attempt < max_retries:
+            try:
+                await self.initialize_models()
+                log.info(
+                    "Database initialization successful on attempt %d", attempt + 1
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                attempt += 1
+                log.warning(
+                    "Database initialization failed (attempt %d/%d): %s",
+                    attempt,
+                    max_retries,
+                    str(e),
+                )
+                if attempt < max_retries:
+                    self.log.info("Retrying in %d seconds...", retry_delay)
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, 5)
+
+        log.error(
+            "Database initialization failed after %d attempts: %s",
+            max_retries,
+            str(last_error),
+        )
+        return False
+
     @property
     def engine(self) -> AsyncEngine:
         return self._engine
