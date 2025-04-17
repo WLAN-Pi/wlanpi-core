@@ -14,7 +14,8 @@ function unlink_if_existing() {
 }
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    rm -rf /etc/wlanpi-core/.secrets
+    rm -rf /home/wlanpi/.local/share/wlanpi-core/secrets
+    rm -rf /etc/wlanpi-core/.secrets # old path
 
     if [ -d /var/log/wlanpi_core/debug ] && [ -z "$(ls -A /var/log/wlanpi_core/debug)" ]; then
         rmdir /var/log/wlanpi_core/debug || true

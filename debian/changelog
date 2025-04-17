@@ -1,3 +1,9 @@
+wlanpi-core (2.1.0-1) unstable; urgency=medium
+
+  * Move secrets to /home/wlanpi/.local/share/wlanpi-core/secrets
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Apr 2025 00:00:00 -0400
+
 wlanpi-core (2.0.1-1) unstable; urgency=medium
 
   * Adds support for multiple interfaces for Grafana WLAN Scanner

@@ -16,7 +16,7 @@ DEVICE_ID="$1"
 PORT="${2:-31415}"  
 API_URL="localhost:$PORT"
 AUTH_ENDPOINT="/api/v1/auth/token"
-SECRET_FILE="/etc/wlanpi-core/.secrets/shared_secret.bin"
+SECRET_FILE="/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
 
 
 if ! (echo > "/dev/tcp/localhost/$PORT") >/dev/null 2>&1; then
