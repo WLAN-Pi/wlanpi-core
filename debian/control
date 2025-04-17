@@ -14,11 +14,7 @@ Build-Depends: debhelper (>= 11),
                python3-venv,
                dbus,
                libdbus-1-dev,
-               libdbus-glib-1-dev,
-               libglib2.0-dev,
-               libcairo2-dev,
-               libgirepository1.0-dev,
-               libffi-dev
+               libdbus-glib-1-dev
 Standards-Version: 4.6.0
 X-Python3-Version: >= 3.9
 Homepage: https://github.com/WLAN-Pi/wlanpi-core

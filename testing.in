@@ -9,3 +9,4 @@ pytest-asyncio
 pytest-cov
 coverage-badge
 pytest-mock
+pydantic_settings

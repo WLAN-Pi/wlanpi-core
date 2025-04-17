@@ -1,3 +1,5 @@
+![coverage-badge](coverage.svg) [![packagecloud-badge](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/)
+
 # wlanpi-core
 
 wlanpi-core is a full stack application providing API endpoints for various consumers on the WLAN Pi.

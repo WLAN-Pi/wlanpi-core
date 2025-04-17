@@ -1,9 +1,10 @@
-wlanpi-core (2.1.0-2) unstable; urgency=medium
+wlanpi-core (2.1.0-3) unstable; urgency=medium
 
   * Move secrets to /home/wlanpi/.local/share/wlanpi-core/secrets
   * Add checks to verify database tables exist during health monitoring
   * Implement table recreation on schema verification failure
   * Ensure database can recover from table deletion without service restart
+  * Remove depends on pygobject
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Apr 2025 00:00:00 -0400
 

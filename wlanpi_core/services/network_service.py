@@ -1,10 +1,11 @@
+import asyncio
 import time
 from datetime import datetime
+from typing import Callable
 
 import dbus
 from dbus import Interface
 from dbus.exceptions import DBusException
-from gi.repository import GLib
 
 from wlanpi_core.constants import (
     WPAS_DBUS_BSS_INTERFACE,
@@ -13,14 +14,121 @@ from wlanpi_core.constants import (
     WPAS_DBUS_OPATH,
     WPAS_DBUS_SERVICE,
 )
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.network import get_interface_addresses
 
+log = get_logger(__name__)
+
+
+class AsyncDBusManager:
+    """
+    An asyncio-friendly wrapper for DBus operations without PyGObject dependency
+    Uses polling instead of signals for state changes
+    """
+
+    def __init__(self):
+        self.bus = dbus.SystemBus()
+
+    async def poll_until_condition(
+        self,
+        condition_func: Callable[[], bool],
+        timeout: int = 20,
+        initial_interval: float = 0.1,
+        max_interval: float = 0.5,
+    ) -> bool:
+        """
+        Poll at regular intervals until condition_func returns True or timeout is reached
+        Uses adaptive polling to reduce CPU usage
+
+        Args:
+            condition_func: Function that returns True when condition is met
+            timeout: Maximum seconds to wait before giving up
+            initial_interval: Starting polling interval in seconds
+            max_interval: Maximum polling interval in seconds
+
+        Returns:
+            bool: True if condition was met, False if timed out
+        """
+        start_time = asyncio.get_event_loop().time()
+        interval = initial_interval
+        polls = 0
+
+        while True:
+            try:
+                if condition_func():
+                    return True
+            except Exception as e:
+                log.error(f"Error in condition function: {e}")
+
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                return False
+
+            await asyncio.sleep(interval)
+            polls += 1
+
+            if polls > 10:
+                interval = min(interval * 1.2, max_interval)
+
+    def get_object_property(
+        self,
+        service_name: str,
+        object_path: str,
+        interface_name: str,
+        property_name: str,
+    ):
+        """
+        Get a property from a DBus object without using signals
+
+        Args:
+            service_name: DBus service name
+            object_path: DBus object path
+            interface_name: Interface name
+            property_name: Property name
+
+        Returns:
+            The property value
+        """
+        obj = self.bus.get_object(service_name, object_path)
+        return obj.Get(
+            interface_name, property_name, dbus_interface=dbus.PROPERTIES_IFACE
+        )
+
+    def call_method(
+        self,
+        service_name: str,
+        object_path: str,
+        interface_name: str,
+        method_name: str,
+        *args,
+    ):
+        """
+        Call a method on a DBus object
+
+        Args:
+            service_name: DBus service name
+            object_path: DBus object path
+            interface_name: Interface name
+            method_name: Method name
+            *args: Method arguments
+
+        Returns:
+            Method return value
+        """
+        obj = self.bus.get_object(service_name, object_path)
+        method = obj.get_dbus_method(method_name, interface_name)
+        return method(*args)
+
+
 # For running locally (not in API)
 # import asyncio
+
+DBUS_MANAGER = AsyncDBusManager()
+BUS = dbus.SystemBus()
 
 API_TIMEOUT = 20
 
@@ -269,7 +377,7 @@ def fetch_currentBSS(interface):
 
 
 """
-Call back functions from GLib
+Call back functions
 """
 
 
@@ -443,8 +551,6 @@ async def get_async_systemd_network_scan(
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
-    API_TIMEOUT = timeout
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
     type = type.strip().lower()
     if is_allowed_scan_type(type):
@@ -455,25 +561,14 @@ async def get_async_systemd_network_scan(
             scan = []
             scanConfig = dbus.Dictionary({"Type": type}, signature="sv")
 
-            scan_handler = bus.add_signal_receiver(
-                scanDone,
-                dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-                signal_name="ScanDone",
-            )
-
             iface.Scan(scanConfig)
 
-            main_context = GLib.MainContext.default()
-            timeout_check = 0
-            while scan == [] and timeout_check <= API_TIMEOUT:
-                time.sleep(1)
-                timeout_check += 1
-                debug_print(
-                    f"Scan request timeout state: {timeout_check} / {API_TIMEOUT}", 2
-                )
-                main_context.iteration(False)
+            scan_successful = await DBUS_MANAGER.poll_until_condition(
+                lambda: collect_scan_results(), timeout=timeout
+            )
 
-            scan_handler.remove()
+            if not scan_successful:
+                return {"nets": []}
 
             # scan = [{"ssid": "A Network", "bssid": "11:22:33:44:55", "wpa": "no", "wpa2": "yes", "signal": -65, "freq": 5650}]
             return {"nets": scan}
@@ -482,6 +577,36 @@ async def get_async_systemd_network_scan(
         except ValueError as error:
             raise ValidationError(f"{error}", status_code=400)
     raise ValidationError(f"{type} is not a valid scan type", status_code=400)
+
+
+def collect_scan_results():
+    """
+    Poll for scan results and collect them
+    Returns True when scan results are found
+    """
+    global scan
+
+    try:
+        bss_list = if_obj.Get(
+            WPAS_DBUS_INTERFACES_INTERFACE, "BSSs", dbus_interface=dbus.PROPERTIES_IFACE
+        )
+
+        if not bss_list or len(bss_list) == 0:
+            return False
+
+        local_scan = []
+        for opath in bss_list:
+            bss = getBss(opath)
+            if bss:
+                local_scan.append(bss)
+
+        if len(local_scan) > 0:
+            scan = local_scan
+            return True
+    except Exception as e:
+        log.error(f"Error collecting scan results: {e}")
+
+    return False
 
 
 async def set_systemd_network_addNetwork(
@@ -503,7 +628,6 @@ async def set_systemd_network_addNetwork(
     API_TIMEOUT = timeout
 
     debug_print("Setting up supplicant access", 3)
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     setup_DBus_Supplicant_Access(interface)
 
     selectErr = None
@@ -520,17 +644,6 @@ async def set_systemd_network_addNetwork(
 
     try:
         debug_print("Configuring DBUS", 3)
-        network_change_handler = bus.add_signal_receiver(
-            networkSelected,
-            dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-            signal_name="NetworkSelected",
-        )
-
-        properties_change_handler = bus.add_signal_receiver(
-            propertiesChanged,
-            dbus_interface=WPAS_DBUS_INTERFACES_INTERFACE,
-            signal_name="PropertiesChanged",
-        )
 
         # Remove all configured networks and apply the new network
         if removeAllFirst:
@@ -551,81 +664,34 @@ async def set_systemd_network_addNetwork(
             # time.sleep(10)
             debug_print(f"Network selected with result: {selectErr}", 2)
 
-            timeout_check = 0
             if selectErr == None:
-                # The network selection has been successsfully applied (does not mean a network is selected)
-                main_context = GLib.MainContext.default()
+                # Poll for connection completion instead of waiting for signals
+                connected = await monitor_connection_state(API_TIMEOUT)
 
-                while supplicantState == [] and timeout_check <= API_TIMEOUT:
-                    time.sleep(1)
-                    timeout_check += 1
-                    debug_print(
-                        f"Select request timeout: {timeout_check} / {API_TIMEOUT}", 2
+                if connected:
+                    # Check the current BSSID post connection
+                    bssidPath = if_obj.Get(
+                        WPAS_DBUS_INTERFACES_INTERFACE,
+                        "CurrentBSS",
+                        dbus_interface=dbus.PROPERTIES_IFACE,
                     )
-                    main_context.iteration(False)
-
-                if supplicantState != []:
-                    if supplicantState[0] == "completed":
-                        # Check the current BSSID post connection
-                        bssidPath = if_obj.Get(
-                            WPAS_DBUS_INTERFACES_INTERFACE,
-                            "CurrentBSS",
-                            dbus_interface=dbus.PROPERTIES_IFACE,
-                        )
-                        if bssidPath != "/":
-                            bssidresolution = getBss(bssidPath)
-                            if bssidresolution:
-                                bssid = bssidresolution
-                                debug_print(f"Logged Events: {connectionEvents}", 2)
-                                debug_print("Connected", 1)
-                                status = "connected"
-                            else:
-                                debug_print(f"select error: {selectErr}", 2)
-                                debug_print(f"Logged Events: {connectionEvents}", 2)
-                                debug_print(
-                                    "Connection failed. Post connection check returned no network",
-                                    1,
-                                )
-                                status = "connection_lost"
+                    if bssidPath != "/":
+                        bssidresolution = getBss(bssidPath)
+                        if bssidresolution:
+                            bssid = bssidresolution
+                            status = "connected"
                         else:
-                            debug_print(f"select error: {selectErr}", 2)
-                            debug_print(f"Logged Events: {connectionEvents}", 2)
-                            debug_print("Connection failed. Aborting", 1)
                             status = "connection_lost"
-
-                    elif supplicantState[0] == "fail":
-                        debug_print(f"select error: {selectErr}", 2)
-                        debug_print(f"Logged Events: {connectionEvents}", 2)
-                        debug_print("Connection failed. Aborting", 1)
-                        status = f"connection_failed:{supplicantState[0]}"
                     else:
-                        debug_print(f"select error: {selectErr}", 2)
-                        debug_print(f"Logged Events: {connectionEvents}", 2)
-                        debug_print("Connection failed. Aborting", 1)
-                        status = f"connection failed:{supplicantState[0]}"
+                        status = "connection_lost"
                 else:
-                    debug_print(f"select error: {selectErr}", 2)
-                    debug_print(f"Logged Events: {connectionEvents}", 2)
-                    debug_print(f"No connection", 1)
-                    status = "Network_not_found"
-
+                    status = "connection_timeout"
             else:
-                debug_print(f"select error: {selectErr}", 2)
-                debug_print(f"Logged Events: {connectionEvents}", 2)
-                if timeout_check >= API_TIMEOUT:
-                    status = "Connection Timeout"
-                    debug_print("Connection Timeout", 1)
-                else:
-                    status = "Connection Err"
-                    debug_print("Connection Err", 1)
-
+                status = "connection_error"
     except DBusException as de:
         debug_print(f"DBUS Error State: {de}", 0)
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
-
-    network_change_handler.remove()
-    properties_change_handler.remove()
 
     response.eventLog = connectionEvents
     if selectErr != None:
@@ -641,6 +707,53 @@ async def set_systemd_network_addNetwork(
     }
 
 
+async def monitor_connection_state(timeout):
+    """
+    Monitor connection state by polling
+    """
+    start_time = asyncio.get_event_loop().time()
+    interval = 0.5
+
+    while True:
+        try:
+            state = if_obj.Get(
+                WPAS_DBUS_INTERFACES_INTERFACE,
+                "State",
+                dbus_interface=dbus.PROPERTIES_IFACE,
+            )
+
+            connectionEvents.append(
+                network.NetworkEvent(event=f"{state}", time=f"{datetime.now()}")
+            )
+
+            if state == "completed":
+                supplicantState.append(state)
+                if currentInterface:
+                    renew_dhcp(currentInterface)
+                    ipaddr = get_ip_address(currentInterface)
+                    connectionEvents.append(
+                        network.NetworkEvent(
+                            event=f"IP Address {ipaddr} on {currentInterface}",
+                            time=f"{datetime.now()}",
+                        )
+                    )
+                return True
+
+            elif state in ["disconnected", "inactive"]:
+                supplicantState.append("fail")
+                return False
+
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                return False
+
+            await asyncio.sleep(interval)
+
+        except Exception as e:
+            log.error(f"Error monitoring connection state: {e}")
+            await asyncio.sleep(interval)
+
+
 async def get_systemd_network_currentNetwork_details(
     interface: network.Interface, timeout: network.APIConfig
 ):
@@ -648,10 +761,9 @@ async def get_systemd_network_currentNetwork_details(
     Queries systemd via dbus to get a scan of the available networks.
     """
     try:
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         res = ""
         setup_DBus_Supplicant_Access(interface)
-        time.sleep(1)
+        await asyncio.sleep(1)
 
         # res = fetch_currentBSS(interface)
         bssidPath = if_obj.Get(

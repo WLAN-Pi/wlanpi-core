@@ -6,6 +6,8 @@
 #
 --extra-index-url https://www.piwheels.org/simple
 
+annotated-types==0.7.0
+    # via pydantic
 autoflake==2.3.1
     # via -r testing.in
 black==24.10.0
@@ -65,6 +67,12 @@ pluggy==1.5.0
     #   tox
 pycodestyle==2.12.1
     # via flake8
+pydantic==2.11.3
+    # via pydantic-settings
+pydantic-core==2.33.1
+    # via pydantic
+pydantic-settings==2.8.1
+    # via -r testing.in
 pyflakes==3.2.0
     # via
     #   autoflake
@@ -83,6 +91,8 @@ pytest-cov==6.0.0
     # via -r testing.in
 pytest-mock==3.14.0
     # via -r testing.in
+python-dotenv==1.1.0
+    # via pydantic-settings
 tomli==2.2.1
     # via
     #   autoflake
@@ -98,7 +108,12 @@ typing-extensions==4.12.2
     # via
     #   black
     #   mypy
+    #   pydantic
+    #   pydantic-core
     #   tox
+    #   typing-inspection
+typing-inspection==0.4.0
+    # via pydantic
 virtualenv==20.29.1
     # via tox
 

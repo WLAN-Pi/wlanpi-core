@@ -3,3 +3,5 @@ graft wlanpi_core/alembic
 graft wlanpi_core/static
 graft wlanpi_core/templates
 global-exclude *.pyc
+include requirements.txt
+include testing.txt

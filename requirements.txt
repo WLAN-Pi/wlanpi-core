@@ -74,8 +74,6 @@ packaging==24.2
     #   limits
 psutil==6.1.1
     # via -r requirements.in
-pycairo==1.27.0
-    # via pygobject
 pycparser==2.22
     # via cffi
 pydantic==2.10.5
@@ -85,8 +83,6 @@ pydantic==2.10.5
 pydantic-core==2.27.2
     # via pydantic
 pydantic-settings==2.7.1
-    # via -r requirements.in
-pygobject==3.50.0
     # via -r requirements.in
 python-dotenv==1.0.1
     # via
