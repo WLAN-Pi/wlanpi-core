@@ -6,4 +6,4 @@ ports=31415/udp|31415/tcp
 [wlanpi-webui]
 title=wlanpi-webui server with HTTP + HTTPS
 description=wlanpi-webui server
-ports=80,443/tcp
+ports=80,443,8081/tcp
