@@ -400,7 +400,7 @@ async def dig(
     if interface:
         command.extend(["-b", get_ip_address(interface)])
     if nameserver:
-        command.append(f"@nameserver")
+        command.append(f"@{nameserver}")
     command.append(host)
 
     res = await run_command_async(command)
