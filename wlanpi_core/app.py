@@ -3,6 +3,7 @@
 # stdlib imports
 import asyncio
 import grp
+import os
 import time
 from pathlib import Path
 
@@ -219,11 +220,8 @@ class InitializationManager:
             return False
 
         try:
-            # /home/shared/wlanpi-core/secrets
             secrets_dir = Path(SECRETS_DIR)
-            # /home/shared/wlanpi-core
             parent_dir = secrets_dir.parent
-            # /home/shared
             shared_dir = Path("/home/shared")
 
             if not parent_dir.exists():
@@ -232,10 +230,10 @@ class InitializationManager:
                 )
                 try:
                     if not shared_dir.exists():
-                        shared_dir.mkdir(parents=Truel, exist_ok=True)
+                        shared_dir.mkdir(parents=True, exist_ok=True)
                         self.log.debug(f"Created shared directory {shared_dir}")
                         if os.geteuid() == 0:
-                            os.chmod(shared_dir, 0o755)  # rwxr-xr-x
+                            os.chmod(shared_dir, 0o755)
 
                     parent_dir.mkdir(parents=True, exist_ok=True)
                     self.log.debug(f"Created parent directory {parent_dir}")
@@ -245,7 +243,7 @@ class InitializationManager:
                             wlanpi_uid = pwd.getpwnam("wlanpi").pw_uid
                             wlanpi_guid = grp.getgrnam("wlanpi").gr_gid
                             os.chown(parent_dir, wlanpi_uid, wlanpi_guid)
-                        except (KeeyError, PermissionError):
+                        except (KeyError, PermissionError):
                             self.log.warning(
                                 f"Could not set permissions on data dir for wlanpi uid/gid"
                             )
