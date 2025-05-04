@@ -8,30 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from wlanpi_core.services.partitions.device_service import DeviceService
 from wlanpi_core.services.partitions.partition_service import PartitionService
-
-BLUE = "\033[1;34m"
-GREEN = "\033[1;32m"
-YELLOW = "\033[1;33m"
-RED = "\033[1;31m"
-CYAN = "\033[1;36m"
-RESET = "\033[0m"
-
-
-def echo_status(msg):
-    print(f"{BLUE}>>> {msg}{RESET}")
-
-
-def echo_debug(msg):
-    print(f"{CYAN}DEBUG: {msg}{RESET}")
-
-
-def echo_warning(msg):
-    print(f"{YELLOW}WARNING: {msg}{RESET}")
-
-
-def echo_error(msg):
-    print(f"{RED}ERROR: {msg}{RESET}")
-    sys.exit(1)
+from wlanpi_core.cli.partitions.cli_utils import echo_status, echo_debug, echo_warning, echo_error 
 
 
 def validate_go_device():
@@ -54,7 +31,7 @@ def display_partition_info():
 
         echo_debug("Model information:")
         print(f"    {boot_info.get('model', 'Not available')}")
-        print("")
+        print()
 
         echo_debug("OS issue information:")
         if os.path.exists("/etc/rpi-issue"):
@@ -177,7 +154,7 @@ def check_root():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Display WLAN Pi Go partition information"
+        description="Display partition diagnostic information"
     )
     parser.parse_args()
     check_root()
