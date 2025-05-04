@@ -6,16 +6,13 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from wlanpi_core.services.partitions.device_service import DeviceService
+from wlanpi_core.cli.partitions.cli_utils import (
+    echo_debug,
+    echo_error,
+    echo_status,
+    validate_device,
+)
 from wlanpi_core.services.partitions.partition_service import PartitionService
-from wlanpi_core.cli.partitions.cli_utils import echo_status, echo_debug, echo_warning, echo_error 
-
-
-def validate_go_device():
-    """Validate the current device is a WLAN Pi Go model."""
-    device_service = DeviceService()
-    if not device_service.is_go_device():
-        echo_error("Partition management is only available on WLAN Pi Go devices")
 
 
 def display_partition_info():
@@ -41,10 +38,10 @@ def display_partition_info():
             print("    [File /etc/rpi-issue does not exist]")
 
         echo_debug("Current partition set analysis:")
-        current_set = boot_info.get("current_set", "Unknown")
+        current_set = boot_info.get("current_set", "unknown")
         print(f"    Currently using partition set {current_set}")
-        print(f"    Boot from: {boot_info.get('current_boot_dev', 'Unknown')}")
-        print(f"    Root from: {boot_info.get('current_root_dev', 'Unknown')}")
+        print(f"    Boot from: {boot_info.get('current_boot_dev', 'unknown')}")
+        print(f"    Root from: {boot_info.get('current_root_dev', 'unknown')}")
 
         echo_debug("Current /etc/fstab contents:")
         if os.path.exists("/etc/fstab"):
@@ -122,19 +119,19 @@ def display_partition_info():
 
         echo_debug("Summary:")
         print(
-            f" - Currently on partition set: {boot_info.get('current_set', 'Unknown')}"
+            f" - Currently on partition set: {boot_info.get('current_set', 'unknown')}"
         )
         print(
-            f" - Current boot partition: {boot_info.get('current_boot_dev', 'Unknown')}"
+            f" - Current boot partition: {boot_info.get('current_boot_dev', 'unknown')}"
         )
         print(
-            f" - Current root partition: {boot_info.get('current_root_dev', 'Unknown')}"
+            f" - Current root partition: {boot_info.get('current_root_dev', 'unknown')}"
         )
         print(
-            f" - Default boot set in current autoboot.txt: {boot_info.get('DEFAULT_BOOT', 'Unknown')}"
+            f" - Default boot set in current autoboot.txt: {boot_info.get('DEFAULT_BOOT', 'unknown')}"
         )
         print(
-            f" - Partition set that will boot after power loss: {boot_info.get('power_loss_boot', 'Unknown')}"
+            f" - Partition set that will boot after power loss: {boot_info.get('power_loss_boot', 'unknown')}"
         )
         print(
             f" - Boot partition 1 autoboot.txt setting: {boot_info.get('boot1_partition', 'None')}"
@@ -158,7 +155,7 @@ def main():
     )
     parser.parse_args()
     check_root()
-    validate_go_device()
+    validate_device()
     display_partition_info()
 
 

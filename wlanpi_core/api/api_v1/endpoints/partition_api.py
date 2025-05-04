@@ -28,14 +28,14 @@ async def validate_device_middleware(request: Request, call_next):
     Blocks partition management operations on non-Go devices.
     """
     device_service = DeviceService()
-    if not device_service.is_go_device():
+    if not device_service.is_allowed_device():
         error_msg = (
             device_service.get_compatibility_error() or "Unknown compatibility error"
         )
         return JSONResponse(
             status_code=403,
             content={
-                "detail": f"Partition management is only available on WLAN Pi Go devices: {error_msg}"
+                "detail": f"Partition management is only available on select WLAN Pi devices: {error_msg}"
             },
         )
     return await call_next(request)

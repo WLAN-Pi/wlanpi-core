@@ -47,7 +47,7 @@ class PartitionService:
         Validate that this is running on a compatible device.
         Raises an exception if not a compatible device.
         """
-        if not self.device_service.is_go_device():
+        if not self.device_service.is_allowed_device():
             error_msg = (
                 self.device_service.get_compatibility_error()
                 or "Unknown device compatibility error"
