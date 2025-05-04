@@ -67,4 +67,9 @@ setup(
     include_package_data=True,
     install_requires=requires,
     extras_require=extras,
+    entry_points={
+        'console_scripts': [
+            'boot-info=wlanpi_core.cli.partitions.boot_info:main',
+        ],
+    },
 )

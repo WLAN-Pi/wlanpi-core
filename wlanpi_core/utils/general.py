@@ -24,6 +24,7 @@ def run_command(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    suppress_warning=False,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -64,10 +65,11 @@ def run_command(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
-        )
+        if not suppress_warning:
+            logging.getLogger().warning(
+                f"Command {cmd} being run as a shell script. This could present "
+                f"an injection vulnerability. Consider whether you really need to do this."
+            )
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
@@ -100,6 +102,7 @@ async def run_command_async(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    suppress_warning=False,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -151,10 +154,11 @@ async def run_command_async(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
-        )
+        if not suppress_warning:
+            logging.getLogger().warning(
+                f"Command {cmd} being run as a shell script. This could present "
+                f"an injection vulnerability. Consider whether you really need to do this."
+            )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
             cmd,
