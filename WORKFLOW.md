@@ -29,7 +29,7 @@ Thus, you should not make changes to the `changelog` until you are ready to depl
 
 ## Quick setup
 
-Run `./init` from the base folder of this repo to install system depends, create the virtual environment (venv), install Python depends, and run the `wlanpi_core` module directly on the default port.
+Run `./init` from the base folder of this repo to install system depends, create the virtual environment (venv), install Python depends, and run the `wlanpi_core` module directly.
 
 After you've done `./init`, you can use `./run` to skip all the staging. You may need to run `./init` again if depends are updated in the future.
 
@@ -47,10 +47,10 @@ python3 -m venv venv && source venv/bin/activate
 pip install -U pip pip-tools wheel setuptools 
 
 # normal users who do not need to run or create tests
-pip install .
+pip install -e .
 
 # developers install test depends like so
-pip install .[testing]
+pip install -e .[testing]
 ```
 
 ## Developing
@@ -338,7 +338,7 @@ You should install depends with either 1) `pip install .[testing]` or 2) `./init
 When the venv is active:
 
 - Run `tox -e format` and `tox -e lint` to format and lint respectively 
-- Run  `tox` to run tests.
+- Run `tox` to run tests.
 
 ## Building the Debian package
 
