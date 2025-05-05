@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Dict, Optional, Union, Any
+from typing import Any, Dict, Optional, Union
 
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.services.partitions.device_service import DeviceService

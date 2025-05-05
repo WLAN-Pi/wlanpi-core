@@ -214,3 +214,89 @@ async def release_lock():
     except Exception as ex:
         log.error(ex, exc_info=True)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/update",
+    response_model=OperationResult,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def update_partition(
+    request: Request,
+    image_file: UploadFile = File(...),
+):
+    """
+    Update the inactive partition set with a new OS image.
+
+    The image will be written to the currently inactive partition set.
+    After updating, you can use the /tryboot endpoint to test the new partition.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            image_path = temp_file.name
+
+            try:
+                content = await image_file.read()
+                temp_file.write(content)
+                temp_file.flush()
+            except Exception as e:
+                log.error(f"Error saving uploaded file: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=500, detail="Failed to process uploaded image"
+                )
+
+        lock_service = LockService()
+
+        if lock_service.is_locked() and not lock_service.is_lock_stale():
+            raise HTTPException(
+                status_code=409, detail="Another update operation is in progress"
+            )
+
+        if not lock_service.acquire_lock("update", "api"):
+            raise HTTPException(
+                status_code=409, detail="Could not acquire lock for update operation"
+            )
+
+        try:
+            partition_service = PartitionService()
+            config_service = ConfigService()
+            image_handler = ImageHandler()
+
+            update_manager = UpdateManager(
+                lock_service, partition_service, config_service, image_handler
+            )
+
+            prepare_result = await update_manager.prepare_update(image_path)
+            if not prepare_result["success"]:
+                raise HTTPException(status_code=400, detail=prepare_result["message"])
+
+            # Execute update (potentially a long-running operation)
+            # In a production environment, this should be a background task
+            await update_manager.execute_update(image_path)
+
+            inactive_set = partition_service.get_inactive_partition_set()
+
+            return OperationResult(
+                success=True,
+                message=f"Successfully updated partition set {inactive_set}",
+                details={
+                    "target_set": inactive_set,
+                    "next_steps": "Use the /tryboot endpoint to test the new partition",
+                },
+            )
+
+        finally:
+            lock_service.release_lock()
+
+            try:
+                os.unlink(image_path)
+            except Exception as e:
+                log.error(f"Error cleaning up temporary file: {e}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Error updating partition: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update partition: {str(e)}"
+        )

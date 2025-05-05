@@ -27,10 +27,12 @@ def echo_error(msg: str) -> None:
     print(f"{RED}ERROR: {msg}{RESET}")
     sys.exit(1)
 
+
 def check_root():
     """Check if we have elevated permissions."""
     if os.geteuid() != 0:
         echo_error("Need elevated permissions to run ...")
+
 
 def validate_device():
     """Validate the current device is allowed for partition management."""
