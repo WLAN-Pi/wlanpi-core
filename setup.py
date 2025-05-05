@@ -70,6 +70,7 @@ setup(
     entry_points={
         'console_scripts': [
             'boot-info=wlanpi_core.cli.partitions.boot_info:main',
+            'test-boot-config=wlanpi_core.cli.partitions.test_boot_config:main',
         ],
     },
 )

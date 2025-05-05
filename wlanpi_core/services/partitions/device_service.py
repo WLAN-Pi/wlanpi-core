@@ -30,7 +30,7 @@ class DeviceService:
             with open(self.DEVICE_INFO_PATH, "r") as f:
                 model = f.read().strip()
 
-            if model.lower() not in DEVICE_ALLOWLIST:
+            if model.lower() not in self.DEVICE_ALLOWLIST:
                 log.warning(
                     f"Device model '{model}' is not compatible with partition management"
                 )

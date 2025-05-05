@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from wlanpi_core.cli.partitions.cli_utils import (
+    check_root,
     echo_debug,
     echo_error,
     echo_status,
@@ -141,12 +142,6 @@ def display_partition_info():
 
     except Exception as e:
         echo_error(f"Failed to retrieve boot information: {str(e)}")
-
-
-def check_root():
-    """Check if the script is run as root."""
-    if os.geteuid() != 0:
-        echo_error("Need elevated permissions ... run as root ...")
 
 
 def main():
