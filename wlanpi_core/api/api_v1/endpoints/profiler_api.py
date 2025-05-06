@@ -20,7 +20,7 @@ log = get_logger(__name__)
 
 
 @router.get(
-    "/profiler/status",
+    "/status",
     response_model=schemas.Status,
     dependencies=[Depends(verify_auth_wrapper)],
 )
@@ -42,8 +42,8 @@ async def profiler_status():
 
 
 @router.get(
-    "/profiler/start",
-    response_model=CommandResult,
+    "/start",
+    response_model=schemas.Start,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_profiler(args: models.Start):
@@ -55,7 +55,7 @@ async def start_profiler(args: models.Start):
         # start with args
         result = cli.start_profiler(args)
 
-        return result
+        return {"success": result.success}
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -65,7 +65,7 @@ async def start_profiler(args: models.Start):
 
 
 @router.get(
-    "/profiler/stop",
+    "/stop",
     response_model=schemas.Stop,
     dependencies=[Depends(verify_auth_wrapper)],
 )

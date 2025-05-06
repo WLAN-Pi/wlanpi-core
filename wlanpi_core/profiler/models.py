@@ -1,24 +1,24 @@
-from pydantic import Basemodel
-
+from typing import Optional
+from pydantic import BaseModel
 
 class Start(BaseModel):
-    channel: int | None = None
-    frequency: int | None = None
-    interface: str | None = None
-    ssid: str | None = None
+    channel: Optional[int] = None
+    frequency: Optional[int] = None
+    interface: Optional[str] = None
+    ssid: Optional[str] = None
 
-    # config_file_path: str | None = None
-    # files_path: str | None = None
+    # config_file_path: Optional[str] = None
+    # files_path: Optional[str] = None
 
-    debug: bool | None = None
-    noprep: bool | None = None
-    noAP: bool | None = None
-    no11r: bool | None = None
-    no11ax: bool | None = None
-    no11be: bool | None = None
-    noprofilertlv: bool | None = None
+    debug: Optional[bool] = None
+    noprep: Optional[bool] = None
+    noAP: Optional[bool] = None
+    no11r: Optional[bool] = None
+    no11ax: Optional[bool] = None
+    no11be: Optional[bool] = None
+    noprofilertlv: Optional[bool] = None
 
-    wpa3_personal_transition: bool | None = None
-    wpa3_personal: bool | None = None
-    oui_update: bool | None = None
-    no_bpf_filters: bool | None = None
+    wpa3_personal_transition: Optional[bool] = None
+    wpa3_personal: Optional[bool] = None
+    oui_update: Optional[bool] = None
+    no_bpf_filters: Optional[bool] = None
