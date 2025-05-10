@@ -41,7 +41,7 @@ async def profiler_status():
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get(
+@router.post(
     "/start",
     response_model=schemas.Start,
     dependencies=[Depends(verify_auth_wrapper)],
@@ -53,9 +53,9 @@ async def start_profiler(args: models.Start):
 
     try:
         # start with args
-        result = cli.start_profiler(args)
+        result = await cli.start_profiler(args)
 
-        return {"success": result.success}
+        return {"success": result}
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -64,7 +64,7 @@ async def start_profiler(args: models.Start):
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get(
+@router.post(
     "/stop",
     response_model=schemas.Stop,
     dependencies=[Depends(verify_auth_wrapper)],

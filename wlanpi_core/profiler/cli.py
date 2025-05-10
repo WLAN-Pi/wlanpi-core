@@ -1,18 +1,19 @@
 import subprocess
+import asyncio
 import wlanpi_core.profiler.models as models
 from wlanpi_core.utils.general import run_command
 
 
-def start_profiler(args: models.Start):
-    cmd = ["profiler"]
+async def start_profiler(args: models.Start):
+    global profiler_process
 
+    cmd = ["profiler"]
     value_options = {
         "-c": args.channel,
         "-f": args.frequency,
         "-i": args.interface,
         "-s": args.ssid,
     }
-
     for flag, value in value_options.items():
         if value:
             cmd += [flag, str(value)]
@@ -30,17 +31,27 @@ def start_profiler(args: models.Start):
         ("--oui_update", args.oui_update),
         ("--no_bpf_filters", args.no_bpf_filters),
     ]
-
     cmd += [flag for flag, enabled in bool_flags if enabled]
 
-    result = run_command(cmd)
-
-    return result
+    try:
+        # keep refrence of process id
+        profiler_process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        return True
+    except Exception as e:
+        print(f"Error starting profiler: {e}")
+        return False
 
 
 def stop_profiler():
-    cmd = "/bin/systemctl stop wlanpi-profiler"
+    global profiler_process
 
-    result = run_command(cmd)
+    if profiler_process and profiler_process.returncode is None:
+        profiler_process.terminate() 
+        return True
+    else:
+        return False
 
-    return result
