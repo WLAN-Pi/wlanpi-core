@@ -1,3 +1,4 @@
+*.swp
 project_capsule.json
 *.tar.gz
 debian/wlanpi-core.postinst.debhelper
