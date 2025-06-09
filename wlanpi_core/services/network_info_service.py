@@ -79,13 +79,13 @@ def show_interfaces():
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
                         iw_info = run_command(
-                            "{} {} info".format(iw_file, interface_name),
+                            "{0} {1} info".format(iw_file, interface_name),
                             raise_on_fail=True,
                         ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
-                    except:
+                    except RunCommandError:
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
@@ -125,7 +125,7 @@ def show_wlan_interfaces():
         interfaces = run_command(
             f"{IW_FILE} dev 2>&1", shell=True
         ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
-        interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
+        interfaces = (interface.strip().split(" ")[1] for interface in interfaces)
     except Exception as e:
         print(e)
 
@@ -137,7 +137,7 @@ def show_wlan_interfaces():
             ethtool_output = run_command(
                 f"{ETHTOOL_FILE} -i {interface}"
             ).stdout.strip()
-            driver = re.search(".*driver:\s+(.*)", ethtool_output).group(1)
+            driver = re.search(r".*driver:\s+(.*)", ethtool_output).group(1)
             output[interface]["driver"] = driver
         except Exception:
             pass
@@ -148,7 +148,7 @@ def show_wlan_interfaces():
             # Addr
             try:
                 addr = (
-                    re.search(".*addr\s+(.*)", iw_output)
+                    re.search(r".*addr\s+(.*)", iw_output)
                     .group(1)
                     .replace(":", "")
                     .upper()
@@ -159,7 +159,7 @@ def show_wlan_interfaces():
 
             # Mode
             try:
-                mode = re.search(".*type\s+(.*)", iw_output).group(1)
+                mode = re.search(r".*type\s+(.*)", iw_output).group(1)
                 output[interface]["mode"] = {
                     mode.capitalize() if not mode.isupper() else mode
                 }
@@ -168,14 +168,14 @@ def show_wlan_interfaces():
 
             # SSID
             try:
-                ssid = re.search(".*ssid\s+(.*)", iw_output).group(1)
+                ssid = re.search(r".*ssid\s+(.*)", iw_output).group(1)
                 output[interface]["ssid"] = ssid
             except Exception:
                 pass
 
             # Frequency
             try:
-                freq = int(re.search(".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
+                freq = int(re.search(r".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
@@ -213,11 +213,11 @@ def show_eth0_ipconfig():
         return eth0_ipconfig_info
 
     eth0_ipconfig_info["info"] = []
-    for n in ipconfig_info:
+    for line in ipconfig_info:
         # do some cleanup
-        n = n.replace("DHCP server name", "DHCP")
-        n = n.replace("DHCP server address", "DHCP IP")
-        eth0_ipconfig_info["info"].append(n)
+        line = line.replace("DHCP server name", "DHCP")
+        line = line.replace("DHCP server address", "DHCP IP")
+        eth0_ipconfig_info["info"].append(line)
 
     if len(ipconfig_info) <= 1:
         eth0_ipconfig_info["error"] = "eth0 is down or not connected."
@@ -249,7 +249,7 @@ def show_vlan():
             if len(vlan_info) == 0:
                 vlan_info["error"] = "No VLAN found"
 
-        except:
+        except RunCommandError:
             vlan_info["error"] = "No VLAN found"
 
     return vlan_info
@@ -275,7 +275,7 @@ def show_lldp_neighbour():
                 f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
             )
             return neighbour_info
-        except subprocess.CalledProcessError as exc:
+        except subprocess.CalledProcessError:
             neighbour_info["error"] = "Issue getting LLDP neighbour"
             return neighbour_info
 
@@ -305,7 +305,7 @@ def show_cdp_neighbour():
                 f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
             )
             return neighbour_info
-        except subprocess.CalledProcessError as exc:
+        except subprocess.CalledProcessError:
             neighbour_info["error"] = "Issue getting CDP neighbour"
             return neighbour_info
 

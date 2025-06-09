@@ -20,7 +20,7 @@ T = TypeVar("T")
 
 def run_command(
     cmd: Union[list, str],
-    input: Optional[str] = None,
+    input_data: Optional[str] = None,
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
@@ -33,7 +33,7 @@ def run_command(
         cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
              If it's a string, the command will be executed with its arguments as separate words,
              unless `shell=True` is specified.
-        input: Optional input string that will be fed to the process's stdin.
+        input_data: Optional input string that will be fed to the process's stdin.
               If provided and stdin=None, then this string will be used for stdin.
         stdin: Optional TextIO object that will be fed to the process's stdin.
               If None, then `input` or `stdin` will be used instead (if any).
@@ -96,7 +96,7 @@ def run_command(
 
 async def run_command_async(
     cmd: Union[list, str],
-    input: Optional[str] = None,
+    input_data: Optional[str] = None,
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
@@ -196,8 +196,8 @@ def get_model_info() -> dict[str, str]:
     model_info = run_command(["wlanpi-model"]).stdout.split("\n")
     split_model_info = [a.split(":", 1) for a in model_info if a.strip() != ""]
     model_dict = {}
-    for a, b in split_model_info:
-        model_dict[a.strip()] = b.strip()
+    for _a, _b in split_model_info:
+        model_dict[_a.strip()] = _b.strip()
     return model_dict
 
 
@@ -279,7 +279,7 @@ def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
             ts = float(ts)
         return datetime.fromtimestamp(ts, tz=timezone.utc)
     except Exception:
-        log.exception(f"Failed to convert from timestamp")
+        log.exception("Failed to convert from timestamp")
         return None
 
 

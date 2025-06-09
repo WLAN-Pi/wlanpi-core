@@ -103,7 +103,7 @@ class NetworkSetupStatus(BaseModel):
     status: str = Field(example="connected")
     response: NetworkSetupLog
     connectedNet: ScanItem
-    input: str
+    input_data: str
 
 
 class ConnectedNetwork(BaseModel):

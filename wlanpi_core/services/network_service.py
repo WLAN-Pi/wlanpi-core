@@ -1,3 +1,5 @@
+# flake8: noqa: I900
+
 import asyncio
 import time
 from datetime import datetime
@@ -183,14 +185,13 @@ def is_allowed_interface(interface: str, wpas_obj):
 
 
 def byte_array_to_string(s):
-    r = ""
-    for c in s:
-        if c >= 32 and c < 127:
-            r += "%c" % c
+    result = ""
+    for byte_value in byte_array:
+        if byte_value >= 32 and byte_value < 127:
+            result += "%c" % byte_value
         else:
-            r += " "
-            # r += urllib.quote(chr(c))
-    return r
+            result += " "
+    return result
 
 
 def renew_dhcp(interface):
@@ -238,32 +239,32 @@ def getBss(bss):
         # Convert the byte-array to printable strings
 
         # Get the BSSID from the byte array
-        val = net_obj.Get(
+        bssid_bytes = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "BSSID", dbus_interface=dbus.PROPERTIES_IFACE
         )
-        bssid = ""
-        for item in val:
-            bssid = bssid + ":%02x" % item
-        bssid = bssid[1:]
+        bssid_hex = ""
+        for byte_value in bssid_bytes:
+            bssid_hex = bssid_hex + ":%02x" % byte_value
+        bssid = bssid_hex[1:]
 
         # Get the SSID from the byte array
-        val = net_obj.Get(
+        ssid = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "SSID", dbus_interface=dbus.PROPERTIES_IFACE
         )
-        ssid = byte_array_to_string(val)
+        ssid = byte_array_to_string(ssid)
 
         # Get the WPA Type from the byte array
-        val = net_obj.Get(
+        wpa = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "WPA", dbus_interface=dbus.PROPERTIES_IFACE
         )
-        if len(val["KeyMgmt"]) > 0:
+        if len(wpa["KeyMgmt"]) > 0:
             pass
 
         # Get the RSN Info from the byte array
-        val = net_obj.Get(
+        rsn = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "RSN", dbus_interface=dbus.PROPERTIES_IFACE
         )
-        key_mgmt = "/".join([str(r) for r in val["KeyMgmt"]])
+        key_mgmt = "/".join([str(r) for r in rsn["KeyMgmt"]])
 
         # Get the Frequency from the byte array
         freq = net_obj.Get(
@@ -546,20 +547,20 @@ async def get_systemd_network_interfaces(timeout: network.APIConfig):
 
 
 async def get_async_systemd_network_scan(
-    type: str, interface: network.Interface, timeout: network.APIConfig
+    scan_type: str, interface: network.Interface, timeout: network.APIConfig
 ):
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
 
-    type = type.strip().lower()
-    if is_allowed_scan_type(type):
+    scan_type = scan_type.strip().lower()
+    if is_allowed_scan_type(scan_type):
         try:
             setup_DBus_Supplicant_Access(interface)
 
             global scan
             scan = []
-            scanConfig = dbus.Dictionary({"Type": type}, signature="sv")
+            scanConfig = dbus.Dictionary({"Type": scan_type}, signature="sv")
 
             iface.Scan(scanConfig)
 
@@ -664,7 +665,7 @@ async def set_systemd_network_addNetwork(
             # time.sleep(10)
             debug_print(f"Network selected with result: {selectErr}", 2)
 
-            if selectErr == None:
+            if selectErr is None:
                 # Poll for connection completion instead of waiting for signals
                 connected = await monitor_connection_state(API_TIMEOUT)
 
@@ -694,7 +695,7 @@ async def set_systemd_network_addNetwork(
         raise ValidationError(f"{error}", status_code=400)
 
     response.eventLog = connectionEvents
-    if selectErr != None:
+    if selectErr is not None:
         response.selectErr = str(selectErr)
     else:
         response.selectErr = ""

@@ -42,11 +42,11 @@ async def show_all_interfaces(interface: Optional[str] = None):
         return await network_ethernet_service.get_interfaces(interface=interface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except VLANError as ve:
-        log.error(ve)
+    except VLANError:
+        log.exception("VLAN error")
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error returning all network interfaces.")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -81,11 +81,11 @@ async def show_all_ethernet_interfaces(interface: Optional[str] = None):
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except VLANError as ve:
-        log.error(ve)
+    except VLANError:
+        log.exception("VLAN error in show all ethernet interfaces")
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in show all ethernet interfaces")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -144,10 +144,10 @@ async def show_all_ethernet_vlans(
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except VLANError as ve:
-        log.error(ve)
+        log.exception("VLAN error in show all ethernet VLANs")
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in show all ethernet VLANs")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -184,11 +184,11 @@ async def create_ethernet_vlan(
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except VLANError as ve:
-        log.error(ve)
+    except VLANError:
+        log.exception("VLAN error in create ethernet VLAN")
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in create ethernet VLAN")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -222,11 +222,11 @@ async def delete_ethernet_vlan(
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except VLANError as ve:
-        log.error(ve)
+    except VLANError:
+        log.exception("VLAN Error in delete ethernet VLAN")
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in delete ethernet VLAN")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -249,8 +249,8 @@ async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_T
         return await network_service.get_systemd_network_interfaces(timeout)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in get a systemd network interfaces")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -274,8 +274,8 @@ async def get_a_systemd_network_scan(
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in get a systemd network scan")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -297,8 +297,8 @@ async def set_a_systemd_network(
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in set a systemd network")
         return Response(content="Internal Server Error", status_code=500)
 
 
@@ -321,6 +321,6 @@ async def get_a_systemd_currentNetwork_details(
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except Exception as ex:
-        log.error(ex)
+    except Exception:
+        log.exception("Error in get a systemd currentNetwork details")
         return Response(content="Internal Server Error", status_code=500)

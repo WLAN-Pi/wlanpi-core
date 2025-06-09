@@ -13,7 +13,7 @@ class MockProcess:
         self.stdout = stdout.encode() if isinstance(stdout, str) else stdout
         self.stderr = stderr.encode() if isinstance(stderr, str) else stderr
 
-    async def communicate(self, input=None):
+    async def communicate(self, input_data=None):
         return self.stdout, self.stderr
 
 
@@ -45,7 +45,7 @@ async def test_run_command_async_success_with_input():
         "asyncio.subprocess.create_subprocess_exec",
         new=AsyncMock(return_value=MockProcess(stdout=test_input)),
     ) as mock_create_subprocess_exec:
-        result = await run_command_async(cmd, input=test_input)
+        result = await run_command_async(cmd, input_data=test_input)
         mock_create_subprocess_exec.assert_called_once_with(
             cmd[0],
             *cmd[1:],
@@ -158,7 +158,7 @@ async def test_run_command_async_shell_failure():
 async def test_run_command_async_input_and_stdin_error():
     cmd = ["ls", "-l"]
     with pytest.raises(RunCommandError) as exc_info:
-        await run_command_async(cmd, input="test input", stdin=StringIO("test input"))
+        await run_command_async(cmd, input_data="test input", stdin=StringIO("test input"))
     assert (
         str(exc_info.value)
         == "You cannot use both 'input' and 'stdin' on the same call."
@@ -174,7 +174,7 @@ async def test_run_command_async_input_and_stdin_pipe_ok():
         new=AsyncMock(return_value=MockProcess()),
     ) as mock_create_subprocess_exec:
         result = await run_command_async(
-            cmd, input="test input", stdin=asyncio.subprocess.PIPE
+            cmd, input_data="test input", stdin=asyncio.subprocess.PIPE
         )
         mock_create_subprocess_exec.assert_called_once_with(
             cmd[0],

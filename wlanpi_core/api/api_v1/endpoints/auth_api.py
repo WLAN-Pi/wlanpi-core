@@ -35,7 +35,7 @@ async def generate_token(request: Request, token_request: TokenRequest):
     except Exception:
         log.exception("Unexpected error during token generation")
         raise HTTPException(
-            status_code=500, detail=f"Internal server error during token generation"
+            status_code=500, detail="Internal server error during token generation"
         )
 
 

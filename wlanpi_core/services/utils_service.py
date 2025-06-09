@@ -29,7 +29,7 @@ async def show_reachability():
             if line.startswith("nameserver")
         ]
     except RunCommandError as err:
-        return {"error": "Failed to determine network configuration: {}".format(err)}
+        return {"error": "Failed to determine network configuration: {0}".format(err)}
 
     # --- Checks ---
     if not default_gateway:
@@ -189,12 +189,12 @@ async def show_ufw():
     try:
         ufw_output = (
             await run_command_async(
-                "sudo {} status".format(ufw_file), raise_on_fail=True
+                "sudo {0} status".format(ufw_file), raise_on_fail=True
             )
         ).stdout
         ufw_info = parse_ufw(ufw_output)
 
-    except:
+    except RunCommandError:
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
         return

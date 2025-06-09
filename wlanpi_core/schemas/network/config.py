@@ -21,8 +21,7 @@ class NetworkAddress(BaseModel):
         return v
 
 
-# class InetNetworkAddress(NetworkAddress):
-class InetNetworkAddress(NetworkAddress, extra=Extra.allow):
+class InetNetworkAddress(NetworkAddress, extra='allow'):
     family: str = "inet"
     address_type: typing.Literal["loopback", "static", "manual", "dhcp"]
 
@@ -103,12 +102,12 @@ class InetDhcpNetworkAddress(InetNetworkAddress):
     hwaddress: Optional[str] = Field(examples=["12:34:56:78:9A:BC"], default=None)
 
     @field_validator("address_type")
-    def validate_own_address_type(cls, v):
+    def validate_own_address_type(cls, val):
         correct_address_type = "dhcp"
         assert (
-            v.lower() == correct_address_type
+            val.lower() == correct_address_type
         ), f"address_type must be '{correct_address_type}'"
-        return v
+        return val
 
 
 class Vlan(BaseModel):

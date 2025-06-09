@@ -8,7 +8,7 @@ def bluetooth_present():
     """
     We want to use hciconfig here as it works OK when no devices are present
     """
-    cmd = f"hciconfig"
+    cmd = "hciconfig"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         BT_ADAPTER,
     )

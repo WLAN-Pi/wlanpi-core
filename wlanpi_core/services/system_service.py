@@ -1,3 +1,5 @@
+# flake8: noqa: I900
+
 import json
 import os
 import socket
@@ -59,9 +61,9 @@ def get_mode():
             current_mode = f.readline().strip()
 
         # send msg to stdout & exit if mode invalid
-        if not current_mode in valid_modes:
+        ifcurrent_mode not in valid_modes:
             print(
-                "The mode read from {} is not a valid mode of operation: {}".format(
+                "The mode read from {0} is not a valid mode of operation: {1}".format(
                     MODE_FILE, current_mode
                 )
             )
@@ -95,17 +97,17 @@ def get_image_ver():
 def get_hostname():
     try:
         hostname = run_command("/usr/bin/hostname").stdout.strip()
-        if not "." in hostname:
+        if "." not in hostname:
             domain = "local"
             try:
                 output = run_command("/usr/bin/hostname -d").stdout.strip()
                 if len(output) != 0:
                     domain = output
-            except:
+            except RunCommandError:
                 pass
             hostname = f"{hostname}.{domain}"
         return hostname
-    except:
+    except RunCommandError:
         pass
 
     return None
@@ -149,15 +151,15 @@ def get_platform():
 def get_stats():
     # figure out our IP
     IP = ""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # doesn't even have to be reachable
-        s.connect(("10.255.255.255", 1))
-        IP = s.getsockname()[0]
+        sock.connect(("10.255.255.255", 1))
+        IP = sock.getsockname()[0]
     except Exception:
         IP = "127.0.0.1"
     finally:
-        s.close()
+        sock.close()
 
     ipStr = f"{IP}"
 
@@ -200,7 +202,7 @@ def get_stats():
     tempStr = "%sC" % str(round(tempI, 1))
 
     # determine uptime
-    cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
+    cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
         uptime = run_command(cmd, shell=True).stdout.strip()
     except Exception:
@@ -301,13 +303,13 @@ def stop_service(service: str):
                 f"no such unit for {service} on host", status_code=400
             )
         if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
-            raise ValidationError(f"Problem with the args", status_code=400)
+            raise ValidationError("Problem with the args", status_code=400)
         if (
             de._dbus_error_name
             == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
         ):
             raise ValidationError(
-                f"Interactive authentication required.", status_code=401
+                "Interactive authentication required.", status_code=401
             )
     return False
 
@@ -339,13 +341,13 @@ def start_service(service: str):
                 f"no such unit for {service} on host", status_code=400
             )
         if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
-            raise ValidationError(f"Problem with the args", status_code=400)
+            raise ValidationError("Problem with the args", status_code=400)
         if (
             de._dbus_error_name
             == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
         ):
             raise ValidationError(
-                f"Interactive authentication required.", status_code=401
+                "Interactive authentication required.", status_code=401
             )
     return True
 
