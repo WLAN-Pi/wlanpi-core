@@ -5,10 +5,10 @@ from wlanpi_core.api.api_v1.endpoints import (
     bluetooth_api,
     network_api,
     network_info_api,
-    system_api,
-    utils_api,
     profiler_api,
     streaming_api,
+    system_api,
+    utils_api,
 )
 
 api_router = APIRouter()

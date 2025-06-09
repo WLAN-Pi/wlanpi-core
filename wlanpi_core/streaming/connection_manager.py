@@ -1,10 +1,12 @@
 import asyncio
 import json
+
 from fastapi import WebSocket
 
 from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
+
 
 class ConnectionManager:
     def __init__(self):
@@ -18,7 +20,7 @@ class ConnectionManager:
         task = self.active_connections.pop(websocket, None)
         if task and not task.done():
             task.cancel()
-        
+
     def start_streaming(self, websocket: WebSocket):
         task = asyncio.create_task(self._send_data(websocket))
         self.active_connections[websocket] = task
@@ -32,7 +34,9 @@ class ConnectionManager:
     async def _send_data(self, websocket: WebSocket):
         try:
             while True:
-                data = {"value": "some realtime data"} # replace with actual data, e.g. response from function to get latest scan resutlts
+                data = {
+                    "value": "some realtime data"
+                }  # replace with actual data, e.g. response from function to get latest scan resutlts
                 await websocket.send_text(json.dumps(data))
                 await asyncio.sleep(1)
         except asyncio.CancelledError:

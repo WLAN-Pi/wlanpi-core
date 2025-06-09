@@ -1,3 +1,10 @@
+wlanpi-core (2.1.1-1) unstable; urgency=medium
+
+  * Migrate getjwt from bash to Python script
+  * Beginning of profiler API by @Orbitix
+
+ --  Josh Schmelzle <josh@joshschmelzle.com>  Sun, 08 Jun 2025 21:20:06 -0500
+
 wlanpi-core (2.1.0-4) unstable; urgency=medium
 
   * Add 8081 to wlanpi-core.rules

@@ -1,11 +1,6 @@
-import random
 import json
 
-from fastapi import APIRouter, Depends, Response, WebSocket, WebSocketDisconnect
-
-from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.command_result import CommandResult
-from wlanpi_core.models.validation_error import ValidationError
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from wlanpi_core.streaming.connection_manager import ConnectionManager
 
@@ -17,6 +12,7 @@ log = get_logger(__name__)
 
 
 manager = ConnectionManager()
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -30,7 +26,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 log.error("Received data was invalid JSON.")
                 await websocket.send_text("Invalid JSON")
                 continue
-            
+
             command = data.get("command")
             if command == "start":
                 manager.start_streaming(websocket)
@@ -40,10 +36,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text("Stopped streaming.")
             else:
                 await websocket.send_text("Unknown command")
-                
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
         log.error(f"Unexpected error: {e}")
         manager.disconnect(websocket)
-

@@ -136,9 +136,9 @@ if ! ischroot; then
     fi
 fi
 
-if [ -f /usr/bin/getjwt ]; then
-    chmod 755 /usr/bin/getjwt
-fi
+# if [ -f /usr/bin/getjwt ]; then
+#     chmod 755 /usr/bin/getjwt
+# fi
 
 if [ -f /usr/bin/lhapitest ]; then
     chmod 755 /usr/bin/lhapitest

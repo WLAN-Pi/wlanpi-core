@@ -67,4 +67,9 @@ setup(
     include_package_data=True,
     install_requires=requires,
     extras_require=extras,
+    entry_points={
+        'console_scripts': [
+            'getjwt=cli.getjwt:main',
+        ],
+    },
 )

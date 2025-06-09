@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+
 import argparse
 import hashlib
 import hmac
 import json
 import re
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -38,15 +41,14 @@ class DeviceAuthClient:
         """
         Validate something is running on the port and file access.
         """
-        import socket
-
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(5)
                 s.connect(("localhost", self.port))
-        except ConnectionRefusedError:
+        except OSError:
             raise RuntimeError(
                 f"Nothing appears to be running on port {self.port}. "
-                "Please ensure the server is running."
+                "Please ensure wlanpi-core server is running."
             )
 
         if not self.secret_file.exists():
@@ -61,7 +63,6 @@ class DeviceAuthClient:
         """
         Generates HMAC signature for the request using SHA256.
         """
-        print(self.auth_endpoint)
         canonical_string = f"POST\n{self.auth_endpoint}\n\n{request_body}"
         secret = self.secret_file.read_bytes()
         signature = hmac.new(
@@ -85,6 +86,7 @@ class DeviceAuthClient:
                 "Content-Type": "application/json",
             },
             data=request_body,
+            timeout=5,
         )
         response.raise_for_status()
 

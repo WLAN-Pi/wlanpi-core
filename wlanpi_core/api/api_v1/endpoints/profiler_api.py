@@ -1,16 +1,11 @@
-import subprocess
-
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.command_result import CommandResult
-from wlanpi_core.models.validation_error import ValidationError
-import wlanpi_core.profiler.schemas as schemas
-import wlanpi_core.profiler.models as models
 import wlanpi_core.profiler.cli as cli
+import wlanpi_core.profiler.models as models
+import wlanpi_core.profiler.schemas as schemas
 import wlanpi_core.profiler.service as service
-from wlanpi_core.services import system_service
-from wlanpi_core.utils.general import run_command
+from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.models.validation_error import ValidationError
 
 router = APIRouter()
 

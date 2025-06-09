@@ -1,5 +1,7 @@
 from typing import Optional
+
 from pydantic import BaseModel
+
 
 class Start(BaseModel):
     channel: Optional[int] = None

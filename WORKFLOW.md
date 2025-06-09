@@ -116,7 +116,7 @@ If you are running directly, now you can open your browser and interact with the
 
 ## Creating JWT token from localhost
 
-There is a helper script located at ./install/usr/bin/getjwt which generates JSON Web Tokens (JWTs) specifically for bootstrapping authentication in external applications. On package install, this is put on the path and can then be run with `getjwt`. 
+There is a console helper script installed called `getjwt` which generates JSON Web Tokens (JWTs) specifically for bootstrapping authentication in external applications. On package install, this is put on the path and can then be run with `getjwt`. 
 
 This script serves as a foundation for secure communication - it creates the initial JWT that external applications need before they can establish their own authentication flow.
 
@@ -127,11 +127,11 @@ Without this bootstrap JWT, external applications would lack the initial credent
 This script simplifies the onboarding process while maintaining security best practices.
 
 ```
-Usage: /usr/bin/getjwt <device-id> [port]
+Usage: getjwt <device-id> [port]
   Example:
-    /usr/bin/getjwt my-device-123
+    getjwt my-device-123
   Example with custom port:
-    /usr/bin/getjwt my-device-123 8000
+    getjwt my-device-123 8000
 ```
 
 Basic test using bash:

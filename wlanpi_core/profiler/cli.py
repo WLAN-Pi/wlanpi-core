@@ -1,7 +1,6 @@
-import subprocess
 import asyncio
+
 import wlanpi_core.profiler.models as models
-from wlanpi_core.utils.general import run_command
 
 
 async def start_profiler(args: models.Start):
@@ -36,9 +35,7 @@ async def start_profiler(args: models.Start):
     try:
         # keep refrence of process id
         profiler_process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         return True
     except Exception as e:
@@ -50,8 +47,7 @@ def stop_profiler():
     global profiler_process
 
     if profiler_process and profiler_process.returncode is None:
-        profiler_process.terminate() 
+        profiler_process.terminate()
         return True
     else:
         return False
-
