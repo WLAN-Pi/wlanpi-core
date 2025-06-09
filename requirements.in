@@ -13,6 +13,7 @@ Authlib
 aiosqlite
 sqlalchemy[asyncio]
 alembic
+websockets
 
 # endpoint requires
 psutil

@@ -7,6 +7,8 @@ from wlanpi_core.api.api_v1.endpoints import (
     network_info_api,
     system_api,
     utils_api,
+    profiler_api,
+    streaming_api,
 )
 
 api_router = APIRouter()
@@ -24,3 +26,7 @@ api_router.include_router(
 api_router.include_router(system_api.router, prefix="/system", tags=["system"])
 
 api_router.include_router(utils_api.router, prefix="/utils", tags=["device utils"])
+
+api_router.include_router(profiler_api.router, prefix="/profiler", tags=["profiler"])
+
+api_router.include_router(streaming_api.router, prefix="/streaming", tags=["streaming"])
