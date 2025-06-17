@@ -79,9 +79,9 @@ override_dh_virtualenv:
 	rm -rfv $(DH_VENV_DIR)/bin/wheel
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/pip
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/setuptools
-	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/wheel
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/distutils-precedence.pth
 	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/*.dist-info
 
 	@echo "AFTER BUILD TOOLS CLEANUP:"

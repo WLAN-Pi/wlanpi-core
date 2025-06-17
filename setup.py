@@ -56,6 +56,7 @@ setup(
         "Natural Language :: English",
         "Development Status :: 1 - Planning",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.11",
         "Intended Audience :: System Administrators",
         "Topic :: Utilities",
     ],
@@ -69,7 +70,7 @@ setup(
     extras_require=extras,
     entry_points={
         'console_scripts': [
-            'getjwt=cli.getjwt:main',
+            'getjwt=wlanpi_core.cli.getjwt:main',
         ],
     },
 )
