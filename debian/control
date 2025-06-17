@@ -22,7 +22,7 @@ Homepage: https://github.com/WLAN-Pi/wlanpi-core
 Package: wlanpi-core
 Architecture: any
 Pre-Depends: dpkg (>= 1.16.1), python3 (>=3.9), python3-distutils, ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}, dbus, lldpd, vlan, sqlite3 (>= 3.34.0), sqlite3 (<< 3.41.2), nginx-light | nginx-full | nginx-extras, ufw, nftables, python3-gi, xxd
+Depends: ${misc:Depends}, ${shlibs:Depends}, dbus, lldpd, vlan, jc, sqlite3 (>= 3.34.0), sqlite3 (<< 3.41.2), nginx-light | nginx-full | nginx-extras, ufw, nftables, python3-gi, xxd
 Description: WLAN Pi - core backend services
  wlanpi-core provides API endpoints for various consumers on
  the WLAN Pi.
