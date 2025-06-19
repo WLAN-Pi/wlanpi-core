@@ -1,4 +1,4 @@
-wlanpi-core (2.1.2-1) unstable; urgency=medium
+wlanpi-core (2.1.2-2) unstable; urgency=medium
 
   * Add --no-color option for getjwt by @bentumbler
 
