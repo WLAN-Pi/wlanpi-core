@@ -114,6 +114,11 @@ def main() -> int:
         default=DEFAULT_PORT,
         help=f"API port (default: {DEFAULT_PORT})",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colorized output",
+    )
 
     args = parser.parse_args()
 
@@ -121,15 +126,18 @@ def main() -> int:
         client = DeviceAuthClient(args.device_id, args.port)
         token_response = client.get_token()
         json_str = json.dumps(token_response, indent=2)
-        print(colorize_json(json_str))
+        if args.no_color:
+            print(json_str)
+        else:
+            print(colorize_json(json_str))
     except (FileNotFoundError, PermissionError) as e:
-        print(f"{RED}File Error: {str(e)}{NC}")
+        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
         return 1
     except requests.RequestException as e:
-        print(f"{RED}API Error: {str(e)}{NC}")
+        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
         return 1
     except Exception as e:
-        print(f"{RED}Unexpected Error: {str(e)}{NC}")
+        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
         return 1
 
     return 0
