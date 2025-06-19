@@ -131,13 +131,22 @@ def main() -> int:
         else:
             print(colorize_json(json_str))
     except (FileNotFoundError, PermissionError) as e:
-        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
+        if args.no_color:
+            print(f"File Error: {str(e)}")
+        else:
+            print(f"{RED}File Error: {str(e)}{NC}")
         return 1
     except requests.RequestException as e:
-        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
+        if args.no_color:
+            print(f"API Error: {str(e)}")
+        else:
+            print(f"{RED}API Error: {str(e)}{NC}")
         return 1
     except Exception as e:
-        print(f"{prefix if args.no_color else f'{RED}{prefix}'} {str(e)}{'' if args.no_color else NC}")
+        if args.no_color:
+            print(f"Unexpected Error: {str(e)}")
+        else:
+            print(f"{RED}Unexpected Error: {str(e)}{NC}")
         return 1
 
     return 0
