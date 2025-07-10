@@ -26,6 +26,7 @@ from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityInitError, SecurityManager
+from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.views.api import router as views_router
 
@@ -253,6 +254,11 @@ class InitializationManager:
             self.log.error("System not ready for initialization")
             return False
 
+        system_initialized = await self._initialize_system_manager()
+        if not system_initialized:
+            self.log.error("System manager initialization failed - cannot proceed")
+            return False
+
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
             self.log.error("Security initialization failed - cannot proceed")
@@ -329,6 +335,16 @@ class InitializationManager:
             return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
+            return False
+
+    async def _initialize_system_manager(self):
+        """Initialize the system manager"""
+        try:
+            self.app.state.system_manager = SystemManager()
+            self.log.debug("System manager initialized succcessfully")
+            return True
+        except Exception as e:
+            self.log.error(f"System manager initialization failed: {e}")
             return False
 
 

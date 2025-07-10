@@ -2,43 +2,74 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.streaming.connection_manager import ConnectionManager
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
-
 log = get_logger(__name__)
-
-
 manager = ConnectionManager()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     await manager.connect(websocket)
+
     try:
         while True:
-            response = await websocket.receive_text()
             try:
-                data = json.loads(response)
-            except:
-                log.error("Received data was invalid JSON.")
-                await websocket.send_text("Invalid JSON")
+                msg = await websocket.receive_text()
+                data = json.loads(msg)
+            except json.JSONDecodeError:
+                await manager.send_message_event(
+                    websocket,
+                    "error",
+                    "INVALID_JSON",
+                    "Received data is not valid JSON.",
+                )
                 continue
 
             command = data.get("command")
-            if command == "start":
-                manager.start_streaming(websocket)
-                await websocket.send_text("Started streaming.")
+
+            if command == "get_supported_frequencies":
+                await manager.send_supported_frequencies(websocket)
+
+            elif command == "configure":
+                configs = data.get("interfaces")
+                if isinstance(configs, dict):
+                    for iface, config in configs.items():
+                        manager.configure(websocket, iface, config)
+                    await manager.send_message_event(
+                        websocket,
+                        "config",
+                        "CONFIG_APPLIED",
+                        f"Configured: {', '.join(configs.keys())}",
+                    )
+                else:
+                    await manager.send_message_event(
+                        websocket,
+                        "error",
+                        "CONFIG_INVALID",
+                        "Expected 'interfaces' to be a dictionary.",
+                    )
+
+            elif command == "start":
+                interfaces = data.get("interfaces", [])
+                pcap_filter = data.get("pcap_filter")
+                await manager.start_streaming(websocket, interfaces, pcap_filter)
+
             elif command == "stop":
-                manager.stop_streaming(websocket)
-                await websocket.send_text("Stopped streaming.")
+                await manager.stop_streaming(websocket)
+
             else:
-                await websocket.send_text("Unknown command")
+                await manager.send_message_event(
+                    websocket,
+                    "error",
+                    "UNKNOWN_COMMAND",
+                    f"Unsupported command: {command}",
+                )
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
     except Exception as e:
-        log.error(f"Unexpected error: {e}")
-        manager.disconnect(websocket)
+        log.error(f"Unhandled error in websocket endpoint: {e!r}")
+        await manager.disconnect(websocket)
