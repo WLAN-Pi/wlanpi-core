@@ -10,7 +10,7 @@ log = get_logger(__name__)
 manager = ConnectionManager()
 
 
-@router.websocket("/ws")
+@router.websocket("/capture")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await manager.connect(websocket)
 
