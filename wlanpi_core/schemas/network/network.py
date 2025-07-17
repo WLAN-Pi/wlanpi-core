@@ -88,6 +88,10 @@ class WlanInterfaceSetup(BaseModel):
     netConfig: WlanConfig
     removeAllFirst: bool
 
+class WlanRevertRequest(BaseModel):
+    iface: str= Field(example="wlan0")
+    namespace: str
+    delete_namespace: bool = True
 
 class NetworkEvent(BaseModel):
     event: str = Field(example="authenticated")
@@ -109,6 +113,10 @@ class NetworkSetupStatus(BaseModel):
 class ConnectedNetwork(BaseModel):
     connectedStatus: bool = Field(example=True)
     connectedNet: Union[ScanItem, None]
+    
+class RevertNamespace(BaseModel):
+    success: bool = Field(example=True)
+    message: str
 
 
 class Interface(BaseModel):

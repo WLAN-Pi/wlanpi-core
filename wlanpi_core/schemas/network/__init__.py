@@ -10,4 +10,6 @@ from .network import (
     ScanResults,
     WlanConfig,
     WlanInterfaceSetup,
+    RevertNamespace,
+    WlanRevertRequest,
 )

@@ -9,7 +9,7 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
-from wlanpi_core.services import network_ethernet_service, network_service
+from wlanpi_core.services import network_ethernet_service, network_service, network_namespace_service
 
 router = APIRouter()
 
@@ -280,11 +280,11 @@ async def get_a_systemd_network_scan(
 
 
 @router.post(
-    "/wlan/set",
+    "/wlan/set-dbus",
     response_model=network.NetworkSetupStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def set_a_systemd_network(
+async def set_a_systemd_network_dbus(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
@@ -300,7 +300,55 @@ async def set_a_systemd_network(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+    
+@router.post(
+    "/wlan/set",
+    response_model=network.NetworkSetupStatus,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def set_a_systemd_network(
+    setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
+):
+    """
+    Queries systemd via dbus to set a single network.
+    """
 
+    try:
+        namespace_service = network_namespace_service.NetworkService()
+        namespace_service.restore_phy_to_userspace("testns")
+        namespace_service.add_network(setup.interface, setup.netConfig, "testns", setup.removeAllFirst)
+        return True
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/wlan/revert",
+    response_model=network.RevertNamespace,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def revert_wlan_namespace(
+    req: network.WlanRevertRequest,
+    timeout: int = settings.API_DEFAULT_TIMEOUT
+):
+    """
+    Reverts the PHY and interface back to the root namespace.
+    """
+    try:
+        namespace_service = network_namespace_service.NetworkService()
+        namespace_service.revert_to_root(
+            iface=req.iface,
+            namespace=req.namespace,
+            delete_namespace=req.delete_namespace
+        )
+        return {"success": True, "message": f"{req.iface} and phy0 reverted to root from {req.namespace}"}
+
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
 
 @router.get(
     "/wlan/getConnected",
