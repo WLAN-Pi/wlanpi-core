@@ -316,8 +316,8 @@ async def set_a_systemd_network(
     try:
         namespace_service = network_namespace_service.NetworkService()
         namespace_service.restore_phy_to_userspace("testns")
-        namespace_service.add_network(setup.interface, setup.netConfig, "testns", setup.removeAllFirst)
-        return True
+        status = namespace_service.add_network(setup.interface, setup.netConfig, "testns", setup.removeAllFirst)
+        return status
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
