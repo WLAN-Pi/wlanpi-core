@@ -6,6 +6,6 @@ class RunCommandError(Exception):
 
         self.return_code = return_code
         self.error_msg = error_msg
-        
+
     def __str__(self):
         return f"{self.error_msg} (exit code {self.return_code})"

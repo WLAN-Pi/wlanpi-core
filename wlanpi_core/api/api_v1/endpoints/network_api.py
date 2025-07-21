@@ -300,7 +300,7 @@ async def set_a_systemd_network_dbus(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-    
+
 @router.post(
     "/wlan/set",
     response_model=network.NetworkSetupStatus,
@@ -314,7 +314,7 @@ async def set_a_systemd_network(
     """
 
     try:
-        namespace_service = network_namespace_service.NetworkService()
+        namespace_service = network_namespace_service.NetworkNamespaceService()
         namespace_service.restore_phy_to_userspace("testns")
         status = namespace_service.add_network(setup.interface, setup.netConfig, "testns", setup.removeAllFirst)
         return status
@@ -338,7 +338,7 @@ async def revert_wlan_namespace(
     Reverts the PHY and interface back to the root namespace.
     """
     try:
-        namespace_service = network_namespace_service.NetworkService()
+        namespace_service = network_namespace_service.NetworkNamespaceService()
         namespace_service.revert_to_root(
             iface=req.iface,
             namespace=req.namespace,

@@ -60,6 +60,41 @@ class IPInterface(BaseModel, extra=Extra.allow):
     address: str = Field(examples=["00:50:56:83:4f:7d"])
     broadcast: str = Field(examples=["ff:ff:ff:ff:ff:ff"])
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
+    
+
+class NetConfig(BaseModel):
+    id: str
+    namespace: str
+    phy: str
+    interface: str
+    ssid: str
+    security: str
+    psk: Optional[str] = None
+    identity: Optional[str] = None
+    password: Optional[str] = None
+    client_cert: Optional[str] = None
+    private_key: Optional[str] = None
+    ca_cert: Optional[str] = None
+    mlo: Optional[bool] = False
+    default_route: bool = False
+    autostart_app: Optional[str] = None
+    active: bool = False
+    
+class NetConfigUpdate(BaseModel):
+    namespace: Optional[str] = None
+    phy: Optional[str] = None
+    interface: Optional[str] = None
+    ssid: Optional[str] = None
+    security: Optional[str] = None
+    psk: Optional[str] = None
+    identity: Optional[str] = None
+    password: Optional[str] = None
+    client_cert: Optional[str] = None
+    private_key: Optional[str] = None
+    ca_cert: Optional[str] = None
+    mlo: Optional[bool] = None
+    default_route: Optional[bool] = None
+    autostart_app: Optional[str] = None
 
 
 class ScanItem(BaseModel):
@@ -75,17 +110,9 @@ class ScanResults(BaseModel):
     nets: List[ScanItem]
 
 
-class WlanConfig(BaseModel):
-    ssid: str = Field(example="SSID Name")
-    psk: Union[str, None] = None
-    proto: Union[str, None] = None
-    key_mgmt: str = Field(example="NONE, SAE")
-    ieee80211w: Union[int, None] = None
-
-
 class WlanInterfaceSetup(BaseModel):
     interface: str = Field(example="wlan0")
-    netConfig: WlanConfig
+    netConfig: NetConfig
     removeAllFirst: bool
 
 class WlanRevertRequest(BaseModel):
@@ -113,7 +140,7 @@ class NetworkSetupStatus(BaseModel):
 class ConnectedNetwork(BaseModel):
     connectedStatus: bool = Field(example=True)
     connectedNet: Union[ScanItem, None]
-    
+
 class RevertNamespace(BaseModel):
     success: bool = Field(example=True)
     message: str

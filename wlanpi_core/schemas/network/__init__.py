@@ -8,7 +8,7 @@ from .network import (
     NetworkSetupStatus,
     PublicIP,
     ScanResults,
-    WlanConfig,
+    NetConfig,
     WlanInterfaceSetup,
     RevertNamespace,
     WlanRevertRequest,

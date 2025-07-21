@@ -1,21 +1,25 @@
 from datetime import datetime
-import logging    
+import logging
 from pathlib import Path
+import subprocess
 import time
 from typing import List
 from wlanpi_core.utils.general import run_command
-from wlanpi_core.schemas.network.network import NetworkSetupLog, ScanItem, WlanConfig, NetworkEvent, NetworkSetupStatus
+from wlanpi_core.schemas.network.network import NetworkSetupLog, ScanItem, NetConfig, NetworkEvent, NetworkSetupStatus
 from wlanpi_core.models.runcommand_error import RunCommandError
 
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
 DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
 DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
+PID_DIR = "/run/wifictl/pids"
 
-class NetworkService:
+class NetworkNamespaceService:
     def __init__(self, config_dir=DEFAULT_CONFIG_DIR, ctrl_interface=DEFAULT_CTRL_INTERFACE, dhcp_dir=DEFAULT_DHCP_DIR):
         self.config_dir = Path(config_dir)
         self.ctrl_interface = ctrl_interface
         self.dhcp_dir = Path(dhcp_dir)
+        self.pid_dir = Path(PID_DIR)
+        self.pid_dir.mkdir(parents=True, exist_ok=True)
         self.global_settings = {
             "ctrl_interface": ctrl_interface,
             "update_config": True,
@@ -29,7 +33,7 @@ class NetworkService:
     def set_global_settings(self, settings: dict):
         self.log.info("Updating global settings: %s", settings)
         self.global_settings.update(settings)
-        
+
 
     def parse_wpa_log(self, timeout: int = 30):
         """
@@ -41,23 +45,33 @@ class NetworkService:
         start_time = time.time()
 
         with open("/tmp/wpa.log", "r") as f:
-            # f.seek(0, 2)  # Uncomment to tail only NEW output
-
             while True:
                 line = f.readline()
                 if not line:
-                    time.sleep(0.1)  # Wait for more output
+                    time.sleep(0.1)
                     if time.time() - start_time > timeout:
                         raise TimeoutError("Timeout waiting for connection to complete")
                     continue
 
                 line = line.strip()
-                self._log_event(line)
+
+                # Extract timestamp if present
+                parts = line.split(":", 1)
+                if len(parts) == 2 and parts[0].replace(".", "", 1).isdigit():
+                    epoch = float(parts[0])
+                    log_msg = parts[1].strip()
+                    ts = datetime.fromtimestamp(epoch).isoformat()
+                else:
+                    epoch = None
+                    log_msg = line
+                    ts = datetime.now().isoformat()
+
+                self._log_event(log_msg, timestamp=ts)
 
                 if "CTRL-EVENT-CONNECTED" in line and "completed" in line:
                     break
 
-    def add_network(self, iface: str, net_config: WlanConfig, namespace: str, set_default_route: bool = False):
+    def add_network(self, iface: str, net_config: NetConfig, namespace: str, set_default_route: bool = False):
         self.log.info("Adding network on %s in namespace %s", iface, namespace)
         self.networks[iface] = net_config
 
@@ -70,8 +84,11 @@ class NetworkService:
         if set_default_route:
             self._set_default_route(iface, namespace)
             
+        if net_config.autostart_app:
+            self.start_app_in_namespace(namespace, net_config.autostart_app)
+
         self.parse_wpa_log()
-            
+
         status = self.get_status(iface, namespace)
         wpa: dict = status.get("wpa_status", {})
         scan: dict = status.get("connected_scan", {})
@@ -80,7 +97,7 @@ class NetworkService:
             ssid=net_config.ssid,
             bssid=wpa.get("bssid", "unknown"),
             key_mgmt=wpa.get("key_mgmt", "unknown"),
-            signal=scan.get("signal"),
+            signal=scan.get("signal", 0),
             freq=wpa.get("freq", 0),
             minrate=1000000
         )
@@ -103,7 +120,7 @@ class NetworkService:
         self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface}"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         self._ns_exec(["dhclient", "-r", iface], namespace)
-        
+
     def revert_to_root(self, iface: str, namespace: str, delete_namespace: bool = True):
         self.log.info(f"Reverting {iface} and phy0 from namespace {namespace} to root namespace.")
 
@@ -151,8 +168,30 @@ class NetworkService:
                     self.log.info(f"Namespace {namespace} already deleted.")
                 else:
                     self.log.warning(f"Could not delete namespace {namespace}: {e}")
+                    
+    def start_app_in_namespace(self, namespace, app_command):
+        cmd = ["ip", "netns", "exec", namespace] + app_command.split()
+        self.log.info(f"Starting app in namespace {namespace}: {' '.join(cmd)}")
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pid_file = self.pid_dir / f"{namespace}.pid"
+        pid_file.write_text(str(proc.pid))
+        self.log.info(f"Started app in {namespace} with PID {proc.pid}")
+        
+    def stop_app_in_namespace(self, namespace):
+        pid_file = self.pid_dir / f"{namespace}.pid"
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                self._run(["kill", str(pid)])
+                self.log.info(f"Stopped app in {namespace} with PID {pid}")
+            except Exception as e:
+                self.log.error(f"Failed to stop app in {namespace}: {e}")
+            finally:
+                pid_file.unlink(missing_ok=True)
+        else:
+            self.log.warning(f"No PID file found for namespace {namespace}.")
 
-    def get_status(self, iface: str, namespace: str) -> dict[dict[str, str], str]:
+    def get_status(self, iface: str, namespace: str) -> dict:
         try:
             wpa_status = {}
             wpa = self._ns_exec(["wpa_cli", "-i", iface, "status"], namespace).stdout.strip()
@@ -165,6 +204,7 @@ class NetworkService:
             connected_bssid = wpa_status.get("bssid")
 
             signal = None
+            key_mgmt = "unknown"
             freq = int(wpa_status.get("freq", 0))
             scan = self._ns_exec(["wpa_cli", "-i", iface, "scan_results"], namespace).stdout.strip()
             lines = scan.split("\n")
@@ -181,7 +221,7 @@ class NetworkService:
                         break
 
             ip = self._ns_exec(["ip", "addr", "show", iface], namespace).stdout.strip()
-        
+
 
             return {
                 "wpa_status": wpa_status,
@@ -192,15 +232,15 @@ class NetworkService:
                     "key_mgmt": key_mgmt,
                     "freq": freq,
                     "signal": signal,
-                    "minrate": 1000000  # Or some real value if you can find it
+                    "minrate": 1000000  # not sure how to get this
                 }
             }
-        
+
         except RunCommandError as e:
             self.log.warning("Status check failed for %s: %s", iface, e)
             return {"error": str(e)}
-        
-    
+
+
     def _parse_key_mgmt(self, flags: str) -> str:
         if "WPA2-PSK" in flags:
             return "wpa-psk"
@@ -211,7 +251,7 @@ class NetworkService:
         elif "[ESS]" in flags and "WPA" not in flags:
             return "open"
         return "unknown"
-        
+
     def _prepare_namespace(self, iface: str, namespace: str):
         if not namespace:
                 return
@@ -235,7 +275,7 @@ class NetworkService:
                     raise
 
             # Check if phy0 is already in namespace. if yes, move it back to root first
-            result = self._ns_exec(["iw", "phy"], namespace)
+            result = self._ns_exec(["iw", "phy"], namespace, no_output=True)
             if "phy0" in result.stdout:
                 self.log.info("Moving phy0 back to root from namespace %s", namespace)
                 self._ns_exec(["iw", "phy", "phy0", "set", "netns", "1"], namespace)
@@ -328,12 +368,14 @@ class NetworkService:
         self._ns_exec(["pkill", "-f", f"wpa_supplicant -B -i {iface}"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         conf_path = self.config_dir / f"{iface}.conf"
+        self._run(["rm", "/tmp/wpa.log"])
         self._ns_exec([
             "wpa_supplicant", "-B",
             "-i", iface,
             "-c", str(conf_path),
             "-D", "nl80211",
-            "-f" "/tmp/wpa.log"
+            "-f", "/tmp/wpa.log",
+            "-t"
         ], namespace)
         # self._run(["tail", "-F", "/tmp/wpa.log"])
 
@@ -355,41 +397,47 @@ class NetworkService:
             lines.append("sae_pwe=1")
         return "\n".join(lines)
 
-    def _generate_network_block(self, net: WlanConfig, priority=0):
+    def _generate_network_block(self, net: NetConfig, priority=0):
         lines = ["network={"]
         lines.append(f"    ssid=\"{net.ssid}\"")
         lines.append(f"    priority={priority}")
-        lines.append(f"    psk=\"{net.psk}\"")
-        lines.append("    key_mgmt=WPA-PSK")
-        lines.append("    ieee80211w=2")
-        # sec = net.get("security", "OPEN").upper()
 
-        # if sec == "OPEN":
-        #     lines.append("    key_mgmt=NONE")
-        # elif sec == "OWE":
-        #     lines.append("    key_mgmt=OWE")
-        # elif sec in ("WPA2-PSK", "WPA3-PSK"):
-        #     lines.append(f"    psk=\"{net.psk}\"")
-        #     lines.append("    key_mgmt=WPA-PSK")
-        #     if sec == "WPA3-PSK":
-        #         lines.append("    ieee80211w=2")
-        #         lines.append("    sae_pwe=1")
-        # elif sec == "802.1X":
-        #     lines.append("    key_mgmt=WPA-EAP")
-        #     lines.append(f"    identity=\"{net}\"")
-        #     lines.append(f"    password=\"{net.pas}\"")
-        #     lines.append(f"    ca_cert=\"{net.get('ca_cert', '/etc/ssl/certs/ca-certificates.crt')}\"")
-        #     lines.append("    eap=PEAP")
-        # elif sec == "OPENROAMING":
-        #     lines.append("    key_mgmt=WPA-EAP")
-        #     lines.append(f"    identity=\"{net['identity']}\"")
-        #     lines.append(f"    client_cert=\"{net['client_cert']}\"")
-        #     lines.append(f"    private_key=\"{net['private_key']}\"")
-        #     lines.append(f"    ca_cert=\"{net['ca_cert']}\"")
-        #     lines.append("    eap=TLS")
+        sec = (net.security or "OPEN").upper()
 
-        # if net.get("mlo"):
-        #     lines.append("    mlo=1")
+        if sec == "OPEN":
+            lines.append("    key_mgmt=NONE")
+        elif sec == "OWE":
+            lines.append("    key_mgmt=OWE")
+        elif sec in ("WPA2-PSK", "WPA3-PSK"):
+            if net.psk:
+                lines.append(f"    psk=\"{net.psk}\"")
+            lines.append("    key_mgmt=WPA-PSK")
+            if sec == "WPA3-PSK":
+                lines.append("    ieee80211w=2")
+                lines.append("    sae_pwe=1")
+        elif sec == "802.1X":
+            lines.append("    key_mgmt=WPA-EAP")
+            if net.identity:
+                lines.append(f"    identity=\"{net.identity}\"")
+            if net.password:
+                lines.append(f"    password=\"{net.password}\"")
+            lines.append("    eap=PEAP")
+            lines.append("    phase2=\"auth=MSCHAPV2\"")
+            lines.append(f"    ca_cert=\"{net.ca_cert or '/etc/ssl/certs/ca-certificates.crt'}\"")
+        elif sec == "OPENROAMING":
+            lines.append("    key_mgmt=WPA-EAP")
+            if net.identity:
+                lines.append(f"    identity=\"{net.identity}\"")
+            if net.client_cert:
+                lines.append(f"    client_cert=\"{net.client_cert}\"")
+            if net.private_key:
+                lines.append(f"    private_key=\"{net.private_key}\"")
+            if net.ca_cert:
+                lines.append(f"    ca_cert=\"{net.ca_cert}\"")
+            lines.append("    eap=TLS")
+
+        if net.mlo:
+            lines.append("    mlo=1")
 
         lines.append("}")
         return "\n".join(lines)
@@ -401,20 +449,14 @@ class NetworkService:
             self.log.info(f"stdout: {output.stdout}\nstderr: {output.stderr}\ncode: {output.return_code}")
         return output
 
-    def _ns_exec(self, cmd, namespace):
+    def _ns_exec(self, cmd, namespace, no_output=False):
         full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd if namespace else cmd
-        self.log.info(f"Running: {' '.join(full_cmd)}")
-        output = run_command(full_cmd, raise_on_fail=True)
-        self.log.info(f"stdout: {output.stdout}\nstderr: {output.stderr}\ncode: {output.return_code}")
-        return output
+        return self._run(full_cmd, no_output=no_output)
 
     def _safe_unlink(self, path: Path):
         if path.exists():
             path.unlink()
-            
-    def _log_event(self, event: str):
-        now = datetime.now().isoformat()
-        self.event_log.append(NetworkEvent(event=event, time=now))
-        self.log.info(f"[EventLog] {event}")
-    
-    
+
+    def _log_event(self, event: str, timestamp: str):
+        self.event_log.append(NetworkEvent(event=event, time=timestamp))
+
