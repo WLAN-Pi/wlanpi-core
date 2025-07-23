@@ -75,10 +75,27 @@ class NetConfig(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
-    mlo: Optional[bool] = False
+    mlo: bool = False
     default_route: bool = False
     autostart_app: Optional[str] = None
     active: bool = False
+    
+class NetConfigCreate(BaseModel):
+    id: str
+    namespace: str
+    phy: str = "phy0"
+    interface: str = "wlan0"
+    ssid: str
+    security: str
+    psk: Optional[str] = None
+    identity: Optional[str] = None
+    password: Optional[str] = None
+    client_cert: Optional[str] = None
+    private_key: Optional[str] = None
+    ca_cert: Optional[str] = None
+    mlo: Optional[bool] = False
+    default_route: bool = False
+    autostart_app: Optional[str] = None
     
 class NetConfigUpdate(BaseModel):
     namespace: Optional[str] = None

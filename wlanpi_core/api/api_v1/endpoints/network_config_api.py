@@ -3,14 +3,9 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.core.config import settings
-from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.network_config_errors import ConfigActiveError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.schemas import network
-from wlanpi_core.schemas.network.config import NetworkConfigResponse
-from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress, NetConfig, NetConfigUpdate
-from wlanpi_core.services import network_ethernet_service, network_service, network_namespace_service
+from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate, NetConfigCreate
 from wlanpi_core.utils import network_config
 
 router = APIRouter()
@@ -72,7 +67,7 @@ async def get_config_by_id(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def create_config(
-    config: NetConfig
+    config: NetConfigCreate
 ):
     """
     Create a new network configuration.
@@ -81,9 +76,12 @@ async def create_config(
         success = network_config.add_config(config)
         if not success:
             log.error(f"Failed to add configuration: {config.id}")
-            raise HTTPException(status_code=400, detail="Failed to add configuration")
+            raise HTTPException(status_code=500, detail="Failed to add configuration")
         log.info(f"Configuration added: {config.id}")
         return {"id": config.id, "message": "Configuration added successfully"}
+    except FileExistsError as e:
+        log.error(f"Configuration already exists: {e}")
+        raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
     except Exception as ex:
@@ -107,7 +105,7 @@ async def update_config(
         config = network_config.edit_config(id, config_update)
         if not config:
             log.error(f"Failed to update configuration: {id}")
-            raise HTTPException(status_code=400, detail="Failed to update configuration")
+            raise HTTPException(status_code=500, detail="Failed to update configuration")
         log.info(f"Configuration updated: {id}")
         return {"id": id, "message": "Configuration updated successfully", "config": config}
     except FileNotFoundError as e:
@@ -115,7 +113,7 @@ async def update_config(
         raise HTTPException(status_code=404, detail=str(e))
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be updated: {cae}")
-        raise HTTPException(status_code=400, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae))
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
     except Exception as ex:
@@ -143,7 +141,7 @@ async def delete_config(
         return {"id": id, "message": "Configuration deleted successfully"}
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be deleted: {cae}")
-        raise HTTPException(status_code=400, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae))
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
@@ -170,12 +168,12 @@ async def activate_config(
         success = network_config.activate_config(id)
         if not success:
             log.error(f"Failed to activate configuration: {id}")
-            raise HTTPException(status_code=400, detail="Failed to activate configuration")
+            raise HTTPException(status_code=500, detail="Failed to activate configuration")
         log.info(f"Configuration activated: {id}")
         return {"id": id, "message": "Configuration activated successfully"}
     except ConfigActiveError as cae:
         log.error(f"Configuration already active: {cae}")
-        raise HTTPException(status_code=400, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae))
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
@@ -192,21 +190,22 @@ async def activate_config(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def deactivate_config(
-    id: str
+    id: str,
+    override_active: Optional[bool] = False
 ):
     """
     Deactivate a network configuration by ID.
     """
     try:
-        success = network_config.deactivate_config(id)
+        success = network_config.deactivate_config(id, override_active=override_active if override_active else False)
         if not success:
             log.error(f"Failed to deactivate configuration: {id}")
-            raise HTTPException(status_code=400, detail="Failed to deactivate configuration")
+            raise HTTPException(status_code=500, detail="Failed to deactivate configuration")
         log.info(f"Configuration deactivated: {id}")
         return {"id": id, "message": "Configuration deactivated successfully"}
     except ConfigActiveError as cae:
         log.error(f"Configuration not active: {cae}")
-        raise HTTPException(status_code=400, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae))
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))

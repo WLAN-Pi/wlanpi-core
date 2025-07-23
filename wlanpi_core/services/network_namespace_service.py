@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import logging
 from pathlib import Path
 import subprocess
@@ -12,6 +13,8 @@ DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
 DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
 DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
 PID_DIR = "/run/wifictl/pids"
+APPS_FILE = "/etc/wifictl/apps.json"
+WPA_LOG_FILE = "/tmp/wpa.log"
 
 class NetworkNamespaceService:
     def __init__(self, config_dir=DEFAULT_CONFIG_DIR, ctrl_interface=DEFAULT_CTRL_INTERFACE, dhcp_dir=DEFAULT_DHCP_DIR):
@@ -43,8 +46,8 @@ class NetworkNamespaceService:
         Each line is appended to `event_log`.
         """
         start_time = time.time()
-
-        with open("/tmp/wpa.log", "r") as f:
+        
+        with open(WPA_LOG_FILE, "r") as f:
             while True:
                 line = f.readline()
                 if not line:
@@ -169,13 +172,29 @@ class NetworkNamespaceService:
                 else:
                     self.log.warning(f"Could not delete namespace {namespace}: {e}")
                     
-    def start_app_in_namespace(self, namespace, app_command):
+    def start_app_in_namespace(self, namespace, app_id):
+        apps_file = Path(APPS_FILE)
+        if not apps_file.exists():
+            self.log.error(f"Apps file {APPS_FILE} does not exist.")
+            return
+        try:
+            with apps_file.open("r") as f:
+                apps = json.load(f)
+        except json.JSONDecodeError as e:
+            self.log.error(f"Failed to parse apps file {APPS_FILE}: {e}")
+            return
+        if app_id not in apps:
+            self.log.error(f"App ID {app_id} not found in apps file.")
+            return
+        app_command = apps[app_id]
+
+        self.log.info(f"Starting app '{app_id}' with command {app_command}")
         cmd = ["ip", "netns", "exec", namespace] + app_command.split()
-        self.log.info(f"Starting app in namespace {namespace}: {' '.join(cmd)}")
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         pid_file = self.pid_dir / f"{namespace}.pid"
         pid_file.write_text(str(proc.pid))
-        self.log.info(f"Started app in {namespace} with PID {proc.pid}")
+        self.log.info(f"Started app '{app_id}' in {namespace} with PID {proc.pid}")
+        
         
     def stop_app_in_namespace(self, namespace):
         pid_file = self.pid_dir / f"{namespace}.pid"
@@ -368,7 +387,7 @@ class NetworkNamespaceService:
         self._ns_exec(["pkill", "-f", f"wpa_supplicant -B -i {iface}"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         conf_path = self.config_dir / f"{iface}.conf"
-        self._run(["rm", "/tmp/wpa.log"])
+        self._run(["rm", "-f", "/tmp/wpa.log"])
         self._ns_exec([
             "wpa_supplicant", "-B",
             "-i", iface,
@@ -444,10 +463,17 @@ class NetworkNamespaceService:
 
     def _run(self, cmd, no_output=False):
         self.log.info(f"Running: {' '.join(cmd)}")
-        output = run_command(cmd, raise_on_fail=True)
-        if not no_output:
-            self.log.info(f"stdout: {output.stdout}\nstderr: {output.stderr}\ncode: {output.return_code}")
-        return output
+        try:
+            output = run_command(cmd, raise_on_fail=True)
+            if no_output:
+                return output
+            self.log.info(f"stdout: {output.stdout}")
+            self.log.info(f"stderr: {output.stderr}")
+            self.log.info(f"return_code: {output.return_code}")
+            return output
+        except Exception as e:
+            self.log.error(f"Command failed: {' '.join(cmd)}\nError: {e}")
+            raise
 
     def _ns_exec(self, cmd, namespace, no_output=False):
         full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd if namespace else cmd

@@ -1,14 +1,17 @@
 import json
+import logging
 import subprocess
 from typing import List
 from pathlib import Path
 
 from wlanpi_core.models.network_config_errors import ConfigActiveError
-from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate
+from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate, NetConfigCreate
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
 
 CONFIG_PATH = Path("/etc/wifictl/configs")
 CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+
+log = logging.getLogger(__name__)
 
 ns = NetworkNamespaceService()
 
@@ -23,7 +26,7 @@ def get_config(id: str) -> NetConfig:
         raise FileNotFoundError(f"Configuration {id} not found.")
     return NetConfig(**json.loads(path.read_text()))
 
-def add_config(config: NetConfig) -> bool:
+def add_config(config: NetConfigCreate) -> bool:
     """Add a new configuration."""
     path = CONFIG_PATH / f"{config.id}.json"
     if path.exists():
@@ -40,7 +43,7 @@ def edit_config(id: str, config_update: NetConfigUpdate) -> NetConfig:
         raise ConfigActiveError(f"Cannot edit active configuration {id}.")
 
     for field, value in config_update.model_dump().items():
-        if value is not None:
+        if value is not None and field != "id":
             setattr(cfg, field, value)
 
     # Write updated config back to file
@@ -65,31 +68,38 @@ def activate_config(id: str) -> bool:
     cfg = get_config(id)
     if cfg.active:
         raise ConfigActiveError(f"Configuration {id} is already active.")
-    iface = cfg.interface
-    namespace = cfg.namespace
-    cfg.active = True
-    path.write_text(cfg.model_dump_json(indent=4))
-    ns.add_network(iface, cfg, namespace, cfg.default_route)
-    return True
+    try:
+        ns.add_network(cfg.interface, cfg, cfg.namespace, cfg.default_route)
+        cfg.active = True
+        path.write_text(cfg.model_dump_json(indent=4))
+        return True
 
-def deactivate_config(id: str) -> bool:
+    except Exception as ex:
+        log.error(f"Failed to activate config {id}: {ex}")
+        raise
+
+def deactivate_config(id: str, override_active: bool = False) -> bool:
     """Deactivate a configuration by ID."""
     path = CONFIG_PATH / f"{id}.json"
     
     cfg = get_config(id)
-    if not cfg.active:
+    if not cfg.active and not override_active:
         raise ConfigActiveError(f"Configuration {id} is not active.")
-    iface = cfg.interface
-    namespace = cfg.namespace
-    ns.stop_app_in_namespace(namespace)
-    ns.remove_network(iface, namespace)
-    ns.restore_phy_to_userspace(namespace)
-    cfg.active = False
-    path.write_text(cfg.model_dump_json(indent=4))
-    return True
+
+    try:
+        ns.stop_app_in_namespace(cfg.namespace)
+        ns.remove_network(cfg.interface, cfg.namespace)
+        ns.restore_phy_to_userspace(cfg.namespace)
+        cfg.active = False
+        path.write_text(cfg.model_dump_json(indent=4))
+        return True
+
+    except Exception as ex:
+        log.error(f"Failed to deactivate config {id}: {ex}")
+        raise
 
 if __name__ == "__main__":
-    cfg = NetConfig(
+    cfg = NetConfigCreate(
         id="example",
         namespace="test",
         phy="phy0",
