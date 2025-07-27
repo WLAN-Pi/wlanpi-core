@@ -87,7 +87,7 @@ class SystemManager:
                 "otherbss",
             ]
         )
-        if self._iface_up(mon) and self._iface_down(name):
+        if self._iface_up(mon):
             return mon
         else:
             log.error(f"Failed to create monitor interface {mon}")
@@ -117,7 +117,8 @@ class SystemManager:
             expected_mon = f"wlanpi{index}"
             if expected_mon not in monitor:
                 log.info(f"Creating monitor interface for {iface} → {expected_mon}")
+                self._create_monitor(iface, index)
                 driver = self._get_driver(iface)
                 if driver == "iwlwifi":
                     self._iface_scan(iface)
-                self._create_monitor(iface, index)
+                self._iface_down(iface)
