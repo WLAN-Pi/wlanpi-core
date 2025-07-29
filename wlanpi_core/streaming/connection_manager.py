@@ -99,7 +99,7 @@ class ConnectionManager:
         self,
         websocket: WebSocket,
         interfaces: list[str],
-        pcap_filter: str | None = None,
+        pcap_filter: str,
     ) -> None:
         client = self.clients.get(websocket)
         if not client:
