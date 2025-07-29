@@ -85,9 +85,10 @@ class TokenValidationResult:
     @property
     def is_expired(self) -> bool:
         """Check if token is expired"""
-        if not self.exp:
-            return True
-        return self.exp <= datetime.now(timezone.utc)
+        # if not self.exp:
+        #     return True
+        # return self.exp <= datetime.now(timezone.utc)
+        return False
 
     def __str__(self) -> str:
         """Human readable representation"""
@@ -117,6 +118,7 @@ class TokenManager:
         self.app_state = app_state
         self.token_cache = TokenCache()
         self.skey_cache = SKeyCache()
+        self.time_validation_enabled = False
 
     def _normalize_token(self, token: Union[str, bytes]) -> str:
         """Normalize and validate JWT token format"""
@@ -141,8 +143,6 @@ class TokenManager:
             except Exception:
                 log.exception("Base64 padding error")
                 raise JWTError("Base64 padding error")
-
-        ".".join(padded_parts)
 
         # Validate header
         try:
@@ -215,7 +215,7 @@ class TokenManager:
             .where(
                 Token.key_id != new_key.id,
                 Token.revoked == False,
-                Token.expires_at > datetime.now(timezone.utc),
+                # Token.expires_at > datetime.now(timezone.utc),
             )
             .values(revoked=True)
         )
@@ -390,7 +390,7 @@ class TokenManager:
             cached = self.token_cache.get_cached_token(normalized_token)
             if cached:
                 log.debug("Token found in cache")
-                if not self.token_cache._is_token_expired(cached):
+                if not self.time_validation_enabled or not self.token_cache._is_token_expired(cached):
                     return TokenValidationResult(
                         is_valid=True, payload=cached, token=normalized_token
                     )
@@ -450,7 +450,20 @@ class TokenManager:
 
                 try:
                     payload = jwt.decode(token, signing_key.key)
-                    payload.validate()
+                    if self.time_validation_enabled:
+                        payload.validate()
+                    else:
+                        # Validated JWT payload without time-based claims
+                        required_claims = ['sub', 'iss', 'did', 'kid', 'jti']
+                        for claim in required_claims:
+                            if claim not in payload:
+                                raise JWTError(f"Missing required claim: {claim}")
+                        
+                        if payload.get('iss') != 'wlanpi-core':
+                            raise JWTError("Invalid issuer")
+                        
+                        if not payload.get('did'):
+                            raise JWTError("Invalid device ID")
 
                     self.token_cache.cache_token(token, payload)
                     return TokenValidationResult(
@@ -499,7 +512,7 @@ class TokenManager:
                     }
 
                 token_model.revoked = True
-                await session.flush()
+                await session.commit()
 
                 return {
                     "status": "success",
@@ -606,7 +619,7 @@ class TokenManager:
                     .where(
                         Token.key_id != new_key.id,
                         Token.revoked == False,
-                        Token.expires_at > datetime.now(timezone.utc),
+                        # Token.expires_at > datetime.now(timezone.utc),
                     )
                     .values(revoked=True)
                 )
@@ -696,7 +709,7 @@ class TokenManager:
             .where(
                 Token.key_id == key_id,
                 Token.revoked == False,
-                Token.expires_at > datetime.now(timezone.utc),
+                # Token.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await session.execute(query)
@@ -789,7 +802,7 @@ class TokenManager:
                     )
                     .where(
                         Token.revoked == False,
-                        Token.expires_at > now,
+                        # Token.expires_at > now,
                     )
                     .order_by(Token.expires_at.desc())
                 )
