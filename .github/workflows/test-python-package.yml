@@ -49,6 +49,7 @@ jobs:
         python -m pip install --upgrade meson ninja
         ln -sf $(which meson) /usr/local/bin/meson
         ln -sf $(which ninja) /usr/local/bin/ninja
+        python -m pip install "packaging<24.0" "pyproject-metadata<0.8.0" "meson-python<0.16.0"
         python -m pip install --upgrade tox coverage-badge
         if [ -f requirements.txt ]; then sudo pip install -r requirements.txt; fi
   
