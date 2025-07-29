@@ -16,6 +16,7 @@ IW_FILE: str = "/sbin/iw"
 IP_FILE: str = "/usr/sbin/ip"
 UFW_FILE: str = "/usr/sbin/ufw"
 ETHTOOL_FILE: str = "/sbin/ethtool"
+DUMPCAP_FILE: str = "/usr/bin/dumpcap"
 
 # Mode changer scripts
 MODE_FILE: str = "/etc/wlanpi-state"
