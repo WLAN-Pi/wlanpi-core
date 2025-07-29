@@ -40,7 +40,7 @@ jobs:
     - name: Install depends
       run: |
         sudo apt update
-        sudo apt install build-essential git unzip zip nload tree ufw nftables vlan sqlite3 lldpd xxd dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake libdbus-1-dev python3-pip python3-dev python3-venv python3-wheel python3-setuptools
+        sudo apt install build-essential meson git unzip zip nload tree ufw nftables vlan sqlite3 lldpd xxd dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake libdbus-1-dev python3-pip python3-dev python3-venv python3-wheel python3-setuptools
         python -m ensurepip --upgrade
         python -m venv venv
         source venv/bin/activate
