@@ -22,7 +22,7 @@ on:
 
 jobs:
   python:
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-24.04-arm"
     strategy:
       fail-fast: false
       matrix:
@@ -40,9 +40,9 @@ jobs:
     - name: Install depends
       run: |
         sudo apt update
-        sudo apt install build-essential meson git unzip zip nload tree ufw nftables vlan sqlite3 lldpd xxd dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake libdbus-1-dev python3-pip python3-dev python3-venv python3-wheel python3-setuptools python3-distutils
+        sudo apt install build-essential git unzip zip nload tree ufw nftables vlan sqlite3 lldpd xxd dbus pkg-config gcc libpq-dev libdbus-glib-1-dev libglib2.0-dev cmake libdbus-1-dev python3-pip python3-dev python3-venv python3-wheel python3-setuptools python3-distutils
         python -m ensurepip --upgrade
-        python -m pip install --upgrade pip setuptools wheel meson
+        python -m pip install --upgrade pip setuptools wheel meson ninja
         pip install tox coverage-badge
         if [ -f requirements.txt ]; then sudo pip install -r requirements.txt; fi
   
@@ -56,7 +56,7 @@ jobs:
     name: Post Workflow Status to Slack
     needs:
       - python
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-24.04"
     steps:
       - name: Slack Workflow Notification
         uses: Gamesight/slack-workflow-status@master

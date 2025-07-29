@@ -42,7 +42,6 @@ install_dependencies() {
 
     if ! sudo apt-get install -y -q \
         build-essential \
-        meson \
         git \
         unzip \
         zip \
