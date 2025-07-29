@@ -7,18 +7,18 @@ on:
   # Allow manual runs of workflow from Actions tab
   workflow_dispatch:
 
-  # push:
-  # paths-ignore: # ignore files that don't change build output
-  #   - '**.md'
-  #   - .github/dependabot.yml
-  #   - .gitignore
-  #   - LICENSE
-  # pull_request:
-  # paths-ignore: # ignore files that don't change build output
-  #   - '**.md'
-  #   - .github/dependabot.yml
-  #   - .gitignore
-  #   - LICENSE
+  push:
+    paths-ignore: # ignore files that don't change build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .gitignore
+      - LICENSE
+    pull_request:
+    paths-ignore: # ignore files that don't change build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .gitignore
+      - LICENSE
 
 jobs:
   python:
