@@ -47,7 +47,10 @@ jobs:
         source venv/bin/activate
         python -m pip install --upgrade pip setuptools wheel
         python -m pip install --upgrade tox coverage-badge
-        if [ -f requirements.txt ]; then sudo pip install -r requirements.txt --constraint <(echo "dbus-python; sys_platform != 'linux'"); fi
+        if [ -f requirements.txt ]; then
+            grep -v "dbus-python" requirements.txt > requirements_ci.txt
+            pip install -r requirements_ci.txt
+        fi
   
     - name: Run tests with tox
       id: tox-run
