@@ -13,7 +13,7 @@ on:
       - .github/dependabot.yml
       - .gitignore
       - LICENSE
-    pull_request:
+  pull_request:
     paths-ignore: # ignore files that don't change build output
       - '**.md'
       - .github/dependabot.yml
