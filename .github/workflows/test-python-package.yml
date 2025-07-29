@@ -47,7 +47,8 @@ jobs:
         source venv/bin/activate
         python -m pip install --upgrade pip setuptools wheel
         python -m pip install --upgrade meson
-        pip install tox coverage-badge
+        export PATH="$HOME/.local/bin:$PATH"
+        python -m pip install --upgrade tox coverage-badge
         if [ -f requirements.txt ]; then sudo pip install -r requirements.txt; fi
   
     - name: Run tests with tox
