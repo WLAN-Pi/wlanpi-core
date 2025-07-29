@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import sys
+import tempfile
 import traceback
 from typing import Dict, Optional
 
@@ -172,20 +173,30 @@ def configure_logging(debug_mode: bool = False):
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
-    debug_log_dir.mkdir(parents=True, exist_ok=True)
-
     context_filter = ContextFilter()
-
     console_stream_handler = logging.StreamHandler()
-    app_file_handler = logging.FileHandler("/var/log/wlanpi_core/app.log")
-    debug_file_handler = logging.FileHandler("/var/log/wlanpi_core/debug/debug.log")
-
+   
+    try:
+        debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
+        debug_log_dir.mkdir(parents=True, exist_ok=True)
+        app_log_path = "/var/log/wlanpi_core/app.log"
+        debug_log_path = "/var/log/wlanpi_core/debug/debug.log"
+        app_file_handler = logging.FileHandler(app_log_path)
+        debug_file_handler = logging.FileHandler(debug_log_path)
+    except PermissionError:
+        fallback_dir = pathlib.Path(tempfile.gettempdir()) / "wlanpi_core"
+        debug_log_dir = fallback_dir / "debug"
+        debug_log_dir.mkdir(parents=True, exist_ok=True)
+        app_log_path = fallback_dir / "app.log"
+        debug_log_path = debug_log_dir / "debug.log"
+        app_file_handler = logging.FileHandler(app_log_path)
+        debug_file_handler = logging.FileHandler(debug_log_path)
+    
     json_formatter = JsonFormatter()
     standard_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-
+    
     console_stream_handler.addFilter(context_filter)
     app_file_handler.addFilter(context_filter)
     debug_file_handler.addFilter(context_filter)
