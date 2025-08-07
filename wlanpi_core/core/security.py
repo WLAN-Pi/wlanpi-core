@@ -39,22 +39,35 @@ class SecurityManager:
         """Wait for filesystem to be ready for write operations"""
         for attempt in range(max_retries):
             try:
-                # Check if parent directory exists or can be created
-                test_dir = self.secrets_path.parent
-                if not test_dir.exists():
-                    test_dir = Path("/etc")  # Fall back to /etc which should exist
+                self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
                 
-                # Try to create a test file to verify write access
-                test_file = test_dir / f".wlanpi_test_{os.getpid()}"
+                # Verify we can stat the directory
+                stat_info = self.secrets_path.stat()
+                
+                # Check if we can write to the directory
+                test_file = self.secrets_path / f".test_{os.getpid()}_{attempt}"
                 try:
-                    test_file.write_text("test")
-                    content = test_file.read_text()
-                    test_file.unlink()
-                    if content == "test":
+                    test_data = os.urandom(16)
+                    test_file.write_bytes(test_data)
+                    read_data = test_file.read_bytes()
+                    
+                    # Always try to clean up, even if the test fails
+                    try:
+                        test_file.unlink()
+                    except:
+                        pass
+                    
+                    if read_data == test_data:
                         log.debug(f"Filesystem ready after {attempt + 1} attempts")
                         return True
-                except Exception:
-                    pass  # Will retry
+                except Exception as e:
+                    # Always try to clean up on failure
+                    try:
+                        if test_file.exists():
+                            test_file.unlink()
+                    except:
+                        pass
+                    log.debug(f"Write test failed: {e}")
                 
                 if attempt < max_retries - 1:
                     log.warning(f"Filesystem not ready, attempt {attempt + 1}/{max_retries}, waiting {retry_delay}s")
