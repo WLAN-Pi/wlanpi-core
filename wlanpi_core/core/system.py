@@ -7,7 +7,8 @@ log = get_logger(__name__)
 
 
 class SystemManager:
-    def __init__(self):
+    def __init__(self, iface_name: str = "wlanpi"):
+        self.iface_name = iface_name
         self.sync_monitor_interfaces()
 
     def _run(self, cmd, capture_output=False, suppress_output=False):
@@ -72,7 +73,7 @@ class SystemManager:
         return interfaces
 
     def _create_monitor(self, name, index):
-        mon = f"wlanpi{index}"
+        mon = f"{self.iface_name}{index}"
         self._run(
             [
                 IW_FILE,
@@ -106,15 +107,15 @@ class SystemManager:
             if typ == "monitor"
         }
 
-        # Delete orphan wlanpi<index> interfaces
+        # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
-            if mon_name.startswith("wlanpi") and mon_index not in managed.values():
+            if mon_name.startswith(self.iface_name) and mon_index not in managed.values():
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 
-        # Create missing wlanpi<index> interfaces
+        # Create missing <iface_name><index> interfaces
         for iface, index in managed.items():
-            expected_mon = f"wlanpi{index}"
+            expected_mon = f"{self.iface_name}{index}"
             if expected_mon not in monitor:
                 log.info(f"Creating monitor interface for {iface} → {expected_mon}")
                 self._create_monitor(iface, index)

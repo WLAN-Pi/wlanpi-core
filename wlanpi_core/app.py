@@ -20,14 +20,16 @@ from starlette.staticfiles import StaticFiles
 # app imports
 from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
-from wlanpi_core.constants import SECRETS_DIR
+from wlanpi_core.constants import SECRETS_DIR, SUPPORTED_MODELS
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
+from wlanpi_core.utils.network_config import get_current_config, activate_config, get_config
 from wlanpi_core.core.token import TokenManager
+from wlanpi_core.services.system_service import get_model
 from wlanpi_core.views.api import router as views_router
 
 
@@ -253,11 +255,47 @@ class InitializationManager:
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
             return False
+        
+        try:
+            current_config = get_current_config()
+            if current_config == "" or current_config is None:
+                self.log.warning("No current network configuration found, using root")
+                current_config = "root"
+            if current_config != "root":
+                model = get_model()
+                if model not in SUPPORTED_MODELS:
+                    self.log.error(
+                        f"Model {model} is not supported, using root configuration"
+                    )
+                else:
+                    config = get_config(current_config)
+                    use_namespace = config.use_namespace
+                    mode = config.mode
+                    iface_name = config.iface_display_name
+                    
+                    if use_namespace:
+                        self.log.info(f"Activating current network configuration: {current_config}")
+                        success = activate_config(current_config, ignore_active=True)
+                        if not success:
+                            self.log.error(f"Failed to activate current configuration: {current_config}")
+                        else:
+                            self.log.info(f"Current configuration {current_config} activated successfully")
+                    else:
+                        if mode == "monitor":
+                            system_initialized = await self._initialize_system_manager(iface_name)
+                            if not system_initialized:
+                                self.log.error("System manager initialization failed - cannot proceed")
+                                return False
+                    
+            elif current_config == "root":
+                self.log.info("using root configuration")
 
-        system_initialized = await self._initialize_system_manager()
-        if not system_initialized:
-            self.log.error("System manager initialization failed - cannot proceed")
-            return False
+                
+
+        except FileNotFoundError:
+            self.log.warning(
+                "No current network configuration found"
+            )
 
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
@@ -337,10 +375,10 @@ class InitializationManager:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
 
-    async def _initialize_system_manager(self):
+    async def _initialize_system_manager(self, iface_name: str):
         """Initialize the system manager"""
         try:
-            self.app.state.system_manager = SystemManager()
+            self.app.state.system_manager = SystemManager(iface_name)
             self.log.debug("System manager initialized succcessfully")
             return True
         except Exception as e:

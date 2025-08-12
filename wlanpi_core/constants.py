@@ -49,6 +49,9 @@ DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
 # Service Constants
 BT_ADAPTER = "hci0"
 
+# Network Namespace/Config Constants
+SUPPORTED_MODELS = ["M4", "M4+", "R4"]
+
 #### Paths below here are relative to script dir or /tmp fixed paths ###
 
 # Networkinfo data file names

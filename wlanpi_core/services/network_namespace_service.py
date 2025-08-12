@@ -29,7 +29,7 @@ class NetworkNamespaceService:
             "pmf": 2,
             "sae_pwe": True
         }
-        self.networks = {}
+        self.networks: dict[str, NetConfig] = {}
         self.log = logging.getLogger(__name__)
         self.event_log: List[NetworkEvent] = []
 
@@ -97,7 +97,7 @@ class NetworkNamespaceService:
         scan: dict = status.get("connected_scan", {})
 
         connected = ScanItem(
-            ssid=net_config.ssid,
+            ssid=net_config.security.ssid,
             bssid=wpa.get("bssid", "unknown"),
             key_mgmt=wpa.get("key_mgmt", "unknown"),
             signal=scan.get("signal", 0),
@@ -175,8 +175,7 @@ class NetworkNamespaceService:
     def start_app_in_namespace(self, namespace, app_id):
         apps_file = Path(APPS_FILE)
         if not apps_file.exists():
-            self.log.error(f"Apps file {APPS_FILE} does not exist.")
-            return
+            apps_file.touch()
         try:
             with apps_file.open("r") as f:
                 apps = json.load(f)
@@ -372,7 +371,7 @@ class NetworkNamespaceService:
                             pass
 
         new_block = self._generate_network_block(self.networks[iface], max_priority + 1)
-        blocks = [b for b in blocks if f'ssid="{self.networks[iface].ssid}"' not in b]
+        blocks = [b for b in blocks if f'ssid="{self.networks[iface].security.ssid}"' not in b]
         blocks.insert(0, new_block)
 
         with conf_path.open("w") as f:
@@ -418,41 +417,41 @@ class NetworkNamespaceService:
 
     def _generate_network_block(self, net: NetConfig, priority=0):
         lines = ["network={"]
-        lines.append(f"    ssid=\"{net.ssid}\"")
+        lines.append(f"    ssid=\"{net.security.ssid}\"")
         lines.append(f"    priority={priority}")
 
-        sec = (net.security or "OPEN").upper()
+        sec = (net.security.security or "OPEN").upper()
 
         if sec == "OPEN":
             lines.append("    key_mgmt=NONE")
         elif sec == "OWE":
             lines.append("    key_mgmt=OWE")
         elif sec in ("WPA2-PSK", "WPA3-PSK"):
-            if net.psk:
-                lines.append(f"    psk=\"{net.psk}\"")
+            if net.security.psk:
+                lines.append(f"    psk=\"{net.security.psk}\"")
             lines.append("    key_mgmt=WPA-PSK")
             if sec == "WPA3-PSK":
                 lines.append("    ieee80211w=2")
                 lines.append("    sae_pwe=1")
         elif sec == "802.1X":
             lines.append("    key_mgmt=WPA-EAP")
-            if net.identity:
-                lines.append(f"    identity=\"{net.identity}\"")
-            if net.password:
-                lines.append(f"    password=\"{net.password}\"")
+            if net.security.identity:
+                lines.append(f"    identity=\"{net.security.identity}\"")
+            if net.security.password:
+                lines.append(f"    password=\"{net.security.password}\"")
             lines.append("    eap=PEAP")
             lines.append("    phase2=\"auth=MSCHAPV2\"")
-            lines.append(f"    ca_cert=\"{net.ca_cert or '/etc/ssl/certs/ca-certificates.crt'}\"")
+            lines.append(f"    ca_cert=\"{net.security.ca_cert or '/etc/ssl/certs/ca-certificates.crt'}\"")
         elif sec == "OPENROAMING":
             lines.append("    key_mgmt=WPA-EAP")
-            if net.identity:
-                lines.append(f"    identity=\"{net.identity}\"")
-            if net.client_cert:
-                lines.append(f"    client_cert=\"{net.client_cert}\"")
-            if net.private_key:
-                lines.append(f"    private_key=\"{net.private_key}\"")
-            if net.ca_cert:
-                lines.append(f"    ca_cert=\"{net.ca_cert}\"")
+            if net.security.identity:
+                lines.append(f"    identity=\"{net.security.identity}\"")
+            if net.security.client_cert:
+                lines.append(f"    client_cert=\"{net.security.client_cert}\"")
+            if net.security.private_key:
+                lines.append(f"    private_key=\"{net.security.private_key}\"")
+            if net.security.ca_cert:
+                lines.append(f"    ca_cert=\"{net.security.ca_cert}\"")
             lines.append("    eap=TLS")
 
         if net.mlo:

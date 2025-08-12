@@ -110,11 +110,45 @@ def get_hostname():
 
     return None
 
-
 def get_platform():
     """
     Method to determine which platform we're running on.
     Uses output of "cat /proc/cpuinfo"
+
+    Possible strings seen in the wild:
+
+        Pro:    Raspberry Pi Compute Module 4
+        RPi3b+: Raspberry Pi 3 Model B Plus Rev 1.3
+        RPi4:   Raspberry Pi 4 Model B Rev 1.1
+
+    Errors sent to stdout, but will not exit on error
+    """
+
+    platform = PLATFORM_UNKNOWN
+
+    # get output of wlanpi-model
+    model_cmd = "wlanpi-model -b"
+    try:
+        platform = run_command(model_cmd).stdout.strip()
+
+    except RunCommandError as exc:
+        log.warning(f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}")
+        return "Unknown"
+    except subprocess.CalledProcessError as exc:
+        exc.model.decode()
+        # print("Err: issue running 'wlanpi-model -b' : ", model)
+        return "Unknown"
+
+    if platform.endswith("?"):
+        platform = PLATFORM_UNKNOWN
+
+    return platform
+
+
+def get_model():
+    """
+    Method to determine which model the device is
+    Uses output of "wlanpi-model -b"
 
     Possible strings seen in the wild:
 

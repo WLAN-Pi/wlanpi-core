@@ -1,5 +1,5 @@
 from typing import Any, List, Optional, Union
-
+from enum import Enum
 from pydantic import BaseModel, Extra, Field, model_validator
 
 
@@ -60,13 +60,12 @@ class IPInterface(BaseModel, extra=Extra.allow):
     address: str = Field(examples=["00:50:56:83:4f:7d"])
     broadcast: str = Field(examples=["ff:ff:ff:ff:ff:ff"])
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
-    
 
-class NetConfig(BaseModel):
-    id: str
-    namespace: str
-    phy: str
-    interface: str
+class NetworkModeEnum(str, Enum):
+    managed = "managed"
+    monitor = "monitor"
+    
+class NetSecurity(BaseModel):
     ssid: str
     security: str
     psk: Optional[str] = None
@@ -75,32 +74,8 @@ class NetConfig(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
-    mlo: bool = False
-    default_route: bool = False
-    autostart_app: Optional[str] = None
-    active: bool = False
     
-class NetConfigCreate(BaseModel):
-    id: str
-    namespace: str
-    phy: str = "phy0"
-    interface: str = "wlan0"
-    ssid: str
-    security: str
-    psk: Optional[str] = None
-    identity: Optional[str] = None
-    password: Optional[str] = None
-    client_cert: Optional[str] = None
-    private_key: Optional[str] = None
-    ca_cert: Optional[str] = None
-    mlo: Optional[bool] = False
-    default_route: bool = False
-    autostart_app: Optional[str] = None
-    
-class NetConfigUpdate(BaseModel):
-    namespace: Optional[str] = None
-    phy: Optional[str] = None
-    interface: Optional[str] = None
+class NetSecurityUpdate(BaseModel):
     ssid: Optional[str] = None
     security: Optional[str] = None
     psk: Optional[str] = None
@@ -109,6 +84,42 @@ class NetConfigUpdate(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
+
+class NetConfig(BaseModel):
+    id: str
+    namespace: str
+    use_namespace: bool = False
+    mode: NetworkModeEnum = NetworkModeEnum.managed
+    iface_display_name: str
+    phy: str
+    interface: str
+    security: NetSecurity
+    mlo: bool = False
+    default_route: bool = False
+    autostart_app: Optional[str] = None
+    active: bool = False
+    
+class NetConfigCreate(BaseModel):
+    id: str
+    namespace: str
+    use_namespace: bool = False
+    mode: NetworkModeEnum = NetworkModeEnum.managed
+    iface_display_name: str
+    phy: str = "phy0"
+    interface: str = "wlan0"
+    security: NetSecurity
+    mlo: Optional[bool] = False
+    default_route: bool = False
+    autostart_app: Optional[str] = None
+    
+class NetConfigUpdate(BaseModel):
+    namespace: Optional[str] = None
+    use_namespace: Optional[bool] = None
+    mode: Optional[NetworkModeEnum] = None
+    iface_display_name: Optional[str] = None
+    phy: Optional[str] = None
+    interface: Optional[str] = None
+    security: Optional[NetSecurityUpdate] = None
     mlo: Optional[bool] = None
     default_route: Optional[bool] = None
     autostart_app: Optional[str] = None

@@ -15,6 +15,23 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 @router.get(
+    "/status",
+    response_model=dict,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def get_status():
+    """
+    Get the status of network configurations.
+    """
+    try:
+        status = network_config.status()
+        log.info("Network configuration status retrieved successfully")
+        return status
+    except Exception as ex:
+        log.error(f"Error retrieving network configuration status: {ex}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.get(
     "/",
     response_model=list[str],
     response_model_exclude_none=True,
@@ -127,13 +144,13 @@ async def update_config(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_config(
-    id: str
+    id: str, force: Optional[bool] = False
 ):
     """
     Delete a network configuration by ID.
     """
     try:
-        success = network_config.delete_config(id)
+        success = network_config.delete_config(id, force)
         if not success:
             log.error(f"Failed to delete configuration: {id}")
             raise HTTPException(status_code=400, detail="Failed to delete configuration")

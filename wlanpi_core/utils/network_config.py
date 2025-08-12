@@ -1,23 +1,89 @@
 import json
 import logging
-import subprocess
 from typing import List
 from pathlib import Path
 
 from wlanpi_core.models.network_config_errors import ConfigActiveError
 from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate, NetConfigCreate
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
+from wlanpi_core.utils.general import run_command
 
 CONFIG_PATH = Path("/etc/wifictl/configs")
 CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+CURRENT_CONFIG_PATH = Path("/etc/wifictl/current.txt")
+CURRENT_CONFIG_PATH.touch(exist_ok=True)
 
 log = logging.getLogger(__name__)
 
 ns = NetworkNamespaceService()
 
+def parse_iw_dev_output(output: str) -> dict:
+    """Parse iw dev output into dict"""
+    interfaces = {}
+    current_iface = None
+    skip_table_block = False
+
+    for line in output.splitlines():
+        line = line.rstrip()
+        if not line.strip():
+            skip_table_block = False
+            continue
+
+        if line.lstrip().startswith("Interface "):
+            current_iface = line.strip().split()[1]
+            interfaces[current_iface] = {}
+            skip_table_block = False
+            continue
+
+        if not current_iface:
+            continue
+
+        stripped = line.strip()
+
+        if stripped.endswith("TXQ:") or stripped.startswith("qsz-byt"):
+            skip_table_block = True
+            continue
+        if skip_table_block:
+            continue
+
+        if ":" in stripped and not stripped.startswith("channel "):
+            key, value = map(str.strip, stripped.split(":", 1))
+        else:
+            parts = stripped.split(None, 1)
+            if len(parts) == 2:
+                key, value = parts
+            else:
+                key, value = parts[0], ""
+
+        key = key.replace(" ", "_")
+        interfaces[current_iface][key] = value
+
+    return interfaces
+
+
 def list_configs() -> List[str]:
     """List all configuration files in the CONFIG_PATH directory."""
     return [f.stem for f in CONFIG_PATH.glob("*.json")]
+
+def status():
+    namespaces_output = run_command(["sudo","ip", "netns", "list"])
+    namespaces = []
+    for line in namespaces_output.stdout.splitlines():
+        namespaces.append(line.split(" ")[0])
+        
+    final_status = {}
+        
+    root_info = run_command(["sudo", "iw", "dev"])
+    root_status = parse_iw_dev_output(root_info.stdout)
+    final_status["root"] = root_status
+    
+    for ns_name in namespaces:
+        output = run_command(["sudo", "ip", "netns", "exec", ns_name, "iw", "dev"])
+        ns_status = parse_iw_dev_output(output.stdout)
+        final_status[ns_name] = ns_status
+        
+    return final_status
+        
     
 def get_config(id: str) -> NetConfig:
     """Get a specific configuration by ID."""
@@ -25,6 +91,12 @@ def get_config(id: str) -> NetConfig:
     if not path.exists():
         raise FileNotFoundError(f"Configuration {id} not found.")
     return NetConfig(**json.loads(path.read_text()))
+
+def get_current_config() -> str:
+    """Get the currently active configuration ID."""
+    if not CURRENT_CONFIG_PATH.exists():
+        raise FileNotFoundError("No current configuration set.")
+    return CURRENT_CONFIG_PATH.read_text().strip()
 
 def add_config(config: NetConfigCreate) -> bool:
     """Add a new configuration."""
@@ -51,27 +123,28 @@ def edit_config(id: str, config_update: NetConfigUpdate) -> NetConfig:
     
     return cfg
 
-def delete_config(id: str) -> bool:
+def delete_config(id: str, force: bool = False) -> bool:
     """Delete a configuration by ID."""
     path = CONFIG_PATH / f"{id}.json"
     
     cfg = get_config(id)
-    if cfg.active:
+    if cfg.active and not force:
         raise ConfigActiveError(f"Cannot delete active configuration {id}.")
     path.unlink()
     return True
 
-def activate_config(id: str) -> bool:
+def activate_config(id: str, ignore_active: bool = False) -> bool:
     """Activate a configuration by ID."""
     path = CONFIG_PATH / f"{id}.json"
     
     cfg = get_config(id)
-    if cfg.active:
+    if cfg.active and not ignore_active:
         raise ConfigActiveError(f"Configuration {id} is already active.")
     try:
         ns.add_network(cfg.interface, cfg, cfg.namespace, cfg.default_route)
         cfg.active = True
         path.write_text(cfg.model_dump_json(indent=4))
+        CURRENT_CONFIG_PATH.write_text(id)
         return True
 
     except Exception as ex:
@@ -92,6 +165,7 @@ def deactivate_config(id: str, override_active: bool = False) -> bool:
         ns.restore_phy_to_userspace(cfg.namespace)
         cfg.active = False
         path.write_text(cfg.model_dump_json(indent=4))
+        CURRENT_CONFIG_PATH.write_text("root")
         return True
 
     except Exception as ex:
