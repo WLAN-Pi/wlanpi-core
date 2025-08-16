@@ -84,11 +84,9 @@ class NetSecurityUpdate(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
+    
 
-class NetConfig(BaseModel):
-    id: str
-    namespace: str
-    use_namespace: bool = False
+class RootConfig(BaseModel):
     mode: NetworkModeEnum = NetworkModeEnum.managed
     iface_display_name: str
     phy: str
@@ -97,6 +95,15 @@ class NetConfig(BaseModel):
     mlo: bool = False
     default_route: bool = False
     autostart_app: Optional[str] = None
+    
+    
+class NamespaceConfig(RootConfig):
+    namespace: str
+    
+class NetConfig(BaseModel):
+    id: str
+    namespaces: list[NamespaceConfig]
+    roots: list[RootConfig]
     active: bool = False
     
 class NetConfigCreate(BaseModel):

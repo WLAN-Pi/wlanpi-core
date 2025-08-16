@@ -259,36 +259,25 @@ class InitializationManager:
         try:
             current_config = get_current_config()
             if current_config == "" or current_config is None:
-                self.log.warning("No current network configuration found, using root")
-                current_config = "root"
-            if current_config != "root":
+                system_initialized = await self._initialize_system_manager("wlanpi0")
+                if not system_initialized:
+                    self.log.error("System manager initialization failed - cannot proceed")
+                    return False
+            else:
                 model = get_model()
                 if model not in SUPPORTED_MODELS:
                     self.log.error(
                         f"Model {model} is not supported, using root configuration"
                     )
                 else:
-                    config = get_config(current_config)
-                    use_namespace = config.use_namespace
-                    mode = config.mode
-                    iface_name = config.iface_display_name
+                    self.log.info(f"Activating current network configuration: {current_config}")
+                    success = activate_config(current_config, override_active=True)
                     
-                    if use_namespace:
-                        self.log.info(f"Activating current network configuration: {current_config}")
-                        success = activate_config(current_config, ignore_active=True)
-                        if not success:
-                            self.log.error(f"Failed to activate current configuration: {current_config}")
-                        else:
-                            self.log.info(f"Current configuration {current_config} activated successfully")
+                            
+                    if not success:
+                        self.log.error(f"Failed to activate configuration {current_config}")
                     else:
-                        if mode == "monitor":
-                            system_initialized = await self._initialize_system_manager(iface_name)
-                            if not system_initialized:
-                                self.log.error("System manager initialization failed - cannot proceed")
-                                return False
-                    
-            elif current_config == "root":
-                self.log.info("using root configuration")
+                        self.log.info(f"Config {current_config} activated sucessfully")
 
                 
 

@@ -61,9 +61,16 @@ def parse_iw_dev_output(output: str) -> dict:
     return interfaces
 
 
-def list_configs() -> List[str]:
+def list_configs() -> dict[str, bool]:
     """List all configuration files in the CONFIG_PATH directory."""
-    return [f.stem for f in CONFIG_PATH.glob("*.json")]
+    configs = {}
+    for f in CONFIG_PATH.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            configs[f.stem] = data.get("active", False)
+        except Exception:
+            configs[f.stem] = False
+    return configs
 
 def status():
     namespaces_output = run_command(["sudo","ip", "netns", "list"])
@@ -133,15 +140,20 @@ def delete_config(id: str, force: bool = False) -> bool:
     path.unlink()
     return True
 
-def activate_config(id: str, ignore_active: bool = False) -> bool:
+def activate_config(id: str, override_active: bool = False) -> bool:
     """Activate a configuration by ID."""
     path = CONFIG_PATH / f"{id}.json"
     
     cfg = get_config(id)
-    if cfg.active and not ignore_active:
+    if cfg.active and not override_active:
         raise ConfigActiveError(f"Configuration {id} is already active.")
     try:
-        ns.add_network(cfg.interface, cfg, cfg.namespace, cfg.default_route)
+        for ns_config in cfg.namespaces:
+            log.info(f"Activating namespace {ns_config.namespace} for interface {ns_config.interface}")
+            ns.add_network(ns_config)
+        for root_config in cfg.roots:
+            log.info(f"Activating root config for interface {root_config.interface}")
+            ns.add_network(root_config)
         cfg.active = True
         path.write_text(cfg.model_dump_json(indent=4))
         CURRENT_CONFIG_PATH.write_text(id)
@@ -160,9 +172,14 @@ def deactivate_config(id: str, override_active: bool = False) -> bool:
         raise ConfigActiveError(f"Configuration {id} is not active.")
 
     try:
-        ns.stop_app_in_namespace(cfg.namespace)
-        ns.remove_network(cfg.interface, cfg.namespace)
-        ns.restore_phy_to_userspace(cfg.namespace)
+        for ns_cfg in cfg.namespaces:
+            ns.stop_app_in_namespace(ns_cfg.namespace)
+            ns.remove_network(ns_cfg.interface, ns_cfg.namespace)
+            ns.restore_phy_to_userspace(ns_cfg)
+        for root_cfg in cfg.roots:
+            ns.stop_app_in_namespace("root")
+            ns.remove_network(root_cfg.interface, "root")
+            
         cfg.active = False
         path.write_text(cfg.model_dump_json(indent=4))
         CURRENT_CONFIG_PATH.write_text("root")

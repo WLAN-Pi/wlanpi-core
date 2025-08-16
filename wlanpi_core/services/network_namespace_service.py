@@ -5,16 +5,18 @@ from pathlib import Path
 import subprocess
 import time
 from typing import List
+from typing import Union
 from wlanpi_core.utils.general import run_command
-from wlanpi_core.schemas.network.network import NetworkSetupLog, ScanItem, NetConfig, NetworkEvent, NetworkSetupStatus
+from wlanpi_core.schemas.network.network import NamespaceConfig, NetworkSetupLog, RootConfig, ScanItem, NetConfig, NetworkEvent, NetworkSetupStatus
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.constants import (
+    DEFAULT_CONFIG_DIR,
+    DEFAULT_CTRL_INTERFACE,
+    DEFAULT_DHCP_DIR,
+    PID_DIR,
+    APPS_FILE,
+    WPA_LOG_FILE,)
 
-DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
-DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
-DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
-PID_DIR = "/run/wifictl/pids"
-APPS_FILE = "/etc/wifictl/apps.json"
-WPA_LOG_FILE = "/tmp/wpa.log"
 
 class NetworkNamespaceService:
     def __init__(self, config_dir=DEFAULT_CONFIG_DIR, ctrl_interface=DEFAULT_CTRL_INTERFACE, dhcp_dir=DEFAULT_DHCP_DIR):
@@ -38,7 +40,7 @@ class NetworkNamespaceService:
         self.global_settings.update(settings)
 
 
-    def parse_wpa_log(self, timeout: int = 30):
+    def parse_wpa_log(self, iface: str, timeout: int = 30):
         """
         Tails the given wpa_supplicant log file until it sees the 'Connection to ... completed'
         event, or until timeout seconds passes.
@@ -47,7 +49,7 @@ class NetworkNamespaceService:
         """
         start_time = time.time()
         
-        with open(WPA_LOG_FILE, "r") as f:
+        with open(f"/tmp/wpa-{iface}.log", "r") as f:
             while True:
                 line = f.readline()
                 if not line:
@@ -74,30 +76,33 @@ class NetworkNamespaceService:
                 if "CTRL-EVENT-CONNECTED" in line and "completed" in line:
                     break
 
-    def add_network(self, iface: str, net_config: NetConfig, namespace: str, set_default_route: bool = False):
+    def add_network(self, cfg: Union[NamespaceConfig, RootConfig]):
+        iface = cfg.interface
+        namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else "root"
         self.log.info("Adding network on %s in namespace %s", iface, namespace)
-        self.networks[iface] = net_config
+        self.networks[iface] = cfg
 
-        self._prepare_namespace(iface, namespace)
+        if namespace != "root":
+            self._prepare_namespace(iface, namespace)
         self._write_config(iface)
         self._write_dhcp_config(iface)
         self._start_or_restart_supplicant(iface, namespace)
         self._restart_dhcp(iface, namespace)
 
-        if set_default_route:
+        if cfg.default_route:
             self._set_default_route(iface, namespace)
             
-        if net_config.autostart_app:
-            self.start_app_in_namespace(namespace, net_config.autostart_app)
+        if cfg.autostart_app:
+            self.start_app_in_namespace(namespace, cfg.autostart_app)
 
-        self.parse_wpa_log()
+        self.parse_wpa_log(iface)
 
         status = self.get_status(iface, namespace)
         wpa: dict = status.get("wpa_status", {})
         scan: dict = status.get("connected_scan", {})
 
         connected = ScanItem(
-            ssid=net_config.security.ssid,
+            ssid=cfg.security.ssid,
             bssid=wpa.get("bssid", "unknown"),
             key_mgmt=wpa.get("key_mgmt", "unknown"),
             signal=scan.get("signal", 0),
@@ -110,7 +115,7 @@ class NetworkNamespaceService:
             status="connected",
             response=log,
             connectedNet=connected,
-            input=net_config.__str__()
+            input=cfg.__str__()
         )
 
     def remove_network(self, iface: str, namespace: str):
@@ -126,6 +131,7 @@ class NetworkNamespaceService:
 
     def revert_to_root(self, iface: str, namespace: str, delete_namespace: bool = True):
         self.log.info(f"Reverting {iface} and phy0 from namespace {namespace} to root namespace.")
+        cfg = self.networks[iface]
 
         # Try to delete the interface in the namespace if it exists
         try:
@@ -140,8 +146,8 @@ class NetworkNamespaceService:
         # Try to move phy0 back to root
         try:
             phy_result = self._run(["ip", "netns", "exec", namespace, "iw", "phy"], no_output=True)
-            if "phy0" in phy_result.stdout:
-                self._run(["ip", "netns", "exec", namespace, "iw", "phy", "phy0", "set", "netns", "1"])
+            if cfg.phy in phy_result.stdout:
+                self._run(["ip", "netns", "exec", namespace, "iw", "phy", cfg.phy, "set", "netns", "1"])
                 self.log.info(f"Moved phy0 from namespace {namespace} back to root.")
             else:
                 self.log.info(f"No phy0 found in {namespace}. assuming it's already in root.")
@@ -149,7 +155,7 @@ class NetworkNamespaceService:
             self.log.warning(f"Could not check or move phy0 from {namespace}: {e}")
 
         try:
-            self._run(["iw", "phy", "phy0", "interface", "add", iface, "type", "managed"])
+            self._run(["iw", "phy", cfg.phy, "interface", "add", iface, "type", "managed"])
             self.log.info(f"Created {iface} in root namespace.")
         except RunCommandError as e:
             self.log.warning(f"Could not create {iface} in root: {e}")
@@ -188,8 +194,12 @@ class NetworkNamespaceService:
         app_command = apps[app_id]
 
         self.log.info(f"Starting app '{app_id}' with command {app_command}")
-        cmd = ["ip", "netns", "exec", namespace] + app_command.split()
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if namespace == "root":
+            cmd = app_command.split()
+        else:
+            cmd = ["ip", "netns", "exec", namespace] + app_command.split()
+        with open(f"/tmp/{app_id}.log", "a") as log_file:
+            proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
         pid_file = self.pid_dir / f"{namespace}.pid"
         pid_file.write_text(str(proc.pid))
         self.log.info(f"Started app '{app_id}' in {namespace} with PID {proc.pid}")
@@ -291,25 +301,27 @@ class NetworkNamespaceService:
                     self.log.info(f"No {iface} to delete in {namespace}. ignoring.")
                 else:
                     raise
+                
+            phy = self.networks[iface].phy
 
             # Check if phy0 is already in namespace. if yes, move it back to root first
             result = self._ns_exec(["iw", "phy"], namespace, no_output=True)
-            if "phy0" in result.stdout:
+            if phy in result.stdout:
                 self.log.info("Moving phy0 back to root from namespace %s", namespace)
-                self._ns_exec(["iw", "phy", "phy0", "set", "netns", "1"], namespace)
+                self._ns_exec(["iw", "phy", phy, "set", "netns", "1"], namespace)
             else:
-                self.log.info(f"phy0 not found in {namespace}. assume it's in root already.")
+                self.log.info(f"{phy} not found in {namespace}. assume it's in root already.")
 
             # Attach phy0 to target namespace
-            self.log.info("Attaching phy0 to namespace %s", namespace)
-            self._run(["sudo", "iw", "phy", "phy0", "set", "netns", "name", namespace])
+            self.log.info(f"Attaching {phy} to namespace %s", namespace)
+            self._run(["sudo", "iw", "phy", phy, "set", "netns", "name", namespace])
 
             # Create the wlan interface
             try:
                 self.log.info("Creating %s in namespace %s", iface, namespace)
-                self._ns_exec(["iw", "phy", "phy0", "interface", "add", iface, "type", "managed"], namespace)
+                self._ns_exec(["iw", "phy", phy, "interface", "add", iface, "type", "managed"], namespace)
             except:
-                self.log.info("wlan0 already exists")
+                self.log.info(f"{iface} already exists")
 
             # Bring up the new interface
             self.log.info("Bringing up %s in namespace %s", iface, namespace)
@@ -319,26 +331,27 @@ class NetworkNamespaceService:
             self.log.error("Namespace setup failed for %s: %s", iface, e)
             raise
 
-    def restore_phy_to_userspace(self, namespace: str):
+    def restore_phy_to_userspace(self, cfg: NetConfig):
+        
         try:
-            self._run(["ip", "netns", "exec", namespace, "iw", "dev", "wlan0", "del"])
+            self._run(["ip", "netns", "exec", cfg.namespace, "iw", "dev", cfg.interface, "del"])
         except RunCommandError as e:
             if "No such device" in str(e):
-                self.log.info(f"No wlan0 to delete in {namespace} - ignoring.")
+                self.log.info(f"No {cfg.interface} to delete in {cfg.namespace} - ignoring.")
             else:
-                self.log.warning(f"Failed to delete wlan0 in {namespace}: {e}")
+                self.log.warning(f"Failed to delete {cfg.interface} in {cfg.namespace}: {e}")
 
-        # Check if phy0 exists in namespace
+        # Check if phy exists in namespace
         try:
-            result = self._run(["ip", "netns", "exec", namespace, "iw", "phy"], no_output=True)
-            if "phy0" in result.stdout:
-                # phy0 exists;  move it back
-                self._run(["ip", "netns", "exec", namespace, "iw", "phy", "phy0", "set", "netns", "1"])
-                self.log.info("Restored phy0 to root namespace from %s", namespace)
+            result = self._run(["ip", "netns", "exec", cfg.namespace, "iw", "phy"], no_output=True)
+            if cfg.phy in result.stdout:
+                # phy exists;  move it back
+                self._run(["ip", "netns", "exec", cfg.namespace, "iw", "phy", cfg.phy, "set", "netns", "1"])
+                self.log.info(f"Restored {cfg.phy} to root namespace from {cfg.namespace}")
             else:
-                self.log.info(f"No phy0 found in {namespace} - already restored or missing.")
+                self.log.info(f"No {cfg.phy} found in {cfg.namespace} - already restored or missing.")
         except RunCommandError as e:
-            self.log.warning(f"Could not check phy in {namespace}: {e}")
+            self.log.warning(f"Could not check phy in {cfg.namespace}: {e}")
 
     def _write_config(self, iface: str):
         conf_path = self.config_dir / f"{iface}.conf"
@@ -386,13 +399,17 @@ class NetworkNamespaceService:
         self._ns_exec(["pkill", "-f", f"wpa_supplicant -B -i {iface}"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         conf_path = self.config_dir / f"{iface}.conf"
-        self._run(["rm", "-f", "/tmp/wpa.log"])
+        log_file = Path(f"/tmp/wpa-{iface}.log")
+        if log_file.exists():
+            log_file.unlink()
+        log_file.touch()
+        self._run(["rm", "-f", f"/tmp/wpa-{iface}.log"])
         self._ns_exec([
             "wpa_supplicant", "-B",
             "-i", iface,
             "-c", str(conf_path),
             "-D", "nl80211",
-            "-f", "/tmp/wpa.log",
+            "-f", f"/tmp/wpa-{iface}.log",
             "-t"
         ], namespace)
         # self._run(["tail", "-F", "/tmp/wpa.log"])
@@ -463,19 +480,24 @@ class NetworkNamespaceService:
     def _run(self, cmd, no_output=False):
         self.log.info(f"Running: {' '.join(cmd)}")
         try:
-            output = run_command(cmd, raise_on_fail=True)
+            output = run_command(cmd)
             if no_output:
                 return output
             self.log.info(f"stdout: {output.stdout}")
             self.log.info(f"stderr: {output.stderr}")
             self.log.info(f"return_code: {output.return_code}")
+            if output.return_code != 0:
+                raise RunCommandError(output.stderr.decode())
             return output
         except Exception as e:
             self.log.error(f"Command failed: {' '.join(cmd)}\nError: {e}")
             raise
 
     def _ns_exec(self, cmd, namespace, no_output=False):
-        full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd if namespace else cmd
+        if not namespace or namespace == "root":
+            full_cmd = ["sudo"] + cmd
+        else:
+            full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd
         return self._run(full_cmd, no_output=no_output)
 
     def _safe_unlink(self, path: Path):

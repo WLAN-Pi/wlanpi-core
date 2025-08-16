@@ -51,6 +51,12 @@ BT_ADAPTER = "hci0"
 
 # Network Namespace/Config Constants
 SUPPORTED_MODELS = ["M4", "M4+", "R4"]
+DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
+DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
+DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
+PID_DIR = "/run/wifictl/pids"
+APPS_FILE = "/etc/wifictl/apps.json"
+WPA_LOG_FILE = "/tmp/wpa.log"
 
 #### Paths below here are relative to script dir or /tmp fixed paths ###
 

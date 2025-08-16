@@ -33,7 +33,7 @@ async def get_status():
 
 @router.get(
     "/",
-    response_model=list[str],
+    response_model=dict[str, bool],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
@@ -176,13 +176,14 @@ async def delete_config(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def activate_config(
-    id: str
+    id: str,
+    override_active: Optional[bool] = False
 ):
     """
     Activate a network configuration by ID.
     """
     try:
-        success = network_config.activate_config(id)
+        success = network_config.activate_config(id, override_active)
         if not success:
             log.error(f"Failed to activate configuration: {id}")
             raise HTTPException(status_code=500, detail="Failed to activate configuration")
