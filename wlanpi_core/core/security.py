@@ -42,7 +42,7 @@ class SecurityManager:
                 self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
                 
                 # Verify we can stat the directory
-                stat_info = self.secrets_path.stat()
+                self.secrets_path.stat()
                 
                 # Check if we can write to the directory
                 test_file = self.secrets_path / f".test_{os.getpid()}_{attempt}"
