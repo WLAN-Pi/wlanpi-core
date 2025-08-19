@@ -390,7 +390,10 @@ class TokenManager:
             cached = self.token_cache.get_cached_token(normalized_token)
             if cached:
                 log.debug("Token found in cache")
-                if not self.time_validation_enabled or not self.token_cache._is_token_expired(cached):
+                if (
+                    not self.time_validation_enabled
+                    or not self.token_cache._is_token_expired(cached)
+                ):
                     return TokenValidationResult(
                         is_valid=True, payload=cached, token=normalized_token
                     )
@@ -454,15 +457,15 @@ class TokenManager:
                         payload.validate()
                     else:
                         # Validated JWT payload without time-based claims
-                        required_claims = ['sub', 'iss', 'did', 'kid', 'jti']
+                        required_claims = ["sub", "iss", "did", "kid", "jti"]
                         for claim in required_claims:
                             if claim not in payload:
                                 raise JWTError(f"Missing required claim: {claim}")
-                        
-                        if payload.get('iss') != 'wlanpi-core':
+
+                        if payload.get("iss") != "wlanpi-core":
                             raise JWTError("Invalid issuer")
-                        
-                        if not payload.get('did'):
+
+                        if not payload.get("did"):
                             raise JWTError("Invalid device ID")
 
                     self.token_cache.cache_token(token, payload)

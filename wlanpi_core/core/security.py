@@ -26,7 +26,7 @@ class SecurityManager:
             # Wait for filesystem to be ready before proceeding
             if not self._wait_for_filesystem_ready():
                 raise SecurityInitError("Filesystem not ready after maximum retries")
-            
+
             self._setup_secrets_directory()
             self.shared_secret = self._setup_shared_secret()
             self._setup_encryption_key()
@@ -35,28 +35,30 @@ class SecurityManager:
             log.exception(f"Security initialization failed: {e}")
             raise SecurityInitError(f"Failed to initialize security: {e}")
 
-    def _wait_for_filesystem_ready(self, max_retries: int = 5, retry_delay: float = 2.0) -> bool:
+    def _wait_for_filesystem_ready(
+        self, max_retries: int = 5, retry_delay: float = 2.0
+    ) -> bool:
         """Wait for filesystem to be ready for write operations"""
         for attempt in range(max_retries):
             try:
                 self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
-                
+
                 # Verify we can stat the directory
                 self.secrets_path.stat()
-                
+
                 # Check if we can write to the directory
                 test_file = self.secrets_path / f".test_{os.getpid()}_{attempt}"
                 try:
                     test_data = os.urandom(16)
                     test_file.write_bytes(test_data)
                     read_data = test_file.read_bytes()
-                    
+
                     # Always try to clean up, even if the test fails
                     try:
                         test_file.unlink()
                     except:
                         pass
-                    
+
                     if read_data == test_data:
                         log.debug(f"Filesystem ready after {attempt + 1} attempts")
                         return True
@@ -68,19 +70,21 @@ class SecurityManager:
                     except:
                         pass
                     log.debug(f"Write test failed: {e}")
-                
+
                 if attempt < max_retries - 1:
-                    log.warning(f"Filesystem not ready, attempt {attempt + 1}/{max_retries}, waiting {retry_delay}s")
+                    log.warning(
+                        f"Filesystem not ready, attempt {attempt + 1}/{max_retries}, waiting {retry_delay}s"
+                    )
                     time.sleep(retry_delay)
-                    
+
             except Exception as e:
                 log.debug(f"Filesystem check failed: {e}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
-        
+
         log.error("Filesystem not ready after all retries")
         return False
-    
+
     def _setup_secrets_directory(self):
         """Create and secure secrets directory"""
         try:

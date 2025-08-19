@@ -175,7 +175,7 @@ def configure_logging(debug_mode: bool = False):
 
     context_filter = ContextFilter()
     console_stream_handler = logging.StreamHandler()
-   
+
     try:
         debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
         debug_log_dir.mkdir(parents=True, exist_ok=True)
@@ -191,12 +191,12 @@ def configure_logging(debug_mode: bool = False):
         debug_log_path = debug_log_dir / "debug.log"
         app_file_handler = logging.FileHandler(app_log_path)
         debug_file_handler = logging.FileHandler(debug_log_path)
-    
+
     json_formatter = JsonFormatter()
     standard_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
+
     console_stream_handler.addFilter(context_filter)
     app_file_handler.addFilter(context_filter)
     debug_file_handler.addFilter(context_filter)
