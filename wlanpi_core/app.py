@@ -254,10 +254,12 @@ class InitializationManager:
             self.log.error("System not ready for initialization")
             return False
 
-        system_initialized = await self._initialize_system_manager()
-        if not system_initialized:
-            self.log.error("System manager initialization failed - cannot proceed")
-            return False
+        # Removing this as the default setup. Will be managed via API
+        if False:
+            system_initialized = await self._initialize_system_manager()
+            if not system_initialized:
+                self.log.error("System manager initialization failed - cannot proceed")
+                return False
 
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
