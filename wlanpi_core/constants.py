@@ -54,8 +54,10 @@ SUPPORTED_MODELS = ["M4", "M4+", "R4"]
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
 DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
 DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
-PID_DIR = "/run/wifictl/pids"
-APPS_FILE = "/etc/wifictl/apps.json"
+CONFIG_DIR = "/home/wlanpi/.local/share/wlanpi-core/netcfg/configs"
+CURRENT_CONFIG_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/current.txt"
+PID_DIR = "/home/wlanpi/.local/share/wlanpi-core/netcfg/pids"
+APPS_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/apps.json"
 WPA_LOG_FILE = "/tmp/wpa.log"
 
 #### Paths below here are relative to script dir or /tmp fixed paths ###

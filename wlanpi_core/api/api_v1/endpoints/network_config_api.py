@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.network_config_errors import ConfigActiveError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate, NetConfigCreate
+from wlanpi_core.schemas.network.network import (
+    NetConfig,
+    NetConfigCreate,
+    NetConfigUpdate,
+)
 from wlanpi_core.utils import network_config
 
 router = APIRouter()
@@ -13,6 +17,7 @@ router = APIRouter()
 from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
+
 
 @router.get(
     "/status",
@@ -30,6 +35,7 @@ async def get_status():
     except Exception as ex:
         log.error(f"Error retrieving network configuration status: {ex}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @router.get(
     "/",
@@ -52,14 +58,14 @@ async def get_configs():
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @router.get(
     "/{id}",
     response_model=NetConfig,
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_config_by_id(
-    id: str):
+async def get_config_by_id(id: str):
     """
     Get a specific network configuration by ID.
     """
@@ -75,17 +81,15 @@ async def get_config_by_id(
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
-    
+
+
 @router.post(
     "/",
-    response_model=dict[str,str],
+    response_model=dict[str, str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def create_config(
-    config: NetConfigCreate
-):
+async def create_config(config: NetConfigCreate):
     """
     Create a new network configuration.
     """
@@ -104,17 +108,15 @@ async def create_config(
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
+
+
 @router.patch(
     "/{id}",
-    response_model=dict[str,Union[NetConfig, str]],
+    response_model=dict[str, Union[NetConfig, str]],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def update_config(
-    id: str,
-    config_update: NetConfigUpdate
-):
+async def update_config(id: str, config_update: NetConfigUpdate):
     """
     Update an existing network configuration.
     """
@@ -122,9 +124,15 @@ async def update_config(
         config = network_config.edit_config(id, config_update)
         if not config:
             log.error(f"Failed to update configuration: {id}")
-            raise HTTPException(status_code=500, detail="Failed to update configuration")
+            raise HTTPException(
+                status_code=500, detail="Failed to update configuration"
+            )
         log.info(f"Configuration updated: {id}")
-        return {"id": id, "message": "Configuration updated successfully", "config": config}
+        return {
+            "id": id,
+            "message": "Configuration updated successfully",
+            "config": config,
+        }
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
@@ -137,15 +145,14 @@ async def update_config(
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @router.delete(
     "/{id}",
-    response_model=dict[str,str],
+    response_model=dict[str, str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def delete_config(
-    id: str, force: Optional[bool] = False
-):
+async def delete_config(id: str, force: Optional[bool] = False):
     """
     Delete a network configuration by ID.
     """
@@ -153,7 +160,9 @@ async def delete_config(
         success = network_config.delete_config(id, force)
         if not success:
             log.error(f"Failed to delete configuration: {id}")
-            raise HTTPException(status_code=400, detail="Failed to delete configuration")
+            raise HTTPException(
+                status_code=400, detail="Failed to delete configuration"
+            )
         log.info(f"Configuration deleted: {id}")
         return {"id": id, "message": "Configuration deleted successfully"}
     except ConfigActiveError as cae:
@@ -167,18 +176,15 @@ async def delete_config(
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
+
 
 @router.post(
     "/activate/{id}",
-    response_model=dict[str,str],
+    response_model=dict[str, str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def activate_config(
-    id: str,
-    override_active: Optional[bool] = False
-):
+async def activate_config(id: str, override_active: Optional[bool] = False):
     """
     Activate a network configuration by ID.
     """
@@ -186,7 +192,9 @@ async def activate_config(
         success = network_config.activate_config(id, override_active)
         if not success:
             log.error(f"Failed to activate configuration: {id}")
-            raise HTTPException(status_code=500, detail="Failed to activate configuration")
+            raise HTTPException(
+                status_code=500, detail="Failed to activate configuration"
+            )
         log.info(f"Configuration activated: {id}")
         return {"id": id, "message": "Configuration activated successfully"}
     except ConfigActiveError as cae:
@@ -200,25 +208,27 @@ async def activate_config(
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
+
+
 @router.post(
     "/deactivate/{id}",
-    response_model=dict[str,str],
+    response_model=dict[str, str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def deactivate_config(
-    id: str,
-    override_active: Optional[bool] = False
-):
+async def deactivate_config(id: str, override_active: Optional[bool] = False):
     """
     Deactivate a network configuration by ID.
     """
     try:
-        success = network_config.deactivate_config(id, override_active=override_active if override_active else False)
+        success = network_config.deactivate_config(
+            id, override_active=override_active if override_active else False
+        )
         if not success:
             log.error(f"Failed to deactivate configuration: {id}")
-            raise HTTPException(status_code=500, detail="Failed to deactivate configuration")
+            raise HTTPException(
+                status_code=500, detail="Failed to deactivate configuration"
+            )
         log.info(f"Configuration deactivated: {id}")
         return {"id": id, "message": "Configuration deactivated successfully"}
     except ConfigActiveError as cae:

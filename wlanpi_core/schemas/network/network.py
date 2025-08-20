@@ -1,5 +1,6 @@
-from typing import Any, List, Optional, Union
 from enum import Enum
+from typing import Any, List, Optional, Union
+
 from pydantic import BaseModel, Extra, Field, model_validator
 
 
@@ -61,10 +62,12 @@ class IPInterface(BaseModel, extra=Extra.allow):
     broadcast: str = Field(examples=["ff:ff:ff:ff:ff:ff"])
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
 
+
 class NetworkModeEnum(str, Enum):
     managed = "managed"
     monitor = "monitor"
-    
+
+
 class NetSecurity(BaseModel):
     ssid: str
     security: str
@@ -74,7 +77,8 @@ class NetSecurity(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
-    
+
+
 class NetSecurityUpdate(BaseModel):
     ssid: Optional[str] = None
     security: Optional[str] = None
@@ -84,28 +88,29 @@ class NetSecurityUpdate(BaseModel):
     client_cert: Optional[str] = None
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
-    
+
 
 class RootConfig(BaseModel):
     mode: NetworkModeEnum = NetworkModeEnum.managed
     iface_display_name: str
     phy: str
     interface: str
-    security: NetSecurity
+    security: Optional[NetSecurity] = None
     mlo: bool = False
     default_route: bool = False
     autostart_app: Optional[str] = None
-    
-    
+
+
 class NamespaceConfig(RootConfig):
     namespace: str
-    
+
+
 class NetConfig(BaseModel):
     id: str
-    namespaces: list[NamespaceConfig]
-    roots: list[RootConfig]
-    active: bool = False
-    
+    namespaces: Optional[list[NamespaceConfig]] = None
+    roots: Optional[list[RootConfig]] = None
+
+
 class NetConfigCreate(BaseModel):
     id: str
     namespace: str
@@ -118,7 +123,8 @@ class NetConfigCreate(BaseModel):
     mlo: Optional[bool] = False
     default_route: bool = False
     autostart_app: Optional[str] = None
-    
+
+
 class NetConfigUpdate(BaseModel):
     namespace: Optional[str] = None
     use_namespace: Optional[bool] = None
@@ -150,10 +156,12 @@ class WlanInterfaceSetup(BaseModel):
     netConfig: NetConfig
     removeAllFirst: bool
 
+
 class WlanRevertRequest(BaseModel):
-    iface: str= Field(example="wlan0")
+    iface: str = Field(example="wlan0")
     namespace: str
     delete_namespace: bool = True
+
 
 class NetworkEvent(BaseModel):
     event: str = Field(example="authenticated")
@@ -168,13 +176,14 @@ class NetworkSetupLog(BaseModel):
 class NetworkSetupStatus(BaseModel):
     status: str = Field(example="connected")
     response: NetworkSetupLog
-    connectedNet: ScanItem
+    connectedNet: Optional[ScanItem]
     input: str
 
 
 class ConnectedNetwork(BaseModel):
     connectedStatus: bool = Field(example=True)
     connectedNet: Union[ScanItem, None]
+
 
 class RevertNamespace(BaseModel):
     success: bool = Field(example=True)

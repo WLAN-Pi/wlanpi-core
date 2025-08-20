@@ -9,7 +9,11 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
-from wlanpi_core.services import network_ethernet_service, network_service, network_namespace_service
+from wlanpi_core.services import (
+    network_ethernet_service,
+    network_namespace_service,
+    network_service,
+)
 
 router = APIRouter()
 
@@ -301,6 +305,7 @@ async def set_a_systemd_network_dbus(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
+
 @router.post(
     "/wlan/set",
     response_model=network.NetworkSetupStatus,
@@ -316,7 +321,9 @@ async def set_a_systemd_network(
     try:
         namespace_service = network_namespace_service.NetworkNamespaceService()
         namespace_service.restore_phy_to_userspace("testns")
-        status = namespace_service.add_network(setup.interface, setup.netConfig, "testns", setup.removeAllFirst)
+        status = namespace_service.activate_config(
+            setup.interface, setup.netConfig, "testns", setup.removeAllFirst
+        )
         return status
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -331,8 +338,7 @@ async def set_a_systemd_network(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def revert_wlan_namespace(
-    req: network.WlanRevertRequest,
-    timeout: int = settings.API_DEFAULT_TIMEOUT
+    req: network.WlanRevertRequest, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
     Reverts the PHY and interface back to the root namespace.
@@ -342,13 +348,17 @@ async def revert_wlan_namespace(
         namespace_service.revert_to_root(
             iface=req.iface,
             namespace=req.namespace,
-            delete_namespace=req.delete_namespace
+            delete_namespace=req.delete_namespace,
         )
-        return {"success": True, "message": f"{req.iface} and phy0 reverted to root from {req.namespace}"}
+        return {
+            "success": True,
+            "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
+        }
 
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
 
 @router.get(
     "/wlan/getConnected",

@@ -109,7 +109,10 @@ class SystemManager:
 
         # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
-            if mon_name.startswith(self.iface_name) and mon_index not in managed.values():
+            if (
+                mon_name.startswith(self.iface_name)
+                and mon_index not in managed.values()
+            ):
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 

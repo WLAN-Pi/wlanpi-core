@@ -110,6 +110,7 @@ def get_hostname():
 
     return None
 
+
 def get_platform():
     """
     Method to determine which platform we're running on.

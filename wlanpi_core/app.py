@@ -20,16 +20,21 @@ from starlette.staticfiles import StaticFiles
 # app imports
 from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
-from wlanpi_core.constants import SECRETS_DIR, SUPPORTED_MODELS
+from wlanpi_core.constants import (
+    CONFIG_DIR,
+    CURRENT_CONFIG_FILE,
+    SECRETS_DIR,
+    SUPPORTED_MODELS,
+)
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
-from wlanpi_core.utils.network_config import get_current_config, activate_config, get_config
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.services.system_service import get_model
+from wlanpi_core.utils.network_config import activate_config, get_current_config
 from wlanpi_core.views.api import router as views_router
 
 
@@ -245,6 +250,23 @@ class InitializationManager:
                 self.log.error(f"Filesystem not writable: {e}")
                 return False
 
+            config_dir = Path(CONFIG_DIR)
+            parent_dir = config_dir.parent
+
+            if not parent_dir.exists():
+                self.log.warning(
+                    f"Parent directory {parent_dir} does not exist yet - system may not be fully booted"
+                )
+                try:
+                    parent_dir.mkdir(parents=True, exist_ok=True)
+                    self.log.debug(f"Created parent directory {parent_dir}")
+                except Exception as e:
+                    self.log.error(f"Could not create parent directory: {e}")
+                    return False
+            config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            current_config_file = Path(CURRENT_CONFIG_FILE)
+            current_config_file.touch(mode=0o700, exist_ok=True)
+
             return True
         except Exception as e:
             self.log.error(f"System readiness check failed: {e}")
@@ -255,36 +277,57 @@ class InitializationManager:
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
             return False
-        
+
         try:
             current_config = get_current_config()
-            if current_config == "" or current_config is None:
-                system_initialized = await self._initialize_system_manager("wlanpi0")
+            if current_config == "default" or not current_config:
+                success = activate_config("default", override_active=True)
+
+                if not success:
+                    self.log.error(
+                        f"Failed to activate default config"
+                    )
+                    
+                else:
+                    self.log.info(f"Default config activated sucessfully")
+                    
+                    
+                system_initialized = await self._initialize_system_manager("wlanpi")
                 if not system_initialized:
-                    self.log.error("System manager initialization failed - cannot proceed")
+                    self.log.error(
+                        "System manager initialization failed - cannot proceed"
+                    )
                     return False
             else:
                 model = get_model()
                 if model not in SUPPORTED_MODELS:
                     self.log.error(
-                        f"Model {model} is not supported, using root configuration"
+                        f"Model {model} is not supported, using default configuration"
                     )
-                else:
-                    self.log.info(f"Activating current network configuration: {current_config}")
-                    success = activate_config(current_config, override_active=True)
-                    
-                            
+                    success = activate_config("default", override_active=True)
+
                     if not success:
-                        self.log.error(f"Failed to activate configuration {current_config}")
+                        self.log.error(
+                            f"Failed to activate default config"
+                        )
+                        
+                    else:
+                        self.log.info(f"Default config activated sucessfully")
+                else:
+                    self.log.info(
+                        f"Activating current network configuration: {current_config}"
+                    )
+                    success = activate_config(current_config, override_active=True)
+
+                    if not success:
+                        self.log.error(
+                            f"Failed to activate configuration {current_config}"
+                        )
                     else:
                         self.log.info(f"Config {current_config} activated sucessfully")
 
-                
-
         except FileNotFoundError:
-            self.log.warning(
-                "No current network configuration found"
-            )
+            self.log.warning("No current network configuration found")
 
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
