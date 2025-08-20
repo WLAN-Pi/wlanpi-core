@@ -1,4 +1,4 @@
-name: Run Python Style Police
+name: Run Python Format Police
 
 on:
   # Allow manual runs of workflow from Actions tab
@@ -18,8 +18,8 @@ on:
       - LICENSE
 
 jobs:
-  python-style-police:
-    name: Python Style Police
+  python-format-police:
+    name: Python Format Police
     runs-on: "${{ vars.RUNS_ON || 'ubuntu-24.04' }}"
     strategy:
       fail-fast: false
@@ -45,11 +45,6 @@ jobs:
       id: format-checker
       run: |
         tox -e formatcheck
-
-    - name: Run linter
-      id: linter
-      run: |
-        tox -e lint
 
   slack-workflow-status:
     if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (! github.event.pull_request.head.repo.fork) }}

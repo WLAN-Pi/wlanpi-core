@@ -2,6 +2,7 @@ import grp
 import os
 import pwd
 import secrets
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +23,10 @@ class SecurityManager:
         self.secrets_path = Path(SECRETS_DIR)
         self._fernet: Optional[Fernet] = None
         try:
+            # Wait for filesystem to be ready before proceeding
+            if not self._wait_for_filesystem_ready():
+                raise SecurityInitError("Filesystem not ready after maximum retries")
+
             self._setup_secrets_directory()
             self.shared_secret = self._setup_shared_secret()
             self._setup_encryption_key()
@@ -29,6 +34,56 @@ class SecurityManager:
         except Exception as e:
             log.exception(f"Security initialization failed: {e}")
             raise SecurityInitError(f"Failed to initialize security: {e}")
+
+    def _wait_for_filesystem_ready(
+        self, max_retries: int = 5, retry_delay: float = 2.0
+    ) -> bool:
+        """Wait for filesystem to be ready for write operations"""
+        for attempt in range(max_retries):
+            try:
+                self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+                # Verify we can stat the directory
+                self.secrets_path.stat()
+
+                # Check if we can write to the directory
+                test_file = self.secrets_path / f".test_{os.getpid()}_{attempt}"
+                try:
+                    test_data = os.urandom(16)
+                    test_file.write_bytes(test_data)
+                    read_data = test_file.read_bytes()
+
+                    # Always try to clean up, even if the test fails
+                    try:
+                        test_file.unlink()
+                    except:
+                        pass
+
+                    if read_data == test_data:
+                        log.debug(f"Filesystem ready after {attempt + 1} attempts")
+                        return True
+                except Exception as e:
+                    # Always try to clean up on failure
+                    try:
+                        if test_file.exists():
+                            test_file.unlink()
+                    except:
+                        pass
+                    log.debug(f"Write test failed: {e}")
+
+                if attempt < max_retries - 1:
+                    log.warning(
+                        f"Filesystem not ready, attempt {attempt + 1}/{max_retries}, waiting {retry_delay}s"
+                    )
+                    time.sleep(retry_delay)
+
+            except Exception as e:
+                log.debug(f"Filesystem check failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+
+        log.error("Filesystem not ready after all retries")
+        return False
 
     def _setup_secrets_directory(self):
         """Create and secure secrets directory"""
@@ -74,8 +129,15 @@ class SecurityManager:
                     log.debug("Updated secret file permissions to 0o640")
                 secret = secret_path.read_bytes()
                 if not secret:
-                    raise ValueError("Empty shared secret file")
-                log.debug("Loaded existing shared secret")
+                    # File exists but is empty - regenerate it
+                    log.warning("Shared secret file is empty, regenerating...")
+                    secret = secrets.token_bytes(32)
+                    secret_path.write_bytes(secret)
+                    os.chown(str(secret_path), uid, gid)
+                    secret_path.chmod(0o640)
+                    log.debug("Regenerated shared secret")
+                else:
+                    log.debug("Loaded existing shared secret")
 
             return secret
 
@@ -96,8 +158,26 @@ class SecurityManager:
             else:
                 key = key_path.read_bytes()
                 if not key:
-                    raise ValueError("Empty encryption key file")
-                log.debug("Loaded existing encryption key")
+                    # File exists but is empty - regenerate it
+                    log.warning("Encryption key file is empty, regenerating...")
+                    key = Fernet.generate_key()
+                    key_path.write_bytes(key)
+                    key_path.chmod(0o600)
+                    log.debug("Regenerated encryption key")
+                else:
+                    # Validate the key is a valid Fernet key
+                    try:
+                        test_fernet = Fernet(key)
+                        # Quick validation
+                        test_fernet.decrypt(test_fernet.encrypt(b"test"))
+                        log.debug("Loaded existing encryption key")
+                    except Exception:
+                        # Key is corrupted - regenerate it
+                        log.warning("Encryption key file is corrupted, regenerating...")
+                        key = Fernet.generate_key()
+                        key_path.write_bytes(key)
+                        key_path.chmod(0o600)
+                        log.debug("Regenerated encryption key")
 
             self._fernet = Fernet(key)
 
