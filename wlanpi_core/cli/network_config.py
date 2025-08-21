@@ -137,25 +137,38 @@ class NetworkConfigCLI:
             print(f"DELETE request failed: {e}")
 
     def get_token(self):
-        getjwt_output = subprocess.run(
-            [
-                "getjwt",
-                "network_config_cli",
-                "--port",
-                str(self.API_PORT),
-                "--no-color",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
-        token_json = json.loads(getjwt_output)
-        token = token_json.get("access_token")
-        if not token:
-            print("Failed to retrieve token.")
+        try:
+            getjwt_output = subprocess.run(
+                [
+                    "/usr/bin/getjwt",
+                    "network_config_cli",
+                    "--port",
+                    str(self.API_PORT),
+                    "--no-color",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            try:
+                token_json = json.loads(getjwt_output)
+            except json.JSONDecodeError as e:
+                print("Failed to parse token output as JSON:")
+                print(getjwt_output)
+                print(f"Error: {e}")
+                sys.exit(1)
+            token = token_json.get("access_token")
+            if not token:
+                print("Failed to retrieve token.")
+                print(getjwt_output)
+                sys.exit(1)
+            print("Token retrieved successfully.")
+            self.token = token
+        except subprocess.CalledProcessError as e:
+            print("Failed to run getjwt command:")
+            print(e.stderr)
+            print(f"Error: {e}")
             sys.exit(1)
-        print("Token retrieved successfully.")
-        self.token = token
 
     def view_configs(self):
         print("\nLoading existing configurations...\n")

@@ -138,7 +138,7 @@ class NetworkNamespaceService:
         )
         
     def deactivate_config(self, cfg: Union[NamespaceConfig, RootConfig]):
-        iface = cfg.interface
+        iface = cfg.iface_display_name or cfg.interface
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else "root"
         
         if cfg.autostart_app:
@@ -149,8 +149,8 @@ class NetworkNamespaceService:
             except RunCommandError as e:
                 self.log.error(f"Failed to remove network {iface} in namespace {namespace}: {e}")
                 
-        if namespace != "root":
-            self.revert_to_root(cfg)
+
+        self.revert_to_root(cfg)
             
 
     def remove_network(self, iface: str, namespace: str):
@@ -164,21 +164,22 @@ class NetworkNamespaceService:
         self._ns_exec(["dhclient", "-r", iface], namespace)
 
     def revert_to_root(self, cfg: Union[NamespaceConfig, RootConfig], delete_namespace: bool = True):
+        iface_before = cfg.iface_display_name or cfg.interface
         iface = cfg.interface
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else "root"
         self.log.info(
-            f"Reverting {iface} and {cfg.phy} from namespace {namespace} to root namespace."
+            f"Reverting {iface_before} and {cfg.phy} from namespace {namespace} to root namespace."
         )
 
         # Try to delete the interface in the namespace if it exists
         try:
-            self._ns_exec(["iw", "dev", iface, "del"], namespace)
-            self.log.info(f"Deleted {iface} in namespace {namespace}.")
+            self._ns_exec(["iw", "dev", iface_before, "del"], namespace)
+            self.log.info(f"Deleted {iface_before} in namespace {namespace}.")
         except RunCommandError as e:
             if "No such device" in str(e):
-                self.log.info(f"No {iface} found to delete in {namespace}.")
+                self.log.info(f"No {iface_before} found to delete in {namespace}.")
             else:
-                self.log.warning(f"Failed to delete {iface} in {namespace}: {e}")
+                self.log.warning(f"Failed to delete {iface_before} in {namespace}: {e}")
 
         # Try to move phy0 back to root
         try:
@@ -362,17 +363,21 @@ class NetworkNamespaceService:
                 self.log.info(f"{phy} already in root namespace")
 
             # Create the wlan interface
+            iface_name = cfg.iface_display_name or iface
             try:
-                self.log.info(f"Creating {iface} in root namespace")
+                self.log.info(f"adding {iface} as {iface_name} in root")
                 self._run(
-                    ["iw", "phy", phy, "interface", "add", iface, "type", cfg.mode]
+                    ["iw", "phy", phy, "interface", "add", iface_name, "type", cfg.mode],
+                    
                 )
             except:
                 self.log.info(f"{iface} already exists")
+                
+            
 
             # Bring up the new interface
-            self.log.info(f"Bringing up {iface} in root namespace")
-            self._run(["ip", "link", "set", iface, "up"])
+            self.log.info("Bringing up %s in root", iface_name)
+            self._run(["ip", "link", "set", iface_name, "up"])
             
             return True
 
@@ -425,18 +430,21 @@ class NetworkNamespaceService:
                 return False
 
             # Create the wlan interface
+            iface_name = cfg.iface_display_name or iface
             try:
-                self.log.info("Creating %s in namespace %s", iface, namespace)
+                self.log.info(f"adding {iface} as {iface_name} in namespace {namespace}")
                 self._ns_exec(
-                    ["iw", "phy", phy, "interface", "add", iface, "type", cfg.mode],
+                    ["iw", "phy", phy, "interface", "add", iface_name, "type", cfg.mode],
                     namespace,
                 )
             except:
                 self.log.info(f"{iface} already exists")
+                
+            
 
             # Bring up the new interface
-            self.log.info("Bringing up %s in namespace %s", iface, namespace)
-            self._ns_exec(["ip", "link", "set", iface, "up"], namespace)
+            self.log.info("Bringing up %s in namespace %s", iface_name, namespace)
+            self._ns_exec(["ip", "link", "set", iface_name, "up"], namespace)
             return True
 
         except RunCommandError as e:
