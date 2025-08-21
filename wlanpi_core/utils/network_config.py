@@ -6,7 +6,6 @@ from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
 from wlanpi_core.models.network_config_errors import ConfigActiveError
 from wlanpi_core.schemas.network.network import (
     NetConfig,
-    NetConfigCreate,
     NetConfigUpdate,
 )
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
@@ -117,7 +116,7 @@ def get_current_config() -> str:
     return ccf.read_text().strip()
 
 
-def add_config(config: NetConfigCreate) -> bool:
+def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
     path = cfg_dir / f"{config.id}.json"
     if path.exists():

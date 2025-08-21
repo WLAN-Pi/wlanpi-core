@@ -99,7 +99,7 @@ class NetworkNamespaceService:
         if not success:
             self.log.info("Could not complete setup.")
             return
-        
+        iface = cfg.iface_display_name or iface
         if cfg.security:
             self._write_config(cfg)
             self._write_dhcp_config(iface)
@@ -454,7 +454,7 @@ class NetworkNamespaceService:
    
 
     def _write_config(self, cfg: Union[NamespaceConfig, RootConfig]):
-        iface = cfg.interface
+        iface = cfg.iface_display_name or cfg.interface
         conf_path = self.config_dir / f"{iface}.conf"
 
         # Find max priority
