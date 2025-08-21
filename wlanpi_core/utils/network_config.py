@@ -119,9 +119,9 @@ def get_current_config() -> str:
 
 def add_config(config: NetConfigCreate) -> bool:
     """Add a new configuration."""
-    path = cfg_dir / f"{config.cfg_id}.json"
+    path = cfg_dir / f"{config.id}.json"
     if path.exists():
-        raise FileExistsError(f"Configuration {config.cfg_id} already exists.")
+        raise FileExistsError(f"Configuration {config.id} already exists.")
     path.write_text(config.model_dump_json(indent=4))
     return True
 

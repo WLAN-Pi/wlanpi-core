@@ -3,6 +3,7 @@
 # stdlib imports
 import asyncio
 import grp
+import json
 import time
 from pathlib import Path
 
@@ -266,6 +267,43 @@ class InitializationManager:
             config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             current_config_file = Path(CURRENT_CONFIG_FILE)
             current_config_file.touch(mode=0o700, exist_ok=True)
+            
+            default_config_file = config_dir / "default.json"
+            self.log.info("Checking if default config exists")
+            if not default_config_file.exists():
+                self.log.warning(
+                    "Default configuration file does not exist, creating default config"
+                )
+                try:
+                    default_config_file.write_text(json.dumps({
+                        "id": "default",
+                        "namespaces": [],
+                        "roots": [
+                            {
+                                "mode": "managed",
+                                "iface_display_name": "wlan0",
+                                "phy": "phy0",
+                                "interface": "wlan0",
+                                "default_route": True,
+                                "autostart_app": None
+                            },
+                            {
+                                "mode": "managed",
+                                "iface_display_name": "wlan1",
+                                "phy": "phy1",
+                                "interface": "wlan1",
+                                "default_route": False,
+                                "autostart_app": None
+                            }
+                        ]
+                    }))
+                    self.log.debug("Default configuration file created successfully")
+                except Exception as e:
+                    self.log.error(f"Failed to create default configuration file: {e}")
+                    return False
+            
+            else:
+                self.log.info("Default config ok")
 
             return True
         except Exception as e:

@@ -111,31 +111,9 @@ class NetConfig(BaseModel):
     roots: Optional[list[RootConfig]] = None
 
 
-class NetConfigCreate(BaseModel):
-    id: str
-    namespace: str
-    use_namespace: bool = False
-    mode: NetworkModeEnum = NetworkModeEnum.managed
-    iface_display_name: str
-    phy: str = "phy0"
-    interface: str = "wlan0"
-    security: NetSecurity
-    mlo: Optional[bool] = False
-    default_route: bool = False
-    autostart_app: Optional[str] = None
-
-
 class NetConfigUpdate(BaseModel):
-    namespace: Optional[str] = None
-    use_namespace: Optional[bool] = None
-    mode: Optional[NetworkModeEnum] = None
-    iface_display_name: Optional[str] = None
-    phy: Optional[str] = None
-    interface: Optional[str] = None
-    security: Optional[NetSecurityUpdate] = None
-    mlo: Optional[bool] = None
-    default_route: Optional[bool] = None
-    autostart_app: Optional[str] = None
+    namespaces: Optional[list[NamespaceConfig]] = None
+    roots: Optional[list[RootConfig]] = None
 
 
 class ScanItem(BaseModel):

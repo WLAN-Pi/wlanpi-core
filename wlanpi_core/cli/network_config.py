@@ -193,9 +193,6 @@ class NetworkConfigCLI:
     def new_config(self):
         config_id = input("Enter config ID: ").strip()
         namespace = input("Enter namespace (default 'wlanpi'): ").strip() or "wlanpi"
-        use_namespace = (
-            input("Use namespace? (y/n, default 'n'): ").strip().lower() == "y"
-        )
         mode = (
             input("Enter mode (managed/monitor, default 'managed'): ").strip()
             or "managed"

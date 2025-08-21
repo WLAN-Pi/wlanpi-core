@@ -7,7 +7,6 @@ from wlanpi_core.models.network_config_errors import ConfigActiveError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import (
     NetConfig,
-    NetConfigCreate,
     NetConfigUpdate,
 )
 from wlanpi_core.utils import network_config
@@ -89,11 +88,16 @@ async def get_config_by_id(id: str):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def create_config(config: NetConfigCreate):
+async def create_config(config: NetConfig):
     """
     Create a new network configuration.
     """
     try:
+        if config.id in ["root", "default"]:
+            raise ValidationError(
+                status_code=400,
+                error_msg="Configuration ID cannot be 'root' or 'default'.",
+            )
         success = network_config.add_config(config)
         if not success:
             log.error(f"Failed to add configuration: {config.id}")
