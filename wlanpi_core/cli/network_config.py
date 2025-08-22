@@ -40,11 +40,11 @@ class NetworkConfigCLI:
         self.DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
         self.DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
         self.PID_DIR = "/run/wifictl/pids"
-        self.APPS_FILE = "/etc/wifictl/apps.json"
+        self.APPS_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/apps.json"
         self.WPA_LOG_FILE = "/tmp/wpa.log"
         self.secret_file = Path(SECRET_PATH)
 
-        self.API_PORT = 8000
+        self.API_PORT = 31415
         self.HOST = "localhost"
         self.BASE = f"http://{self.HOST}:{self.API_PORT}/api/v1/network/config/"
         self.token = None
