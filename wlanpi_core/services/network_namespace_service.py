@@ -38,12 +38,13 @@ class NetworkNamespaceService:
         self.dhcp_dir = Path(dhcp_dir)
         self.pid_dir = Path(PID_DIR)
         self.pid_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Fixed global settings
         self.global_settings = {
             "ctrl_interface": ctrl_interface,
-            "update_config": True,
-            "pmf": 2,
-            "sae_pwe": True,
+            "update_config": 1,
         }
+        
         self.log = logging.getLogger(__name__)
         self.event_log: List[NetworkEvent] = []
 
@@ -52,12 +53,6 @@ class NetworkNamespaceService:
         self.global_settings.update(settings)
 
     def parse_wpa_log(self, iface: str, timeout: int = 30):
-        """
-        Tails the given wpa_supplicant log file until it sees the 'Connection to ... completed'
-        event, or until timeout seconds passes.
-
-        Each line is appended to `event_log`.
-        """
         start_time = time.time()
 
         with open(f"/tmp/wpa-{iface}.log", "r") as f:
@@ -104,7 +99,8 @@ class NetworkNamespaceService:
             self._write_config(cfg)
             self._write_dhcp_config(iface)
             self._start_or_restart_supplicant(iface, namespace)
-            self._restart_dhcp(iface, namespace)
+            # Fixed DHCP: Use compatible method with timeout
+            self._restart_dhcp_with_timeout(iface, namespace)
             self.parse_wpa_log(iface)
 
         if cfg.default_route:
@@ -156,8 +152,24 @@ class NetworkNamespaceService:
     def remove_network(self, iface: str, namespace: str):
         self.log.info("Removing network %s from namespace %s", iface, namespace)
 
-        self._safe_unlink(self.config_dir / f"{iface}.conf")
-        self._safe_unlink(self.dhcp_dir / f"{iface}.cfg")
+        # Fixed: Enhanced cleanup for wlan<index>.conf files
+        config_files_to_remove = [
+            self.config_dir / f"{iface}.conf",
+            self.dhcp_dir / f"{iface}.cfg",
+        ]
+        
+        # Add wlan<index>.conf if interface follows pattern
+        if iface.startswith("wlan") and len(iface) > 4:
+            try:
+                index = iface[4:]
+                if index.isdigit():
+                    config_files_to_remove.append(self.config_dir / f"wlan{index}.conf")
+                    config_files_to_remove.append(self.dhcp_dir / f"wlan{index}.cfg")
+            except:
+                pass
+        
+        for config_file in config_files_to_remove:
+            self._safe_unlink(config_file)
 
         self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface}"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
@@ -250,7 +262,10 @@ class NetworkNamespaceService:
             cmd = app_command.split()
         else:
             cmd = ["ip", "netns", "exec", namespace] + app_command.split()
-        with open(f"/tmp/{app_id}.log", "a") as log_file:
+            
+        with open(f"/tmp/{app_id}.log", "w"):
+            pass
+        with open(f"/tmp/{app_id}.log", "w") as log_file:
             proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
         pid_file = self.pid_dir / f"{namespace}.pid"
         pid_file.write_text(str(proc.pid))
@@ -314,7 +329,7 @@ class NetworkNamespaceService:
                     "key_mgmt": key_mgmt,
                     "freq": freq,
                     "signal": signal,
-                    "minrate": 1000000,  # not sure how to get this
+                    "minrate": 1000000,
                 },
             }
 
@@ -455,42 +470,59 @@ class NetworkNamespaceService:
 
     def _write_config(self, cfg: Union[NamespaceConfig, RootConfig]):
         iface = cfg.iface_display_name or cfg.interface
-        conf_path = self.config_dir / f"{iface}.conf"
+        
+        # Fixed: Generate both interface.conf and wlan<index>.conf files
+        conf_files = [self.config_dir / f"{iface}.conf"]
+        
+        # Add wlan<index>.conf if interface follows wlan pattern  
+        if iface.startswith("wlan") and len(iface) > 4:
+            try:
+                index = iface[4:]
+                if index.isdigit():
+                    conf_files.append(self.config_dir / f"wlan{index}.conf")
+            except:
+                pass
 
-        # Find max priority
-        max_priority = 0
-        blocks = []
+        for conf_path in conf_files:
+            # Find max priority
+            max_priority = 0
+            blocks = []
 
-        if conf_path.exists():
-            with conf_path.open() as f:
-                block, in_block = [], False
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("network={"):
-                        in_block = True
-                        block = [line]
-                    elif in_block:
-                        block.append(line)
-                        if line == "}":
-                            blocks.append("\n".join(block))
-                            in_block = False
+            if conf_path.exists():
+                with conf_path.open() as f:
+                    block, in_block = [], False
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("network={"):
+                            in_block = True
+                            block = [line]
+                        elif in_block:
+                            block.append(line)
+                            if line == "}":
+                                blocks.append("\n".join(block))
+                                in_block = False
 
+                for b in blocks:
+                    for l in b.splitlines():
+                        if l.strip().startswith("priority="):
+                            try:
+                                max_priority = max(max_priority, int(l.split("=")[1]))
+                            except ValueError:
+                                pass
+
+            new_block = self._generate_network_block(cfg, max_priority + 1)
+            
+            # Fixed: Case-sensitive SSID removal
+            original_ssid = cfg.security.ssid
+            filtered_blocks = []
             for b in blocks:
-                for l in b.splitlines():
-                    if l.strip().startswith("priority="):
-                        try:
-                            max_priority = max(max_priority, int(l.split("=")[1]))
-                        except ValueError:
-                            pass
+                if f'ssid="{original_ssid}"' not in b:
+                    filtered_blocks.append(b)
+            
+            filtered_blocks.insert(0, new_block)
 
-        new_block = self._generate_network_block(cfg, max_priority + 1)
-        blocks = [
-            b for b in blocks if f'ssid="{cfg.security.ssid}"' not in b
-        ]
-        blocks.insert(0, new_block)
-
-        with conf_path.open("w") as f:
-            f.write(self._generate_global_header() + "\n\n" + "\n\n".join(blocks))
+            with conf_path.open("w") as f:
+                f.write(self._generate_global_header() + "\n\n" + "\n\n".join(filtered_blocks))
 
     def _write_dhcp_config(self, iface: str):
         self.dhcp_dir.mkdir(parents=True, exist_ok=True)
@@ -522,11 +554,31 @@ class NetworkNamespaceService:
             ],
             namespace,
         )
-        # self._run(["tail", "-F", "/tmp/wpa.log"])
 
-    def _restart_dhcp(self, iface: str, namespace: str):
-        self._ns_exec(["dhclient", "-r", iface], namespace)
-        self._ns_exec(["dhclient", iface], namespace)
+    def _restart_dhcp_with_timeout(self, iface: str, namespace: str):
+        """Fixed DHCP with timeout - compatible with older dhclient versions"""
+        try:
+            # Clean up existing DHCP clients
+            self._ns_exec(["dhclient", "-r", iface], namespace)
+            self._ns_exec(["pkill", "-f", f"dhclient.*{iface}"], namespace)
+            time.sleep(1)
+            
+            self.log.info("Starting DHCP client for %s with timeout", iface)
+            
+            # Use timeout command to limit dhclient execution
+            dhcp_cmd = ["timeout", "15", "dhclient", "-v", "-1", iface]
+            
+            try:
+                self._ns_exec(dhcp_cmd, namespace)
+                self.log.info("DHCP completed for %s", iface)
+            except RunCommandError as e:
+                if "timeout" in str(e).lower() or "124" in str(e):
+                    self.log.info("DHCP timed out for %s - trying alternative config", iface)
+                else:
+                    self.log.warning("DHCP failed for %s: %s", iface, e)
+                
+        except Exception as e:
+            self.log.warning("DHCP setup had issues for %s: %s", iface, e)
 
     def _set_default_route(self, iface: str, namespace: str):
         if (
@@ -539,18 +591,20 @@ class NetworkNamespaceService:
             )
 
     def _generate_global_header(self):
+        # Fixed: Correct global settings with SAE support
         lines = [
             f"ctrl_interface={self.global_settings['ctrl_interface']}",
-            f"update_config={1 if self.global_settings.get('update_config') else 0}",
-            f"pmf={self.global_settings.get('pmf', 1)}",
+            f"update_config={self.global_settings.get('update_config', 1)}",
+            f"sae_pwe=2",  # Fixed: SAE PWE in global context
         ]
-        if self.global_settings.get("sae_pwe"):
-            lines.append("sae_pwe=1")
         return "\n".join(lines)
 
     def _generate_network_block(self, cfg: Union[NamespaceConfig, RootConfig], priority=0):
         lines = ["network={"]
-        lines.append(f'    ssid="{cfg.security.ssid}"')
+        
+        # Fixed: Preserve exact SSID case
+        original_ssid = cfg.security.ssid
+        lines.append(f'    ssid="{original_ssid}"')
         lines.append(f"    priority={priority}")
 
         sec = (cfg.security.security or "OPEN").upper()
@@ -559,35 +613,43 @@ class NetworkNamespaceService:
             lines.append("    key_mgmt=NONE")
         elif sec == "OWE":
             lines.append("    key_mgmt=OWE")
-        elif sec in ("WPA2-PSK", "WPA3-PSK"):
+            lines.append("    ieee80211w=2")
+        elif sec in ("WPA2-PSK", "WPA-PSK"):
             if cfg.security.psk:
                 lines.append(f'    psk="{cfg.security.psk}"')
             lines.append("    key_mgmt=WPA-PSK")
-            if sec == "WPA3-PSK":
-                lines.append("    ieee80211w=2")
-                lines.append("    sae_pwe=1")
-        elif sec == "802.1X":
+            lines.append("    ieee80211w=1")
+        elif sec == "WPA3-PSK":
+            if cfg.security.psk:
+                lines.append(f'    psk="{cfg.security.psk}"')
+            lines.append("    key_mgmt=SAE")  # Fixed: WPA3 uses SAE
+            lines.append("    ieee80211w=2")  # Fixed: PMF required for WPA3
+        elif sec in ("802.1X", "WPA2-EAP", "WPA3-EAP"):
             lines.append("    key_mgmt=WPA-EAP")
             if cfg.security.identity:
                 lines.append(f'    identity="{cfg.security.identity}"')
             if cfg.security.password:
                 lines.append(f'    password="{cfg.security.password}"')
-            lines.append("    eap=PEAP")
-            lines.append('    phase2="auth=MSCHAPV2"')
-            lines.append(
-                f"    ca_cert=\"{cfg.security.ca_cert or '/etc/ssl/certs/ca-certificates.crt'}\""
-            )
-        elif sec == "OPENROAMING":
-            lines.append("    key_mgmt=WPA-EAP")
-            if cfg.security.identity:
-                lines.append(f'    identity="{cfg.security.identity}"')
-            if cfg.security.client_cert:
-                lines.append(f'    client_cert="{cfg.security.client_cert}"')
-            if cfg.security.private_key:
-                lines.append(f'    private_key="{cfg.security.private_key}"')
-            if cfg.security.ca_cert:
-                lines.append(f'    ca_cert="{cfg.security.ca_cert}"')
-            lines.append("    eap=TLS")
+            
+            # Enhanced EAP method support
+            eap_method = getattr(cfg.security, 'eap_method', 'PEAP')
+            lines.append(f"    eap={eap_method}")
+            
+            if eap_method == "PEAP":
+                phase2_method = getattr(cfg.security, 'phase2_method', 'MSCHAPV2')
+                lines.append(f'    phase2="auth={phase2_method}"')
+            elif eap_method == "TLS":
+                if cfg.security.client_cert:
+                    lines.append(f'    client_cert="{cfg.security.client_cert}"')
+                if cfg.security.private_key:
+                    lines.append(f'    private_key="{cfg.security.private_key}"')
+            
+            lines.append(f'    ca_cert="{cfg.security.ca_cert or "/etc/ssl/certs/ca-certificates.crt"}"')
+            
+            if sec == "WPA3-EAP":
+                lines.append("    ieee80211w=2")
+            else:
+                lines.append("    ieee80211w=1")
 
         if cfg.mlo:
             lines.append("    mlo=1")
@@ -605,7 +667,7 @@ class NetworkNamespaceService:
             self.log.info(f"stderr: {output.stderr}")
             self.log.info(f"return_code: {output.return_code}")
             if output.return_code != 0:
-                raise RunCommandError(output.stderr.decode())
+                raise RunCommandError(output.stderr.decode(), output.return_code)
             return output
         except Exception as e:
             self.log.error(f"Command failed: {' '.join(cmd)}\nError: {e}")

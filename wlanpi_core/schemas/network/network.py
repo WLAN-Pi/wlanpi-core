@@ -66,23 +66,18 @@ class IPInterface(BaseModel, extra=Extra.allow):
 class NetworkModeEnum(str, Enum):
     managed = "managed"
     monitor = "monitor"
+    
+class SecurityTypes(str, Enum):
+    wpa2 = "WPA2-PSK"
+    wpa3 = "WPA3-PSK"
 
 
 class NetSecurity(BaseModel):
     ssid: str
-    security: str
+    security: SecurityTypes
     psk: Optional[str] = None
-    identity: Optional[str] = None
-    password: Optional[str] = None
-    client_cert: Optional[str] = None
-    private_key: Optional[str] = None
-    ca_cert: Optional[str] = None
-
-
-class NetSecurityUpdate(BaseModel):
-    ssid: Optional[str] = None
-    security: Optional[str] = None
-    psk: Optional[str] = None
+    sae_pwe: Optional[int] = None
+    pmf: Optional[int] = None
     identity: Optional[str] = None
     password: Optional[str] = None
     client_cert: Optional[str] = None

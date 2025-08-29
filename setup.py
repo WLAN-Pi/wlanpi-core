@@ -71,6 +71,7 @@ setup(
     entry_points={
         'console_scripts': [
             'getjwt=wlanpi_core.cli.getjwt:main',
+            'networkcfg=wlanpi_core.cli.network_config:main',
         ],
     },
 )

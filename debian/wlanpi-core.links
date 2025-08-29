@@ -1,1 +1,2 @@
 opt/wlanpi-core/bin/getjwt usr/bin/getjwt
+opt/wlanpi-core/bin/networkcfg usr/bin/networkcfg

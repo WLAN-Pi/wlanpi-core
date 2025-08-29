@@ -180,6 +180,16 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
 
     except Exception as ex:
         log.error(f"Failed to activate config {cfg_id}: {ex}")
+        for ns_cfg in cfg.namespaces or []:
+            log.info(
+                f"Stopping app {ns_cfg.autostart_app} in namespace {ns_cfg.namespace}"
+            )
+            ns.stop_app_in_namespace(ns_cfg.namespace)
+        for root_cfg in cfg.roots or []:
+            log.info(
+                f"Stopping app {root_cfg.autostart_app} in root"
+            )
+            ns.stop_app_in_namespace(root_cfg.namespace)
         raise
 
 
