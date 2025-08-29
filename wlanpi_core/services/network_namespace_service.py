@@ -537,7 +537,6 @@ class NetworkNamespaceService:
         if log_file.exists():
             log_file.unlink()
         log_file.touch()
-        self._run(["rm", "-f", f"/tmp/wpa-{iface}.log"])
         self._ns_exec(
             [
                 "wpa_supplicant",

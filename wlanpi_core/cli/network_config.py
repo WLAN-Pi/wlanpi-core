@@ -1127,6 +1127,8 @@ class NetworkConfigCLI:
         except ValueError:
             self.print_error("Please enter a valid number")
             return
+        
+        override = False
 
         if not config_active:
             self.print_warning(f"Configuration '{config_id}' is not active")
@@ -1138,7 +1140,7 @@ class NetworkConfigCLI:
         print(f"Deactivating configuration '{config_id}'...")
         response = self.make_request(
             "POST",
-            f"{self.BASE}deactivate/{config_id}",
+            f"{self.BASE}deactivate/{config_id}?override_active={'true' if override else 'false'}",
             data={}
         )
         
