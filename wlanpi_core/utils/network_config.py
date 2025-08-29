@@ -159,13 +159,14 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
     cfg = get_config(cfg_id)
     active_cfg = get_current_config()
 
-    if active_cfg != cfg_id and active_cfg != "default" and not override_active:
-        raise ConfigActiveError(
-            f"Another configuration is currently active: {active_cfg}."
-        )
+    if not override_active:
+        if active_cfg != cfg_id and active_cfg != "default":
+            raise ConfigActiveError(
+                f"Another configuration is currently active: {active_cfg}."
+            )
 
-    if active_cfg == cfg_id and not override_active:
-        raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
+        if active_cfg == cfg_id:
+            raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
     try:
         for ns_cfg in cfg.namespaces or []:
             log.info(
@@ -179,17 +180,8 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
         return True
 
     except Exception as ex:
-        log.error(f"Failed to activate config {cfg_id}: {ex}")
-        for ns_cfg in cfg.namespaces or []:
-            log.info(
-                f"Stopping app {ns_cfg.autostart_app} in namespace {ns_cfg.namespace}"
-            )
-            ns.stop_app_in_namespace(ns_cfg.namespace)
-        for root_cfg in cfg.roots or []:
-            log.info(
-                f"Stopping app {root_cfg.autostart_app} in root"
-            )
-            ns.stop_app_in_namespace(root_cfg.namespace)
+        log.error(f"Failed to activate config {cfg_id}: {ex}\nRolling back and deactivating")
+        deactivate_config(cfg_id, override_active=True)
         raise
 
 
@@ -198,8 +190,9 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
     path = cfg_dir / f"{cfg_id}.json"
 
     cfg = get_config(cfg_id)
-    if not is_active(cfg_id) and not override_active:
-        raise ConfigActiveError(f"Configuration {cfg_id} is not active.")
+    if not override_active:
+        if not is_active(cfg_id):
+            raise ConfigActiveError(f"Configuration {cfg_id} is not active.")
 
     try:
         for ns_cfg in cfg.namespaces or []:
