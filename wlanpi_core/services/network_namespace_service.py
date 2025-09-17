@@ -527,7 +527,9 @@ class NetworkNamespaceService:
     def _write_dhcp_config(self, iface: str):
         self.dhcp_dir.mkdir(parents=True, exist_ok=True)
         dhcp_path = self.dhcp_dir / f"{iface}.cfg"
-        dhcp_path.write_text(f"auto {iface}\niface {iface} inet dhcp\n")
+        dhcp_path.write_text(
+            f"allow-hotplug {iface}\niface {iface} inet dhcp\n"
+        )
 
     def _start_or_restart_supplicant(self, iface: str, namespace: str):
         self._ns_exec(["pkill", "-f", f"wpa_supplicant -B -i {iface}"], namespace)
