@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Extra, Field, model_validator
@@ -62,6 +63,54 @@ class IPInterface(BaseModel, extra=Extra.allow):
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
 
 
+class NetworkModeEnum(str, Enum):
+    managed = "managed"
+    monitor = "monitor"
+    
+class SecurityTypes(str, Enum):
+    wpa2 = "WPA2-PSK"
+    wpa3 = "WPA3-PSK"
+
+
+class NetSecurity(BaseModel):
+    ssid: str
+    security: SecurityTypes
+    psk: Optional[str] = None
+    sae_pwe: Optional[int] = None
+    pmf: Optional[int] = None
+    identity: Optional[str] = None
+    password: Optional[str] = None
+    client_cert: Optional[str] = None
+    private_key: Optional[str] = None
+    ca_cert: Optional[str] = None
+
+
+class RootConfig(BaseModel):
+    mode: NetworkModeEnum = NetworkModeEnum.managed
+    iface_display_name: str
+    phy: str
+    interface: str
+    security: Optional[NetSecurity] = None
+    mlo: bool = False
+    default_route: bool = False
+    autostart_app: Optional[str] = None
+
+
+class NamespaceConfig(RootConfig):
+    namespace: str
+
+
+class NetConfig(BaseModel):
+    id: str
+    namespaces: Optional[list[NamespaceConfig]] = None
+    roots: Optional[list[RootConfig]] = None
+
+
+class NetConfigUpdate(BaseModel):
+    namespaces: Optional[list[NamespaceConfig]] = None
+    roots: Optional[list[RootConfig]] = None
+
+
 class ScanItem(BaseModel):
     ssid: str = Field(example="A Network")
     bssid: str = Field(example="11:22:33:44:55")
@@ -75,18 +124,16 @@ class ScanResults(BaseModel):
     nets: List[ScanItem]
 
 
-class WlanConfig(BaseModel):
-    ssid: str = Field(example="SSID Name")
-    psk: Union[str, None] = None
-    proto: Union[str, None] = None
-    key_mgmt: str = Field(example="NONE, SAE")
-    ieee80211w: Union[int, None] = None
-
-
 class WlanInterfaceSetup(BaseModel):
     interface: str = Field(example="wlan0")
-    netConfig: WlanConfig
+    netConfig: NetConfig
     removeAllFirst: bool
+
+
+class WlanRevertRequest(BaseModel):
+    iface: str = Field(example="wlan0")
+    namespace: str
+    delete_namespace: bool = True
 
 
 class NetworkEvent(BaseModel):
@@ -102,13 +149,18 @@ class NetworkSetupLog(BaseModel):
 class NetworkSetupStatus(BaseModel):
     status: str = Field(example="connected")
     response: NetworkSetupLog
-    connectedNet: ScanItem
+    connectedNet: Optional[ScanItem]
     input: str
 
 
 class ConnectedNetwork(BaseModel):
     connectedStatus: bool = Field(example=True)
     connectedNet: Union[ScanItem, None]
+
+
+class RevertNamespace(BaseModel):
+    success: bool = Field(example=True)
+    message: str
 
 
 class Interface(BaseModel):

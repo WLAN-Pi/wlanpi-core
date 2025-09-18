@@ -4,6 +4,7 @@ from wlanpi_core.api.api_v1.endpoints import (
     auth_api,
     bluetooth_api,
     network_api,
+    network_config_api,
     network_info_api,
     profiler_api,
     streaming_api,
@@ -18,6 +19,9 @@ api_router.include_router(auth_api.router, prefix="/auth", tags=["authentication
 api_router.include_router(bluetooth_api.router, prefix="/bluetooth", tags=["bluetooth"])
 
 api_router.include_router(network_api.router, prefix="/network", tags=["network"])
+api_router.include_router(
+    network_config_api.router, prefix="/network/config", tags=["network_config"]
+)
 
 api_router.include_router(
     network_info_api.router, prefix="/network/info", tags=["network_information"]

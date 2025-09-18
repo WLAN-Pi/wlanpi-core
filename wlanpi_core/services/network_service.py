@@ -611,7 +611,7 @@ def collect_scan_results():
 
 async def set_systemd_network_addNetwork(
     interface: network.Interface,
-    netConfig: network.WlanConfig,
+    netConfig: network.NetConfig,
     removeAllFirst: bool,
     timeout: network.APIConfig,
 ):
