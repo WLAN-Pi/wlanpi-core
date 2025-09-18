@@ -1,3 +1,9 @@
+wlanpi-core (2.1.5-1) unstable; urgency=medium
+
+  * Network config manager by Ben and Dylan
+
+ --  Josh Schmelzle <josh@joshschmelzle.com>  Thu, 18 Sep 2025 11:35:20 -0500
+
 wlanpi-core (2.1.4) unstable; urgency=medium
 
   * Harden shared secrets generation.
