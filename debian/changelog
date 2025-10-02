@@ -1,3 +1,9 @@
+wlanpi-core (2.1.6-1) unstable; urgency=medium
+
+  * fix: prevent iwlwifi scan from blocking startup
+
+ --  Josh Schmelzle <josh@joshschmelzle.com>  Wed, 1 Oct 2025 00:00:00 -0500
+
 wlanpi-core (2.1.5-3) unstable; urgency=medium
 
   * Add logging to ufw script and run after ufw.service / first-boot.service.
