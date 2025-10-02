@@ -1,6 +1,7 @@
-wlanpi-core (2.1.6-1) unstable; urgency=medium
+wlanpi-core (2.1.6-2) unstable; urgency=medium
 
   * fix: prevent iwlwifi scan from blocking startup
+  * fix: wlanpi-first-boot.service in After= directive
 
  --  Josh Schmelzle <josh@joshschmelzle.com>  Wed, 1 Oct 2025 00:00:00 -0500
 
