@@ -10,9 +10,17 @@ readonly INSTALLED_VERSION_FILE="/etc/wlanpi-core/installed-rules-version"
 readonly UFW_APPS_DIR="/etc/ufw/applications.d"
 readonly RULES_FILE="${RULES_DIR}/wlanpi-core.rules"
 readonly UFW_APP_FILE="${UFW_APPS_DIR}/wlanpi-core"
+readonly LOGFILE="/var/log/wlanpi-core-firstboot.log"
+
+mkdir -p "$(dirname "$LOGFILE")" 2>/dev/null || true
+exec > >(tee -a "$LOGFILE") 2>&1
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
 
 log_info() {
-    echo "INFO: $1"
+    log "INFO: $1"
 }
 
 if ischroot; then
@@ -21,7 +29,7 @@ if ischroot; then
 fi
 
 log_error() {
-    echo "ERROR: $1" >&2
+    log "ERROR: $1" >&2
 }
 
 error() {
