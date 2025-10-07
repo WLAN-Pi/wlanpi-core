@@ -37,7 +37,7 @@ from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.services.system_service import get_model
-from wlanpi_core.utils.network_config import activate_config, get_current_config
+from wlanpi_core.utils.network_config import activate_config, get_current_config, interfaces_in_root
 from wlanpi_core.views.api import router as views_router
 
 
