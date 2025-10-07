@@ -122,11 +122,12 @@ class SystemManager:
             expected_mon = f"{self.iface_name}{index}"
             if expected_mon not in monitor:
                 log.info(f"Creating monitor interface for {iface} → {expected_mon}")
+                self._iface_up(iface)
                 self._create_monitor(iface, index)
                 driver = self._get_driver(iface)
                 if driver == "iwlwifi":
+                    self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
-                    self._iface_up(iface)
                     def background_scan_with_timeout():
                         time.sleep(1)
                         try:
@@ -137,7 +138,7 @@ class SystemManager:
                                 timeout=10
                             )
                             log.info(f"Scan on {iface} done")
-                            self._iface_up(expected_mon)
+                            
                             self._iface_down(iface)
                         except subprocess.TimeoutExpired:
                             log.warning(f"Scan on {iface} timed out after 10s")
