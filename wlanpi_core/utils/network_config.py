@@ -157,7 +157,11 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
     """Activate a configuration by cfg_id."""
 
     cfg = get_config(cfg_id)
-    active_cfg = get_current_config()
+    try:
+        active_cfg = get_current_config()
+    except FileNotFoundError:
+        # Treat missing current-config as default (first-run scenario)
+        active_cfg = "default"
 
     if not override_active:
         if active_cfg != cfg_id and active_cfg != "default":
@@ -168,20 +172,41 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
     try:
+        if override_active:
+            log.info("Override active set: killing all wpa_supplicant processes before activation")
+            ns.kill_all_supplicants()
+        outcomes: list[str] = []
+
         for ns_cfg in cfg.namespaces or []:
             log.info(
                 f"Activating namespace {ns_cfg.namespace} for interface {ns_cfg.interface}"
             )
-            ns.activate_config(ns_cfg)
+            result = ns.activate_config(ns_cfg)
+            status = getattr(result, "status", "error") if result is not None else "error"
+            outcomes.append(status)
+
         for root_cfg in cfg.roots or []:
             log.info(f"Activating root config for interface {root_cfg.interface}")
-            ns.activate_config(root_cfg)
-        ccf.write_text(cfg_id)
-        return True
+            result = ns.activate_config(root_cfg)
+            status = getattr(result, "status", "error") if result is not None else "error"
+            outcomes.append(status)
+
+        # Determine if activation should be persisted
+        acceptable_statuses = {"connected", "provisioned"}
+        all_ok = all(status in acceptable_statuses for status in outcomes) if outcomes else True
+
+        if all_ok:
+            ccf.write_text(cfg_id)
+            return True
+        else:
+            log.error(f"Activation outcomes unacceptable {outcomes}. Rolling back and deactivating")
+            deactivate_config(cfg_id, override_active=True)
+            return False
 
     except Exception as ex:
-        log.error(f"Failed to activate config {cfg_id}: {ex}\nRolling back and deactivating")
-        deactivate_config(cfg_id, override_active=True)
+        # Do not roll back here; a provisioned (not connected) outcome should
+        # leave the configuration active. Only report the error upward.
+        log.error(f"Failed to activate config {cfg_id}: {ex}")
         raise
 
 
@@ -205,7 +230,8 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
             ns.deactivate_config(root_cfg)
 
         ccf.write_text("default")
-        activate_config("default", override_active=True)
+        # activate_config("default", override_active=True)
+        ns.revert_to_root(None)
         return True
 
     except Exception as ex:

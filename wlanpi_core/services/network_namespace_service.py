@@ -95,39 +95,88 @@ class NetworkNamespaceService:
             self.log.info("Could not complete setup.")
             return
         iface = cfg.iface_display_name or iface
+        connected_state = False
         if cfg.security:
             self._write_config(cfg)
             self._write_dhcp_config(iface)
             self._start_or_restart_supplicant(iface, namespace)
-            # Fixed DHCP: Use compatible method with timeout
-            self._restart_dhcp_with_timeout(iface, namespace)
-            self.parse_wpa_log(iface)
+            # Wait up to 15s for a connected state before starting DHCP
+            start = time.time()
+            poll_interval = 1
+            saw_only_scanning = True
+            last_state = None
+            while time.time() - start < 15:
+                status = self.get_status(iface, namespace)
+                wpa: dict = status.get("wpa_status", {})
+                wpa_state = (wpa.get("wpa_state") or "").upper()
+                last_state = wpa_state
+                if wpa_state == "COMPLETED":
+                    connected_state = True
+                    break
+                if wpa_state != "SCANNING":
+                    saw_only_scanning = False
+                time.sleep(poll_interval)
 
-        if cfg.default_route:
+            if connected_state:
+                # Only start DHCP after we are connected
+                self._restart_dhcp_with_timeout(iface, namespace)
+                # Optionally parse WPA log for events when connected
+                self.parse_wpa_log(iface)
+            else:
+                # Not connected within timeout: if we only saw SCANNING, treat as
+                # network not present and exit successfully without DHCP. If we
+                # saw other transient states (e.g., ASSOCIATING/DISCONNECTED), we
+                # still avoid DHCP and return success, leaving config active.
+                self.log.info(
+                    "Did not reach connected state within 15s (last_state=%s). "
+                    "Skipping DHCP and leaving configuration active.",
+                    last_state,
+                )
+
+        # Only attempt to set default route if explicitly requested AND connected
+        if cfg.default_route and connected_state:
             self._set_default_route(iface, namespace)
 
         if cfg.autostart_app:
             self.start_app_in_namespace(namespace, cfg.autostart_app)
 
         connected = None
-        
+        status_value = "connected"
+
         if cfg.mode != "monitor":
             status = self.get_status(iface, namespace)
             wpa: dict = status.get("wpa_status", {})
             scan: dict = status.get("connected_scan", {})
 
-            connected = ScanItem(
-                ssid=cfg.security.ssid,
-                bssid=wpa.get("bssid", "unknown"),
-                key_mgmt=wpa.get("key_mgmt", "unknown"),
-                signal=scan.get("signal", 0),
-                freq=wpa.get("freq", 0),
-                minrate=1000000,
-            ) if cfg.security else None
+            if cfg.security:
+                signal_val = scan.get("signal", 0)
+                if signal_val is None:
+                    signal_val = 0
+                try:
+                    signal_val = int(signal_val)
+                except (TypeError, ValueError):
+                    signal_val = 0
+                freq_val = wpa.get("freq", 0)
+                try:
+                    freq_val = int(freq_val)
+                except (TypeError, ValueError):
+                    freq_val = 0
+                connected = ScanItem(
+                    ssid=cfg.security.ssid,
+                    bssid=wpa.get("bssid", "unknown"),
+                    key_mgmt=wpa.get("key_mgmt", "unknown"),
+                    signal=signal_val,
+                    freq=freq_val,
+                    minrate=1000000,
+                )
+
+            wpa_state = (wpa.get("wpa_state") or "").upper()
+            if wpa_state != "COMPLETED":
+                status_value = "provisioned"
 
         log = NetworkSetupLog(selectErr="", eventLog=self.event_log)
         return NetworkSetupStatus(
-            status="connected",
+            status=status_value,
             response=log,
             connectedNet=connected,
             input=cfg.__str__(),
@@ -171,17 +220,113 @@ class NetworkNamespaceService:
         for config_file in config_files_to_remove:
             self._safe_unlink(config_file)
 
-        self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface}"], namespace)
+        # self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface}"], namespace)
+        self._ns_exec(["pkill", "-f", "wpa_supplicant"], namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         self._ns_exec(["dhclient", "-r", iface], namespace)
 
-    def revert_to_root(self, cfg: Union[NamespaceConfig, RootConfig], delete_namespace: bool = True):
+    def revert_to_root(self, cfg: Union[NamespaceConfig, RootConfig, None] = None, delete_namespace: bool = True):
+        # If no cfg provided: scan all namespaces and move all interfaces/PHYs back to root
+        if cfg is None:
+            try:
+                ns_list_output = self._run(["ip", "netns", "list"]).stdout
+                namespace_names = [line.split()[0] for line in ns_list_output.splitlines() if line.strip()]
+            except Exception as e:
+                self.log.warning(f"Failed to list namespaces: {e}")
+                namespace_names = []
+
+            for ns_name in namespace_names:
+                try:
+                    self.log.info(f"Moving interfaces from namespace {ns_name} back to root")
+                    # Stop any wpa_supplicant processes in this namespace to avoid hangers
+                    try:
+                        self._ns_exec(["pkill", "-f", "wpa_supplicant"], ns_name)
+                    except RunCommandError:
+                        pass
+                    # List interfaces in the namespace
+                    links_output = self._ns_exec(["ip", "-o", "link", "show"], ns_name).stdout
+                    iface_names = []
+                    for line in links_output.splitlines():
+                        # format: '1: lo: <...> ...'
+                        parts = line.split(":", 2)
+                        if len(parts) >= 2:
+                            name = parts[1].strip()
+                            iface_names.append(name)
+
+                    for name in iface_names:
+                        if name.startswith("lo"):
+                            continue
+                        if name.startswith("wlan"):
+                            # Determine phy for this interface and move phy to root
+                            try:
+                                info_output = self._ns_exec(["iw", "dev", name, "info"], ns_name).stdout
+                                # look for 'wiphy N'
+                                phy_num = None
+                                for info_line in info_output.splitlines():
+                                    info_line = info_line.strip()
+                                    if info_line.startswith("wiphy "):
+                                        try:
+                                            phy_num = int(info_line.split()[1])
+                                        except Exception:
+                                            phy_num = None
+                                        break
+                                # Best-effort cleanup of control interface socket
+                                try:
+                                    self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{name}"], ns_name)
+                                except RunCommandError:
+                                    pass
+                                if phy_num is not None:
+                                    self._ns_exec(["iw", "phy", f"phy{phy_num}", "set", "netns", "1"], ns_name)
+                                    self.log.info(f"Moved phy{phy_num} from namespace {ns_name} back to root")
+                                else:
+                                    # Fallback: try moving link if phy not parsed
+                                    self._ns_exec(["ip", "link", "set", name, "netns", "1"], ns_name)
+                                    self.log.info(f"Moved {name} from namespace {ns_name} back to root (link move)")
+                            except RunCommandError as e:
+                                self.log.warning(f"Failed moving wireless interface {name} from {ns_name}: {e}")
+                        else:
+                            # Try generic link move for non-wlan interfaces (e.g., eth*)
+                            try:
+                                # Best-effort cleanup of control interface socket (if any naming overlap)
+                                try:
+                                    self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{name}"], ns_name)
+                                except RunCommandError:
+                                    pass
+                                self._ns_exec(["ip", "link", "set", name, "netns", "1"], ns_name)
+                                self.log.info(f"Moved {name} from namespace {ns_name} back to root")
+                            except RunCommandError as e:
+                                self.log.warning(f"Failed moving interface {name} from {ns_name}: {e}")
+
+                    if delete_namespace:
+                        try:
+                            self._run(["ip", "netns", "delete", ns_name])
+                            self.log.info(f"Deleted namespace {ns_name}")
+                        except RunCommandError as e:
+                            self.log.warning(f"Could not delete namespace {ns_name}: {e}")
+                except Exception as e:
+                    self.log.warning(f"Issue reverting namespace {ns_name} to root: {e}")
+            return
+
         iface_before = cfg.iface_display_name or cfg.interface
         iface = cfg.interface
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else "root"
         self.log.info(
             f"Reverting {iface_before} and {cfg.phy} from namespace {namespace} to root namespace."
         )
+
+        # Ensure any wpa_supplicant and dhclient tied to this interface are stopped in the namespace
+        try:
+            self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface_before}"], namespace)
+        except RunCommandError:
+            pass
+        try:
+            self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface_before}"], namespace)
+        except RunCommandError:
+            pass
+        try:
+            self._ns_exec(["dhclient", "-r", iface_before], namespace)
+        except RunCommandError:
+            pass
 
         # Try to delete the interface in the namespace if it exists
         try:
@@ -209,7 +354,7 @@ class NetworkNamespaceService:
                         "1",
                     ], namespace
                 )
-                self.log.info(f"Moved phy0 from namespace {namespace} back to root.")
+                self.log.info(f"Moved {cfg.phy} from namespace {namespace} back to root.")
             else:
                 self.log.info(
                     f"No phy0 found in {namespace}. assuming it's already in root."
@@ -314,7 +459,10 @@ class NetworkNamespaceService:
                     bssid, freq_str, signal_str, flags, ssid = parts
                     if bssid.lower() == connected_bssid.lower():
                         self.log.info(f"found connected network: {parts}")
-                        signal = int(signal_str)
+                        try:
+                            signal = int(signal_str)
+                        except ValueError:
+                            signal = None
                         key_mgmt = self._parse_key_mgmt(flags)
                         break
 
@@ -328,7 +476,7 @@ class NetworkNamespaceService:
                     "bssid": connected_bssid,
                     "key_mgmt": key_mgmt,
                     "freq": freq,
-                    "signal": signal,
+                    "signal": signal if isinstance(signal, int) else 0,
                     "minrate": 1000000,
                 },
             }
@@ -582,14 +730,33 @@ class NetworkNamespaceService:
             self.log.warning("DHCP setup had issues for %s: %s", iface, e)
 
     def _set_default_route(self, iface: str, namespace: str):
-        if (
-            iface
-            not in self._ns_exec(["ip", "route", "show", "default"], namespace).stdout
-        ):
-            self._ns_exec(
-                ["ip", "route", "replace", "default", "dev", iface, "metric", "200"],
-                namespace,
-            )
+        try:
+            out = self._ns_exec(["ip", "route", "show", "default"], namespace).stdout
+        except RunCommandError as e:
+            # Treat missing FIB table as no default route yet
+            if "FIB table does not exist" in str(e):
+                out = ""
+            else:
+                raise
+
+        if iface not in out:
+            try:
+                self._ns_exec(
+                    [
+                        "ip",
+                        "route",
+                        "replace",
+                        "default",
+                        "dev",
+                        iface,
+                        "metric",
+                        "200",
+                    ],
+                    namespace,
+                )
+            except RunCommandError as e:
+                # Log and continue; route setup shouldn't fail activation
+                self.log.warning(f"Could not set default route for {iface} in {namespace}: {e}")
 
     def _generate_global_header(self):
         # Fixed: Correct global settings with SAE support
@@ -687,3 +854,10 @@ class NetworkNamespaceService:
 
     def _log_event(self, event: str, timestamp: str):
         self.event_log.append(NetworkEvent(event=event, time=timestamp))
+
+    def kill_all_supplicants(self):
+        """Stop any running wpa_supplicant processes across namespaces."""
+        try:
+            self._run(["sudo", "pkill", "-f", "wpa_supplicant"])  # best-effort
+        except RunCommandError:
+            pass
