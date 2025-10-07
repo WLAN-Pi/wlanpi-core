@@ -48,14 +48,15 @@ def parse_iw_dev_output(output: str) -> dict:
         if skip_table_block:
             continue
 
-        if ":" in stripped and not stripped.startswith("channel "):
-            key, value = map(str.strip, stripped.split(":", 1))
+        # Prefer splitting on the first whitespace to get the key token, then
+        # treat a leading ':' in the remainder as a key:value separator.
+        parts = stripped.split(None, 1)
+        if len(parts) == 2:
+            key, remainder = parts[0], parts[1]
         else:
-            parts = stripped.split(None, 1)
-            if len(parts) == 2:
-                key, value = parts
-            else:
-                key, value = parts[0], ""
+            key, remainder = parts[0], ""
+
+        value = remainder[1:].strip() if remainder.startswith(":") else remainder
 
         key = key.replace(" ", "_")
         interfaces[current_iface][key] = value
