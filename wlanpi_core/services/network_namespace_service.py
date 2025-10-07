@@ -12,6 +12,7 @@ from wlanpi_core.constants import (
     DEFAULT_CTRL_INTERFACE,
     DEFAULT_DHCP_DIR,
     PID_DIR,
+    IW_FILE,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.schemas.network.network import (
@@ -82,9 +83,31 @@ class NetworkNamespaceService:
                 if "CTRL-EVENT-CONNECTED" in line and "completed" in line:
                     break
 
+    def get_interfaces(self):
+        output = self._run([IW_FILE, "dev"])
+        interfaces = []
+        current_iface = None
+        if not output:
+            return interfaces
+
+        for line in output.stdout.splitlines():
+            if line.strip().startswith("Interface"):
+                current_iface = line.strip().split()[1]
+                interfaces.append(current_iface)
+        
+        return interfaces
+
     def activate_config(self, cfg: Union[NamespaceConfig, RootConfig]):
         iface = cfg.interface
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else "root"
+
+        interfaces = self.get_interfaces()
+        self.log.info(f"Interfaces: {interfaces}")
+
+        if cfg.interface not in interfaces:
+            self.log.warning(f"Cannot activate config, interface {cfg.interface} does not exist.")
+            return
+            
         self.log.info("Adding network on %s in namespace %s", iface, namespace)
 
         if isinstance(cfg, NamespaceConfig):

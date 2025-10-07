@@ -62,6 +62,11 @@ def parse_iw_dev_output(output: str) -> dict:
 
     return interfaces
 
+def interfaces_in_root(cfg_id: str) -> list[str]:
+    cfg = get_config(cfg_id)
+    
+    root = cfg.roots or []
+    return [r.interface for r in root]
 
 def list_configs() -> dict[str, bool]:
     """List all configuration files in the CONFIG_DIR directory."""

@@ -10,8 +10,9 @@ log = get_logger(__name__)
 
 
 class SystemManager:
-    def __init__(self, iface_name: str = "wlanpi"):
+    def __init__(self, iface_name: str = "wlanpi", exclusions: list[str] = []):
         self.iface_name = iface_name
+        self.exclusions = exclusions
         self.sync_monitor_interfaces()
 
     def _run(self, cmd, capture_output=False, suppress_output=False):
@@ -66,8 +67,10 @@ class SystemManager:
                 current_iface = line.strip().split()[1]
             elif "type" in line and current_iface:
                 iface_type = line.strip().split()[1]
-                interfaces[current_iface] = iface_type
-                current_iface = None
+                if current_iface not in self.exclusions:
+                    interfaces[current_iface] = iface_type
+                    current_iface = None
+                    
         return interfaces
 
     def _create_monitor(self, name, index):
@@ -134,6 +137,7 @@ class SystemManager:
                                 timeout=10
                             )
                             log.info(f"Scan on {iface} done")
+                            self._iface_up(expected_mon)
                             self._iface_down(iface)
                         except subprocess.TimeoutExpired:
                             log.warning(f"Scan on {iface} timed out after 10s")
