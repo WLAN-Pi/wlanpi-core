@@ -70,6 +70,8 @@ class NetworkModeEnum(str, Enum):
 class SecurityTypes(str, Enum):
     wpa2 = "WPA2-PSK"
     wpa3 = "WPA3-PSK"
+    open = "OPEN"
+    owe = "OWE"
 
 
 class NetSecurity(BaseModel):

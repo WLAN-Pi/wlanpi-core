@@ -26,6 +26,8 @@ from wlanpi_core.constants import (
     CURRENT_CONFIG_FILE,
     SECRETS_DIR,
     SUPPORTED_MODELS,
+    CREATE_MONITOR_PAIRS_DEFAULT,
+    CREATE_MONITOR_PAIRS_UNINIT,
 )
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
@@ -35,7 +37,7 @@ from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.services.system_service import get_model
-from wlanpi_core.utils.network_config import activate_config, get_current_config
+from wlanpi_core.utils.network_config import activate_config, get_current_config, interfaces_in_root
 from wlanpi_core.views.api import router as views_router
 
 
@@ -330,12 +332,13 @@ class InitializationManager:
                     self.log.info(f"Default config activated sucessfully")
                     
                     
-                system_initialized = await self._initialize_system_manager("wlanpi")
-                if not system_initialized:
-                    self.log.error(
-                        "System manager initialization failed - cannot proceed"
-                    )
-                    return False
+                if CREATE_MONITOR_PAIRS_DEFAULT:
+                    system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                    if not system_initialized:
+                        self.log.error(
+                            "System manager initialization failed - cannot proceed"
+                        )
+                        return False
             else:
                 model = get_model()
                 if model not in SUPPORTED_MODELS:
@@ -351,6 +354,14 @@ class InitializationManager:
                         
                     else:
                         self.log.info(f"Default config activated sucessfully")
+                                                
+                    if CREATE_MONITOR_PAIRS_DEFAULT:
+                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                        if not system_initialized:
+                            self.log.error(
+                                "System manager initialization failed - cannot proceed"
+                            )
+                            return False
                 else:
                     self.log.info(
                         f"Activating current network configuration: {current_config}"
@@ -363,6 +374,15 @@ class InitializationManager:
                         )
                     else:
                         self.log.info(f"Config {current_config} activated sucessfully")
+                    
+                    if CREATE_MONITOR_PAIRS_UNINIT:
+                        exclusions = interfaces_in_root(current_config)
+                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                        if not system_initialized:
+                            self.log.error(
+                                "System manager initialization failed - cannot proceed"
+                            )
+                            return False
 
         except FileNotFoundError:
             self.log.warning("No current network configuration found")
@@ -445,10 +465,10 @@ class InitializationManager:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
 
-    async def _initialize_system_manager(self, iface_name: str):
+    async def _initialize_system_manager(self, iface_name: str, exclusions: list[str] = []):
         """Initialize the system manager"""
         try:
-            self.app.state.system_manager = SystemManager(iface_name)
+            self.app.state.system_manager = SystemManager(iface_name, exclusions=exclusions)
             self.log.debug("System manager initialized succcessfully")
             return True
         except Exception as e:
