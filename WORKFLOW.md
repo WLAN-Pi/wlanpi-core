@@ -4,15 +4,18 @@ Table of contents:
 
 * [Development Workflow](#development-workflow)
   * [Releases](#releases)
-  * [Server setup](#server-setup)
-  * [Third Party Depends](#third-party-depends)
+  * [Branching Strategy and Release Process](#branching-strategy-and-release-process)
+    * [Branch Structure](#branch-structure)
+    * [Development Workflow](#development-workflow-1)
+    * [Version Control Best Practices](#version-control-best-practices)
+  * [Quick setup](#quick-setup)
   * [Setup development environment](#setup-development-environment)
   * [Developing](#developing)
   * [Troubleshooting](#troubleshooting)
   * [Tagging](#tagging)
   * [`debian/changelog`](#`debian/changelog`)
   * [Versioning](#versioning)
-  * [Commiting](#commiting)
+  * [Committing](#committing)
     * [Linting and formatting](#linting-and-formatting)
     * [Testing](#testing)
   * [Building the Debian Package](#building-the-debian-package)
@@ -26,6 +29,123 @@ CI/CD will be setup and triggered by pushes to `{repo}/debian/changelog`.
 So, this meaning you should have some hope that your hotfix or feature works as intended. It would be a good idea to format, lint, and test the code at this stage.
 
 Thus, you should not make changes to the `changelog` until you are ready to deploy.
+
+## Branching Strategy and Release Process
+
+### Branch Structure
+
+We maintain two primary branches:
+
+- **`dev`** - Active development branch where all feature work happens
+- **`main`** - Stable release branch containing only tested releases
+
+### Development Workflow
+
+1. **Feature Development**
+   - All feature branches should be created from `dev`
+   - Pull requests should target `dev`
+   - Features can be squash merged into `dev` to keep history clean (this is fine and encouraged)
+
+   ```bash
+   # Example: Squash merge a feature branch into dev
+   git checkout dev
+   git merge --squash feature/my-feature
+   git commit -m "Add new feature: description"
+   git push origin dev
+   ```
+
+   **Note:** Squash merging is perfectly fine for feature branches → `dev` because you're collapsing temporary branches. The problem only occurs when squash merging between permanent branches (`dev` → `main`).
+
+2. **Release Process**
+
+   When ready to create a new release:
+
+   ```bash
+   # 1. Ensure you're on dev with latest changes
+   git checkout dev
+   git pull origin dev
+
+   # 2. Update version numbers in two places:
+   #    a. debian/changelog (using dch -i)
+   #    b. wlanpi_core/__version__.py (manual edit)
+
+   # 3. Commit version updates to dev
+   git add debian/changelog wlanpi_core/__version__.py
+   git commit -m "Prepare release X.Y.Z"
+   git push origin dev
+
+   # 4. Merge dev into main using a regular merge (NOT squash merge)
+   git checkout main
+   git pull origin main
+   git merge dev --no-ff -m "Merge dev for release X.Y.Z"
+
+   # 5. Tag the release on main
+   git tag -a vX.Y.Z -m "Release X.Y.Z"
+
+   # 6. Push main and tags to remote
+   git push origin main --tags
+
+   # 7. Optionally merge main back to dev to keep in sync
+   git checkout dev
+   git merge main --no-ff
+   git push origin dev
+   ```
+
+3. **Critical: Merge strategy Between dev and main**
+
+   **NEVER use squash merges when merging between `dev` and `main`.** Always use regular merge commits (`git merge --no-ff`).
+
+   **Why?** Squash merging between permanent branches destroys the shared commit history, making it impossible for Git to track which commits exist in both branches. This leads to:
+
+   - Inability to merge main back into dev without massive conflicts
+   - Branch divergence that cannot be reconciled
+   - Loss of detailed commit history on the release branch
+
+   Regular merge commits preserve the full history and keep both branches properly synchronized.
+
+   **Summary:**
+   - ✅ **Squash merge OK**: `feature/branch` → `dev` (keeps dev clean)
+   - ❌ **Regular merge REQUIRED**: `dev` → `main` (preserves shared history)
+   - ❌ **Regular merge REQUIRED**: `main` → `dev` (preserves shared history)
+
+4. **Hotfix Process**
+
+   For critical fixes that need to go directly to main (rare):
+
+   ```bash
+   # 1. Create hotfix or feature branch from main
+   git checkout main
+   git checkout -b hotfix/description
+
+   # 2. Make your fix and test thoroughly
+
+   # 3. Update version (usually patch version: X.Y.Z+1)
+   dch -i  # Update debian/changelog
+   # Update wlanpi_core/__version__.py
+
+   # 4. Merge hotfix to main
+   git checkout main
+   git merge hotfix/description --no-ff
+   git tag -a vX.Y.Z+1 -m "Hotfix X.Y.Z+1"
+   git push origin main --tags
+
+   # 5. Merge hotfix back to dev
+   git checkout dev
+   git merge hotfix/description --no-ff
+   git push origin dev
+
+   # 6. Delete hotfix branch
+   git branch -d hotfix/description
+   ```
+
+### Version Control Best Practices
+
+- **Feature branches**: `feature/short-description` - branch from `dev`, merge back to `dev`
+- **Bugfix branches**: `fix/short-description` - branch from `dev`, merge back to `dev`
+- **Hotfix branches**: `hotfix/short-description` - branch from `main`, merge to both `main` and `dev`
+- Always use `--no-ff` (no fast-forward) when merging to preserve merge commits
+- Never rewrite history on `main` or `dev` branches
+- Tag all releases on `main` with semantic versioning: `vX.Y.Z`
 
 ## Quick setup
 
@@ -321,7 +441,7 @@ Each release requires versions to be updated in __two__ locations:
 
 Please note that Python package versioning should follow PEP 440. https://www.python.org/dev/peps/pep-0440/
 
-## Commiting
+## Committing
 
 Before committing, please lint, format, and test your code with tox.
 
