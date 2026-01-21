@@ -1,4 +1,4 @@
-wlanpi-core (2.1.8-1) unstable; urgency=medium
+wlanpi-core (2.1.9-1) unstable; urgency=medium
 
   * Add Subject Alternative Names to SSL certificate for Firefox compatibility
 
