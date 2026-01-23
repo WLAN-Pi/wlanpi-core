@@ -56,6 +56,25 @@ We maintain two primary branches:
 
    **Note:** Squash merging is perfectly fine for feature branches → `dev` because you're collapsing temporary branches. The problem only occurs when squash merging between permanent branches (`dev` → `main`).
 
+   **Keeping Feature Branches in Sync:**
+
+   If you're working on a long-running feature branch and `dev` has moved ahead with new commits or releases, merge `dev` into your feature branch to stay current:
+
+   ```bash
+   # First, update your local dev to match remote
+   git checkout dev
+   git pull origin dev
+
+   # Then merge the updated dev into your feature branch
+   git checkout your-feature-branch
+   git merge dev --no-ff -m "Merge dev to stay current"
+   git push origin your-feature-branch
+   ```
+
+   **Why update dev first?** This ensures your local `dev` branch has the latest changes from the remote repository before merging. If you merge an outdated local `dev`, you'll miss recent commits from other developers.
+
+   **Important:** Avoid rebasing feature branches that have already been pushed to origin, especially if `dev` or `main` have moved ahead with releases. Rebasing can cause Git to drop commits incorrectly.
+
 2. **Release Process**
 
    When ready to create a new release:
@@ -146,6 +165,53 @@ We maintain two primary branches:
 - Always use `--no-ff` (no fast-forward) when merging to preserve merge commits
 - Never rewrite history on `main` or `dev` branches
 - Tag all releases on `main` with semantic versioning: `vX.Y.Z`
+
+### Troubleshooting Common Scenarios
+
+#### Version Collision During Feature Development
+
+If `main` releases a new version while you're still working on a feature branch:
+
+1. **Sync your feature branch with dev first:**
+   ```bash
+   # First, update your local dev to match remote
+   git checkout dev
+   git pull origin dev
+
+   # Then merge the updated dev into your feature branch
+   git checkout your-feature-branch
+   git merge dev --no-ff -m "Merge dev to stay current"
+   ```
+
+2. **Check your branch's version** in `wlanpi_core/__version__.py` and `debian/changelog`
+
+3. **If main already released that version**, bump to the next version in your branch:
+   ```bash
+   # Edit wlanpi_core/__version__.py and debian/changelog to next version
+   git add wlanpi_core/__version__.py debian/changelog
+   git commit -m "bump version to X.Y.Z+1"
+   ```
+
+4. **Then follow normal merge workflow**: feature → dev → main
+
+**Example:** If your feature branch says "2.1.8" but main already released 2.1.8, update your branch to "2.1.9".
+
+#### Branch Divergence Recovery
+
+If your local branch diverges from its remote (e.g., after a problematic rebase):
+
+1. **Check the actual difference:**
+   ```bash
+   git diff origin/your-branch..HEAD
+   ```
+
+2. **To reset your local branch to match the remote:**
+   ```bash
+   git checkout your-branch
+   git reset --hard origin/your-branch
+   ```
+
+   This discards any local commits and makes your branch identical to the remote version.
 
 ## Quick setup
 
