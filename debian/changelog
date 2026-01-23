@@ -1,3 +1,16 @@
+wlanpi-core (2.1.9-1) unstable; urgency=medium
+
+  * Add Subject Alternative Names to SSL certificate for Firefox compatibility
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Jan 2026 23:04:54 -0500
+
+wlanpi-core (2.1.7-1) unstable; urgency=medium
+
+  * chore: update Monitor mode bringup sequence for iwlwifi
+  * fix: namespaces setup did not handle SSID missing from scan
+
+ --  Josh Schmelzle <josh@joshschmelzle.com>  Wed, 8 Oct 2025 00:00:00 -0500
+
 wlanpi-core (2.1.6-2) unstable; urgency=medium
 
   * fix: prevent iwlwifi scan from blocking startup
