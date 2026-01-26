@@ -434,11 +434,8 @@ class NetworkNamespaceService:
         # Use display name if available, otherwise fall back to interface
         iface = cfg.iface_display_name or iface
         connected_state = False
-<<<<<<< HEAD
         
         # Handle security configuration
-=======
->>>>>>> upstream/dev
         if cfg.security:
             # Additional validation: ensure ssid exists (should be caught by validation, but double-check)
             if not hasattr(cfg.security, 'ssid') or not cfg.security.ssid:
@@ -661,11 +658,8 @@ class NetworkNamespaceService:
                                 self.log.warning(f"Failed moving interface {name} from {ns_name}: {e}")
 
                     if delete_namespace:
-<<<<<<< HEAD
                         # Stop any app running in this namespace before deletion
                         self.stop_app_in_namespace(ns_name)
-=======
->>>>>>> upstream/dev
                         try:
                             self._run(["ip", "netns", "delete", ns_name])
                             self.log.info(f"Deleted namespace {ns_name}")

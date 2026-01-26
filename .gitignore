@@ -1,3 +1,4 @@
+.build-manifest.txt
 *.swp
 project_capsule.json
 *.tar.gz

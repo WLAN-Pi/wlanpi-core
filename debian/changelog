@@ -1,4 +1,4 @@
-wlanpi-core (2.1.10-1) unstable; urgency=medium
+wlanpi-core (2.1.10-2) unstable; urgency=medium
 
   * Hardening namespaces functionality for robustness and reliability
   * docs: add troubleshooting for version collisions and branch divergence
