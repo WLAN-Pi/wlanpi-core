@@ -41,6 +41,11 @@ def get_app_command(app_id: str) -> Optional[str]:
     """
     apps_file = Path(APPS_FILE)
     if not apps_file.exists():
+        if not apps_file.parent.exists():
+            raise FileNotFoundError(
+                f"Apps file parent directory does not exist: {apps_file.parent}. "
+                "Cannot create apps file (e.g. in CI /home/wlanpi may be missing)."
+            )
         apps_file.touch()
 
     try:
@@ -76,15 +81,15 @@ def start_app_in_namespace(
     Examples:
         >>> start_app_in_namespace("test_ns", "my_app")
     """
-    if pid_dir is None:
-        pid_dir = Path(PID_DIR)
-    pid_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get app command from apps file
+    # Resolve app first so we don't touch the filesystem (e.g. mkdir) when app not found
     app_command = get_app_command(app_id)
     if not app_command:
         log.error(f"App ID {app_id} not found in apps file.")
         raise ValueError(f"App ID {app_id} not found in apps file")
+
+    if pid_dir is None:
+        pid_dir = Path(PID_DIR)
+    pid_dir.mkdir(parents=True, exist_ok=True)
 
     namespace_display = namespace if namespace else "root"
     log.info(f"Starting app '{app_id}' in namespace '{namespace_display}' with command: {app_command}")

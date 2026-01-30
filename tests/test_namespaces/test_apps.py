@@ -56,6 +56,22 @@ class TestGetAppCommand:
         mock_file.touch.assert_called_once()
         assert command is None
 
+    @patch("wlanpi_core.namespaces.apps.Path")
+    def test_get_app_command_parent_missing_raises(self, mock_path):
+        """Test that missing parent dir raises FileNotFoundError (CI-safe)."""
+        mock_file = MagicMock()
+        mock_file.exists.return_value = False
+        mock_parent = MagicMock()
+        mock_parent.exists.return_value = False
+        mock_file.parent = mock_parent
+        mock_path.return_value = mock_file
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            get_app_command("my_app")
+
+        assert "parent" in str(exc_info.value).lower() or "does not exist" in str(exc_info.value).lower()
+        mock_file.touch.assert_not_called()
+
 
 class TestStartAppInNamespace:
     """Tests for start_app_in_namespace function."""
