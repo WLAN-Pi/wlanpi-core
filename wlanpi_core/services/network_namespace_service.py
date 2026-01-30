@@ -55,8 +55,9 @@ class NetworkNamespaceService:
         self.ctrl_interface = ctrl_interface
         self.dhcp_dir = Path(dhcp_dir)
         self.pid_dir = Path(PID_DIR)
-        self.pid_dir.mkdir(parents=True, exist_ok=True)
-        
+        # PID dir is created lazily when first needed (e.g. in apps.start_app_in_namespace)
+        # so that importing this service does not touch the filesystem (CI has no /home/wlanpi).
+
         # Fixed global settings
         self.global_settings = {
             "ctrl_interface": ctrl_interface,
