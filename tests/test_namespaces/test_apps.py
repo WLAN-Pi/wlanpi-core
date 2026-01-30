@@ -60,17 +60,21 @@ class TestGetAppCommand:
 class TestStartAppInNamespace:
     """Tests for start_app_in_namespace function."""
 
+    @patch("wlanpi_core.namespaces.apps.processes.get_processes_in_namespace")
     @patch("wlanpi_core.namespaces.apps.get_app_command")
     @patch("wlanpi_core.namespaces.apps.subprocess.Popen")
     @patch("wlanpi_core.namespaces.apps.Path")
     @patch("wlanpi_core.namespaces.apps.time.sleep")
-    def test_start_app_in_namespace_success(self, mock_sleep, mock_path, mock_popen, mock_get_command):
+    def test_start_app_in_namespace_success(
+        self, mock_sleep, mock_path, mock_popen, mock_get_command, mock_get_pids
+    ):
         """Test successful app start in namespace."""
         mock_get_command.return_value = "/usr/bin/myapp --arg"
         mock_proc = MagicMock()
         mock_proc.pid = 1234
         mock_proc.poll.return_value = None  # Process is running
         mock_popen.return_value = mock_proc
+        mock_get_pids.return_value = [1234]  # So _verify_app_in_namespace doesn't call run_command
 
         mock_pid_dir = MagicMock()
         mock_pid_file = MagicMock()
@@ -135,7 +139,7 @@ class TestStopAppInNamespace:
         assert result is False
 
     @patch("wlanpi_core.namespaces.apps.processes.get_processes_in_namespace")
-    @patch("wlanpi_core.namespaces.apps.ns_namespace.namespace_exists")
+    @patch("wlanpi_core.namespaces.namespace.namespace_exists")
     @patch("wlanpi_core.namespaces.apps.run_command")
     @patch("wlanpi_core.namespaces.apps.Path")
     def test_stop_app_in_namespace_success(self, mock_path, mock_run, mock_exists, mock_get_pids):

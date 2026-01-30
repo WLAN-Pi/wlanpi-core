@@ -7,7 +7,7 @@ handling DHCP, default routes, and app startup when connections complete.
 import logging
 import threading
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from wlanpi_core.schemas.network.network import NamespaceConfig, RootConfig
 from wlanpi_core.utils.network_management import (
@@ -34,7 +34,7 @@ class ConnectionMonitor:
 
     @staticmethod
     def start_monitor(
-        cfg: NamespaceConfig | RootConfig,
+        cfg: Union[NamespaceConfig, RootConfig],
         iface: str,
         namespace: Optional[str],
         timeout: int = 15,

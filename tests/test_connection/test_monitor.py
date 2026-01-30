@@ -17,7 +17,7 @@ class TestConnectionMonitor:
     @patch("wlanpi_core.connection.monitor.get_wpa_status")
     @patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout")
     @patch("wlanpi_core.connection.monitor.set_default_route")
-    @patch("wlanpi_core.connection.monitor.start_app_in_namespace")
+    @patch("wlanpi_core.namespaces.apps.start_app_in_namespace")
     def test_start_monitor_connection_completes(
         self,
         mock_start_app,

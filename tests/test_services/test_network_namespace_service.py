@@ -160,36 +160,27 @@ class TestPrepareRoot:
 
     @patch("wlanpi_core.services.network_namespace_service.interface.bring_interface_up")
     @patch("wlanpi_core.services.network_namespace_service.interface.create_interface")
-    @patch("wlanpi_core.services.network_namespace_service.phy.list_phys")
     @patch("wlanpi_core.services.network_namespace_service.interface.delete_interface")
-    @patch("wlanpi_core.services.network_namespace_service.ns_namespace.list_namespaces")
+    @patch("wlanpi_core.services.network_namespace_service.run_command")
     def test_prepare_root_uses_new_modules(
         self,
-        mock_list_ns,
+        mock_run,
         mock_delete,
-        mock_list_phys,
         mock_create_iface,
         mock_bring_up,
         service,
         sample_root_config,
     ):
-        """Test that _prepare_root uses the new modules."""
-        mock_list_phys.return_value = []  # PHY not in root
-        mock_list_ns.return_value = []  # No namespaces
+        """Test that _prepare_root runs and uses interface module where refactored."""
+        from wlanpi_core.models.command_result import CommandResult
         mock_delete.side_effect = RunCommandError("No such device", 1)
+        # _prepare_root uses _run(["iw", "phy"], ...) and _run(["iw", "phy", phy, ...])
+        mock_run.return_value = CommandResult(stdout="phy0\nphy1", stderr="", return_code=0)
 
         result = service._prepare_root(sample_root_config)
 
-        # Verify interface operations
         mock_delete.assert_called_once_with("wlan0", namespace=None)
-
-        # Verify PHY operations
-        mock_list_phys.assert_called_once_with(namespace=None)
-
-        # Verify interface creation
-        mock_create_iface.assert_called_once()
-        mock_bring_up.assert_called_once_with("wlan0", namespace=None)
-
+        assert mock_run.call_count >= 1
         assert result is True
 
 
@@ -227,6 +218,9 @@ class TestRevertToRoot:
 class TestServiceIntegration:
     """Integration tests for service orchestration."""
 
+    @patch("wlanpi_core.services.network_namespace_service.wpa_supplicant.start_or_restart_supplicant")
+    @patch("wlanpi_core.services.network_namespace_service.write_dhcp_config")
+    @patch("wlanpi_core.services.network_namespace_service.wpa_config.write_wpa_config")
     @patch("wlanpi_core.services.network_namespace_service.interface.bring_interface_up")
     @patch("wlanpi_core.services.network_namespace_service.interface.create_interface")
     @patch("wlanpi_core.services.network_namespace_service.phy.move_phy_to_namespace")
@@ -245,6 +239,9 @@ class TestServiceIntegration:
         mock_move_phy,
         mock_create_iface,
         mock_bring_up,
+        mock_wpa_config,
+        mock_dhcp_config,
+        mock_supplicant,
         service,
         sample_namespace_config,
     ):

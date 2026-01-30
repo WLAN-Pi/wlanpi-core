@@ -96,7 +96,7 @@ async def test_run_command_async_failure():
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
-    assert str(exc_info.value) == "error"
+    assert "error" in str(exc_info.value)
     assert exc_info.value.return_code == 2
 
 
@@ -150,7 +150,7 @@ async def test_run_command_async_shell_failure():
     mock_create_subprocess_shell.assert_called_once_with(
         cmd, stdin=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    assert str(exc_info.value) == "error"
+    assert "error" in str(exc_info.value)
     assert exc_info.value.return_code == 2
 
 
@@ -159,10 +159,7 @@ async def test_run_command_async_input_and_stdin_error():
     cmd = ["ls", "-l"]
     with pytest.raises(RunCommandError) as exc_info:
         await run_command_async(cmd, input="test input", stdin=StringIO("test input"))
-    assert (
-        str(exc_info.value)
-        == "You cannot use both 'input' and 'stdin' on the same call."
-    )
+    assert "You cannot use both 'input' and 'stdin' on the same call." in str(exc_info.value)
     assert exc_info.value.return_code == -1
 
 

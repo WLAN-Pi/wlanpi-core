@@ -16,19 +16,14 @@ from wlanpi_core.utils.network_management import (
 class TestWriteDhcpConfig:
     """Tests for write_dhcp_config function."""
 
-    @patch("wlanpi_core.utils.network_management.Path")
-    def test_write_dhcp_config_success(self, mock_path):
+    def test_write_dhcp_config_success(self, tmp_path):
         """Test successful DHCP config writing."""
-        mock_dhcp_dir = Mock()
-        mock_dhcp_file = Mock()
-        mock_dhcp_dir.__truediv__.return_value = mock_dhcp_file
-        mock_path.return_value = mock_dhcp_dir
+        write_dhcp_config("wlan0", tmp_path)
 
-        write_dhcp_config("wlan0", Path("/tmp"))
-
-        mock_dhcp_dir.mkdir.assert_called_once()
-        mock_dhcp_file.write_text.assert_called_once()
-        assert "wlan0" in mock_dhcp_file.write_text.call_args[0][0]
+        assert (tmp_path / "wlan0.cfg").exists()
+        content = (tmp_path / "wlan0.cfg").read_text()
+        assert "allow-hotplug wlan0" in content
+        assert "iface wlan0 inet dhcp" in content
 
 
 class TestRestartDhcpWithTimeout:

@@ -91,8 +91,11 @@ class TestGenerateNetworkBlock:
         assert 'psk="wpa3_password"' in block
 
     def test_generate_network_block_eap(self, sample_config):
-        """Test network block generation for EAP."""
-        sample_config.security.security = SecurityTypes.wpa2_eap
+        """Test network block generation for EAP (WPA2-EAP) when security is string-like."""
+        # Schema SecurityTypes has no EAP member; config accepts str() for sec type
+        from unittest.mock import MagicMock
+        sample_config.security.security = MagicMock()
+        sample_config.security.security.__str__ = lambda self: "WPA2-EAP"
         sample_config.security.identity = "user@example.com"
         sample_config.security.password = "eap_password"
 
@@ -140,67 +143,40 @@ class TestWriteWpaConfig:
             ),
         )
 
-    @patch("wlanpi_core.wpa.config.generate_network_block")
-    @patch("wlanpi_core.wpa.config.generate_global_header")
-    @patch("wlanpi_core.wpa.config.Path")
-    def test_write_wpa_config_new_file(
-        self, mock_path, mock_header, mock_block, sample_config
-    ):
+    def test_write_wpa_config_new_file(self, sample_config, tmp_path):
         """Test writing WPA config to new file."""
-        from pathlib import Path
-
-        mock_conf_file = Mock()
-        mock_conf_file.exists.return_value = False
-        mock_path.return_value = mock_conf_file
-        mock_header.return_value = "ctrl_interface=/run/wpa_supplicant"
-        mock_block.return_value = 'network={\n    ssid="test_ssid"\n}'
-
         write_wpa_config(
             sample_config,
-            Path("/tmp"),
+            tmp_path,
             {"ctrl_interface": "/run/wpa_supplicant"},
         )
 
-        mock_conf_file.open.assert_called()
-        mock_block.assert_called()
+        conf_file = tmp_path / "wlan0.conf"
+        assert conf_file.exists()
+        content = conf_file.read_text()
+        assert "ctrl_interface=" in content
+        assert "test_ssid" in content
 
-    @patch("wlanpi_core.wpa.config.generate_network_block")
-    @patch("wlanpi_core.wpa.config.generate_global_header")
-    @patch("wlanpi_core.wpa.config.Path")
-    def test_write_wpa_config_existing_file(
-        self, mock_path, mock_header, mock_block, sample_config
-    ):
-        """Test writing WPA config to existing file."""
-        from pathlib import Path
-
-        mock_conf_file = Mock()
-        mock_conf_file.exists.return_value = True
-        mock_conf_file.open.return_value.__enter__.return_value = Mock()
-        mock_path.return_value = mock_conf_file
-        mock_header.return_value = "ctrl_interface=/run/wpa_supplicant"
-        mock_block.return_value = 'network={\n    ssid="test_ssid"\n}'
-
-        # Mock file reading
-        mock_file = Mock()
-        mock_file.__iter__.return_value = iter([])
-        mock_conf_file.open.return_value.__enter__.return_value = mock_file
-
+    def test_write_wpa_config_existing_file(self, sample_config, tmp_path):
+        """Test writing WPA config when conf file already exists (appends block)."""
+        (tmp_path / "wlan0.conf").write_text("ctrl_interface=/run/wpa_supplicant\n\n")
         write_wpa_config(
             sample_config,
-            Path("/tmp"),
+            tmp_path,
             {"ctrl_interface": "/run/wpa_supplicant"},
         )
+        content = (tmp_path / "wlan0.conf").read_text()
+        assert "ctrl_interface=" in content
+        assert "test_ssid" in content
 
-        mock_conf_file.open.assert_called()
-
-    def test_write_wpa_config_missing_ssid(self, sample_config):
+    def test_write_wpa_config_missing_ssid(self, sample_config, tmp_path):
         """Test write_wpa_config fails without SSID."""
         sample_config.security = None
 
         with pytest.raises(ValueError) as exc_info:
             write_wpa_config(
                 sample_config,
-                Path("/tmp"),
+                tmp_path,
                 {"ctrl_interface": "/run/wpa_supplicant"},
             )
 

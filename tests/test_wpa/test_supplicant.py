@@ -3,7 +3,7 @@ Tests for WPA supplicant process management.
 """
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.wpa.supplicant import (
@@ -87,10 +87,14 @@ class TestParseWpaLog:
         mock_file_handle.readline.side_effect = [
             "1234567890.123: Some log line\n",
             "1234567891.456: CTRL-EVENT-CONNECTED - Connection completed\n",
+            "",  # extra so iterator does not exhaust and raise StopIteration
         ]
-        mock_log_file.open.return_value.__enter__.return_value = mock_file_handle
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = mock_file_handle
+        mock_cm.__exit__.return_value = None
+        mock_log_file.open.return_value = mock_cm
         mock_path.return_value = mock_log_file
-        mock_time.side_effect = [0, 0.1, 0.2]  # Time progression
+        mock_time.return_value = 0  # So log.info() and timeout check don't exhaust side_effect
 
         # Should not raise
         parse_wpa_log("wlan0", timeout=30)
@@ -104,7 +108,10 @@ class TestParseWpaLog:
         mock_log_file.exists.return_value = True
         mock_file_handle = Mock()
         mock_file_handle.readline.return_value = ""  # No more lines
-        mock_log_file.open.return_value.__enter__.return_value = mock_file_handle
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = mock_file_handle
+        mock_cm.__exit__.return_value = None
+        mock_log_file.open.return_value = mock_cm
         mock_path.return_value = mock_log_file
         mock_time.side_effect = [0, 31]  # Timeout exceeded
 
@@ -127,7 +134,7 @@ class TestParseWpaLog:
 class TestKillAllSupplicants:
     """Tests for kill_all_supplicants function."""
 
-    @patch("wlanpi_core.wpa.supplicant.run_command")
+    @patch("wlanpi_core.utils.general.run_command")
     def test_kill_all_supplicants_success(self, mock_run):
         """Test successful kill of all supplicants."""
         mock_run.return_value = Mock(return_code=0)
@@ -137,7 +144,7 @@ class TestKillAllSupplicants:
 
         mock_run.assert_called_once()
 
-    @patch("wlanpi_core.wpa.supplicant.run_command")
+    @patch("wlanpi_core.utils.general.run_command")
     def test_kill_all_supplicants_handles_errors(self, mock_run):
         """Test that kill_all_supplicants handles errors gracefully."""
         mock_run.side_effect = Exception("Command failed")

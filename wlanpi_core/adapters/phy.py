@@ -37,7 +37,7 @@ def list_phys(namespace: Optional[str] = None) -> List[str]:
 
     try:
         if namespace is None:
-            result = run_command([IW_FILE, "phy"], raise_on_fail=True, raise_on_fail=True)
+            result = run_command([IW_FILE, "phy"], raise_on_fail=True)
         else:
             result = ns_exec([IW_FILE, "phy"], namespace=namespace, no_output=True)
 
