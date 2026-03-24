@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wlanpi-core"
+description = "backend services for the WLAN Pi"
+requires-python = ">=3.9"
+license = "BSD-3-Clause"
+dynamic = ["version"]
+authors = [
+    {name = "Josh Schmelzle", email = "josh@joshschmelzle.com"},
+]
+classifiers = [
+    "Natural Language :: English",
+    "Development Status :: 1 - Planning",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
+    "Intended Audience :: System Administrators",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "fastapi",
+    "httpx",
+    "Jinja2",
+    "aiofiles",
+    "gunicorn",
+    "uvicorn",
+    "python-dotenv",
+    "pydantic-settings",
+    "requests",
+    "slowapi",
+    "Authlib",
+    "aiosqlite",
+    "sqlalchemy[asyncio]",
+    "alembic",
+    "websockets",
+    "psutil",
+    "dbus-python",
+]
+
+[project.optional-dependencies]
+testing = [
+    "tox",
+    "black",
+    "isort",
+    "autoflake",
+    "mypy",
+    "flake8",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "coverage-badge",
+    "pytest-mock",
+    "pydantic-settings",
+]
+
+[project.urls]
+Documentation = "https://docs.wlanpi.com"
+Source = "https://github.com/wlan-pi/wlanpi-core"
+
+[project.scripts]
+getjwt = "wlanpi_core.cli.getjwt:main"
+networkcfg = "wlanpi_core.cli.network_config:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["wlanpi_core*"]
+exclude = ["tests*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "wlanpi_core.__version__.__version__"}
