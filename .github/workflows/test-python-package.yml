@@ -46,7 +46,7 @@ jobs:
         python -m venv venv
         source venv/bin/activate
         python -m pip install --upgrade pip setuptools wheel
-        python -m pip install --upgrade tox coverage-badge
+        python -m pip install --upgrade "tox<4.26" coverage-badge
         if [ -f requirements.txt ]; then
             grep -v "dbus-python" requirements.txt > requirements_ci.txt
             pip install -r requirements_ci.txt
