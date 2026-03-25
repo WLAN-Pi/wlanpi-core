@@ -2,7 +2,6 @@
 # -*- makefile -*-
 
 export DH_VIRTUALENV_INSTALL_ROOT=/opt
-export PYBUILD_NAME=wlanpi-core
 
 PACKAGE=$(shell dh_listpackages)
 VERSION=$(shell parsechangelog | grep ^Version: | sed -re 's/[^0-9]+([^-]+).*/\1/')
@@ -17,7 +16,7 @@ PKG_PREFIX=debian/wlanpi-core
 SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 
 %:
-	dh $@ --with python-virtualenv --buildsystem=pybuild
+	dh $@ --with python-virtualenv
 
 .PHONY: override_dh_installsystemd override_dh_strip override_dh_dwz override_dh_lintian override_dh_virtualenv override_dh_installexamples 
 
@@ -49,13 +48,12 @@ override_dh_virtualenv:
 		--install-suffix "wlanpi-core" \
 		--builtin-venv \
 		--python ${SNAKE} \
-		--upgrade-pip-to=23.2 \
-		--preinstall="setuptools==65.5.0" \
-		--preinstall="wheel==0.37.1" \
+		--upgrade-pip-to=24.3.1 \
+		--preinstall="setuptools>=68" \
+		--preinstall="wheel>=0.43" \
 		--preinstall="mock" \
 		--extra-pip-arg "--no-cache-dir" \
-		--extra-pip-arg "--no-compile" \
-		--extras="all,systemd,test"
+		--extra-pip-arg "--no-compile"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip download $(DBUS_PYTHON_SPEC) --no-binary dbus-python ${DBUS_PYTHON_SPEC} --verbose
