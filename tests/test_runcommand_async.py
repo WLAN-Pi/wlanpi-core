@@ -96,7 +96,7 @@ async def test_run_command_async_failure():
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
-    assert str(exc_info.value) == "error"
+    assert str(exc_info.value) == "error (exit code 2)"
     assert exc_info.value.return_code == 2
 
 
@@ -150,7 +150,7 @@ async def test_run_command_async_shell_failure():
     mock_create_subprocess_shell.assert_called_once_with(
         cmd, stdin=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    assert str(exc_info.value) == "error"
+    assert str(exc_info.value) == "error (exit code 2)"
     assert exc_info.value.return_code == 2
 
 
@@ -161,7 +161,7 @@ async def test_run_command_async_input_and_stdin_error():
         await run_command_async(cmd, input="test input", stdin=StringIO("test input"))
     assert (
         str(exc_info.value)
-        == "You cannot use both 'input' and 'stdin' on the same call."
+        == "You cannot use both 'input' and 'stdin' on the same call. (exit code -1)"
     )
     assert exc_info.value.return_code == -1
 
