@@ -41,7 +41,6 @@ class NetworkNamespaceService:
         self.ctrl_interface = ctrl_interface
         self.dhcp_dir = Path(dhcp_dir)
         self.pid_dir = Path(PID_DIR)
-        self.pid_dir.mkdir(parents=True, exist_ok=True)
         
         # Fixed global settings
         self.global_settings = {
@@ -841,6 +840,7 @@ class NetworkNamespaceService:
         
         # Store both PID and app_command for reliable cleanup
         pid_data = {"pid": proc.pid, "app_id": app_id, "app_command": app_command}
+        self.pid_dir.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(json.dumps(pid_data))
         
         self.log.info(f"Launched app '{app_id}' in namespace '{namespace_display}' with PID {proc.pid}")
