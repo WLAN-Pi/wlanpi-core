@@ -76,7 +76,6 @@ install_dependencies() {
         python3-venv \
         python3-wheel \
         python3-setuptools \
-        python3-distutils \
         dh-python; then
         echo "Error: Failed to install Python packages ..."
         exit 1
