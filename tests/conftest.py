@@ -14,6 +14,65 @@ from wlanpi_core.services.network_namespace_service import NetworkNamespaceServi
 
 _REAL_CONNECTION_MONITOR_START = ConnectionMonitor.start_monitor
 
+_DEFAULT_WPA_STATUS = {
+    "wpa_status": {"wpa_state": "COMPLETED", "ssid": "test", "bssid": "00:11:22:33:44:55"},
+    "ip_info": "",
+    "connected_scan": {
+        "ssid": "test",
+        "bssid": "00:11:22:33:44:55",
+        "key_mgmt": "open",
+        "freq": 2412,
+        "signal": 0,
+        "minrate": 1000000,
+    },
+}
+
+
+def _mock_namespace_run_command(cmd, raise_on_fail=True, **kwargs):
+    """Avoid real sudo/ip netns/wpa_cli execution in CI and local pytest."""
+    joined = " ".join(str(part) for part in cmd)
+    if "wpa_cli" in joined and "status" in joined:
+        stdout = "wpa_state=COMPLETED\nssid=test\nbssid=00:11:22:33:44:55\n"
+    elif "wpa_cli" in joined and "scan_results" in joined:
+        stdout = "bssid / frequency / signal level / flags / ssid\n"
+    elif " iw " in f" {joined} " and " phy" in joined:
+        stdout = "phy0\nphy1\n"
+    else:
+        stdout = ""
+    return CommandResult(stdout=stdout, stderr="", return_code=0)
+
+
+@pytest.fixture
+def mock_namespace_execution():
+    """Block all namespace command execution during tests."""
+    patches = [
+        patch(
+            "wlanpi_core.utils.namespace_execution.run_command",
+            side_effect=_mock_namespace_run_command,
+        ),
+        patch(
+            "wlanpi_core.wpa.status.get_wpa_status",
+            return_value=_DEFAULT_WPA_STATUS.copy(),
+        ),
+        patch.object(
+            NetworkNamespaceService,
+            "get_status",
+            return_value=_DEFAULT_WPA_STATUS.copy(),
+        ),
+    ]
+    started = [p.start() for p in patches]
+    try:
+        yield
+    finally:
+        for p in reversed(started):
+            p.stop()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_namespace_execution(mock_namespace_execution):
+    """Ensure matrix and service tests never invoke real netns commands."""
+    yield mock_namespace_execution
+
 
 @pytest.fixture(autouse=True)
 def _clean_connection_monitors():
