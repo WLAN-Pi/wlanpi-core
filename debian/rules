@@ -55,7 +55,7 @@ override_dh_virtualenv:
 		--preinstall="mock" \
 		--extra-pip-arg "--no-cache-dir" \
 		--extra-pip-arg "--no-compile" \
-		--extras="all,systemd,test"
+		--extras="testing"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip download $(DBUS_PYTHON_SPEC) --no-binary dbus-python ${DBUS_PYTHON_SPEC} --verbose
