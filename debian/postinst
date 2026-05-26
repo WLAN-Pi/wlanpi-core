@@ -75,13 +75,37 @@ fi
 if [ ! -f /etc/nginx/ssl/self-signed-wlanpi.cert ] || [ ! -f /etc/nginx/ssl/self-signed-grafana.cert ] || [ ! -f /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert ]; then
     mkdir -p /etc/nginx/ssl
     mkdir -p /etc/cockpit/ws-certs.d
+
+    cat > /tmp/wlanpi-ssl.cnf << 'EOF'
+[req]
+default_bits = 4096
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+CN = wlanpi.local
+O = wlanpi
+OU = wlanpi
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = localhost
+DNS.2 = wlanpi.local
+IP.1 = 127.0.0.1
+IP.2 = 198.18.42.1
+EOF
     if ! openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
         -nodes -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
         -out /etc/nginx/ssl/self-signed-wlanpi.cert \
-        -subj "/CN=wlanpi.local/O=wlanpi/OU=wlanpi"; then
+        -config /tmp/wlanpi-ssl.cnf -extensions v3_req; then
         echo "Error: Failed to generate SSL certificate"
+        rm -f /tmp/wlanpi-ssl.cnf
         exit 1
     fi
+    rm -f /tmp/wlanpi-ssl.cnf
     chmod 654 /etc/nginx/ssl/self-signed-wlanpi.cert
     chmod 650 /etc/nginx/ssl/self-signed-wlanpi.key
     /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.key

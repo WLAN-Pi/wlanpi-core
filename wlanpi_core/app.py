@@ -24,6 +24,7 @@ from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.constants import (
     CONFIG_DIR,
     CURRENT_CONFIG_FILE,
+    MODE_FILE,
     SECRETS_DIR,
     SUPPORTED_MODELS,
     CREATE_MONITOR_PAIRS_DEFAULT,
@@ -37,7 +38,8 @@ from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.services.system_service import get_model
-from wlanpi_core.utils.network_config import activate_config, get_current_config, interfaces_in_root
+from wlanpi_core.models.network_config_errors import ConfigMalformedError
+from wlanpi_core.utils.network_config import activate_config, get_current_config, get_config, interfaces_in_root
 from wlanpi_core.views.api import router as views_router
 
 
@@ -270,47 +272,120 @@ class InitializationManager:
             current_config_file = Path(CURRENT_CONFIG_FILE)
             current_config_file.touch(mode=0o700, exist_ok=True)
             
-            default_config_file = config_dir / "default.json"
+            # Ensure default config exists (get_config will create it if missing)
             self.log.info("Checking if default config exists")
-            if not default_config_file.exists():
-                self.log.warning(
-                    "Default configuration file does not exist, creating default config"
-                )
-                try:
-                    default_config_file.write_text(json.dumps({
-                        "id": "default",
-                        "namespaces": [],
-                        "roots": [
-                            {
-                                "mode": "managed",
-                                "iface_display_name": "wlan0",
-                                "phy": "phy0",
-                                "interface": "wlan0",
-                                "default_route": True,
-                                "autostart_app": None
-                            },
-                            {
-                                "mode": "managed",
-                                "iface_display_name": "wlan1",
-                                "phy": "phy1",
-                                "interface": "wlan1",
-                                "default_route": False,
-                                "autostart_app": None
-                            }
-                        ]
-                    }))
-                    self.log.debug("Default configuration file created successfully")
-                except Exception as e:
-                    self.log.error(f"Failed to create default configuration file: {e}")
-                    return False
-            
-            else:
+            try:
+                get_config("default")
                 self.log.info("Default config ok")
+            except Exception as e:
+                self.log.error(f"Failed to ensure default namespaces configuration exists: {e}")
+                return False
 
             return True
         except Exception as e:
             self.log.error(f"System readiness check failed: {e}")
             return False
+
+    def _is_classic_mode(self) -> bool:
+        """Check if wlanpi-state file contains 'classic' mode"""
+        try:
+            mode_file = Path(MODE_FILE)
+            if mode_file.exists():
+                mode_content = mode_file.read_text().strip()
+                is_classic = mode_content == "classic"
+                if not is_classic:
+                    self.log.info(f"WLAN Pi mode is '{mode_content}', not 'classic'. Skipping namespace operations.")
+                return is_classic
+            else:
+                self.log.warning(f"Mode file {MODE_FILE} does not exist. Skipping namespace operations.")
+                return False
+        except Exception as e:
+            self.log.warning(f"Failed to read mode file {MODE_FILE}: {e}. Skipping namespace operations.")
+            return False
+
+    async def _initialize_network_namespaces(self):
+        """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
+        # Only proceed if in classic mode
+        if not self._is_classic_mode():
+            self.log.info("Exiting network namespace initialization (not in classic mode)")
+            return
+
+        try:
+            try:
+                current_config = get_current_config()
+            except ConfigMalformedError as cme:
+                self.log.error(f"Current configuration is malformed: {cme.message}. Using default.")
+                current_config = "default"
+            except FileNotFoundError:
+                self.log.warning("No current network configuration found")
+                current_config = "default"
+            except Exception as e:
+                self.log.error(f"Unexpected error getting current config: {e}")
+                return  # Don't proceed with namespace setup if we can't get config
+            
+            if current_config == "default" or not current_config:
+                try:
+                    success = activate_config("default", override_active=True)
+                    if not success:
+                        self.log.warning(f"Failed to activate default config (non-critical)")
+                    else:
+                        self.log.info(f"Default config activated successfully")
+                except Exception as e:
+                    self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
+                    
+                if CREATE_MONITOR_PAIRS_DEFAULT:
+                    try:
+                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                        if not system_initialized:
+                            self.log.warning("System manager initialization failed (non-critical)")
+                    except Exception as e:
+                        self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+            else:
+                model = get_model()
+                if model not in SUPPORTED_MODELS:
+                    self.log.warning(
+                        f"Model {model} is not supported, using default configuration"
+                    )
+                    try:
+                        success = activate_config("default", override_active=True)
+                        if not success:
+                            self.log.warning(f"Failed to activate default config (non-critical)")
+                        else:
+                            self.log.info(f"Default config activated successfully")
+                    except Exception as e:
+                        self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
+                                                
+                    if CREATE_MONITOR_PAIRS_DEFAULT:
+                        try:
+                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            if not system_initialized:
+                                self.log.warning("System manager initialization failed (non-critical)")
+                        except Exception as e:
+                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                else:
+                    self.log.info(
+                        f"Activating current network configuration: {current_config}"
+                    )
+                    try:
+                        success = activate_config(current_config, override_active=True)
+                        if not success:
+                            self.log.warning(f"Failed to activate configuration {current_config} (non-critical)")
+                        else:
+                            self.log.info(f"Config {current_config} activated successfully")
+                    except Exception as e:
+                        self.log.error(f"Error activating config {current_config}: {e} (non-critical, continuing)")
+                    
+                    if CREATE_MONITOR_PAIRS_UNINIT:
+                        try:
+                            exclusions = interfaces_in_root(current_config)
+                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            if not system_initialized:
+                                self.log.warning("System manager initialization failed (non-critical)")
+                        except Exception as e:
+                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+
+        except Exception as e:
+            self.log.error(f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)", exc_info=True)
 
     async def initialize_components(self):
         """Initialize all application components with proper sequencing and retry"""
@@ -318,74 +393,8 @@ class InitializationManager:
             self.log.error("System not ready for initialization")
             return False
 
-        try:
-            current_config = get_current_config()
-            if current_config == "default" or not current_config:
-                success = activate_config("default", override_active=True)
-
-                if not success:
-                    self.log.error(
-                        f"Failed to activate default config"
-                    )
-                    
-                else:
-                    self.log.info(f"Default config activated sucessfully")
-                    
-                    
-                if CREATE_MONITOR_PAIRS_DEFAULT:
-                    system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
-                    if not system_initialized:
-                        self.log.error(
-                            "System manager initialization failed - cannot proceed"
-                        )
-                        return False
-            else:
-                model = get_model()
-                if model not in SUPPORTED_MODELS:
-                    self.log.error(
-                        f"Model {model} is not supported, using default configuration"
-                    )
-                    success = activate_config("default", override_active=True)
-
-                    if not success:
-                        self.log.error(
-                            f"Failed to activate default config"
-                        )
-                        
-                    else:
-                        self.log.info(f"Default config activated sucessfully")
-                                                
-                    if CREATE_MONITOR_PAIRS_DEFAULT:
-                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
-                        if not system_initialized:
-                            self.log.error(
-                                "System manager initialization failed - cannot proceed"
-                            )
-                            return False
-                else:
-                    self.log.info(
-                        f"Activating current network configuration: {current_config}"
-                    )
-                    success = activate_config(current_config, override_active=True)
-
-                    if not success:
-                        self.log.error(
-                            f"Failed to activate configuration {current_config}"
-                        )
-                    else:
-                        self.log.info(f"Config {current_config} activated sucessfully")
-                    
-                    if CREATE_MONITOR_PAIRS_UNINIT:
-                        exclusions = interfaces_in_root(current_config)
-                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
-                        if not system_initialized:
-                            self.log.error(
-                                "System manager initialization failed - cannot proceed"
-                            )
-                            return False
-
-        except FileNotFoundError:
-            self.log.warning("No current network configuration found")
+        # Initialize network namespaces (non-blocking - failures don't stop core)
+        await self._initialize_network_namespaces()
 
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:

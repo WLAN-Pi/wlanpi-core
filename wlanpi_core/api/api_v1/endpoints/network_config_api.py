@@ -3,7 +3,7 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.network_config_errors import ConfigActiveError
+from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import (
     NetConfig,
@@ -75,6 +75,9 @@ async def get_config_by_id(id: str):
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
+    except ConfigMalformedError as cme:
+        log.error(f"Configuration is malformed: {cme}")
+        raise HTTPException(status_code=422, detail=cme.message)
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
     except Exception as ex:
@@ -204,6 +207,9 @@ async def activate_config(id: str, override_active: Optional[bool] = False):
     except ConfigActiveError as cae:
         log.error(f"Configuration already active: {cae}")
         raise HTTPException(status_code=409, detail=str(cae))
+    except ConfigMalformedError as cme:
+        log.error(f"Configuration is malformed: {cme}")
+        raise HTTPException(status_code=422, detail=cme.message)
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
