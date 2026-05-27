@@ -717,23 +717,30 @@ def handle_move_wlan1_to_ns_with_orb_monitor(namespace_service, netcfg_env, scen
 
 
 def handle_files_apps_json_missing_orb(namespace_service, netcfg_env, scenario: Scenario):
+    """Missing orb in apps.json: monitor calls start_app; ValueError is caught gracefully."""
+    import time
+
     stop_all_connection_monitors()
+    _wait_for_monitors_idle()
     cfg = _ns("orb_ns", interface="wlan1", phy="phy1", iface_display_name="wlan1", autostart_app="orb")
     with patch(
         "wlanpi_core.connection.monitor.get_wpa_status",
         return_value={"wpa_status": {"wpa_state": "COMPLETED"}},
     ):
         with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout"):
-            with patch("wlanpi_core.namespaces.apps.get_app_command", return_value=None):
-                with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
+            with patch("wlanpi_core.connection.monitor.set_default_route"):
+                with patch(
+                    "wlanpi_core.namespaces.apps.start_app_in_namespace",
+                    side_effect=ValueError("App ID orb not found in apps file"),
+                ) as start_app:
                     with patch("wlanpi_core.connection.monitor.time.sleep"):
                         ConnectionMonitor.start_monitor(cfg, "wlan1", "orb_ns", timeout=5)
-                        import time
-
-                        time.sleep(0.1)
+                        deadline = time.time() + 2
+                        while time.time() < deadline and not start_app.called:
+                            time.sleep(0.01)
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
-    start_app.assert_not_called()
+    start_app.assert_called_once_with("orb_ns", "orb")
 
 
 HANDLERS = {
