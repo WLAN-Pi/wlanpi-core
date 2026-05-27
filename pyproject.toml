@@ -74,3 +74,6 @@ exclude = ["tests*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "wlanpi_core.__version__.__version__"}
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
