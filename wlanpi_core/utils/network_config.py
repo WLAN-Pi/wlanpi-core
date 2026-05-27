@@ -110,6 +110,8 @@ def interfaces_in_root(cfg_id: str) -> list[str]:
 def list_configs() -> dict[str, bool]:
     """List all configuration files in the CONFIG_DIR directory."""
     configs = {}
+    active_id = ccf.read_text().strip() if ccf.exists() else None
+
     for cfg_file in cfg_dir.glob("*.json"):
         cfg_stem = cfg_file.stem
         annotation = None
@@ -136,7 +138,7 @@ def list_configs() -> dict[str, bool]:
         key = f"{cfg_stem} {annotation}" if annotation else cfg_stem
         
         # Check if this config is active (using original stem name for comparison)
-        is_active = ccf.exists() and ccf.read_text().strip() == cfg_stem
+        is_active = active_id == cfg_stem
         configs[key] = is_active
     
     return configs
