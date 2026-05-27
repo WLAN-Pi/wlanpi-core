@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
@@ -220,42 +222,70 @@ def is_active(cfg_id: str) -> bool:
         if get_current_config() == cfg_id:
             return True
     except ConfigMalformedError:
-        # If current config is malformed, it's been reverted to default
-        # so the requested cfg_id is not active
+        # If current config is malformed, it's not the requested cfg_id
         pass
     return False
 
 
+def _revert_current_config_to_default() -> None:
+    ccf.write_text("default")
+
+
 def get_current_config() -> str:
-    """Get the currently active configuration cfg_id."""
+    """Get the currently active configuration cfg_id without mutating current.txt."""
     if not ccf.exists():
         raise FileNotFoundError("No current configuration set.")
-    
+
     content = ccf.read_text().strip()
     if not content:
         log.error("Current configuration file is empty or contains only whitespace.")
-        # Revert to default without rewriting the file
-        ccf.write_text("default")
         raise ConfigMalformedError(
-            "Current configuration file is empty or contains only whitespace. Reverted to 'default'.",
-            cfg_id=None
+            "Current configuration file is empty or contains only whitespace.",
+            cfg_id=None,
         )
-    
-    # Validate that the config ID exists and is valid
+
     try:
-        # Try to get the config to validate it exists and is valid
         get_config(content)
     except (FileNotFoundError, ConfigMalformedError) as e:
-        error_msg = getattr(e, 'message', str(e))
+        error_msg = getattr(e, "message", str(e))
         log.error(f"Current configuration '{content}' is invalid: {error_msg}")
-        # Revert to default without rewriting the malformed active config file
-        ccf.write_text("default")
         raise ConfigMalformedError(
-            f"Current configuration '{content}' is invalid or malformed: {error_msg}. Reverted to 'default'.",
-            cfg_id=content
+            f"Current configuration '{content}' is invalid or malformed: {error_msg}",
+            cfg_id=content,
         )
-    
+
     return content
+
+
+def recover_current_config() -> str:
+    """
+    Validate current.txt and rewrite it to default when malformed.
+
+    Used at startup and in recovery paths where a getter side-effect is required.
+    """
+    try:
+        return get_current_config()
+    except ConfigMalformedError as e:
+        _revert_current_config_to_default()
+        raise ConfigMalformedError(
+            f"{e.message}. Reverted to 'default'.",
+            cfg_id=e.cfg_id,
+        ) from e
+
+
+def _rollback_activated_configs(activated_configs: list[NamespaceConfig | RootConfig]) -> None:
+    """Deactivate entries that were applied before a failed multi-adapter activation.
+
+    Used for UNACCEPTABLE failures (status=error or raised exceptions). Not used when
+    all per-adapter outcomes are connected/provisioned — see activate_config().
+    """
+    for activated_cfg in activated_configs:
+        try:
+            ns.deactivate_config(activated_cfg)
+        except Exception as e:
+            log.warning(
+                f"Error deactivating config for {activated_cfg.interface}: {e} (non-critical)"
+            )
 
 
 def add_config(config: NetConfig) -> bool:
@@ -296,13 +326,32 @@ def delete_config(cfg_id: str, force: bool = False) -> bool:
 
 
 def activate_config(cfg_id: str, override_active: bool = False) -> bool:
-    """Activate a configuration by cfg_id."""
+    """Activate a configuration by cfg_id.
+
+    Multi-adapter activation has three distinct outcomes (see tests/scenarios/ACTIVATION_OUTCOMES.md):
+
+    1. **Persist (no rollback)** — every adapter returns connected or provisioned.
+       Includes tolerated cases: missing interface (provisioned skip), delayed SSID
+       (provisioned + background monitor), pre-staged WPA. Writes cfg_id to current.txt.
+
+    2. **Rollback via return False** — loop completes but any outcome is status=error
+       (UNACCEPTABLE hw fault). Deactivates only entries in activated_configs; ccf unchanged.
+
+    3. **Rollback via exception** — ns.activate_config() raises mid-loop (same severity as
+       status=error). Deactivates activated_configs, re-raises; ccf unchanged.
+
+    Provisioned-but-not-yet-connected is success path (1), not rollback.
+    """
 
     cfg = get_config(cfg_id)
     try:
         active_cfg = get_current_config()
-    except (FileNotFoundError, ConfigMalformedError):
-        # Treat missing or malformed current-config as default (first-run or error scenario)
+    except ConfigMalformedError:
+        # Malformed current.txt blocks activation pre-check; repair inline (same as recover path)
+        _revert_current_config_to_default()
+        active_cfg = "default"
+    except FileNotFoundError:
+        # Treat missing current-config as default (first-run scenario)
         active_cfg = "default"
 
     if not override_active:
@@ -313,12 +362,13 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
 
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
+    activated_configs: list[NamespaceConfig | RootConfig] = []
     try:
         if override_active:
             log.info("Override active set: killing all wpa_supplicant processes before activation")
             ns.kill_all_supplicants()
         outcomes: list[str] = []
-        activated_configs: list[NamespaceConfig | RootConfig] = []  # Track what was actually activated
+        activated_configs.clear()
 
         for ns_cfg in cfg.namespaces or []:
             log.info(
@@ -336,36 +386,39 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
             result = ns.activate_config(root_cfg)
             status = getattr(result, "status", "error") if result is not None else "error"
             outcomes.append(status)
-            # Only track as activated if it succeeded (not error, not skipped)
             if status in {"connected", "provisioned"}:
                 activated_configs.append(root_cfg)
 
-        # Determine if activation should be persisted
+        # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
+        # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
         acceptable_statuses = {"connected", "provisioned"}
         all_ok = all(status in acceptable_statuses for status in outcomes) if outcomes else True
 
         if all_ok:
+            # Path 1: persist active config (monitors may still be connecting WPA)
             ccf.write_text(cfg_id)
             return True
         else:
+            # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
             log.error(f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs")
-            # Only deactivate configs that were actually activated
-            for activated_cfg in activated_configs:
-                try:
-                    ns.deactivate_config(activated_cfg)
-                except Exception as e:
-                    log.warning(f"Error deactivating config for {activated_cfg.interface}: {e} (non-critical)")
+            _rollback_activated_configs(activated_configs)
             return False
 
     except Exception as ex:
-        # Do not roll back here; a provisioned (not connected) outcome should
-        # leave the configuration active. Only report the error upward.
+        # Path 3: hard failure mid-loop — same rollback as path 2, then propagate
         log.error(f"Failed to activate config {cfg_id}: {ex}")
+        if activated_configs:
+            log.error("Rolling back successfully activated configs after activation exception")
+            _rollback_activated_configs(activated_configs)
         raise
 
 
 def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
-    """Deactivate a configuration by cfg_id."""
+    """Deactivate a configuration by cfg_id.
+
+    On per-adapter failure mid-loop, still writes current.txt to default and calls
+    revert_to_root so ccf and runtime state stay consistent before re-raising.
+    """
     path = cfg_dir / f"{cfg_id}.json"
 
     cfg = get_config(cfg_id)
@@ -390,4 +443,12 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
 
     except Exception as ex:
         log.error(f"Failed to deactivate config {cfg_id}: {ex}")
+        # Ensure ccf/revert complete even when a later adapter raises (mirror activate rollback)
+        try:
+            ccf.write_text("default")
+            ns.revert_to_root(None)
+        except Exception as cleanup_error:
+            log.warning(
+                f"Error completing deactivate cleanup for {cfg_id}: {cleanup_error} (non-critical)"
+            )
         raise

@@ -1,4 +1,7 @@
-"""Scenario handlers for namespace_test_matrix.csv rows."""
+"""Scenario handlers for namespace_test_matrix.csv rows.
+
+activate_config persist vs rollback paths: tests/scenarios/ACTIVATION_OUTCOMES.md
+"""
 from __future__ import annotations
 
 import json
@@ -250,7 +253,7 @@ def handle_user_edit_active_config_blocked(namespace_service, netcfg_env, scenar
 def handle_files_current_points_to_deleted(namespace_service, netcfg_env, scenario: Scenario):
     netcfg_env["ccf"].write_text("ghost_cfg")
     with pytest.raises(ConfigMalformedError) as exc:
-        nc.get_current_config()
+        nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert "invalid or malformed" in exc.value.message.lower()
 
@@ -323,7 +326,7 @@ def handle_default_startup_malformed_current(namespace_service, netcfg_env, scen
         nc.get_default_config().model_dump(mode="json"),
     )
     with pytest.raises(ConfigMalformedError) as exc:
-        nc.get_current_config()
+        nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert "reverted" in exc.value.message.lower()
 
@@ -435,7 +438,7 @@ def handle_partial_activation_rollback(namespace_service, netcfg_env, scenario: 
 
 
 def handle_activation_exception_mid_loop_rollback(namespace_service, netcfg_env, scenario: Scenario):
-    """Exception during activate loop must roll back entries already activated."""
+    """activate_config path 3: exception mid-loop rolls back activated_configs (see ACTIVATION_OUTCOMES.md)."""
 
     def fail_bring_up(iface_name, namespace=None):
         if namespace == "bad_ns":
@@ -473,7 +476,7 @@ def handle_activation_exception_mid_loop_rollback(namespace_service, netcfg_env,
 
 
 def handle_deactivate_exception_mid_loop_rollback(namespace_service, netcfg_env, scenario: Scenario):
-    """Exception during deactivate loop must not leave ccf/revert incomplete."""
+    """deactivate_config: ccf=default and revert_to_root still run before re-raise on mid-loop failure."""
 
     _write_netconfig(
         netcfg_env,

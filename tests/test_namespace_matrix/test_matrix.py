@@ -1,4 +1,7 @@
-"""Parametrized tests driven by tests/scenarios/namespace_test_matrix.csv."""
+"""Parametrized tests driven by tests/scenarios/namespace_test_matrix.csv.
+
+See tests/scenarios/ACTIVATION_OUTCOMES.md for activate_config persist vs rollback paths.
+"""
 import pytest
 
 from tests.scenarios.loader import Scenario, load_scenarios
