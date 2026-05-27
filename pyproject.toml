@@ -52,7 +52,7 @@ testing = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "coverage-badge",
+    "genbadge[coverage]",
     "pytest-mock",
     "pydantic-settings",
 ]
