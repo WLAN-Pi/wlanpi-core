@@ -1,4 +1,7 @@
-"""Scenario handlers for namespace_test_matrix.csv rows."""
+"""Scenario handlers for namespace_test_matrix.csv rows.
+
+activate_config persist vs rollback paths: tests/scenarios/ACTIVATION_OUTCOMES.md
+"""
 from __future__ import annotations
 
 import json
@@ -250,7 +253,7 @@ def handle_user_edit_active_config_blocked(namespace_service, netcfg_env, scenar
 def handle_files_current_points_to_deleted(namespace_service, netcfg_env, scenario: Scenario):
     netcfg_env["ccf"].write_text("ghost_cfg")
     with pytest.raises(ConfigMalformedError) as exc:
-        nc.get_current_config()
+        nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert "invalid or malformed" in exc.value.message.lower()
 
@@ -323,7 +326,7 @@ def handle_default_startup_malformed_current(namespace_service, netcfg_env, scen
         nc.get_default_config().model_dump(mode="json"),
     )
     with pytest.raises(ConfigMalformedError) as exc:
-        nc.get_current_config()
+        nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert "reverted" in exc.value.message.lower()
 
@@ -435,7 +438,7 @@ def handle_partial_activation_rollback(namespace_service, netcfg_env, scenario: 
 
 
 def handle_activation_exception_mid_loop_rollback(namespace_service, netcfg_env, scenario: Scenario):
-    """Exception during activate loop must roll back entries already activated."""
+    """activate_config path 3: exception mid-loop rolls back activated_configs (see ACTIVATION_OUTCOMES.md)."""
 
     def fail_bring_up(iface_name, namespace=None):
         if namespace == "bad_ns":
@@ -473,7 +476,7 @@ def handle_activation_exception_mid_loop_rollback(namespace_service, netcfg_env,
 
 
 def handle_deactivate_exception_mid_loop_rollback(namespace_service, netcfg_env, scenario: Scenario):
-    """Exception during deactivate loop must not leave ccf/revert incomplete."""
+    """deactivate_config: ccf=default and revert_to_root still run before re-raise on mid-loop failure."""
 
     _write_netconfig(
         netcfg_env,
@@ -655,17 +658,20 @@ def handle_ssid_delayed_connect_within_monitor(namespace_service, netcfg_env, sc
             yield {"wpa_status": {"wpa_state": "COMPLETED"}}
 
     with patch("wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_side_effect()):
-        with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout") as dhcp:
-            with patch("wlanpi_core.connection.monitor.set_default_route"):
-                with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
-                    ConnectionMonitor.start_monitor(cfg, "wlan0", "ns_a", timeout=5)
-                    import time
+        with patch("wlanpi_core.connection.monitor.time.sleep"):
+            with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout") as dhcp:
+                with patch("wlanpi_core.connection.monitor.set_default_route"):
+                    with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
+                        ConnectionMonitor.start_monitor(cfg, "wlan0", "ns_a", timeout=5)
+                        import time
 
-                    deadline = time.time() + 6
-                    while time.time() < deadline and not dhcp.called:
-                        time.sleep(0.05)
-                    stop_all_connection_monitors()
-                    _wait_for_monitors_idle()
+                        deadline = time.time() + 2
+                        while time.time() < deadline and not (
+                            dhcp.called and start_app.called
+                        ):
+                            time.sleep(0.01)
+                        stop_all_connection_monitors()
+                        _wait_for_monitors_idle()
     dhcp.assert_called_once()
     start_app.assert_called_once_with("ns_a", "orb")
 
@@ -711,23 +717,30 @@ def handle_move_wlan1_to_ns_with_orb_monitor(namespace_service, netcfg_env, scen
 
 
 def handle_files_apps_json_missing_orb(namespace_service, netcfg_env, scenario: Scenario):
+    """Missing orb in apps.json: monitor calls start_app; ValueError is caught gracefully."""
+    import time
+
     stop_all_connection_monitors()
+    _wait_for_monitors_idle()
     cfg = _ns("orb_ns", interface="wlan1", phy="phy1", iface_display_name="wlan1", autostart_app="orb")
     with patch(
         "wlanpi_core.connection.monitor.get_wpa_status",
         return_value={"wpa_status": {"wpa_state": "COMPLETED"}},
     ):
         with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout"):
-            with patch("wlanpi_core.namespaces.apps.get_app_command", return_value=None):
-                with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
+            with patch("wlanpi_core.connection.monitor.set_default_route"):
+                with patch(
+                    "wlanpi_core.namespaces.apps.start_app_in_namespace",
+                    side_effect=ValueError("App ID orb not found in apps file"),
+                ) as start_app:
                     with patch("wlanpi_core.connection.monitor.time.sleep"):
                         ConnectionMonitor.start_monitor(cfg, "wlan1", "orb_ns", timeout=5)
-                        import time
-
-                        time.sleep(0.1)
+                        deadline = time.time() + 2
+                        while time.time() < deadline and not start_app.called:
+                            time.sleep(0.01)
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
-    start_app.assert_not_called()
+    start_app.assert_called_once_with("orb_ns", "orb")
 
 
 HANDLERS = {

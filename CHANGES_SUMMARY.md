@@ -138,15 +138,17 @@ This PR hardens the network namespaces functionality to make wlanpi-core more ro
    - Validates configuration structure (must have 'id' field)
 
 3. **Active configuration validation**
-   - Detects if the current active configuration file is still valid JSON
-   - Catches breaking changes to the file once it is activated
-   - This will catch a change to an active config which then breaks on reboot
-   - Automatically reverts to "default" when active config becomes invalid
+   - `get_current_config()` reads and validates current.txt without side effects
+   - `recover_current_config()` repairs malformed current.txt (writes `default`) for startup/recovery
+   - Detects invalid or missing active config JSON before activation proceeds
 
-4. **Correct rollback on activation failure**
-   - When activation of a configuration fails to complete, correctly rolls back only the successfully activated configs
-   - Tracks which configs were activated before attempting rollback
-   - Prevents leaving system in partial state
+4. **Rollback on activation failure (multi-adapter)**
+   - **Persist without rollback** when all adapters return `connected` or `provisioned`
+     (includes missing-interface skip and delayed-SSID pre-staging — not failures)
+   - **Rollback** when any adapter returns `status=error` (returns False) or raises mid-loop
+   - Tracks `activated_configs` and deactivates only those entries; does not roll back
+     tolerated `provisioned` outcomes when the full config activation succeeds
+   - See `tests/scenarios/ACTIVATION_OUTCOMES.md` for the three-path model
 
 5. **Enhanced status endpoint**
    - Status endpoint now handles individual namespace errors gracefully

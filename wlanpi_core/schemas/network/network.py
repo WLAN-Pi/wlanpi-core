@@ -74,6 +74,33 @@ class SecurityTypes(str, Enum):
     owe = "OWE"
 
 
+_REDACTED = "***"
+_SENSITIVE_SECURITY_FIELDS = (
+    "psk",
+    "password",
+    "private_key",
+    "client_cert",
+    "ca_cert",
+)
+
+
+def _redact_security_dict(security: Optional[dict]) -> Optional[dict]:
+    """Return a copy of a security dict with credential fields masked."""
+    if not security:
+        return security
+    redacted = dict(security)
+    for field in _SENSITIVE_SECURITY_FIELDS:
+        if redacted.get(field):
+            redacted[field] = _REDACTED
+    return redacted
+
+
+def _redact_root_config_dict(data: dict) -> dict:
+    redacted = dict(data)
+    redacted["security"] = _redact_security_dict(redacted.get("security"))
+    return redacted
+
+
 class NetSecurity(BaseModel):
     ssid: str
     security: SecurityTypes
@@ -86,6 +113,11 @@ class NetSecurity(BaseModel):
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
 
+    def __str__(self) -> str:
+        return str(_redact_security_dict(self.model_dump()))
+
+    __repr__ = __str__
+
 
 class RootConfig(BaseModel):
     mode: NetworkModeEnum = NetworkModeEnum.managed
@@ -97,6 +129,11 @@ class RootConfig(BaseModel):
     default_route: bool = False
     autostart_app: Optional[str] = None
 
+    def __str__(self) -> str:
+        return str(_redact_root_config_dict(self.model_dump()))
+
+    __repr__ = __str__
+
 
 class NamespaceConfig(RootConfig):
     namespace: str
@@ -106,6 +143,18 @@ class NetConfig(BaseModel):
     id: str
     namespaces: Optional[list[NamespaceConfig]] = None
     roots: Optional[list[RootConfig]] = None
+
+    def __str__(self) -> str:
+        data = self.model_dump()
+        if data.get("namespaces"):
+            data["namespaces"] = [
+                _redact_root_config_dict(entry) for entry in data["namespaces"]
+            ]
+        if data.get("roots"):
+            data["roots"] = [_redact_root_config_dict(entry) for entry in data["roots"]]
+        return str(data)
+
+    __repr__ = __str__
 
 
 class NetConfigUpdate(BaseModel):

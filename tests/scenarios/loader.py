@@ -1,4 +1,8 @@
-"""Load namespace test scenarios from the CSV matrix."""
+"""Load namespace test scenarios from the CSV matrix.
+
+Outcome semantics for activate_config (persist vs rollback) are documented in
+ACTIVATION_OUTCOMES.md in this directory.
+"""
 from __future__ import annotations
 
 import csv
