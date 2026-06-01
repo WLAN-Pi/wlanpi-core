@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,7 +29,7 @@ async def get_status():
     Get the status of network configurations.
     """
     try:
-        status = network_config.status()
+        status = await asyncio.to_thread(network_config.status)
         log.info("Network configuration status retrieved successfully")
         return status
     except Exception as ex:
@@ -48,7 +49,7 @@ async def get_configs():
     """
     try:
 
-        configs = network_config.list_configs()
+        configs = await asyncio.to_thread(network_config.list_configs)
         log.info("Retrieved all configurations")
         return configs
     except ValidationError as ve:
@@ -196,7 +197,9 @@ async def activate_config(id: str, override_active: Optional[bool] = False):
     Activate a network configuration by ID.
     """
     try:
-        success = network_config.activate_config(id, override_active)
+        success = await asyncio.to_thread(
+            network_config.activate_config, id, override_active
+        )
         if not success:
             log.error(f"Failed to activate configuration: {id}")
             raise HTTPException(
@@ -231,8 +234,10 @@ async def deactivate_config(id: str, override_active: Optional[bool] = False):
     Deactivate a network configuration by ID.
     """
     try:
-        success = network_config.deactivate_config(
-            id, override_active=override_active if override_active else False
+        success = await asyncio.to_thread(
+            network_config.deactivate_config,
+            id,
+            override_active=override_active if override_active else False,
         )
         if not success:
             log.error(f"Failed to deactivate configuration: {id}")

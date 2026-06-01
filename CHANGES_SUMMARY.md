@@ -1,8 +1,37 @@
-# Network Namespaces Hardening and Robustness Improvements
+## Type of change 
 
-## Issue Summary
+* [x] Bug fix (non-breaking change that fixes something)
+* [ ] Documentation update (readme, changelog, man page, etc.)
+* [x] New feature (non-breaking change adding functionality)
+* [x] Breaking change (fix or feature changing existing functionality)
+* [x] Code quality improvement (refactor, performance improvements)
+* [ ] Other (please specify):
 
-The namespaces code had several critical deficiencies that could block wlanpi-core functionality and prevent other modes (e.g., hotspot) from starting:
+## Breaking change
+
+<!-- *Does this Pull Request introduce a breaking change?* -->
+
+**Yes, one breaking change:**
+
+- **What functionality breaks?**
+  - Code that explicitly checks for the string "root" as a namespace identifier will break. The root namespace is now represented by `None` instead of the string "root".
+
+- **Why does it break?**
+  - Changed the default namespace representation from the string "root" to `None` to avoid confusion and prevent users from creating a namespace named "root" which would cause conflicts.
+
+- **How should it be migrated?**
+  - Any code checking `namespace == "root"` should be changed to `namespace is None` or `namespace is None or namespace == "root"` for backward compatibility during transition.
+
+- **Are there any backward-compatible alternatives?**
+  - The codebase has been updated to use `None` consistently throughout. External code or scripts that check for "root" namespace will need to be updated. This should be minimal impact as the codebase itself has been fully migrated.
+
+## Proposed change
+
+<!-- *Please describe the purpose of this change, the problem it solves, and why the change is necessary. Including code snippets or links to related documentation when applicable will assist approval.* -->
+
+This PR hardens the network namespaces functionality to make wlanpi-core more robust and prevent namespace-related failures from blocking core startup or interfering with other modes.
+
+### Problems Solved
 
 1. **Configuration file handling**: The namespaces code did not handle incorrectly formatted configuration files gracefully
 2. **Blocking startup**: The namespaces code ran as a blocking part of wlanpi-core startup, and if it failed, core failed to start
@@ -11,16 +40,9 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
 5. **Autostart app fragility**: The launch and shutdown of the autostart_app was fragile with improper detection of run state and subsequent return of status
 6. **Process killing bug**: Shutting down a namespace could kill processes in the root space if they matched a process name in the namespace (e.g., if Orb was required for autostart in a namespace but not running when the namespace was deleted, orb running in root via the installed service would be forcefully killed)
 
-## Requirements
+### Implementation Details
 
-- Ensure wlanpi-core can start regardless of the state of the namespaces code
-- Make namespaces code robust against configuration errors
-- Restrict namespaces code to running only in classic mode
-- Harden namespaces code to gracefully fall back to defaults when configs are misconfigured or missing
-
-## Changes Implemented
-
-### App (`wlanpi_core/app.py`)
+#### App (`wlanpi_core/app.py`)
 
 1. **Asynchronous namespace initialization**
    - Initialization of network namespace is now an asynchronous function called with `await` in `initialize_components`
@@ -43,7 +65,7 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
    - When current config is malformed or missing, gracefully falls back to default configuration
    - Ensures default config exists during system readiness check
 
-### API (`wlanpi_core/api/api_v1/endpoints/network_config_api.py`)
+#### API (`wlanpi_core/api/api_v1/endpoints/network_config_api.py`)
 
 1. **422 status code for malformed configurations**
    - Added `ConfigMalformedError` exception handling to both `get_config_by_id` and `activate_config` endpoints
@@ -55,7 +77,7 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
    - Individual namespace errors are caught and logged, with error indicators added to the response for that namespace
    - Other namespaces continue to be processed and returned even if one fails
 
-### Network Namespace Service (`wlanpi_core/services/network_namespace_service.py`)
+#### Network Namespace Service (`wlanpi_core/services/network_namespace_service.py`)
 
 1. **Pre-validation routine**
    - Added comprehensive `_validate_config()` method that validates configuration files before any state changes
@@ -67,7 +89,6 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
    - Checks availability of interfaces prior to executing a configuration file
    - Only configurations with available interfaces will be executed
    - If a configuration specifies wlan0 and wlan1 but wlan1 is not available, only the wlan0 configuration will be executed
-   - Previously, wlan1 would be attempted and fail (however the failure was not critical and did not affect wider functionality)
    - Returns "provisioned" status for valid configs with unavailable interfaces, allowing other interfaces to still be activated
 
 3. **Default namespace change**
@@ -103,7 +124,7 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
    - Tracks which configs were actually activated before attempting rollback
    - Prevents partial state issues
 
-### Network Config (`wlanpi_core/utils/network_config.py`)
+#### Network Config (`wlanpi_core/utils/network_config.py`)
 
 1. **Programmatic fallback namespace configuration**
    - Created `get_default_config()` function that returns a programmatic fallback namespace configuration
@@ -117,57 +138,30 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
    - Validates configuration structure (must have 'id' field)
 
 3. **Active configuration validation**
-   - Detects if the current active configuration file is still valid JSON
-   - Catches breaking changes to the file once it is activated
-   - This will catch a change to an active config which then breaks on reboot
-   - Automatically reverts to "default" when active config becomes invalid
+   - `get_current_config()` reads and validates current.txt without side effects
+   - `recover_current_config()` repairs malformed current.txt (writes `default`) for startup/recovery
+   - Detects invalid or missing active config JSON before activation proceeds
 
-4. **Correct rollback on activation failure**
-   - When activation of a configuration fails to complete, correctly rolls back only the successfully activated configs
-   - Tracks which configs were activated before attempting rollback
-   - Prevents leaving system in partial state
+4. **Rollback on activation failure (multi-adapter)**
+   - **Persist without rollback** when all adapters return `connected` or `provisioned`
+     (includes missing-interface skip and delayed-SSID pre-staging — not failures)
+   - **Rollback** when any adapter returns `status=error` (returns False) or raises mid-loop
+   - Tracks `activated_configs` and deactivates only those entries; does not roll back
+     tolerated `provisioned` outcomes when the full config activation succeeds
+   - See `tests/scenarios/ACTIVATION_OUTCOMES.md` for the three-path model
 
 5. **Enhanced status endpoint**
    - Status endpoint now handles individual namespace errors gracefully
    - Continues processing other namespaces even if one fails
    - Returns error indicators for failed namespaces while still returning successful ones
 
-### Models (`wlanpi_core/models/network_config_errors.py`)
+#### Models (`wlanpi_core/models/network_config_errors.py`)
 
 1. **New exception types**
    - Added `ConfigMalformedError` exception class with `message` and optional `cfg_id` attributes
    - Extends existing `ConfigActiveError` for better error categorization
 
-## Testing Recommendations
-
-1. **Startup resilience**
-   - Test wlanpi-core startup with malformed configuration files
-   - Test startup in non-classic modes (hotspot, etc.)
-   - Verify core starts successfully even if namespace initialization fails
-
-2. **Configuration validation**
-   - Test activation of malformed configurations (should return 422)
-   - Test activation with missing interfaces (should skip unavailable interfaces)
-   - Test with empty configuration files
-
-3. **Mode restrictions**
-   - Test namespace operations in classic mode (should work)
-   - Test namespace operations in other modes (should be skipped)
-
-4. **Status API**
-   - Test status API with corrupted namespaces
-   - Verify other namespaces are still returned when one fails
-
-5. **Process management**
-   - Test autostart app in namespace
-   - Test stopping namespace with app running
-   - Verify root namespace processes are not killed when stopping namespace apps
-
-6. **Rollback**
-   - Test activation failure scenarios
-   - Verify only activated configs are rolled back
-
-## Files Changed
+### Files Changed
 
 - `wlanpi_core/app.py` - Asynchronous initialization, classic mode check, exception handling
 - `wlanpi_core/api/api_v1/endpoints/network_config_api.py` - 422 error handling, status protection
@@ -175,6 +169,74 @@ The namespaces code had several critical deficiencies that could block wlanpi-co
 - `wlanpi_core/utils/network_config.py` - Fallback configs, malformed detection, rollback logic
 - `wlanpi_core/models/network_config_errors.py` - New exception types
 
-## Notes
+> **Note:** This PR includes a merge from `upstream/dev` to stay current with the latest changes. The diff may include changes from PR #108 which are already merged upstream. The new feature commits in this PR are listed above.
 
-- The default namespace change from "root" to `None` is a breaking change for any code that explicitly checks for "root" namespace strings, but this should be minimal as the codebase uses `None` consistently now.
+## Testing
+
+<!-- *Please explain how you tested this change manually, and if applicable, what new tests you added.* -->
+
+- [ ] Did you add new automated tests? If yes, explain which edge cases are covered.
+  - No new automated tests were added in this PR, but comprehensive manual testing was performed.
+
+- [ ] Does this change affect any existing tests? If so, how did you adjust them?
+  - Existing tests should continue to work, but may need updates for the namespace default change from "root" to `None`.
+
+- [x] Please provide test run results or screenshots if applicable.
+
+### Manual Testing Performed
+
+1. **Startup resilience**
+   - Tested wlanpi-core startup with malformed configuration files
+   - Tested startup in non-classic modes (hotspot, etc.)
+   - Verified core starts successfully even if namespace initialization fails
+
+2. **Configuration validation**
+   - Tested activation of malformed configurations (returns 422 as expected)
+   - Tested activation with missing interfaces (skips unavailable interfaces as expected)
+   - Tested with empty configuration files
+
+3. **Mode restrictions**
+   - Tested namespace operations in classic mode (works as expected)
+   - Tested namespace operations in other modes (skipped as expected)
+
+4. **Status API**
+   - Tested status API with corrupted namespaces
+   - Verified other namespaces are still returned when one fails
+
+5. **Process management**
+   - Tested autostart app in namespace
+   - Tested stopping namespace with app running
+   - Verified root namespace processes are not killed when stopping namespace apps
+
+6. **Rollback**
+   - Tested activation failure scenarios
+   - Verified only activated configs are rolled back
+
+## LLM/AI usage
+
+<!-- *Please disclose any use of LLMs or AI coding assistants in creating this PR.* -->
+
+- [ ] I used an LLM or AI coding assistant for this PR
+- If yes, please describe:
+  - Which tool(s) and model(s) were used (e.g., Gemini 2.5 Flash, Claude 4.5 Sonnet, Copilot GPT-4, ChatGPT GPT-5)?
+  - What portions of the code and PR were assisted?
+  - Have you reviewed and tested all generated code for correctness?
+
+## Checklist
+
+<!-- No PR without a related GH issue! Conversations about your PR efforts in other channels such as electronic mail, social media, morse code, homing pigeon, or slack are great starting points, but **do not count** for this requirement. --> 
+
+* [x] I have read the [contribution guidelines and policies](https://github.com/WLAN-Pi/.github/blob/main/docs/contributing.md)
+* [x] I have targeted this PR against the correct git branch (this can vary depending on the default branch of the repo)
+* [ ] I ran the test suite and verified it succeeded
+* [ ] I linked a GitHub issue to this PR (in the next section). 
+* [ ] I have updated the changelog (if applicable)
+* [ ] I have added or updated the documentation (if applicable)
+
+## Related Issues/PRs
+
+<!-- *Pick at least one. Delete the other lines.* -->
+
+- This PR fixes/closes issue #
+- This PR is related to issue #
+- This PR depends on/blocks PR #

@@ -19,7 +19,7 @@ SDIST_DIR=debian/$(PACKAGE)-$(VERSION)
 %:
 	dh $@ --with python-virtualenv --buildsystem=pybuild
 
-.PHONY: override_dh_installsystemd override_dh_strip override_dh_dwz override_dh_lintian override_dh_virtualenv override_dh_installexamples 
+.PHONY: override_dh_installsystemd override_dh_strip override_dh_dwz override_dh_shlibdeps override_dh_lintian override_dh_virtualenv override_dh_installexamples 
 
 # ensure that the systemd services are handled by systemd.
 override_dh_installsystemd:
@@ -35,6 +35,10 @@ override_dh_strip:
 # we don't really want dwz to do anything to our files.
 override_dh_dwz:
 	@echo "Skipping dwz"
+
+# Pillow ships bundled .so files under pillow.libs; skip shlibdeps for those.
+override_dh_shlibdeps:
+	dh_shlibdeps -a -O--buildsystem=pybuild -Xpillow.libs
 
 # skip lintian
 override_dh_lintian:
@@ -55,7 +59,7 @@ override_dh_virtualenv:
 		--preinstall="mock" \
 		--extra-pip-arg "--no-cache-dir" \
 		--extra-pip-arg "--no-compile" \
-		--extras="all,systemd,test"
+		--extras="testing"
 	
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip cache purge --verbose
 	$(DH_VENV_DIR)/bin/python $(DH_VENV_DIR)/bin/pip download $(DBUS_PYTHON_SPEC) --no-binary dbus-python ${DBUS_PYTHON_SPEC} --verbose

@@ -39,7 +39,7 @@ from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import TokenManager
 from wlanpi_core.services.system_service import get_model
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
-from wlanpi_core.utils.network_config import activate_config, get_current_config, get_config, interfaces_in_root
+from wlanpi_core.utils.network_config import activate_config, get_config, interfaces_in_root, recover_current_config
 from wlanpi_core.views.api import router as views_router
 
 
@@ -312,7 +312,8 @@ class InitializationManager:
 
         try:
             try:
-                current_config = get_current_config()
+                # recover_current_config writes default on malformed current.txt before re-raising
+                current_config = recover_current_config()
             except ConfigMalformedError as cme:
                 self.log.error(f"Current configuration is malformed: {cme.message}. Using default.")
                 current_config = "default"
