@@ -25,7 +25,7 @@ ExecStart=/opt/wlanpi-core/bin/gunicorn \
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed
 TimeoutStopSec=5
-PrivateTmp=true
+PrivateTmp=false
 
 # Restart=always
 Type=notify
