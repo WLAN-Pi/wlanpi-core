@@ -1,4 +1,11 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
+
+
+class PublicIpInfo(BaseModel):
+    info: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class NetworkInfo(BaseModel):

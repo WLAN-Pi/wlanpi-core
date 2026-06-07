@@ -2,11 +2,18 @@ import json
 import os
 import socket
 import subprocess
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
-from wlanpi_core.constants import MODE_FILE, WLANPI_IMAGE_FILE
+from wlanpi_core.constants import MODE_FILE, REG_DOMAIN_FILE, TIME_ZONE_FILE, WLANPI_IMAGE_FILE
+from wlanpi_core.data.reg_domain_countries import (
+    is_supported_reg_domain,
+    reg_domain_country_entries,
+)
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
@@ -395,3 +402,291 @@ async def start_systemd_service(name: str):
     raise ValidationError(
         f"starting {name} is restricted or does not exist", status_code=400
     )
+
+
+def restart_service(service: str):
+    try:
+        if ".service" not in service:
+            service = service + ".service"
+        manager.RestartUnit(service, "replace")
+    except DBusException as de:
+        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
+            raise ValidationError(
+                f"no such unit for {service} on host", status_code=400
+            )
+        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
+            raise ValidationError("Problem with the args", status_code=400)
+        if (
+            de._dbus_error_name
+            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
+        ):
+            raise ValidationError(
+                "Interactive authentication required.", status_code=401
+            )
+        raise
+    unit_name = service.replace(".service", "")
+    return check_service_status(service)
+
+
+async def restart_systemd_service(name: str):
+    name = name.strip().lower()
+    if is_allowed_service(name):
+        active = restart_service(name)
+        return {"name": name, "active": active}
+
+    raise ValidationError(
+        f"restarting {name} is restricted or does not exist", status_code=400
+    )
+
+
+def _resolve_timezone() -> str:
+    """Return best-effort IANA timezone name."""
+    tz_path = Path("/etc/timezone")
+    if tz_path.exists():
+        tz = tz_path.read_text().strip()
+        if tz and "/" in tz:
+            return tz
+
+    try:
+        localtime = Path("/etc/localtime")
+        if localtime.exists():
+            resolved = localtime.resolve()
+            parts = resolved.parts
+            if "zoneinfo" in parts:
+                idx = parts.index("zoneinfo")
+                return "/".join(parts[idx + 1 :])
+    except OSError:
+        pass
+
+    try:
+        tz = run_command(
+            ["timedatectl", "show", "-p", "Timezone", "--value"],
+            raise_on_fail=False,
+        ).stdout.strip()
+        if tz and "/" in tz:
+            return tz
+        if tz:
+            log.debug("timedatectl Timezone is non-IANA (%r); prefer /etc/timezone", tz)
+            return tz
+    except (RunCommandError, FileNotFoundError):
+        pass
+
+    return "UTC"
+
+
+def get_datetime():
+    """
+    Return local date/time as ISO 8601 for API clients.
+
+    Uses `date -Iseconds` as the canonical source because systemd's
+    `timedatectl show -p LocalTime` is empty on some images (TimeUSec is used instead).
+    """
+    log.debug("get_datetime: resolving local time")
+    try:
+        local_iso = run_command(["date", "-Iseconds"], raise_on_fail=True).stdout.strip()
+        display = run_command(["date"], raise_on_fail=False).stdout.strip() or None
+        timezone = _resolve_timezone()
+        result = {
+            "datetime": local_iso,
+            "timezone": timezone,
+            "display": display,
+            "source": "date",
+        }
+        log.debug(
+            "get_datetime: date -Iseconds=%r timezone=%r display=%r",
+            local_iso,
+            timezone,
+            display,
+        )
+        return result
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.debug("get_datetime: date command failed (%r); using Python fallback", exc)
+
+    timezone = _resolve_timezone()
+    try:
+        now = datetime.now(ZoneInfo(timezone))
+    except Exception:
+        timezone = "UTC"
+        now = datetime.now(ZoneInfo("UTC"))
+    result = {
+        "datetime": now.isoformat(),
+        "timezone": timezone,
+        "display": now.strftime("%a %Y-%m-%d %H:%M:%S %Z"),
+        "source": "fallback",
+    }
+    log.debug(
+        "get_datetime: fallback datetime=%r timezone=%r",
+        result["datetime"],
+        result["timezone"],
+    )
+    return result
+
+
+def get_timezone():
+    try:
+        timezone = run_command(
+            ["timedatectl", "show", "-p", "Timezone", "--value"], raise_on_fail=True
+        ).stdout.strip()
+        return {"timezone": timezone}
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError):
+        tz_path = Path("/etc/timezone")
+        if tz_path.exists():
+            return {"timezone": tz_path.read_text().strip()}
+        raise ValidationError("Unable to determine timezone", status_code=503)
+
+
+def list_timezones():
+    try:
+        output = run_command(["timedatectl", "list-timezones"], raise_on_fail=True).stdout
+        zones = [line.strip() for line in output.splitlines() if line.strip()]
+        return {"timezones": zones}
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError):
+        raise ValidationError("Unable to list timezones", status_code=503)
+
+
+def set_timezone(timezone: str):
+    timezone = timezone.strip()
+    if not timezone:
+        raise ValidationError("timezone is required", status_code=400)
+    if Path(TIME_ZONE_FILE).exists():
+        run_command([TIME_ZONE_FILE, "set", timezone], raise_on_fail=True)
+    else:
+        run_command(["timedatectl", "set-timezone", timezone], raise_on_fail=True)
+    return get_timezone()
+
+
+def get_reg_domain():
+    """
+    Return current WiFi regulatory domain country code.
+
+    Uses `wlanpi-reg-domain get` (not `show` — the script subcommand is `get`).
+    Falls back to `iw reg get` when the script output is not a valid country code.
+    """
+    log.debug("get_reg_domain: reading regulatory domain")
+    raw: Optional[str] = None
+    source = "unknown"
+
+    if Path(REG_DOMAIN_FILE).exists():
+        result = run_command([REG_DOMAIN_FILE, "get"], raise_on_fail=False)
+        candidate = (result.stdout or "").strip()
+        log.debug(
+            "get_reg_domain: wlanpi-reg-domain get stdout=%r stderr=%r rc=%s",
+            candidate,
+            (result.stderr or "").strip(),
+            result.return_code,
+        )
+        if _is_reg_domain_tool_output(candidate):
+            raw = candidate
+            source = "wlanpi-reg-domain"
+
+    if raw is None:
+        crda_path = Path("/etc/default/crda")
+        if crda_path.exists():
+            for line in crda_path.read_text().splitlines():
+                if line.strip().startswith("REGDOMAIN="):
+                    candidate = line.split("=", 1)[1].strip()
+                    log.debug("get_reg_domain: /etc/default/crda REGDOMAIN=%r", candidate)
+                    if _is_plain_country_code(candidate):
+                        raw = candidate
+                        source = "crda"
+                        break
+
+    if raw is None:
+        try:
+            iw_raw = run_command(["iw", "reg", "get"], raise_on_fail=True).stdout.strip()
+            log.debug("get_reg_domain: iw reg get stdout=%r", iw_raw)
+            raw = iw_raw
+            source = "iw"
+        except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+            log.error("get_reg_domain: unable to read reg domain: %r", exc)
+            raise ValidationError(
+                f"Unable to read regulatory domain: {exc}", status_code=503
+            )
+
+    country = _parse_reg_country(raw)
+    result = {"country": country, "raw": raw, "source": source}
+    log.debug("get_reg_domain: parsed country=%r source=%r", country, source)
+    if country == "unknown":
+        log.warning("get_reg_domain: could not parse country from raw=%r", raw)
+    return result
+
+
+def set_reg_domain(country: str):
+    country = country.strip().upper()
+    if len(country) != 2 or not country.isalpha():
+        raise ValidationError("country must be a 2-letter code", status_code=400)
+    if not is_supported_reg_domain(country):
+        raise ValidationError(
+            f"country {country} is not in the supported regulatory domain list",
+            status_code=400,
+        )
+    if Path(REG_DOMAIN_FILE).exists():
+        run_command([REG_DOMAIN_FILE, "set", country, "--no-prompt"], raise_on_fail=True)
+    else:
+        run_command(["iw", "reg", "set", country], raise_on_fail=True)
+    return get_reg_domain()
+
+
+def list_reg_domains():
+    countries = reg_domain_country_entries()
+    log.debug("list_reg_domains: returning %d countries", len(countries))
+    return {"countries": countries}
+
+
+def _is_plain_country_code(value: str) -> bool:
+    code = value.strip().upper()
+    return len(code) == 2 and code.isalpha()
+
+
+def _is_reg_domain_tool_output(value: str) -> bool:
+    if not value or value.startswith("Error:"):
+        return False
+    if "Usage:" in value or "wlanpi-reg-domain" in value:
+        return False
+    if _is_plain_country_code(value):
+        return True
+    return _parse_reg_country(value) != "unknown"
+
+
+def _parse_reg_country(raw: str) -> str:
+    if not raw:
+        return "unknown"
+    text = raw.strip()
+    if "\n" not in text and _is_plain_country_code(text):
+        return text.upper()
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("country "):
+            return line.split()[1].rstrip(":")
+    return "unknown"
+
+
+def get_battery():
+    supply_root = Path("/sys/class/power_supply")
+    if not supply_root.exists():
+        return {"present": False}
+
+    for entry in sorted(supply_root.iterdir()):
+        type_file = entry / "type"
+        if not type_file.exists():
+            continue
+        if type_file.read_text().strip() != "Battery":
+            continue
+        capacity = None
+        capacity_file = entry / "capacity"
+        if capacity_file.exists():
+            try:
+                capacity = int(capacity_file.read_text().strip())
+            except ValueError:
+                capacity = None
+        status = None
+        status_file = entry / "status"
+        if status_file.exists():
+            status = status_file.read_text().strip()
+        return {
+            "present": True,
+            "capacity_percent": capacity,
+            "status": status,
+            "source": entry.name,
+        }
+    return {"present": False}

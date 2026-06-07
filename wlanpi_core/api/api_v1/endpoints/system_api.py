@@ -161,3 +161,168 @@ async def stop_a_systemd_service(name: str):
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/service/restart",
+    response_model=system.ServiceRunning,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def restart_a_systemd_service(name: str):
+    """
+    Uses systemd via dbus to restart an allowed service.
+    """
+
+    try:
+        return await system_service.restart_systemd_service(name)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/datetime",
+    response_model=system.DateTimeInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_datetime():
+    """Returns current local date/time and timezone."""
+    try:
+        log.debug("GET /system/datetime request")
+        result = system_service.get_datetime()
+        log.debug("GET /system/datetime response: %s", result)
+        if not result.get("datetime"):
+            log.error("GET /system/datetime produced empty datetime: %s", result)
+            return Response(content="Unable to determine date/time", status_code=503)
+        return result
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/timezone",
+    response_model=system.TimezoneInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_timezone():
+    """Returns the current system timezone."""
+    try:
+        return system_service.get_timezone()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/timezone/list",
+    response_model=system.TimezoneList,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def list_timezones():
+    """Returns available system timezones."""
+    try:
+        return system_service.list_timezones()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/timezone/set",
+    response_model=system.TimezoneInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def set_timezone(body: system.TimezoneSetRequest):
+    """Sets the system timezone."""
+    try:
+        return system_service.set_timezone(body.timezone)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/reg-domain/list",
+    response_model=system.RegDomainList,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def list_reg_domains():
+    """Returns supported WiFi regulatory domain country codes."""
+    try:
+        log.debug("GET /system/reg-domain/list request")
+        result = system_service.list_reg_domains()
+        log.debug("GET /system/reg-domain/list response: %d countries", len(result["countries"]))
+        return result
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/reg-domain",
+    response_model=system.RegDomainInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_reg_domain():
+    """Returns the current WiFi regulatory domain."""
+    try:
+        log.debug("GET /system/reg-domain request")
+        result = system_service.get_reg_domain()
+        log.debug("GET /system/reg-domain response: %s", result)
+        if result.get("country") == "unknown":
+            log.error("GET /system/reg-domain produced unparseable country: %s", result)
+            return Response(content="Unable to determine regulatory domain", status_code=503)
+        return result
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/reg-domain/set",
+    response_model=system.RegDomainInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def set_reg_domain(body: system.RegDomainSetRequest):
+    """Sets the WiFi regulatory domain country code."""
+    try:
+        log.debug("POST /system/reg-domain/set request country=%s", body.country)
+        result = system_service.set_reg_domain(body.country)
+        log.debug("POST /system/reg-domain/set response: %s", result)
+        return result
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/battery",
+    response_model=system.BatteryInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_battery():
+    """Returns battery status if a power supply is present."""
+    try:
+        return system_service.get_battery()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)

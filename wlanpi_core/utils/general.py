@@ -64,10 +64,6 @@ def run_command(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
-        )
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
@@ -151,10 +147,6 @@ async def run_command_async(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
-        )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
             cmd,

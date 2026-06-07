@@ -13,20 +13,75 @@ from wlanpi_core.constants import (
     PUBLICIP_CMD,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import run_command
+
+log = get_logger(__name__)
+
+
+def _section_debug_label(section: str, value) -> dict:
+    """Compact shape summary for debug logs (helps UI parsing issues)."""
+    if not isinstance(value, dict):
+        return {"type": type(value).__name__, "value": repr(value)[:200]}
+    label = {"keys": list(value.keys())}
+    if "error" in value:
+        label["error"] = value["error"]
+    if "info" in value and isinstance(value["info"], list):
+        label["info_count"] = len(value["info"])
+        if value["info"]:
+            label["info_sample"] = value["info"][:3]
+    if section == "interfaces":
+        label["interface_count"] = len([k for k in value.keys() if k != "error"])
+        label["interfaces"] = {
+            name: value[name] for name in list(value.keys())[:8] if name != "error"
+        }
+    if section == "wlan_interfaces":
+        label["wlan_count"] = len(value)
+        label["wlan"] = {
+            name: {k: type(v).__name__ for k, v in fields.items()}
+            for name, fields in list(value.items())[:8]
+        }
+    return label
 
 
 def show_info():
+    log.debug("show_info: building network info aggregate")
     output = {}
 
     output["interfaces"] = show_interfaces()
-    output["wlan_interfaces"] = show_wlan_interfaces()
-    output["eth0_ipconfig_info"] = show_eth0_ipconfig()
-    output["vlan_info"] = show_vlan()
-    output["lldp_neighbour_info"] = show_lldp_neighbour()
-    output["cdp_neighbour_info"] = show_cdp_neighbour()
-    output["public_ip"] = show_publicip()
+    log.debug("show_info: interfaces %s", _section_debug_label("interfaces", output["interfaces"]))
 
+    output["wlan_interfaces"] = show_wlan_interfaces()
+    log.debug(
+        "show_info: wlan_interfaces %s",
+        _section_debug_label("wlan_interfaces", output["wlan_interfaces"]),
+    )
+
+    output["eth0_ipconfig_info"] = show_eth0_ipconfig()
+    log.debug(
+        "show_info: eth0_ipconfig_info %s",
+        _section_debug_label("eth0_ipconfig_info", output["eth0_ipconfig_info"]),
+    )
+
+    output["vlan_info"] = show_vlan()
+    log.debug("show_info: vlan_info %s", _section_debug_label("vlan_info", output["vlan_info"]))
+
+    output["lldp_neighbour_info"] = show_lldp_neighbour()
+    log.debug(
+        "show_info: lldp_neighbour_info %s",
+        _section_debug_label("lldp_neighbour_info", output["lldp_neighbour_info"]),
+    )
+
+    output["cdp_neighbour_info"] = show_cdp_neighbour()
+    log.debug(
+        "show_info: cdp_neighbour_info %s",
+        _section_debug_label("cdp_neighbour_info", output["cdp_neighbour_info"]),
+    )
+
+    output["public_ip"] = show_publicip()
+    log.debug("show_info: public_ip %s", _section_debug_label("public_ip", output["public_ip"]))
+
+    log.debug("show_info: complete response: %s", output)
     return output
 
 

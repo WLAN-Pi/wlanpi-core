@@ -50,11 +50,10 @@ def test_run_command_input_and_stdin_error():
     assert "You cannot use both 'input' and 'stdin'" in str(context.value)
 
 
-def test_run_command_shell_warning(caplog):
-    # Test the warning message when using shell=True
-    with caplog.at_level("WARNING"):
+def test_run_command_shell_does_not_log_injection_warning(caplog):
+    with caplog.at_level("DEBUG"):
         run_command("echo test", shell=True)
-    assert "Command echo test being run as a shell script" in caplog.text
+    assert not any("shell script" in r.getMessage() for r in caplog.records)
 
 
 def test_command_result():
