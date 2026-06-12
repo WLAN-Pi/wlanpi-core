@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,6 +13,36 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
 
 _REAL_CONNECTION_MONITOR_START = ConnectionMonitor.start_monitor
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_wlanpi_group():
+    """Prevent startup readiness failures when the wlanpi group is absent in CI."""
+    mock_group = MagicMock()
+    mock_group.gr_gid = 1000
+    mock_group.gr_name = "wlanpi"
+
+    with patch("grp.getgrnam", return_value=mock_group):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def mock_app_initialization(monkeypatch):
+    """Bypass filesystem-dependent startup in CI and local pytest."""
+
+    async def _mock_initialize_components(self):
+        self.initialized = True
+        return True
+
+    monkeypatch.setattr(
+        "wlanpi_core.app.InitializationManager.initialize_components",
+        _mock_initialize_components,
+    )
+    monkeypatch.setattr(
+        "wlanpi_core.services.system_service.get_mode",
+        lambda: "classic",
+    )
+
 
 _DEFAULT_WPA_STATUS = {
     "wpa_status": {"wpa_state": "COMPLETED", "ssid": "test", "bssid": "00:11:22:33:44:55"},
