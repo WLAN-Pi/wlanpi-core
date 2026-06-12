@@ -135,17 +135,18 @@ def get_platform():
     platform = PLATFORM_UNKNOWN
 
     # get output of wlanpi-model
-    model_cmd = "wlanpi-model -b"
+    model_cmd = ["wlanpi-model", "-b"]
     try:
         platform = run_command(model_cmd).stdout.strip()
 
-    except RunCommandError as exc:
-        log.warning(f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}")
-        return "Unknown"
-    except subprocess.CalledProcessError as exc:
-        exc.model.decode()
-        # print("Err: issue running 'wlanpi-model -b' : ", model)
-        return "Unknown"
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        if isinstance(exc, RunCommandError):
+            log.warning(
+                "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
+            )
+        else:
+            log.debug("wlanpi-model unavailable (%r); returning Unknown", exc)
+        return PLATFORM_UNKNOWN
 
     if platform.endswith("?"):
         platform = PLATFORM_UNKNOWN
@@ -170,17 +171,18 @@ def get_model():
     platform = PLATFORM_UNKNOWN
 
     # get output of wlanpi-model
-    model_cmd = "wlanpi-model -b"
+    model_cmd = ["wlanpi-model", "-b"]
     try:
         platform = run_command(model_cmd).stdout.strip()
 
-    except RunCommandError as exc:
-        log.warning(f"Issue getting WLAN Pi model ({exc.return_code}): {exc.error_msg}")
-        return "Unknown"
-    except subprocess.CalledProcessError as exc:
-        exc.model.decode()
-        # print("Err: issue running 'wlanpi-model -b' : ", model)
-        return "Unknown"
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        if isinstance(exc, RunCommandError):
+            log.warning(
+                "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
+            )
+        else:
+            log.debug("wlanpi-model unavailable (%r); returning Unknown", exc)
+        return PLATFORM_UNKNOWN
 
     if platform.endswith("?"):
         platform = PLATFORM_UNKNOWN

@@ -1,12 +1,9 @@
-import subprocess
-
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import system_service
-from wlanpi_core.utils.general import run_command
 
 router = APIRouter()
 
@@ -88,21 +85,12 @@ async def show_device_model():
     """
     Uses 'wlanpi-model -b' to query the device model.
     """
-
-    # get output of wlanpi-model
-    model_cmd = "wlanpi-model -b"
     try:
-        platform = run_command(model_cmd).stdout.strip()
-
-        if platform.endswith("?"):
-            platform = "Unknown"
-
-        return {"model": platform}
-
+        return {"model": system_service.get_model()}
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
-    except subprocess.CalledProcessError as exc:
-        log.error(exc)
+    except Exception as ex:
+        log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
 

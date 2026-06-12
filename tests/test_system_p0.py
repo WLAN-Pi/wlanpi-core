@@ -169,6 +169,17 @@ def test_list_reg_domains():
     assert gb["name"] == "United Kingdom"
 
 
+def test_get_platform_missing_wlanpi_model(mocker):
+    mocker.patch.object(
+        system_service,
+        "run_command",
+        side_effect=FileNotFoundError(2, "No such file or directory: 'wlanpi-model'"),
+    )
+
+    assert system_service.get_platform() == "Unknown"
+    assert system_service.get_model() == "Unknown"
+
+
 def _path_factory(supply_root):
     real_path = Path
 
