@@ -103,3 +103,47 @@ def test_api_wlan_scan_explicit_iface_namespace(client):
     scan.assert_called_once()
     assert scan.call_args.kwargs["iface"] == "wlanpi1"
     assert scan.call_args.kwargs["namespace"] == "scan_ns"
+
+
+def test_api_wlan_scan_detail_full_passthrough(client):
+    payload = {
+        "detail": "full",
+        "selectedAdapter": {
+            "iface": "wlan0",
+            "namespace": "root",
+            "label": "wlan0 (managed, root)",
+            "mode": "managed",
+        },
+        "networks": [
+            {
+                "ssid": "Test",
+                "bssid": "aa:bb:cc:dd:ee:01",
+                "signal": -50,
+                "freq": 2412,
+                "key_mgmt": "wpa-psk",
+                "minrate": 1_000_000,
+                "raw": "BSS aa:bb:cc:dd:ee:01(on wlan0)\n\tSSID: Test",
+            }
+        ],
+        "scannedAt": "2026-06-06T12:00:00+00:00",
+        "needsSelection": False,
+        "candidates": [],
+    }
+    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload) as scan:
+        response = client.get("/api/v1/utils/wlan/scan", params={"detail": "full"})
+    assert response.status_code == 200
+    assert response.json()["networks"][0]["raw"].startswith("BSS ")
+    scan.assert_called_once_with(
+        iface=None,
+        namespace=None,
+        hidden=True,
+        detail="full",
+    )
+
+
+def test_api_wlan_scan_invalid_detail(client):
+    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan") as scan:
+        scan.side_effect = ValueError("detail must be one of: full, short")
+        response = client.get("/api/v1/utils/wlan/scan", params={"detail": "verbose"})
+    assert response.status_code == 400
+    assert "detail must be one of" in response.text

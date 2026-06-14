@@ -231,17 +231,24 @@ def _sample_networks():
 
 
 def handle_scan_auto_single_monitor(client, auth_headers, scenario):
-    status = {"root": {"wlanpi0": {"type": "monitor"}}}
+    status = {
+        "root": {
+            "wlanpi0": {"type": "monitor"},
+            "wlan0": {"type": "managed"},
+        }
+    }
     with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
         with patch(
             "wlanpi_core.wpa.scan.run_interface_scan",
             return_value=_sample_networks(),
-        ):
+        ) as run_scan:
             response = client.get("/api/v1/utils/wlan/scan")
     _expect_status(response, scenario.expected_http)
     body = response.json()
-    assert body["selectedAdapter"]["iface"] == "wlanpi0"
+    assert body["selectedAdapter"]["iface"] == "wlan0"
     assert body["networks"]
+    run_scan.assert_called_once()
+    assert run_scan.call_args.args[0] == "wlan0"
 
 
 def handle_scan_needs_selection_multi_monitor(client, auth_headers, scenario):

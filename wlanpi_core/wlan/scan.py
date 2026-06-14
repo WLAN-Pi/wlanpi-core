@@ -75,6 +75,37 @@ def _adapter_response(adapter: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def find_managed_sibling(
+    adapter: dict[str, Any], adapters: list[dict[str, Any]]
+) -> Optional[dict[str, Any]]:
+    """Return a managed interface in the same namespace (e.g. wlan0 for wlanpi0)."""
+    namespace = adapter["namespace"]
+    for candidate in adapters:
+        if candidate["namespace"] == namespace and candidate["mode"] == "managed":
+            return candidate
+    return None
+
+
+def resolve_scan_target(
+    adapter: dict[str, Any], adapters: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """
+    Pick the interface that will actually run the active scan.
+
+    Monitor VIFs on iwlwifi often cannot scan; use managed sibling on same PHY.
+    """
+    if adapter.get("mode") == "monitor":
+        sibling = find_managed_sibling(adapter, adapters)
+        if sibling:
+            log.info(
+                "Active scan on monitor %s delegated to managed sibling %s",
+                adapter["iface"],
+                sibling["iface"],
+            )
+            return sibling
+    return adapter
+
+
 def select_scan_adapter(
     status: dict[str, Any],
     iface: Optional[str] = None,
@@ -129,15 +160,18 @@ def wlan_scan(
     iface: Optional[str] = None,
     namespace: Optional[str] = None,
     hidden: bool = True,
+    detail: str = "short",
     status: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run namespace-aware WLAN scan with adapter selection."""
+    detail = wpa_scan.normalize_scan_detail(detail)
     if status is None:
         status = network_config.status()
 
     selection = select_scan_adapter(status, iface=iface, namespace=namespace)
     if selection["action"] == "needs_selection":
         return {
+            "detail": detail,
             "needsSelection": True,
             "candidates": selection["candidates"],
             "selectedAdapter": None,
@@ -145,14 +179,19 @@ def wlan_scan(
             "scannedAt": None,
         }
 
+    adapters = iter_adapters(status)
     adapter = selection["adapter"]
+    scan_target = resolve_scan_target(adapter, adapters)
     networks = wpa_scan.run_interface_scan(
-        adapter["iface"],
-        namespace=adapter["namespace"],
+        scan_target["iface"],
+        namespace=scan_target["namespace"],
         include_hidden=hidden,
+        mode=scan_target.get("mode"),
+        detail=detail,
     )
     return {
-        "selectedAdapter": _adapter_response(adapter),
+        "detail": detail,
+        "selectedAdapter": _adapter_response(scan_target),
         "networks": networks,
         "scannedAt": datetime.now(timezone.utc).replace(microsecond=0),
         "needsSelection": False,

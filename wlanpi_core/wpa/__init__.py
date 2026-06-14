@@ -19,8 +19,10 @@ from wlanpi_core.wpa.scan import (
     fetch_scan_results,
     find_bss,
     parse_key_mgmt,
+    parse_iw_scan_output,
     parse_wpa_scan_results,
     run_interface_scan,
+    run_iw_scan,
 )
 from wlanpi_core.wpa.status import get_wpa_status
 
@@ -40,5 +42,7 @@ __all__ = [
     "fetch_scan_results",
     "find_bss",
     "parse_wpa_scan_results",
+    "parse_iw_scan_output",
     "run_interface_scan",
+    "run_iw_scan",
 ]

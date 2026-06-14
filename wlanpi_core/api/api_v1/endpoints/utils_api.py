@@ -94,17 +94,27 @@ async def wlan_scan_endpoint(
     iface: Optional[str] = None,
     namespace: Optional[str] = None,
     hidden: bool = True,
+    detail: str = "short",
 ):
     """
     Namespace-aware WLAN scan with automatic monitor adapter selection.
 
     When multiple monitor adapters exist and ``iface`` is omitted, returns
     ``needsSelection`` with candidates instead of scanning.
+
+    ``detail=short`` (default) returns list-friendly fields plus RF extensions.
+    ``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).
     """
     try:
         return await asyncio.to_thread(
-            wlan_scan, iface=iface, namespace=namespace, hidden=hidden
+            wlan_scan,
+            iface=iface,
+            namespace=namespace,
+            hidden=hidden,
+            detail=detail,
         )
+    except ValueError as exc:
+        return Response(content=str(exc), status_code=400)
     except NoScanAdapterError as exc:
         return JSONResponse(
             status_code=422,

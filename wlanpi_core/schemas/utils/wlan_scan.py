@@ -13,6 +13,14 @@ class ScanAdapter(BaseModel):
     mode: Optional[str] = None
 
 
+class BssLoad(BaseModel):
+    stations: Optional[int] = None
+    utilization: Optional[int] = Field(
+        default=None,
+        description="Channel utilisation from BSS Load (0-255, as reported by iw)",
+    )
+
+
 class WlanNetwork(BaseModel):
     ssid: str
     bssid: str
@@ -20,9 +28,30 @@ class WlanNetwork(BaseModel):
     freq: int
     key_mgmt: Optional[str] = None
     minrate: int = 1_000_000
+    flags: Optional[str] = None
+    primary_channel: Optional[int] = Field(default=None, alias="primaryChannel")
+    channel_width: Optional[int] = Field(
+        default=None,
+        alias="channelWidth",
+        description="MHz (20, 40, 80, 160, ...)",
+    )
+    secondary_channel_offset: Optional[str] = Field(
+        default=None,
+        alias="secondaryChannelOffset",
+        description="HT secondary channel: none, above, or below control channel",
+    )
+    bss_load: Optional[BssLoad] = Field(default=None, alias="bssLoad")
+    amendments: list[str] = Field(default_factory=list)
+    raw: Optional[str] = Field(
+        default=None,
+        description="Full iw BSS block text when detail=full",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class WlanScanResponse(BaseModel):
+    detail: str = "short"
     selected_adapter: Optional[ScanAdapter] = Field(
         default=None, alias="selectedAdapter"
     )

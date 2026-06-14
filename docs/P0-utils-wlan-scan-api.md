@@ -24,6 +24,7 @@ Returns a **single snapshot** of visible WiFi networks from one adapter, with na
 GET /api/v1/utils/wlan/scan
 GET /api/v1/utils/wlan/scan?hidden=false
 GET /api/v1/utils/wlan/scan?iface=wlanpi1&namespace=scan_ns
+GET /api/v1/utils/wlan/scan?detail=full
 ```
 
 | Query param | Required | Default | Description |
@@ -31,6 +32,7 @@ GET /api/v1/utils/wlan/scan?iface=wlanpi1&namespace=scan_ns
 | `iface` | No | — | Interface name (e.g. `wlanpi0`, `wlan0`). Omit for auto-selection. |
 | `namespace` | No | root | Namespace name, or `root` / omit for default namespace. |
 | `hidden` | No | `true` | Include networks with empty SSID in results. |
+| `detail` | No | `short` | `short` — list fields plus RF extensions; `full` — also includes per-BSS `raw` iw dump (forces `iw scan`). |
 
 **Headers**
 
@@ -51,11 +53,12 @@ All JSON keys are **camelCase** in wire format.
 
 ```json
 {
+  "detail": "short",
   "selectedAdapter": {
-    "iface": "wlanpi0",
+    "iface": "wlan0",
     "namespace": "root",
-    "label": "wlanpi0 (monitor, root)",
-    "mode": "monitor"
+    "label": "wlan0 (managed, root)",
+    "mode": "managed"
   },
   "networks": [
     {
@@ -64,7 +67,13 @@ All JSON keys are **camelCase** in wire format.
       "signal": -52,
       "freq": 2412,
       "key_mgmt": "wpa-psk",
-      "minrate": 1000000
+      "minrate": 1000000,
+      "flags": "[WPA2-PSK-CCMP][ESS]",
+      "primaryChannel": 36,
+      "channelWidth": 80,
+      "secondaryChannelOffset": "above",
+      "bssLoad": { "stations": 4, "utilization": 32 },
+      "amendments": ["n", "ac"]
     }
   ],
   "scannedAt": "2026-06-14T12:00:00+00:00",
@@ -73,8 +82,11 @@ All JSON keys are **camelCase** in wire format.
 }
 ```
 
+Extended fields (`flags`, `primaryChannel`, `channelWidth`, `secondaryChannelOffset`, `bssLoad`, `amendments`) are populated when the scan backend provides them — typically when core uses `iw dev <iface> scan`. With `wpa_cli scan_results` only, you still get `flags` and `primaryChannel` (derived from frequency); width, offset, load, and amendments may be empty.
+
 | Field | Type | Use |
 |-------|------|-----|
+| `detail` | string | Echo of request: `short` or `full`. |
 | `selectedAdapter` | object \| null | Adapter that was scanned. Always set when `needsSelection` is false and scan ran. |
 | `selectedAdapter.iface` | string | Interface name for display and retry params. |
 | `selectedAdapter.namespace` | string | `"root"` or namespace name — pass back as `namespace` query param. |
@@ -87,6 +99,13 @@ All JSON keys are **camelCase** in wire format.
 | `networks[].freq` | int | Centre frequency in MHz. |
 | `networks[].key_mgmt` | string \| null | `wpa-psk`, `open`, `wep`, or `unknown`. |
 | `networks[].minrate` | int | Bitrate hint (default `1000000`). |
+| `networks[].flags` | string \| null | Raw security/capability flags (`wpa_cli`) or iw capability line. |
+| `networks[].primaryChannel` | int \| null | 802.11 channel number (from iw or derived from `freq`). |
+| `networks[].channelWidth` | int \| null | Channel width in MHz when known (20, 40, 80, 160). |
+| `networks[].secondaryChannelOffset` | string \| null | HT secondary channel: `none`, `above`, or `below` control channel. |
+| `networks[].bssLoad` | object \| null | `stations` count and `utilization` (0–255) from BSS Load IE. |
+| `networks[].amendments` | string[] | PHY amendments detected (`n`, `ac`, `ax`, `k`, `v`, `r`, …). |
+| `networks[].raw` | string \| null | Full iw BSS block text; only when `detail=full`. |
 | `scannedAt` | string \| null | ISO 8601 UTC timestamp when scan completed. |
 | `needsSelection` | bool | `false` when scan ran. |
 | `candidates` | array | Empty when scan ran. |
@@ -147,7 +166,7 @@ Core uses the same adapter layout as `GET /api/v1/network/config/status` (`iw de
 
 | Condition | HTTP | Behaviour |
 |-----------|------|-----------|
-| 1 monitor adapter | 200 | Auto-select; scan runs |
+| 1 monitor adapter | 200 | Auto-select monitor **role**; active scan may run on managed sibling (e.g. `wlan0` when `wlanpi0` is monitor) |
 | 2+ monitor adapters | 200 | `needsSelection: true`; **no scan** |
 | 0 monitor, ≥1 managed in root | 200 | Fallback to first managed in root; scan runs |
 | 0 suitable adapters | 422 | `NO_SCAN_ADAPTER` |
@@ -314,7 +333,28 @@ Do **not** implement continuous scan by polling this endpoint faster than ~15s o
 
 ---
 
-## 9. Timing and UX expectations
+## 9. Hardware notes (WLAN Pi + iwlwifi)
+
+Classic WLAN Pi layout: **`wlanpi0` monitor** + **`wlan0` managed** on the same PHY.
+
+| Check | Typical result |
+|-------|----------------|
+| `wpa_cli` on `wlanpi0` | Fails — no supplicant on monitor VIF |
+| `iw dev wlanpi0 scan` | Often **-95 Operation not supported** |
+| `ip link set wlan0 up` + `iw dev wlan0 scan` | **Works** (active scan on managed VIF) |
+
+Core behaviour:
+
+1. User/monitor **selection** may still prefer the monitor adapter when picking among monitors.
+2. **Execution** delegates active scan to a **managed sibling in the same namespace** when present.
+3. `selectedAdapter` in the response reflects the **interface that actually scanned** (usually `wlan0`, not `wlanpi0`).
+4. Scan path: `wpa_cli` when supplicant is running, otherwise **`iw dev <iface> scan`** (interface brought up first).
+
+No network namespace is involved when `ip netns list` is empty — failures on stock classic images are driver/mode, not netns.
+
+---
+
+## 10. Timing and UX expectations
 
 - A single scan typically takes **2–5 seconds** (trigger + poll for results).
 - Show a loading state; disable repeat-tap while in flight.
@@ -323,7 +363,7 @@ Do **not** implement continuous scan by polling this endpoint faster than ~15s o
 
 ---
 
-## 10. Testing reference
+## 11. Testing reference
 
 Matrix scenarios in `tests/scenarios/p0_api_test_matrix.csv`:
 
@@ -337,8 +377,9 @@ Matrix scenarios in `tests/scenarios/p0_api_test_matrix.csv`:
 
 ---
 
-## 11. Changelog
+## 12. Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-06-14 | iwlwifi: delegate monitor selection to managed sibling; `iw scan` fallback without wpa_supplicant |
 | 2026-06-14 | Initial Live endpoint; namespace-aware selection; `wpa/scan.py` shared primitives |

@@ -123,6 +123,8 @@ namespaces/      → no scan; netns lifecycle only
 
 Future continuous BSS events belong on a **capture-derived** path (beacon parser over `/streaming/capture`), not an extension of `run_interface_scan()`.
 
+**On-device active scan (iwlwifi / WLAN Pi classic):** monitor VIF (`wlanpi0`) often cannot `iw scan` (-95). Core delegates to managed sibling (`wlan0`), brings the link up, and uses `iw dev wlan0 scan` when `wpa_supplicant` is absent. `selectedAdapter` reports the interface that actually scanned.
+
 ### 2.5 NetConfig and namespace management — wlanpi-ui helper layer
 
 The **web-app** already builds `NetConfig` JSON and calls core `/network/config/*` directly. **TUI, panel, and mobile** need a friendlier layer — not raw schema, but functional state:
