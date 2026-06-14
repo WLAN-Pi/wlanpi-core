@@ -9,6 +9,8 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
+from wlanpi_core import network as network_primitives
+from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.services import (
     network_ethernet_service,
     network_namespace_service,
@@ -234,8 +236,131 @@ async def delete_ethernet_vlan(
         return Response(content="Internal Server Error", status_code=500)
 
 
+        return Response(content="Internal Server Error", status_code=500)
+
+
 ################################
-# WLAN Management              #
+# Network primitives (P0)      #
+################################
+
+
+@router.get(
+    "/routing",
+    response_model=network.RoutingTable,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_routing_table(namespace: Optional[str] = None):
+    """Structured routing table from ``ip -j route show`` (root by default)."""
+    try:
+        return network_primitives.get_routing_table(namespace=namespace)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read routing table", status_code=503)
+
+
+@router.get(
+    "/connections/tcp",
+    response_model=network.ConnectionsResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_tcp_connections(namespace: Optional[str] = None):
+    """Active TCP sockets from ``ss``."""
+    try:
+        return network_primitives.get_tcp_connections(namespace=namespace)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to list TCP connections", status_code=503)
+
+
+@router.get(
+    "/connections/udp",
+    response_model=network.ConnectionsResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_udp_connections(namespace: Optional[str] = None):
+    """Active UDP sockets from ``ss``."""
+    try:
+        return network_primitives.get_udp_connections(namespace=namespace)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to list UDP connections", status_code=503)
+
+
+@router.get(
+    "/dhcp/leases",
+    response_model=network.DhcpLeasesResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_dhcp_leases():
+    """Parse dhclient lease files under ``/var/lib/dhcp``."""
+    try:
+        return network_primitives.get_dhcp_leases()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read DHCP leases", status_code=503)
+
+
+@router.get(
+    "/interfaces/{iface}/link-stats",
+    response_model=network.LinkStats,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_interface_link_stats(iface: str):
+    """Per-interface link statistics via ethtool."""
+    try:
+        namespace = resolve_interface_namespace(iface)
+        return network_primitives.get_link_stats(iface, namespace=namespace)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read link statistics", status_code=503)
+
+
+@router.post(
+    "/interfaces/{iface}/renew",
+    response_model=network.DhcpRenewResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def renew_interface_dhcp(iface: str):
+    """Renew DHCP lease for an interface in its current namespace."""
+    try:
+        return network_primitives.renew_interface_dhcp(iface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to renew DHCP lease", status_code=503)
+
+
+@router.get(
+    "/wlan/usb-drivers",
+    response_model=network.WlanUsbDriversResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_wlan_usb_drivers():
+    """USB-attached WLAN adapters and bound drivers."""
+    try:
+        return network_primitives.get_usb_wlan_drivers()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to list USB WLAN drivers", status_code=503)
+
+
+@router.get(
+    "/wlan/pci-drivers",
+    response_model=network.WlanPciDriversResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_wlan_pci_drivers():
+    """PCI wireless devices and bound WLAN interface drivers."""
+    try:
+        return network_primitives.get_pci_wlan_drivers()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to list PCI WLAN drivers", status_code=503)
+
+
+################################
+# WLAN Management (legacy DBus)#
 ################################
 
 

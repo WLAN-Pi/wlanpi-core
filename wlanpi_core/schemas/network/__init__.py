@@ -13,3 +13,12 @@ from .network import (
     WlanInterfaceSetup,
     WlanRevertRequest,
 )
+from .primitives import (
+    ConnectionsResponse,
+    DhcpLeasesResponse,
+    DhcpRenewResponse,
+    LinkStats,
+    RoutingTable,
+    WlanPciDriversResponse,
+    WlanUsbDriversResponse,
+)

@@ -33,14 +33,14 @@ P0,network,POST,/network/wlan/set-dbus,,Deprecated,Core,deprecate,,LEGACY DBus A
 P0,network,POST,/network/wlan/set,,Deprecated,Core,deprecate,,Broken stub (hardcoded testns). Superseded by config system. Remove P1.
 P0,network,GET,/network/wlan/getConnected,,Deprecated,Core,repurpose,,LEGACY DBus CurrentNetwork. Reimplement via wpa_cli status. P1 connection endpoint.
 P0,network,POST,/network/wlan/revert,,Live,Core,align,,Valid namespace revert. Align with POST /network/config/deactivate/{id}; not DBus.
-P0,network,GET,/network/routing,network.routing_table,Gap,Core,build,,Structured ip route output.
-P0,network,GET,/network/connections/tcp,network.active_tcp,Gap,Core,build,,
-P0,network,GET,/network/connections/udp,network.active_udp,Gap,Core,build,,
-P0,network,POST,/network/interfaces/{iface}/renew,"network.interfaces.renew_wlan0; network.interfaces.renew_eth0",Gap,Core,build,,dhclient renew.
-P0,network,GET,/network/dhcp/leases,network.interfaces.dhcp_leases,Gap,Core,build,,
-P0,network,GET,/network/interfaces/{iface}/link-stats,network.interfaces.eth0.link_stats,Gap,Core,build,,ethtool.
-P0,network,GET,/network/wlan/usb-drivers,"network.interfaces.wlan.usb_drivers; wifi.radio.usb_drivers",Gap,Core,build,,
-P0,network,GET,/network/wlan/pci-drivers,network.interfaces.wlan.pci_drivers,Gap,Core,build,,
+P0,network,GET,/network/routing,network.routing_table,Live,Core,bind,,Structured ip -j route via ns_exec (root default).
+P0,network,GET,/network/connections/tcp,network.active_tcp,Live,Core,bind,,ss -Htn in root namespace.
+P0,network,GET,/network/connections/udp,network.active_udp,Live,Core,bind,,ss -Hun in root namespace.
+P0,network,POST,/network/interfaces/{iface}/renew,"network.interfaces.renew_wlan0; network.interfaces.renew_eth0",Live,Core,bind,,restart_dhcp_with_timeout + namespace lookup.
+P0,network,GET,/network/dhcp/leases,network.interfaces.dhcp_leases,Live,Core,bind,,Parse /var/lib/dhcp/dhclient*.leases.
+P0,network,GET,/network/interfaces/{iface}/link-stats,network.interfaces.eth0.link_stats,Live,Core,bind,,ethtool per interface; namespace from config status.
+P0,network,GET,/network/wlan/usb-drivers,"network.interfaces.wlan.usb_drivers; wifi.radio.usb_drivers",Live,Core,bind,,iw + ethtool driver on USB WLAN ifaces.
+P0,network,GET,/network/wlan/pci-drivers,network.interfaces.wlan.pci_drivers,Live,Core,bind,,lspci + iw PCI WLAN ifaces.
 P0,network_config,GET,/network/config/status,,Live,Core,bind,,Namespace-aware iw dev view. Key input for wlanpi-ui adapter helper.
 P0,network_config,GET,/network/config/,,Live,Core,bind,,List config ids with active flags.
 P0,network_config,GET,/network/config/{id},,Live,Core,bind,,Get config. Credentials redacted in str/repr.

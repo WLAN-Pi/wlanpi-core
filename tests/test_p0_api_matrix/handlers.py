@@ -104,6 +104,19 @@ def handle_reg_domain_list(client, auth_headers, scenario):
     assert body["countries"][0]["name"]
 
 
+def handle_routing_table(client, auth_headers, scenario):
+    sample = [{"dst": "default", "gateway": "10.10.0.254", "dev": "eth0"}]
+    with patch(
+        "wlanpi_core.network.routing.ns_exec",
+        return_value=type("R", (), {"stdout": __import__("json").dumps(sample)})(),
+    ):
+        response = client.get("/api/v1/network/routing")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert "routes" in body
+    assert len(body["routes"]) >= 1
+
+
 HANDLERS.update(
     {
         "service_restart_orb": handle_service_restart_orb,
@@ -113,6 +126,7 @@ HANDLERS.update(
         "system_device_info_any_mode": handle_system_device_info_any_mode,
         "utils_reachability_live": handle_utils_reachability_live,
         "reg_domain_list": handle_reg_domain_list,
+        "routing_table": handle_routing_table,
     }
 )
 

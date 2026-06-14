@@ -334,10 +334,10 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
-3. **Week 3:** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase
-4. **Week 4:** Network primitives (routing, tcp/udp, renew, leases, link-stats, drivers)
-5. **Week 5:** `/utils/wlan/scan` with adapter selection; speedtest; cloud-test
-6. **Week 6:** Blinker, freeradius test, bluetooth pair; capture REST bridge; wlanpi-ui adapter helper
+3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
+4. **WiFi/utils workers:** `/utils/wlan/scan`, speedtest, cloud-test; capture REST bridge
+5. **Utils misc:** Blinker, freeradius test, bluetooth pair
+6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 
 ---
 
