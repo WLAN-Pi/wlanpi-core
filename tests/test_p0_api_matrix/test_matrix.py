@@ -34,7 +34,7 @@ def test_p0_api_matrix_scenario(scenario, client, auth_headers):
 
 def test_p0_matrix_row_count():
     scenarios = load_api_scenarios()
-    assert len(scenarios) == 40
+    assert len(scenarios) == 41
 
 
 def test_p0_matrix_handler_registry_documents_gaps():

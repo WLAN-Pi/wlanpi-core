@@ -86,6 +86,7 @@ def handle_utils_reachability_live(client, auth_headers, scenario):
         "Browse Google": "OK",
         "Ping Gateway": "1ms",
         "Arping Gateway": "1ms",
+        "custom": [],
     }
     with patch(
         "wlanpi_core.api.api_v1.endpoints.utils_api.utils_service.show_reachability",
@@ -93,6 +94,63 @@ def handle_utils_reachability_live(client, auth_headers, scenario):
     ):
         response = client.get("/api/v1/utils/reachability")
     _expect_status(response, scenario.expected_http)
+
+
+def handle_utils_reachability_custom_targets(client, auth_headers, scenario):
+    from unittest.mock import AsyncMock
+
+    reachability_results = {
+        "Ping Google": "1ms",
+        "Browse Google": "OK",
+        "Ping Gateway": "1ms",
+        "Arping Gateway": "1ms",
+        "custom": [
+            {
+                "target": "8.8.8.8",
+                "success": True,
+                "rttMsMin": 5.0,
+                "rttMsAvg": 5.0,
+                "rttMsMax": 5.0,
+                "packetLossPercent": 0.0,
+                "display": "5.0ms",
+            }
+        ],
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.utils_service.show_reachability",
+        new=AsyncMock(return_value={"results": reachability_results}),
+    ) as reach:
+        response = client.get(
+            "/api/v1/utils/reachability",
+            params={"targets": "8.8.8.8"},
+        )
+    _expect_status(response, scenario.expected_http)
+    reach.assert_awaited_once_with(targets=["8.8.8.8"])
+    assert response.json()["custom"][0]["target"] == "8.8.8.8"
+
+
+def handle_utils_speedtest(client, auth_headers, scenario):
+    from unittest.mock import AsyncMock
+
+    payload = {
+        "results": {
+            "ipAddress": "1.2.3.4",
+            "downloadSpeed": "100.00 Mbps",
+            "uploadSpeed": "50.00 Mbps",
+            "pingMs": 5.0,
+            "jitterMs": 0.0,
+            "server": "Test Server",
+            "testedAt": "2026-06-14T17:38:48+00:00",
+        }
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.utils_service.show_speedtest",
+        new=AsyncMock(return_value=payload),
+    ):
+        response = client.get("/api/v1/utils/speedtest")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["downloadSpeed"]
 
 
 def handle_reg_domain_list(client, auth_headers, scenario):
@@ -320,6 +378,8 @@ HANDLERS.update(
         "timezone_get_set": handle_timezone_get_set,
         "system_device_info_any_mode": handle_system_device_info_any_mode,
         "utils_reachability_live": handle_utils_reachability_live,
+        "utils_reachability_custom_targets": handle_utils_reachability_custom_targets,
+        "utils_speedtest": handle_utils_speedtest,
         "reg_domain_list": handle_reg_domain_list,
         "routing_table": handle_routing_table,
         "connections_tcp": handle_connections_tcp,

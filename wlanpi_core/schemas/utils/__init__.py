@@ -1,4 +1,4 @@
-from .utils import ReachabilityTest, SpeedTest, Ufw, Usb
+from .utils import PingTargetResult, ReachabilityTest, SpeedTest, Ufw, Usb
 from .wlan_scan import (
     BssLoad,
     ScanAdapter,

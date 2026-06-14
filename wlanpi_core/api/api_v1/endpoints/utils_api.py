@@ -2,8 +2,10 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
+
+from wlanpi_core.constants import SPEEDTEST_TIMEOUT_SEC
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
@@ -24,28 +26,76 @@ log = get_logger(__name__)
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def reachability():
+async def reachability(
+    targets: Optional[list[str]] = Query(
+        default=None,
+        description=(
+            "Optional hostnames or IPs to ping. Repeat the parameter or use "
+            "comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
+        ),
+    ),
+):
     """
-    Runs the reachability test and returns the results
+    Runs reachability checks for gateway, internet, DNS, and optional custom targets.
     """
 
     try:
-        reachability = await utils_service.show_reachability()
+        reachability_result = await utils_service.show_reachability(targets=targets)
 
-        if reachability.get("error"):
+        if reachability_result.get("error"):
+            message = reachability_result["error"]
+            status_code = 400 if "invalid" in message.lower() or "at most" in message.lower() else 503
             return Response(
-                content=json.dumps(reachability),
-                status_code=503,
+                content=json.dumps({"error": message}),
+                status_code=status_code,
                 media_type="application/json",
             )
 
-        return reachability["results"]
+        return reachability_result["results"]
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
         return Response(content=f"Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/speedtest",
+    response_model=utils.SpeedTest,
+    response_model_exclude_none=True,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def speedtest():
+    """
+    Run an internet speed test via LibreSpeed CLI.
+
+    Long-running (typically 30–90s). UI platforms should wrap as a job with
+    ``freshnessSec`` deduplication.
+    """
+    try:
+        result = await asyncio.wait_for(
+            utils_service.show_speedtest(),
+            timeout=SPEEDTEST_TIMEOUT_SEC,
+        )
+        if result.get("error"):
+            return Response(
+                content=json.dumps({"error": result["error"]}),
+                status_code=503,
+                media_type="application/json",
+            )
+        return result["results"]
+    except asyncio.TimeoutError:
+        return Response(
+            content=json.dumps({"error": "speedtest timed out"}),
+            status_code=503,
+            media_type="application/json",
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to complete speedtest", status_code=503)
 
 
 # @router.post("/port_blinker/{action}", response_model=utils.PortBlinkerState)

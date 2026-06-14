@@ -2,7 +2,7 @@
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
@@ -264,7 +264,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 | `GET /wifi/regulatory` | `iw reg get` |
 | `GET /wifi/client/stations` | AP mode station list |
 | `GET /wifi/client/link` | Client link stats |
-| `GET /utils/speedtest` | Wrap speedtest binary; long-running |
+| `GET /utils/speedtest` | Wrap LibreSpeed CLI; long-running |
 | `GET /utils/cloud-test/{vendor}` | Per-vendor script |
 | `POST /utils/blinker/start\|stop` | Restore commented utils_api code |
 | `GET /utils/blinker/status` | |
@@ -367,7 +367,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
 3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
-4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done** (see [WLAN scan guide](./P0-utils-wlan-scan-api.md)); speedtest, cloud-test; capture REST bridge
+4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done** (see [WLAN scan guide](./P0-utils-wlan-scan-api.md)); ~~speedtest~~ **Done** (see [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md)); cloud-test; capture REST bridge
 5. **Utils misc:** Blinker, freeradius test, bluetooth pair
 6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 
