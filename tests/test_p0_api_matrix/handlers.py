@@ -6,7 +6,7 @@ stub run_command for CLI wrappers; keep FastAPI routing and auth real.
 from __future__ import annotations
 
 from typing import Callable
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.scenarios.p0_loader import ApiScenario
 
@@ -117,6 +117,106 @@ def handle_routing_table(client, auth_headers, scenario):
     assert len(body["routes"]) >= 1
 
 
+def handle_connections_tcp(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.connections.ns_exec",
+        return_value=MagicMock(stdout="ESTAB 0 0 10.0.0.1:22 10.0.0.2:50115\n"),
+    ):
+        response = client.get("/api/v1/network/connections/tcp")
+    _expect_status(response, scenario.expected_http)
+    assert response.json()["connections"][0]["protocol"] == "tcp"
+
+
+def handle_connections_udp(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.connections.ns_exec",
+        return_value=MagicMock(stdout="UNCONN 0 0 0.0.0.0:68 0.0.0.0:*\n"),
+    ):
+        response = client.get("/api/v1/network/connections/udp")
+    _expect_status(response, scenario.expected_http)
+    assert response.json()["connections"][0]["protocol"] == "udp"
+
+
+def handle_dhcp_leases(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.get_dhcp_leases",
+        return_value={
+            "leases": [{"interface": "eth0", "fixed_address": "10.10.0.163"}],
+            "source": "/var/lib/dhcp",
+        },
+    ):
+        response = client.get("/api/v1/network/dhcp/leases")
+    _expect_status(response, scenario.expected_http)
+    assert response.json()["leases"][0]["interface"] == "eth0"
+
+
+def handle_link_stats(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.resolve_interface_namespace",
+        return_value=None,
+    ):
+        with patch(
+            "wlanpi_core.network.get_link_stats",
+            return_value={
+                "interface": "eth0",
+                "namespace": None,
+                "link_detected": "yes",
+                "speed_mbps": 1000,
+                "duplex": "Full",
+                "port": None,
+                "driver": "bcmgenet",
+                "raw": {},
+            },
+        ):
+            response = client.get("/api/v1/network/interfaces/eth0/link-stats")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["interface"] == "eth0"
+    assert body["link_detected"] == "yes"
+
+
+def handle_dhcp_renew(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.renew_interface_dhcp",
+        return_value={
+            "interface": "eth0",
+            "namespace": None,
+            "status": "renewed",
+        },
+    ):
+        response = client.post("/api/v1/network/interfaces/eth0/renew")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["status"] == "renewed"
+
+
+def handle_wlan_usb_drivers(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.get_usb_wlan_drivers",
+        return_value={
+            "adapters": [{"interface": "wlan0", "driver": "ath9k_htc", "bus": "usb"}],
+        },
+    ):
+        response = client.get("/api/v1/network/wlan/usb-drivers")
+    _expect_status(response, scenario.expected_http)
+    assert response.json()["adapters"][0]["bus"] == "usb"
+
+
+def handle_wlan_pci_drivers(client, auth_headers, scenario):
+    with patch(
+        "wlanpi_core.network.get_pci_wlan_drivers",
+        return_value={
+            "adapters": [{"interface": "wlanpi0", "driver": "brcmfmac", "bus": "pci"}],
+            "pci_devices": [{"pci_id": "0000:01:00.0", "description": "Wireless"}],
+        },
+    ):
+        response = client.get("/api/v1/network/wlan/pci-drivers")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["adapters"][0]["bus"] == "pci"
+    assert body["pci_devices"][0]["pci_id"] == "0000:01:00.0"
+
+
 HANDLERS.update(
     {
         "service_restart_orb": handle_service_restart_orb,
@@ -127,6 +227,13 @@ HANDLERS.update(
         "utils_reachability_live": handle_utils_reachability_live,
         "reg_domain_list": handle_reg_domain_list,
         "routing_table": handle_routing_table,
+        "connections_tcp": handle_connections_tcp,
+        "connections_udp": handle_connections_udp,
+        "dhcp_leases": handle_dhcp_leases,
+        "link_stats": handle_link_stats,
+        "dhcp_renew": handle_dhcp_renew,
+        "wlan_usb_drivers": handle_wlan_usb_drivers,
+        "wlan_pci_drivers": handle_wlan_pci_drivers,
     }
 )
 

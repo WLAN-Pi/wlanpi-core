@@ -54,6 +54,38 @@ def test_get_tcp_connections_parses_ss():
     assert result["connections"][0]["local"] == "10.0.0.1:22"
 
 
+def test_get_udp_connections_parses_ss():
+    with patch(
+        "wlanpi_core.network.connections.ns_exec",
+        return_value=MagicMock(stdout="UNCONN 0 0 0.0.0.0:68 0.0.0.0:*\n"),
+    ):
+        result = connections.get_udp_connections()
+
+    assert len(result["connections"]) == 1
+    assert result["connections"][0]["protocol"] == "udp"
+
+
+def test_get_dhcp_leases_reads_files(tmp_path):
+    lease_file = tmp_path / "dhclient.eth0.leases"
+    lease_file.write_text(
+        'lease {\n  interface "eth0";\n  fixed-address 10.10.0.163;\n}\n'
+    )
+
+    result = dhcp.get_dhcp_leases(lease_dir=tmp_path)
+
+    assert result["source"] == str(tmp_path)
+    assert len(result["leases"]) == 1
+    assert result["leases"][0]["interface"] == "eth0"
+    assert result["leases"][0]["source_file"] == "dhclient.eth0.leases"
+
+
+def test_get_dhcp_leases_missing_dir(tmp_path):
+    missing = tmp_path / "nope"
+    result = dhcp.get_dhcp_leases(lease_dir=missing)
+    assert result["leases"] == []
+    assert "error" in result
+
+
 def test_parse_lease_blocks():
     text = """
 lease {
@@ -115,3 +147,29 @@ def test_get_usb_wlan_drivers_filters_bus():
     assert len(result["adapters"]) == 1
     assert result["adapters"][0]["interface"] == "wlan0"
     assert result["adapters"][0]["bus"] == "usb"
+
+
+def test_get_pci_wlan_drivers():
+    with patch(
+        "wlanpi_core.network.wlan_drivers.run_command",
+        return_value=MagicMock(
+            stdout="0000:01:00.0 Wireless controller: Example PCI WiFi\n"
+        ),
+    ):
+        with patch(
+            "wlanpi_core.network.wlan_drivers.discovery.list_interfaces",
+            return_value=["wlanpi0"],
+        ):
+            with patch(
+                "wlanpi_core.network.wlan_drivers._bus_for_interface",
+                return_value="pci",
+            ):
+                with patch(
+                    "wlanpi_core.network.wlan_drivers._driver_for_interface",
+                    return_value="brcmfmac",
+                ):
+                    result = wlan_drivers.get_pci_wlan_drivers()
+
+    assert len(result["pci_devices"]) == 1
+    assert result["adapters"][0]["interface"] == "wlanpi0"
+    assert result["adapters"][0]["driver"] == "brcmfmac"
