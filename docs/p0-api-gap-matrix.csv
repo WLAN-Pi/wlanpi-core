@@ -49,7 +49,7 @@ P0,network_config,PATCH,/network/config/{id},,Live,Core,bind,,Update when deacti
 P0,network_config,DELETE,/network/config/{id},,Live,Core,bind,,
 P0,network_config,POST,/network/config/activate/{id},,Live,Core,bind,,Classic mode only for namespace ops. Returns provisioned async.
 P0,network_config,POST,/network/config/deactivate/{id},,Live,Core,bind,,Revert namespace. Classic mode only.
-P0,wifi,GET,/utils/wlan/scan,"wifi.scan.quick; wifi.scan.full; app.scanner.scan; app.scanner.scan_nohidden",Gap,Both,build,30,"P0 canonical scan. Namespace-aware. Auto-select single monitor adapter; if multiple monitor adapters return needsSelection candidates. UI→Core job + optional job WS."
+P0,wifi,GET,/utils/wlan/scan,"wifi.scan.quick; wifi.scan.full; app.scanner.scan; app.scanner.scan_nohidden",Live,Both,bind,30,"P0 canonical scan. Namespace-aware. Auto-select single monitor adapter; if multiple monitor adapters return needsSelection candidates. UI→Core job + optional job WS."
 P0,wifi,GET,/wifi/capabilities,wifi.radio.capabilities,Gap,Core,build,300,Large output; UI job cache recommended.
 P0,wifi,GET,/wifi/regulatory,wifi.radio.regulatory,Gap,Core,build,,
 P0,wifi,GET,/wifi/client/stations,wifi.client.stations,Gap,Core,build,,Query iface=.

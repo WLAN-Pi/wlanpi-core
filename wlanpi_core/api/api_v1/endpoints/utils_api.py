@@ -1,11 +1,15 @@
+import asyncio
 import json
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
+from fastapi.responses import JSONResponse
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
 from wlanpi_core.services import utils_service
+from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 
 router = APIRouter()
 
@@ -72,6 +76,48 @@ async def reachability():
 #     except Exception as ex:
 #         log.error(ex)
 #         return Response(content=f"Internal Server Error {ex}", status_code=500)
+
+
+@router.get(
+    "/wlan/scan",
+    response_model=utils.WlanScanResponse,
+    response_model_exclude_none=True,
+    responses={
+        422: {
+            "model": utils.WlanScanErrorResponse,
+            "description": "No suitable scan adapter",
+        }
+    },
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def wlan_scan_endpoint(
+    iface: Optional[str] = None,
+    namespace: Optional[str] = None,
+    hidden: bool = True,
+):
+    """
+    Namespace-aware WLAN scan with automatic monitor adapter selection.
+
+    When multiple monitor adapters exist and ``iface`` is omitted, returns
+    ``needsSelection`` with candidates instead of scanning.
+    """
+    try:
+        return await asyncio.to_thread(
+            wlan_scan, iface=iface, namespace=namespace, hidden=hidden
+        )
+    except NoScanAdapterError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "NO_SCAN_ADAPTER",
+                "candidates": exc.candidates,
+            },
+        )
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to complete WLAN scan", status_code=503)
 
 
 @router.get(

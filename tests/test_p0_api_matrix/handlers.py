@@ -217,6 +217,94 @@ def handle_wlan_pci_drivers(client, auth_headers, scenario):
     assert body["pci_devices"][0]["pci_id"] == "0000:01:00.0"
 
 
+def _sample_networks():
+    return [
+        {
+            "ssid": "Test",
+            "bssid": "aa:bb:cc:dd:ee:01",
+            "signal": -50,
+            "freq": 2412,
+            "key_mgmt": "wpa-psk",
+            "minrate": 1_000_000,
+        }
+    ]
+
+
+def handle_scan_auto_single_monitor(client, auth_headers, scenario):
+    status = {"root": {"wlanpi0": {"type": "monitor"}}}
+    with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
+        with patch(
+            "wlanpi_core.wpa.scan.run_interface_scan",
+            return_value=_sample_networks(),
+        ):
+            response = client.get("/api/v1/utils/wlan/scan")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["selectedAdapter"]["iface"] == "wlanpi0"
+    assert body["networks"]
+
+
+def handle_scan_needs_selection_multi_monitor(client, auth_headers, scenario):
+    status = {
+        "root": {
+            "wlanpi0": {"type": "monitor"},
+            "wlanpi1": {"type": "monitor"},
+        }
+    }
+    with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
+        with patch("wlanpi_core.wpa.scan.run_interface_scan") as run_scan:
+            response = client.get("/api/v1/utils/wlan/scan")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    run_scan.assert_not_called()
+    assert body["needsSelection"] is True
+    assert len(body["candidates"]) == 2
+    assert body["networks"] == []
+
+
+def handle_scan_explicit_iface_namespace(client, auth_headers, scenario):
+    status = {
+        "root": {"wlanpi0": {"type": "monitor"}},
+        "scan_ns": {"wlanpi1": {"type": "monitor"}},
+    }
+    with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
+        with patch(
+            "wlanpi_core.wpa.scan.run_interface_scan",
+            return_value=_sample_networks(),
+        ):
+            response = client.get(
+                "/api/v1/utils/wlan/scan",
+                params={"iface": "wlanpi1", "namespace": "scan_ns"},
+            )
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["selectedAdapter"]["iface"] == "wlanpi1"
+    assert body["selectedAdapter"]["namespace"] == "scan_ns"
+
+
+def handle_scan_fallback_managed_root(client, auth_headers, scenario):
+    status = {"root": {"wlan0": {"type": "managed"}}}
+    with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
+        with patch(
+            "wlanpi_core.wpa.scan.run_interface_scan",
+            return_value=_sample_networks(),
+        ):
+            response = client.get("/api/v1/utils/wlan/scan")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["selectedAdapter"]["iface"] == "wlan0"
+    assert body["networks"]
+
+
+def handle_scan_no_adapter(client, auth_headers, scenario):
+    status = {"root": {}}
+    with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):
+        response = client.get("/api/v1/utils/wlan/scan")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["error"] == "NO_SCAN_ADAPTER"
+
+
 HANDLERS.update(
     {
         "service_restart_orb": handle_service_restart_orb,
@@ -234,6 +322,11 @@ HANDLERS.update(
         "dhcp_renew": handle_dhcp_renew,
         "wlan_usb_drivers": handle_wlan_usb_drivers,
         "wlan_pci_drivers": handle_wlan_pci_drivers,
+        "scan_auto_single_monitor": handle_scan_auto_single_monitor,
+        "scan_needs_selection_multi_monitor": handle_scan_needs_selection_multi_monitor,
+        "scan_explicit_iface_namespace": handle_scan_explicit_iface_namespace,
+        "scan_fallback_managed_root": handle_scan_fallback_managed_root,
+        "scan_no_adapter": handle_scan_no_adapter,
     }
 )
 

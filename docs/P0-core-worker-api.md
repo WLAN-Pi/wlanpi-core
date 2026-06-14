@@ -2,7 +2,7 @@
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
@@ -91,7 +91,37 @@ GET /api/v1/utils/wlan/scan
 }
 ```
 
-**UI platform:** wraps as job with `freshnessSec: 30`. Job WS streams BSS lines for TUI/panel; session WS stays small.
+**UI platform:** wraps as job with `freshnessSec: 30`. Job WS streams BSS lines for TUI/panel; session WS stays small. See [WLAN scan integration guide](./P0-utils-wlan-scan-api.md).
+
+#### 2.4.1 Scan architecture — snapshot vs continuous
+
+Core deliberately separates **single-shot scan** from **continuous RF observation**:
+
+| Primitive | Mechanism | Use when |
+|-----------|-----------|----------|
+| **`GET /utils/wlan/scan`** | One `wpa_cli scan` + parse `scan_results` via `wlanpi_core/wpa/scan.py` | REST, MCP, 3rd-party HTTP, UI job polling (`freshnessSec`) |
+| **`/streaming/capture` WebSocket** | Passive `dumpcap` byte stream + channel hop | Live survey, scanner tools, future BSS extraction from beacons |
+
+**Why not loop `wpa_cli scan` on a WebSocket?** Active scan is driver-limited, can disrupt association, and does not match how scanner tools work. Continuous “scanning” is passive beacon capture (monitor mode + pcap), not repeated WPA supplicant scans.
+
+**Code layering (for maintainers):**
+
+```
+wpa/scan.py      → shared wpa_cli scan primitives (parse, fetch, run_interface_scan)
+wlan/scan.py     → adapter selection + API response shape
+wpa/status.py    → connection status; reuses scan parser for connected BSSID signal
+connection/      → polls get_wpa_status only; not AP discovery
+namespaces/      → no scan; netns lifecycle only
+```
+
+**UI integration surfaces:**
+
+1. **Standard REST** — call `GET /utils/wlan/scan` directly.
+2. **Periodic display** — wlanpi-ui job runner polls REST; push deltas on job WebSocket (core stays stateless).
+3. **MCP / AI tools** — same REST + OpenAPI schema; no core WebSocket required.
+4. **3rd-party tools** — stable JSON `networks[]`; legacy `GET /network/wlan/scan` will delegate here then deprecate.
+
+Future continuous BSS events belong on a **capture-derived** path (beacon parser over `/streaming/capture`), not an extension of `run_interface_scan()`.
 
 ### 2.5 NetConfig and namespace management — wlanpi-ui helper layer
 
@@ -335,7 +365,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
 3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
-4. **WiFi/utils workers:** `/utils/wlan/scan`, speedtest, cloud-test; capture REST bridge
+4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done** (see [WLAN scan guide](./P0-utils-wlan-scan-api.md)); speedtest, cloud-test; capture REST bridge
 5. **Utils misc:** Blinker, freeradius test, bluetooth pair
 6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 
