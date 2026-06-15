@@ -9,6 +9,7 @@ from pathlib import Path
 
 # third party imports
 from fastapi import FastAPI, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -530,6 +531,25 @@ def create_app(debug: bool = False):
         openapi_tags=settings.TAGS_METADATA,
         debug=debug,
     )
+
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+            tags=app.openapi_tags,
+        )
+        schema["externalDocs"] = {
+            "description": "API Integration Guide (workflows & worked examples)",
+            "url": "https://github.com/bentumbler/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md",
+        }
+        app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
 
     @app.exception_handler(DatabaseError)
     async def database_error_handler(request: Request, exc: DatabaseError):

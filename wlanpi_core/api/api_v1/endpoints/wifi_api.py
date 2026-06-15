@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import wifi as wifi_schema
 from wlanpi_core.wlan.capabilities import get_wifi_capabilities
@@ -51,6 +52,8 @@ async def show_wifi_regulatory():
 @router.get(
     "/hotspot/stations",
     response_model=wifi_schema.HotspotStationsResponse,
+    summary="Hotspot AP station list",
+    responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_hotspot_stations(iface: Optional[str] = None):
@@ -71,6 +74,8 @@ async def show_hotspot_stations(iface: Optional[str] = None):
 @router.get(
     "/hotspot/link",
     response_model=wifi_schema.HotspotClientLinkResponse,
+    summary="Hotspot per-client link stats",
+    responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_hotspot_client_link(iface: Optional[str] = None):

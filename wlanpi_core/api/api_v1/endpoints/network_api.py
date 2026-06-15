@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
 from wlanpi_core.adapters.discovery import list_interfaces
+from wlanpi_core.api.openapi_docs import RESPONSES_GONE, RESPONSES_SCAN
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
@@ -386,12 +387,15 @@ async def show_wlan_pci_drivers():
     response_model=network.Interfaces,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
+    summary="[Deprecated] List wireless interfaces",
 )
 async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_TIMEOUT):
     """
-    List wireless interfaces (deprecated — use ``GET /network/config/status``).
+    **Deprecated** — prefer `GET /api/v1/network/config/status`.
 
-    Delegates to ``iw dev`` interface discovery.
+    **Replacement:** `GET /api/v1/network/config/status`
+
+    **Behaviour today:** delegates to `iw dev` (no DBus).
     """
     del timeout
     try:
@@ -408,14 +412,19 @@ async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_T
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
+    summary="[Deprecated] WLAN scan",
+    responses={**RESPONSES_SCAN},
 )
 async def get_a_systemd_network_scan(
     type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
-    WLAN scan (deprecated — use ``GET /utils/wlan/scan``).
+    **Deprecated** — use `GET /api/v1/utils/wlan/scan`.
 
-    Delegates to the namespace-aware scan primitive.
+    **Replacement:** `GET /api/v1/utils/wlan/scan`
+
+    Delegates to the namespace-aware scan primitive; maps to legacy `nets[]`.
+    Query `type` is ignored. Pass `interface` as the scan iface.
     """
     del type, timeout
     try:
@@ -467,12 +476,16 @@ async def get_a_systemd_network_scan(
     response_model=network.NetworkSetupStatus,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
+    summary="[Deprecated] DBus network setup — removed",
+    responses={**RESPONSES_GONE},
 )
 async def set_a_systemd_network_dbus(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
-    Deprecated DBus network setup — use ``POST /network/config/`` and activate.
+    **Deprecated — returns 410 Gone.**
+
+  **Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`
     """
     del setup, timeout
     return JSONResponse(
@@ -490,12 +503,16 @@ async def set_a_systemd_network_dbus(
     response_model=network.NetworkSetupStatus,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
+    summary="[Deprecated] Namespace stub — removed",
+    responses={**RESPONSES_GONE},
 )
 async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
-    Deprecated namespace stub — use ``POST /network/config/`` and activate.
+    **Deprecated — returns 410 Gone.**
+
+  **Replacement:** same as `/wlan/set-dbus` — use `/network/config/` + activate.
     """
     del setup, timeout
     return JSONResponse(
@@ -542,14 +559,17 @@ async def revert_wlan_namespace(
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
+    summary="[Deprecated] Connected network details",
 )
 async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ):
     """
-    Connected network details (deprecated — use ``GET /network/config/status``).
+    **Deprecated** — prefer `GET /api/v1/network/config/status` plus wpa state.
 
-    Delegates to ``wpa_cli status`` for the interface.
+  **Replacement:** `GET /api/v1/network/config/status`
+
+  **Behaviour today:** delegates to `wpa_cli status` for the given `interface`.
     """
     del timeout
     try:

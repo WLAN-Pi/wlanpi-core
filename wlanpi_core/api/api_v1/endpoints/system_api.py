@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import hotspot_service, system_service
@@ -365,6 +366,8 @@ async def shutdown_device():
 @router.get(
     "/hotspot/clients",
     response_model=system.HotspotClients,
+    summary="Hotspot connected client count",
+    responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_hotspot_clients(iface: Optional[str] = None):
@@ -385,6 +388,8 @@ async def show_hotspot_clients(iface: Optional[str] = None):
 @router.get(
     "/hotspot/ssid-passphrase",
     response_model=system.HotspotCredentials,
+    summary="Hotspot SSID and WPA passphrase",
+    responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_hotspot_ssid_passphrase():

@@ -64,14 +64,22 @@ async def reachability(
     "/speedtest",
     response_model=utils.SpeedTest,
     response_model_exclude_none=True,
+    summary="Internet speed test (slow)",
+    responses={
+        503: {
+            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)"
+        },
+    },
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def speedtest():
     """
-    Run an internet speed test via LibreSpeed CLI.
+    Run LibreSpeed CLI (typically **30–90 seconds**).
 
-    Long-running (typically 30–90s). UI platforms should wrap as a job with
-    ``freshnessSec`` deduplication.
+    Use a client HTTP timeout of at least **120 seconds**. UI platforms should
+  wrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.
+
+    On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.
     """
     try:
         result = await asyncio.wait_for(

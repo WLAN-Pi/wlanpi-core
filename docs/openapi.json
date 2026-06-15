@@ -1,0 +1,6766 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "wlanpi-core",
+    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, WiFi primitives, and utilities.\n\n**Base path:** `/api/v1`  \n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | `POST /api/v1/auth/token` with `{ \"device_id\": \"\u2026\" }` |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. All documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes remain for backward compatibility; prefer replacements listed in each operation.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
+    "version": "2.1.10"
+  },
+  "paths": {
+    "/api/v1/auth/token": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Issue JWT bearer token",
+        "description": "Issue a JWT for remote clients.\n\nSend the returned `access_token` as `Authorization: Bearer <token>` on all\nsubsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.",
+        "operationId": "generate_token_api_v1_auth_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token / HMAC signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "device_id missing from request body"
+          },
+          "500": {
+            "description": "Token generation failed"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Revoke current JWT",
+        "description": "Revoke the bearer token sent in the `Authorization` header.\n\nThe request body must include the same `device_id` used when the token was issued.",
+        "operationId": "revoke_token_api_v1_auth_token_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenRevokeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token / HMAC signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "device_id missing from request body"
+          },
+          "500": {
+            "description": "Revocation failed"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bluetooth/status": {
+      "get": {
+        "tags": [
+          "bluetooth"
+        ],
+        "summary": "Btstatus",
+        "description": "Returns the bluetooth status",
+        "operationId": "btstatus_api_v1_bluetooth_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BluetoothStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bluetooth/power/{action}": {
+      "post": {
+        "tags": [
+          "bluetooth"
+        ],
+        "summary": "Bt Power",
+        "description": "Turns on bluetooth\n\n- action: \"on\" or \"off\"",
+        "operationId": "bt_power_api_v1_bluetooth_power__action__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PowerState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bluetooth/pair": {
+      "post": {
+        "tags": [
+          "bluetooth"
+        ],
+        "summary": "Bt Pair",
+        "description": "Enter Bluetooth discoverable pairing mode (starts bt-timedpair).",
+        "operationId": "bt_pair_api_v1_bluetooth_pair_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BluetoothPairResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/interfaces/{interface}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Interfaces",
+        "description": "Returns all network interfaces.",
+        "operationId": "show_all_interfaces_api_v1_network_interfaces__interface__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Interfaces Api V1 Network Interfaces  Interface  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/interfaces": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Interfaces",
+        "description": "Returns all network interfaces.",
+        "operationId": "show_all_interfaces_api_v1_network_interfaces_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Interfaces Api V1 Network Interfaces Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/ethernet/{interface}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Ethernet Interfaces",
+        "description": "Returns all ethernet interfaces.",
+        "operationId": "show_all_ethernet_interfaces_api_v1_network_ethernet__interface__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Ethernet Interfaces Api V1 Network Ethernet  Interface  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/ethernet/{interface}/vlan/{vlan}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Ethernet Vlans",
+        "description": "Returns all VLANS for a given ethernet interface.",
+        "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet__interface__vlan__vlan__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "vlan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vlan"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Ethernet Vlans Api V1 Network Ethernet  Interface  Vlan  Vlan  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Create Ethernet Vlan",
+        "description": "Creates (or replaces) a VLAN on the given interface.",
+        "operationId": "create_ethernet_vlan_api_v1_network_ethernet__interface__vlan__vlan__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "vlan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Vlan"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/IPInterfaceAddress"
+                },
+                "title": "Addresses"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Delete Ethernet Vlan",
+        "description": "Removes a VLAN from the given interface.",
+        "operationId": "delete_ethernet_vlan_api_v1_network_ethernet__interface__vlan__vlan__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "vlan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Vlan"
+            }
+          },
+          {
+            "name": "allow_missing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Allow Missing"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/ethernet/{interface}/vlan": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Ethernet Vlans",
+        "description": "Returns all VLANS for a given ethernet interface.",
+        "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet__interface__vlan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "vlan",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vlan"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Ethernet Vlans Api V1 Network Ethernet  Interface  Vlan Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/ethernet/all/vlan/{vlan}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Ethernet Vlans",
+        "description": "Returns all VLANS for a given ethernet interface.",
+        "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet_all_vlan__vlan__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vlan",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vlan"
+            }
+          },
+          {
+            "name": "interface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Ethernet Vlans Api V1 Network Ethernet All Vlan  Vlan  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/ethernet/all/vlan": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show All Ethernet Vlans",
+        "description": "Returns all VLANS for a given ethernet interface.",
+        "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet_all_vlan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "vlan",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vlan"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/IPInterface"
+                    }
+                  },
+                  "title": "Response Show All Ethernet Vlans Api V1 Network Ethernet All Vlan Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/routing": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Routing Table",
+        "description": "Structured routing table from ``ip -j route show`` (root by default).",
+        "operationId": "show_routing_table_api_v1_network_routing_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingTable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/connections/tcp": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Tcp Connections",
+        "description": "Active TCP sockets from ``ss``.",
+        "operationId": "show_tcp_connections_api_v1_network_connections_tcp_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/connections/udp": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Udp Connections",
+        "description": "Active UDP sockets from ``ss``.",
+        "operationId": "show_udp_connections_api_v1_network_connections_udp_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/dhcp/leases": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Dhcp Leases",
+        "description": "Parse dhclient lease files under ``/var/lib/dhcp``.",
+        "operationId": "show_dhcp_leases_api_v1_network_dhcp_leases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DhcpLeasesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/interfaces/{iface}/link-stats": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Interface Link Stats",
+        "description": "Per-interface link statistics via ethtool.",
+        "operationId": "show_interface_link_stats_api_v1_network_interfaces__iface__link_stats_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkStats"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/interfaces/{iface}/renew": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Renew Interface Dhcp",
+        "description": "Renew DHCP lease for an interface in its current namespace.",
+        "operationId": "renew_interface_dhcp_api_v1_network_interfaces__iface__renew_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DhcpRenewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/usb-drivers": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Wlan Usb Drivers",
+        "description": "USB-attached WLAN adapters and bound drivers.\n\nReturns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.\nCheck ``interfaces_scanned`` \u2014 if > 0 and ``adapters`` is empty, use\n``GET /network/wlan/pci-drivers`` for built-in WiFi.",
+        "operationId": "show_wlan_usb_drivers_api_v1_network_wlan_usb_drivers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WlanUsbDriversResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/wlan/pci-drivers": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Wlan Pci Drivers",
+        "description": "PCI/platform wireless devices and bound WLAN interface drivers.\n\n``pci_devices`` comes from lspci; ``adapters`` maps iw dev interfaces to\ndrivers. Both lists can be populated independently.",
+        "operationId": "show_wlan_pci_drivers_api_v1_network_wlan_pci_drivers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WlanPciDriversResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/wlan/getInterfaces": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "[Deprecated] List wireless interfaces",
+        "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status`.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `iw dev` (no DBus).",
+        "operationId": "get_a_systemd_network_interfaces_api_v1_network_wlan_getInterfaces_get",
+        "deprecated": true,
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Interfaces"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/scan": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "[Deprecated] WLAN scan",
+        "description": "**Deprecated** \u2014 use `GET /api/v1/utils/wlan/scan`.\n\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
+        "operationId": "get_a_systemd_network_scan_api_v1_network_wlan_scan_get",
+        "deprecated": true,
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type"
+            }
+          },
+          {
+            "name": "interface",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResults"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Multiple monitor adapters \u2014 client must pass `iface` and `namespace`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanNeedsSelectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No suitable scan adapter available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanNoAdapterResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/set-dbus": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "[Deprecated] DBus network setup \u2014 removed",
+        "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`",
+        "operationId": "set_a_systemd_network_dbus_api_v1_network_wlan_set_dbus_post",
+        "deprecated": true,
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WlanInterfaceSetup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSetupStatus"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Endpoint removed \u2014 use the `replacement` path in the body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeprecatedEndpointResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/set": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "[Deprecated] Namespace stub \u2014 removed",
+        "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** same as `/wlan/set-dbus` \u2014 use `/network/config/` + activate.",
+        "operationId": "set_a_systemd_network_api_v1_network_wlan_set_post",
+        "deprecated": true,
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WlanInterfaceSetup"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkSetupStatus"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Endpoint removed \u2014 use the `replacement` path in the body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeprecatedEndpointResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/revert": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Revert Wlan Namespace",
+        "description": "Reverts the PHY and interface back to the root namespace.",
+        "operationId": "revert_wlan_namespace_api_v1_network_wlan_revert_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WlanRevertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevertNamespace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/wlan/getConnected": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "[Deprecated] Connected network details",
+        "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status` plus wpa state.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`.",
+        "operationId": "get_a_systemd_currentNetwork_details_api_v1_network_wlan_getConnected_get",
+        "deprecated": true,
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Interface"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectedNetwork"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/config/status": {
+      "get": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Get Status",
+        "description": "Get the status of network configurations.",
+        "operationId": "get_status_api_v1_network_config_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Status Api V1 Network Config Status Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/config/": {
+      "get": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Get Configs",
+        "description": "Get all network configuration ids.",
+        "operationId": "get_configs_api_v1_network_config__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Get Configs Api V1 Network Config  Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Create Config",
+        "description": "Create a new network configuration.",
+        "operationId": "create_config_api_v1_network_config__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Create Config Api V1 Network Config  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/config/{id}": {
+      "get": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Get Config By Id",
+        "description": "Get a specific network configuration by ID.",
+        "operationId": "get_config_by_id_api_v1_network_config__id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Update Config",
+        "description": "Update an existing network configuration.",
+        "operationId": "update_config_api_v1_network_config__id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/NetConfig"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "title": "Response Update Config Api V1 Network Config  Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Delete Config",
+        "description": "Delete a network configuration by ID.",
+        "operationId": "delete_config_api_v1_network_config__id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Config Api V1 Network Config  Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/config/activate/{id}": {
+      "post": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Activate Config",
+        "description": "Activate a network configuration by ID.",
+        "operationId": "activate_config_api_v1_network_config_activate__id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "override_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Override Active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Activate Config Api V1 Network Config Activate  Id  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/config/deactivate/{id}": {
+      "post": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Deactivate Config",
+        "description": "Deactivate a network configuration by ID.",
+        "operationId": "deactivate_config_api_v1_network_config_deactivate__id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "override_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Override Active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Deactivate Config Api V1 Network Config Deactivate  Id  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/info/": {
+      "get": {
+        "tags": [
+          "network_information"
+        ],
+        "summary": "Show Network Info",
+        "description": "Returns information about network related stuff.",
+        "operationId": "show_network_info_api_v1_network_info__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/info/publicip6": {
+      "get": {
+        "tags": [
+          "network_information"
+        ],
+        "summary": "Show Public Ip6",
+        "description": "Returns public IPv6 address and related details.",
+        "operationId": "show_public_ip6_api_v1_network_info_publicip6_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIpInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/device/info": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Device Info",
+        "description": "Returns core information about the PI.\n\nCommands:\n - Uses 'wlanpi-model -b' to query the device model.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
+        "operationId": "show_device_info_api_v1_system_device_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/device/stats": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Device Stats",
+        "description": "Returns system stats about the PI.\n\nSee get_stats in system_service.py",
+        "operationId": "device_stats_api_v1_system_device_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceStats"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/device/model": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Device Model",
+        "description": "Uses 'wlanpi-model -b' to query the device model.",
+        "operationId": "show_device_model_api_v1_system_device_model_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceModel"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/service/status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show A Systemd Service Status",
+        "description": "Queries systemd via dbus to get the current status of an allowed service.",
+        "operationId": "show_a_systemd_service_status_api_v1_system_service_status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/service/start": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Start A Systemd Service",
+        "description": "Uses systemd via dbus to start an allowed service.",
+        "operationId": "start_a_systemd_service_api_v1_system_service_start_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/service/stop": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Stop A Systemd Service",
+        "description": "Uses systemd via dbus to stop an allowed service.",
+        "operationId": "stop_a_systemd_service_api_v1_system_service_stop_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/service/restart": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Restart A Systemd Service",
+        "description": "Uses systemd via dbus to restart an allowed service.",
+        "operationId": "restart_a_systemd_service_api_v1_system_service_restart_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/datetime": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Datetime",
+        "description": "Returns current local date/time and timezone.",
+        "operationId": "show_datetime_api_v1_system_datetime_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateTimeInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/timezone": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Timezone",
+        "description": "Returns the current system timezone.",
+        "operationId": "show_timezone_api_v1_system_timezone_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimezoneInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/timezone/list": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "List Timezones",
+        "description": "Returns available system timezones.",
+        "operationId": "list_timezones_api_v1_system_timezone_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimezoneList"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/timezone/set": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Set Timezone",
+        "description": "Sets the system timezone.",
+        "operationId": "set_timezone_api_v1_system_timezone_set_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimezoneSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimezoneInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/reg-domain/list": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "List Reg Domains",
+        "description": "Returns supported WiFi regulatory domain country codes.",
+        "operationId": "list_reg_domains_api_v1_system_reg_domain_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegDomainList"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/reg-domain": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Reg Domain",
+        "description": "Returns the current WiFi regulatory domain.",
+        "operationId": "show_reg_domain_api_v1_system_reg_domain_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegDomainInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/reg-domain/set": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Set Reg Domain",
+        "description": "Sets the WiFi regulatory domain country code.",
+        "operationId": "set_reg_domain_api_v1_system_reg_domain_set_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegDomainSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegDomainInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/battery": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Battery",
+        "description": "Returns battery status if a power supply is present.",
+        "operationId": "show_battery_api_v1_system_battery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatteryInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/timezone/auto": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Enable Timezone Auto",
+        "description": "Enable NTP automatic time synchronization.",
+        "operationId": "enable_timezone_auto_api_v1_system_timezone_auto_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NtpAutoInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/reboot": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Reboot Device",
+        "description": "Reboot the device immediately.",
+        "operationId": "reboot_device_api_v1_system_reboot_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PowerActionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/shutdown": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Shutdown Device",
+        "description": "Shut down the device immediately.",
+        "operationId": "shutdown_device_api_v1_system_shutdown_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PowerActionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/hotspot/clients": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Hotspot connected client count",
+        "description": "Connected client count for hotspot mode.\n\nReturns 409 when the device is not in hotspot mode.",
+        "operationId": "show_hotspot_clients_api_v1_system_hotspot_clients_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotClients"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Device mode precondition not met (e.g. not in hotspot mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/hotspot/ssid-passphrase": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Hotspot SSID and WPA passphrase",
+        "description": "Hotspot SSID and WPA passphrase from hostapd configuration.\n\nReturns 409 when the device is not in hotspot mode.",
+        "operationId": "show_hotspot_ssid_passphrase_api_v1_system_hotspot_ssid_passphrase_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotCredentials"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Device mode precondition not met (e.g. not in hotspot mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/utils/reachability": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Reachability",
+        "description": "Runs reachability checks for gateway, internet, DNS, and optional custom targets.",
+        "operationId": "reachability_api_v1_utils_reachability_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "targets",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional hostnames or IPs to ping. Repeat the parameter or use comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1",
+              "title": "Targets"
+            },
+            "description": "Optional hostnames or IPs to ping. Repeat the parameter or use comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachabilityTest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/utils/speedtest": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Internet speed test (slow)",
+        "description": "Run LibreSpeed CLI (typically **30\u201390 seconds**).\n\n  Use a client HTTP timeout of at least **120 seconds**. UI platforms should\nwrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.\n\n  On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.",
+        "operationId": "speedtest_api_v1_utils_speedtest_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTest"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/utils/blinker/start": {
+      "post": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Start Blinker",
+        "description": "Start the Ethernet port blinker (cable finder).",
+        "operationId": "start_blinker_api_v1_utils_blinker_start_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "interface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "eth0",
+              "title": "Interface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlinkerActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/utils/blinker/stop": {
+      "post": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Stop Blinker",
+        "description": "Stop the Ethernet port blinker.",
+        "operationId": "stop_blinker_api_v1_utils_blinker_stop_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlinkerActionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/utils/blinker/status": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Blinker Status",
+        "description": "Return whether the port blinker is running.",
+        "operationId": "blinker_status_api_v1_utils_blinker_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlinkerStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/utils/wlan/scan": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Wlan Scan Endpoint",
+        "description": "Namespace-aware WLAN scan with automatic monitor adapter selection.\n\nWhen multiple monitor adapters exist and ``iface`` is omitted, returns\n``needsSelection`` with candidates instead of scanning.\n\n``detail=short`` (default) returns list-friendly fields plus RF extensions.\n``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).",
+        "operationId": "wlan_scan_endpoint_api_v1_utils_wlan_scan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iface"
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          },
+          {
+            "name": "hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Hidden"
+            }
+          },
+          {
+            "name": "detail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "short",
+              "title": "Detail"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WlanScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No suitable scan adapter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WlanScanErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/utils/usb": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Usb Interfaces",
+        "description": "Gets a list of usb interfaces and returns them.",
+        "operationId": "usb_interfaces_api_v1_utils_usb_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Usb"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/utils/ufw": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Ufw Information",
+        "description": "Returns the UFW information.",
+        "operationId": "ufw_information_api_v1_utils_ufw_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ufw"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/wifi/capabilities": {
+      "get": {
+        "tags": [
+          "wifi"
+        ],
+        "summary": "Show Wifi Capabilities",
+        "description": "Return ``iw phy`` capability dumps for each PHY.",
+        "operationId": "show_wifi_capabilities_api_v1_wifi_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiCapabilitiesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/wifi/regulatory": {
+      "get": {
+        "tags": [
+          "wifi"
+        ],
+        "summary": "Show Wifi Regulatory",
+        "description": "Return WiFi regulatory domain information.",
+        "operationId": "show_wifi_regulatory_api_v1_wifi_regulatory_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiRegulatoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/wifi/hotspot/stations": {
+      "get": {
+        "tags": [
+          "wifi"
+        ],
+        "summary": "Hotspot AP station list",
+        "description": "Connected stations on the hotspot AP interface.\n\nReturns 409 when the device is not in hotspot mode.",
+        "operationId": "show_hotspot_stations_api_v1_wifi_hotspot_stations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotStationsResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Device mode precondition not met (e.g. not in hotspot mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/wifi/hotspot/link": {
+      "get": {
+        "tags": [
+          "wifi"
+        ],
+        "summary": "Hotspot per-client link stats",
+        "description": "Per-station link statistics for hotspot AP clients.\n\nReturns 409 when the device is not in hotspot mode.",
+        "operationId": "show_hotspot_client_link_api_v1_wifi_hotspot_link_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotClientLinkResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Device mode precondition not met (e.g. not in hotspot mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profiler/status": {
+      "get": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Profiler Status",
+        "description": "Returns status of profiler",
+        "operationId": "profiler_status_api_v1_profiler_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/profiler/start": {
+      "post": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Start Profiler",
+        "description": "Starts profiler with provided arguments",
+        "operationId": "start_profiler_api_v1_profiler_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Start-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Start-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/profiler/stop": {
+      "post": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Stop Profiler",
+        "description": "Stops  profiler",
+        "operationId": "stop_profiler_api_v1_profiler_stop_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stop"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BatteryInfo": {
+        "properties": {
+          "present": {
+            "type": "boolean",
+            "title": "Present",
+            "example": true
+          },
+          "capacity_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity Percent",
+            "example": 85
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "example": "Discharging"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "example": "BAT0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "present"
+        ],
+        "title": "BatteryInfo"
+      },
+      "BlinkerActionResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "examples": [
+              "started",
+              "stopped",
+              "already_running",
+              "not_running"
+            ]
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface",
+            "example": "eth0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active",
+          "status"
+        ],
+        "title": "BlinkerActionResponse"
+      },
+      "BlinkerStatus": {
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "example": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "active"
+        ],
+        "title": "BlinkerStatus"
+      },
+      "BluetoothPairResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "examples": [
+              "discoverable",
+              "paired"
+            ]
+          },
+          "alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias",
+            "example": "wlanpi-bc2"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "example": "Bluetooth is on. Discoverable as \"wlanpi-bc2\""
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairedDevice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "BluetoothPairResponse"
+      },
+      "BluetoothStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "wlanpi-bc2"
+          },
+          "alias": {
+            "type": "string",
+            "title": "Alias",
+            "example": "wlanpi-bc2"
+          },
+          "addr": {
+            "type": "string",
+            "title": "Addr",
+            "example": "00:00:00:00:00:00"
+          },
+          "power": {
+            "type": "string",
+            "title": "Power",
+            "examples": [
+              "On",
+              "Off"
+            ]
+          },
+          "paired_devices": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Paired Devices",
+            "example": [
+              {
+                "addr": "00:00:00:00:00:00",
+                "name": "device"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "alias",
+          "addr",
+          "power",
+          "paired_devices"
+        ],
+        "title": "BluetoothStatus"
+      },
+      "BssLoad": {
+        "properties": {
+          "stations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stations"
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utilization",
+            "description": "Channel utilisation from BSS Load (0-255, as reported by iw)"
+          }
+        },
+        "type": "object",
+        "title": "BssLoad"
+      },
+      "ConnectedNetwork": {
+        "properties": {
+          "connectedStatus": {
+            "type": "boolean",
+            "title": "Connectedstatus",
+            "example": true
+          },
+          "connectedNet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "connectedStatus",
+          "connectedNet"
+        ],
+        "title": "ConnectedNetwork"
+      },
+      "ConnectionsResponse": {
+        "properties": {
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/SocketConnection"
+            },
+            "type": "array",
+            "title": "Connections"
+          }
+        },
+        "type": "object",
+        "title": "ConnectionsResponse"
+      },
+      "DateTimeInfo": {
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "title": "Datetime",
+            "description": "Local wall-clock time as ISO 8601, e.g. 2026-06-07T21:32:12+01:00",
+            "examples": [
+              "2026-06-07T21:32:12+01:00"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "IANA timezone name when available, e.g. Europe/London",
+            "examples": [
+              "Europe/London"
+            ]
+          },
+          "display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display",
+            "description": "Human-readable local time for UI labels; do not parse programmatically",
+            "examples": [
+              "Sun 2026-06-07 21:32:22 BST"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "How datetime was obtained: date | timedatectl | fallback",
+            "default": "date",
+            "examples": [
+              "date"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "datetime",
+          "timezone"
+        ],
+        "title": "DateTimeInfo",
+        "description": "Device local date/time. Always parse `datetime` as ISO 8601 / RFC 3339."
+      },
+      "DeprecatedEndpointResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": "ENDPOINT_DEPRECATED",
+            "examples": [
+              "ENDPOINT_DEPRECATED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "What to call instead",
+            "examples": [
+              "Use POST /api/v1/network/config/ then POST /api/v1/network/config/activate/{id}"
+            ]
+          },
+          "replacement": {
+            "type": "string",
+            "title": "Replacement",
+            "description": "Canonical replacement path (without host)",
+            "examples": [
+              "/api/v1/network/config/"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "replacement"
+        ],
+        "title": "DeprecatedEndpointResponse"
+      },
+      "DeviceInfo": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "example": "R4"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "wlanpi-bc2"
+          },
+          "hostname": {
+            "type": "string",
+            "title": "Hostname",
+            "example": "wlanpi-bc2.local"
+          },
+          "software_version": {
+            "type": "string",
+            "title": "Software Version",
+            "example": "3.2.0"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "example": "classic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "name",
+          "hostname",
+          "software_version",
+          "mode"
+        ],
+        "title": "DeviceInfo"
+      },
+      "DeviceModel": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "example": "R4"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "DeviceModel"
+      },
+      "DeviceStats": {
+        "properties": {
+          "ip": {
+            "type": "string",
+            "title": "Ip",
+            "example": "127.0.0.1"
+          },
+          "cpu": {
+            "type": "string",
+            "title": "Cpu",
+            "example": "23%"
+          },
+          "ram": {
+            "type": "string",
+            "title": "Ram",
+            "example": "1022/3792MB 26.95%"
+          },
+          "disk": {
+            "type": "string",
+            "title": "Disk",
+            "example": "6/59GB 11%"
+          },
+          "cpu_temp": {
+            "type": "string",
+            "title": "Cpu Temp",
+            "example": "1h 40m"
+          },
+          "uptime": {
+            "type": "string",
+            "title": "Uptime",
+            "example": "1h 40m"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ip",
+          "cpu",
+          "ram",
+          "disk",
+          "cpu_temp",
+          "uptime"
+        ],
+        "title": "DeviceStats"
+      },
+      "DhcpLeasesResponse": {
+        "properties": {
+          "leases": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Leases"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "DhcpLeasesResponse"
+      },
+      "DhcpRenewResponse": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface",
+          "status"
+        ],
+        "title": "DhcpRenewResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HotspotClientLink": {
+        "properties": {
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "signal_dbm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Dbm"
+          },
+          "tx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tx Bitrate"
+          },
+          "rx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rx Bitrate"
+          },
+          "inactive_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inactive Time"
+          },
+          "connected_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Time"
+          },
+          "authorized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorized"
+          },
+          "authenticated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticated"
+          },
+          "associated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associated"
+          }
+        },
+        "type": "object",
+        "title": "HotspotClientLink"
+      },
+      "HotspotClientLinkResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "example": "hotspot"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "example": "wlan0"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "example": 1
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/HotspotClientLink"
+            },
+            "type": "array",
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "interface",
+          "count"
+        ],
+        "title": "HotspotClientLinkResponse"
+      },
+      "HotspotClients": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "example": "hotspot"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "example": "wlan0"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "example": 2
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "interface",
+          "count"
+        ],
+        "title": "HotspotClients"
+      },
+      "HotspotCredentials": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "example": "hotspot"
+          },
+          "ssid": {
+            "type": "string",
+            "title": "Ssid",
+            "example": "WLAN Pi abc"
+          },
+          "passphrase": {
+            "type": "string",
+            "title": "Passphrase",
+            "example": "example-passphrase"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "ssid",
+          "passphrase"
+        ],
+        "title": "HotspotCredentials"
+      },
+      "HotspotStation": {
+        "properties": {
+          "mac": {
+            "type": "string",
+            "title": "Mac"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "signal_dbm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Dbm"
+          },
+          "tx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tx Bitrate"
+          },
+          "rx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rx Bitrate"
+          },
+          "inactive_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inactive Time"
+          },
+          "connected_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Time"
+          },
+          "authorized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorized"
+          },
+          "authenticated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticated"
+          },
+          "associated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associated"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "mac",
+          "interface"
+        ],
+        "title": "HotspotStation"
+      },
+      "HotspotStationsResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "example": "hotspot"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "example": "wlan0"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "example": 1
+          },
+          "stations": {
+            "items": {
+              "$ref": "#/components/schemas/HotspotStation"
+            },
+            "type": "array",
+            "title": "Stations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "interface",
+          "count"
+        ],
+        "title": "HotspotStationsResponse"
+      },
+      "IPInterface": {
+        "properties": {
+          "ifindex": {
+            "type": "integer",
+            "title": "Ifindex",
+            "examples": [
+              0
+            ]
+          },
+          "ifname": {
+            "type": "string",
+            "title": "Ifname",
+            "examples": [
+              "eth0",
+              "lo"
+            ]
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flags",
+            "examples": [
+              [
+                "UP",
+                "BROADCAST",
+                "MULTICAST"
+              ],
+              "LOOPBACK"
+            ]
+          },
+          "mtu": {
+            "type": "integer",
+            "title": "Mtu",
+            "examples": [
+              1500
+            ]
+          },
+          "qdisc": {
+            "type": "string",
+            "title": "Qdisc",
+            "examples": [
+              "noqueue",
+              "mq",
+              "pfifo_fast",
+              "noop"
+            ]
+          },
+          "operstate": {
+            "type": "string",
+            "title": "Operstate",
+            "examples": [
+              "UP",
+              "DOWN"
+            ]
+          },
+          "group": {
+            "type": "string",
+            "title": "Group",
+            "examples": [
+              "default"
+            ]
+          },
+          "txqlen": {
+            "type": "integer",
+            "title": "Txqlen",
+            "examples": [
+              1000
+            ]
+          },
+          "link_type": {
+            "type": "string",
+            "title": "Link Type",
+            "examples": [
+              "ether",
+              "loopback"
+            ]
+          },
+          "address": {
+            "type": "string",
+            "title": "Address",
+            "examples": [
+              "00:50:56:83:4f:7d"
+            ]
+          },
+          "broadcast": {
+            "type": "string",
+            "title": "Broadcast",
+            "examples": [
+              "ff:ff:ff:ff:ff:ff"
+            ]
+          },
+          "addr_info": {
+            "items": {
+              "$ref": "#/components/schemas/IPInterfaceAddress"
+            },
+            "type": "array",
+            "title": "Addr Info",
+            "examples": []
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "ifindex",
+          "ifname",
+          "flags",
+          "mtu",
+          "qdisc",
+          "operstate",
+          "group",
+          "txqlen",
+          "link_type",
+          "address",
+          "broadcast",
+          "addr_info"
+        ],
+        "title": "IPInterface"
+      },
+      "IPInterfaceAddress": {
+        "properties": {
+          "family": {
+            "type": "string",
+            "title": "Family",
+            "examples": [
+              "inet",
+              "inet6"
+            ]
+          },
+          "local": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local",
+            "examples": [
+              "10.0.0.1"
+            ]
+          },
+          "prefixlen": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefixlen",
+            "examples": [
+              24,
+              32,
+              128
+            ]
+          },
+          "broadcast": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broadcast",
+            "examples": [
+              "10.0.0.255"
+            ]
+          },
+          "anycast": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anycast",
+            "examples": [
+              "10.0.0.255"
+            ]
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Scope",
+            "default": "global",
+            "examples": [
+              "global",
+              "link",
+              "host",
+              3
+            ]
+          },
+          "dynamic": {
+            "type": "boolean",
+            "title": "Dynamic",
+            "default": false,
+            "examples": [
+              false,
+              true
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "examples": [
+              "eth0",
+              "lo"
+            ]
+          },
+          "valid_life_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Life Time",
+            "examples": [
+              3600,
+              null
+            ]
+          },
+          "preferred_life_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Life Time",
+            "examples": [
+              3600,
+              41213,
+              null
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "family"
+        ],
+        "title": "IPInterfaceAddress"
+      },
+      "Interface": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "example": "wlan0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface"
+        ],
+        "title": "Interface"
+      },
+      "Interfaces": {
+        "properties": {
+          "interfaces": {
+            "items": {
+              "$ref": "#/components/schemas/Interface"
+            },
+            "type": "array",
+            "title": "Interfaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interfaces"
+        ],
+        "title": "Interfaces"
+      },
+      "LinkStats": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "link_detected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Detected"
+          },
+          "speed_mbps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Mbps"
+          },
+          "duplex": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplex"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver"
+          },
+          "raw": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Raw"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface"
+        ],
+        "title": "LinkStats"
+      },
+      "MessageResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Human-readable error or status message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "MessageResponse"
+      },
+      "NamespaceConfig": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/NetworkModeEnum",
+            "default": "managed"
+          },
+          "iface_display_name": {
+            "type": "string",
+            "title": "Iface Display Name"
+          },
+          "phy": {
+            "type": "string",
+            "title": "Phy"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mlo": {
+            "type": "boolean",
+            "title": "Mlo",
+            "default": false
+          },
+          "default_route": {
+            "type": "boolean",
+            "title": "Default Route",
+            "default": false
+          },
+          "autostart_app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autostart App"
+          },
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface_display_name",
+          "phy",
+          "interface",
+          "namespace"
+        ],
+        "title": "NamespaceConfig"
+      },
+      "NetConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "namespaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NamespaceConfig"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespaces"
+          },
+          "roots": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RootConfig"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "NetConfig"
+      },
+      "NetConfigUpdate": {
+        "properties": {
+          "namespaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NamespaceConfig"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespaces"
+          },
+          "roots": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RootConfig"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roots"
+          }
+        },
+        "type": "object",
+        "title": "NetConfigUpdate"
+      },
+      "NetSecurity": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "title": "Ssid"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityTypes"
+          },
+          "psk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psk"
+          },
+          "sae_pwe": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sae Pwe"
+          },
+          "pmf": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pmf"
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "client_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Cert"
+          },
+          "private_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Key"
+          },
+          "ca_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ca Cert"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid",
+          "security"
+        ],
+        "title": "NetSecurity"
+      },
+      "NetworkConfigResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "result": {
+            "title": "Result"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "title": "NetworkConfigResponse"
+      },
+      "NetworkEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "title": "Event",
+            "example": "authenticated"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "example": "2024-09-01 03:52:31.232828"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event",
+          "time"
+        ],
+        "title": "NetworkEvent"
+      },
+      "NetworkInfo": {
+        "properties": {
+          "interfaces": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Interfaces"
+          },
+          "wlan_interfaces": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Wlan Interfaces"
+          },
+          "eth0_ipconfig_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Eth0 Ipconfig Info"
+          },
+          "vlan_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Vlan Info"
+          },
+          "lldp_neighbour_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Lldp Neighbour Info"
+          },
+          "cdp_neighbour_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cdp Neighbour Info"
+          },
+          "public_ip": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Public Ip"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interfaces",
+          "wlan_interfaces",
+          "eth0_ipconfig_info",
+          "vlan_info",
+          "lldp_neighbour_info",
+          "cdp_neighbour_info",
+          "public_ip"
+        ],
+        "title": "NetworkInfo"
+      },
+      "NetworkModeEnum": {
+        "type": "string",
+        "enum": [
+          "managed",
+          "monitor"
+        ],
+        "title": "NetworkModeEnum"
+      },
+      "NetworkSetupLog": {
+        "properties": {
+          "selectErr": {
+            "type": "string",
+            "title": "Selecterr",
+            "example": "fi.w1.wpa_supplicant1.NetworkUnknown"
+          },
+          "eventLog": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkEvent"
+            },
+            "type": "array",
+            "title": "Eventlog"
+          }
+        },
+        "type": "object",
+        "required": [
+          "selectErr",
+          "eventLog"
+        ],
+        "title": "NetworkSetupLog"
+      },
+      "NetworkSetupStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "example": "connected"
+          },
+          "response": {
+            "$ref": "#/components/schemas/NetworkSetupLog"
+          },
+          "connectedNet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input": {
+            "type": "string",
+            "title": "Input"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "response",
+          "connectedNet",
+          "input"
+        ],
+        "title": "NetworkSetupStatus"
+      },
+      "NtpAutoInfo": {
+        "properties": {
+          "ntp": {
+            "type": "boolean",
+            "title": "Ntp",
+            "description": "Whether NTP synchronization is enabled"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "example": "Europe/London"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ntp",
+          "timezone"
+        ],
+        "title": "NtpAutoInfo"
+      },
+      "PairedDevice": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "My Phone"
+          },
+          "addr": {
+            "type": "string",
+            "title": "Addr",
+            "example": "00:11:22:33:44:55"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "addr"
+        ],
+        "title": "PairedDevice"
+      },
+      "PciDevice": {
+        "properties": {
+          "pci_id": {
+            "type": "string",
+            "title": "Pci Id",
+            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable lspci device line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pci_id",
+          "description"
+        ],
+        "title": "PciDevice"
+      },
+      "PhyCapabilities": {
+        "properties": {
+          "phy": {
+            "type": "string",
+            "title": "Phy",
+            "example": "phy0"
+          },
+          "info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Info",
+            "description": "Raw iw phy info output"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phy"
+        ],
+        "title": "PhyCapabilities"
+      },
+      "PingTargetResult": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "rttMsMin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rttmsmin"
+          },
+          "rttMsAvg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rttmsavg"
+          },
+          "rttMsMax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rttmsmax"
+          },
+          "packetLossPercent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packetlosspercent"
+          },
+          "display": {
+            "type": "string",
+            "title": "Display",
+            "description": "Human-readable RTT such as \"5.17ms\" or \"FAIL\""
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "success",
+          "display"
+        ],
+        "title": "PingTargetResult"
+      },
+      "PowerActionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "examples": [
+              "rebooting",
+              "shutting_down"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "PowerActionResponse"
+      },
+      "PowerState": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "example": "success"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "examples": [
+              "on",
+              "off"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "action"
+        ],
+        "title": "PowerState"
+      },
+      "PublicIpInfo": {
+        "properties": {
+          "info": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Info"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "title": "PublicIpInfo"
+      },
+      "ReachabilityTest": {
+        "properties": {
+          "Ping Google": {
+            "type": "string",
+            "title": "Ping Google",
+            "example": "12.345ms"
+          },
+          "Browse Google": {
+            "type": "string",
+            "title": "Browse Google",
+            "examples": [
+              "OK",
+              "FAIL"
+            ]
+          },
+          "Ping Gateway": {
+            "type": "string",
+            "title": "Ping Gateway",
+            "example": "12.345ms"
+          },
+          "DNS Server 1 Resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dns Server 1 Resolution",
+            "examples": [
+              "OK",
+              "FAIL"
+            ]
+          },
+          "DNS Server 2 Resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dns Server 2 Resolution",
+            "examples": [
+              "OK",
+              "FAIL"
+            ]
+          },
+          "DNS Server 3 Resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dns Server 3 Resolution",
+            "examples": [
+              "OK",
+              "FAIL"
+            ]
+          },
+          "Arping Gateway": {
+            "type": "string",
+            "title": "Arping Gateway",
+            "example": "12.345ms"
+          },
+          "custom": {
+            "items": {
+              "$ref": "#/components/schemas/PingTargetResult"
+            },
+            "type": "array",
+            "title": "Custom",
+            "description": "Optional user-supplied targets pinged in parallel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "Ping Google",
+          "Browse Google",
+          "Ping Gateway",
+          "Arping Gateway"
+        ],
+        "title": "ReachabilityTest"
+      },
+      "RegDomainCountry": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "ISO 3166-1 alpha-2 country code",
+            "examples": [
+              "GB"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "English display name for UI pickers",
+            "examples": [
+              "United Kingdom"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "RegDomainCountry"
+      },
+      "RegDomainInfo": {
+        "properties": {
+          "country": {
+            "type": "string",
+            "title": "Country",
+            "description": "Two-letter country code, e.g. GB, US",
+            "examples": [
+              "GB"
+            ]
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw",
+            "description": "Underlying tool output for diagnostics; do not parse \u2014 use country",
+            "examples": [
+              "GB"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "How country was obtained: wlanpi-reg-domain | iw | crda",
+            "default": "wlanpi-reg-domain",
+            "examples": [
+              "wlanpi-reg-domain"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "country"
+        ],
+        "title": "RegDomainInfo",
+        "description": "WiFi regulatory domain. Always parse `country` (ISO 3166-1 alpha-2)."
+      },
+      "RegDomainList": {
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/RegDomainCountry"
+            },
+            "type": "array",
+            "title": "Countries"
+          }
+        },
+        "type": "object",
+        "title": "RegDomainList"
+      },
+      "RegDomainSetRequest": {
+        "properties": {
+          "country": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Country",
+            "example": "GB"
+          }
+        },
+        "type": "object",
+        "required": [
+          "country"
+        ],
+        "title": "RegDomainSetRequest"
+      },
+      "RevertNamespace": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "RevertNamespace"
+      },
+      "RootConfig": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/NetworkModeEnum",
+            "default": "managed"
+          },
+          "iface_display_name": {
+            "type": "string",
+            "title": "Iface Display Name"
+          },
+          "phy": {
+            "type": "string",
+            "title": "Phy"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mlo": {
+            "type": "boolean",
+            "title": "Mlo",
+            "default": false
+          },
+          "default_route": {
+            "type": "boolean",
+            "title": "Default Route",
+            "default": false
+          },
+          "autostart_app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autostart App"
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface_display_name",
+          "phy",
+          "interface"
+        ],
+        "title": "RootConfig"
+      },
+      "RoutingTable": {
+        "properties": {
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Routes"
+          }
+        },
+        "type": "object",
+        "title": "RoutingTable"
+      },
+      "ScanAdapter": {
+        "properties": {
+          "iface": {
+            "type": "string",
+            "title": "Iface"
+          },
+          "namespace": {
+            "type": "string",
+            "title": "Namespace",
+            "description": "Namespace name, or root for default namespace"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface",
+          "namespace",
+          "label"
+        ],
+        "title": "ScanAdapter"
+      },
+      "ScanItem": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "title": "Ssid",
+            "example": "A Network"
+          },
+          "bssid": {
+            "type": "string",
+            "title": "Bssid",
+            "example": "11:22:33:44:55"
+          },
+          "key_mgmt": {
+            "type": "string",
+            "title": "Key Mgmt",
+            "example": "wpa-psk"
+          },
+          "signal": {
+            "type": "integer",
+            "title": "Signal",
+            "example": -65
+          },
+          "freq": {
+            "type": "integer",
+            "title": "Freq",
+            "example": 5650
+          },
+          "minrate": {
+            "type": "integer",
+            "title": "Minrate",
+            "example": 1000000
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid",
+          "bssid",
+          "key_mgmt",
+          "signal",
+          "freq",
+          "minrate"
+        ],
+        "title": "ScanItem"
+      },
+      "ScanNeedsSelectionResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": "NEEDS_SELECTION"
+          },
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "description": "Monitor adapters the client must choose from before retrying scan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates"
+        ],
+        "title": "ScanNeedsSelectionResponse"
+      },
+      "ScanNoAdapterResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": "NO_SCAN_ADAPTER"
+          },
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "title": "ScanNoAdapterResponse"
+      },
+      "ScanResults": {
+        "properties": {
+          "nets": {
+            "items": {
+              "$ref": "#/components/schemas/ScanItem"
+            },
+            "type": "array",
+            "title": "Nets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nets"
+        ],
+        "title": "ScanResults"
+      },
+      "SecurityTypes": {
+        "type": "string",
+        "enum": [
+          "WPA2-PSK",
+          "WPA3-PSK",
+          "OPEN",
+          "OWE"
+        ],
+        "title": "SecurityTypes"
+      },
+      "ServiceRunning": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "wlanpi-fpms"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "example": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "ServiceRunning"
+      },
+      "ServiceStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "examples": [
+              "wlanpi-fpms"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "examples": [
+              true
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "ServiceStatus"
+      },
+      "SocketConnection": {
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "title": "Protocol"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "recv_q": {
+            "title": "Recv Q"
+          },
+          "send_q": {
+            "title": "Send Q"
+          },
+          "local": {
+            "type": "string",
+            "title": "Local"
+          },
+          "peer": {
+            "type": "string",
+            "title": "Peer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "protocol",
+          "state",
+          "local",
+          "peer"
+        ],
+        "title": "SocketConnection"
+      },
+      "SpeedTest": {
+        "properties": {
+          "ipAddress": {
+            "type": "string",
+            "title": "Ipaddress",
+            "example": "1.2.3.4"
+          },
+          "downloadSpeed": {
+            "type": "string",
+            "title": "Downloadspeed",
+            "example": "12.34 Mbps"
+          },
+          "uploadSpeed": {
+            "type": "string",
+            "title": "Uploadspeed",
+            "example": "1.23 Mbps"
+          },
+          "pingMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pingms"
+          },
+          "jitterMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jitterms"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server",
+            "description": "Selected LibreSpeed server name"
+          },
+          "testedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Testedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ipAddress",
+          "downloadSpeed",
+          "uploadSpeed"
+        ],
+        "title": "SpeedTest"
+      },
+      "Start-Input": {
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "interface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface"
+          },
+          "ssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssid"
+          },
+          "debug": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "noprep": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noprep"
+          },
+          "noAP": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noap"
+          },
+          "no11r": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No11R"
+          },
+          "no11ax": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No11Ax"
+          },
+          "no11be": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No11Be"
+          },
+          "noprofilertlv": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noprofilertlv"
+          },
+          "wpa3_personal_transition": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wpa3 Personal Transition"
+          },
+          "wpa3_personal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wpa3 Personal"
+          },
+          "oui_update": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oui Update"
+          },
+          "no_bpf_filters": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Bpf Filters"
+          }
+        },
+        "type": "object",
+        "title": "Start"
+      },
+      "Start-Output": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "examples": [
+              "true",
+              "false"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "Start"
+      },
+      "Status": {
+        "properties": {
+          "running": {
+            "type": "boolean",
+            "title": "Running",
+            "examples": [
+              "true",
+              "false"
+            ]
+          },
+          "ssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssid",
+            "example": "Profiler 193"
+          },
+          "passphrase": {
+            "type": "string",
+            "title": "Passphrase",
+            "example": "12345678"
+          }
+        },
+        "type": "object",
+        "required": [
+          "running",
+          "ssid",
+          "passphrase"
+        ],
+        "title": "Status"
+      },
+      "Stop": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "examples": [
+              "true",
+              "false"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "Stop"
+      },
+      "TimezoneInfo": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "example": "Europe/London"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timezone"
+        ],
+        "title": "TimezoneInfo"
+      },
+      "TimezoneList": {
+        "properties": {
+          "timezones": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Timezones"
+          }
+        },
+        "type": "object",
+        "title": "TimezoneList"
+      },
+      "TimezoneSetRequest": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "example": "Europe/London"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timezone"
+        ],
+        "title": "TimezoneSetRequest"
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JWT bearer token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer",
+            "examples": [
+              "bearer"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "Token"
+      },
+      "TokenRequest": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "TokenRequest"
+      },
+      "TokenRevokeResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "success | info (already revoked) | warning (not found)",
+            "examples": [
+              "success",
+              "info",
+              "warning"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "examples": [
+              "Token revoked"
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "Present when a token record was matched"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "TokenRevokeResponse"
+      },
+      "Ufw": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "ports": {
+            "items": {},
+            "type": "array",
+            "title": "Ports"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "ports"
+        ],
+        "title": "Ufw"
+      },
+      "Usb": {
+        "properties": {
+          "interfaces": {
+            "items": {},
+            "type": "array",
+            "title": "Interfaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interfaces"
+        ],
+        "title": "Usb"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WifiCapabilitiesResponse": {
+        "properties": {
+          "adapters": {
+            "items": {
+              "$ref": "#/components/schemas/PhyCapabilities"
+            },
+            "type": "array",
+            "title": "Adapters"
+          }
+        },
+        "type": "object",
+        "title": "WifiCapabilitiesResponse"
+      },
+      "WifiRegulatoryResponse": {
+        "properties": {
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country",
+            "example": "GB"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "example": "iw"
+          },
+          "raw": {
+            "type": "string",
+            "title": "Raw",
+            "description": "Raw output of iw reg get"
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw"
+        ],
+        "title": "WifiRegulatoryResponse"
+      },
+      "WlanAdapterDriver": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "description": "Linux interface name from iw dev, e.g. wlan0"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver",
+            "description": "Kernel driver from ethtool -i, e.g. iwlwifi, ath9k_htc"
+          },
+          "bus": {
+            "type": "string",
+            "title": "Bus",
+            "description": "Attachment bus for this interface: usb, pci, or platform (SDIO/on-board)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface",
+          "bus"
+        ],
+        "title": "WlanAdapterDriver"
+      },
+      "WlanInterfaceSetup": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface",
+            "example": "wlan0"
+          },
+          "netConfig": {
+            "$ref": "#/components/schemas/NetConfig"
+          },
+          "removeAllFirst": {
+            "type": "boolean",
+            "title": "Removeallfirst"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface",
+          "netConfig",
+          "removeAllFirst"
+        ],
+        "title": "WlanInterfaceSetup"
+      },
+      "WlanNetwork": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "title": "Ssid"
+          },
+          "bssid": {
+            "type": "string",
+            "title": "Bssid"
+          },
+          "signal": {
+            "type": "integer",
+            "title": "Signal"
+          },
+          "freq": {
+            "type": "integer",
+            "title": "Freq"
+          },
+          "key_mgmt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Mgmt"
+          },
+          "minrate": {
+            "type": "integer",
+            "title": "Minrate",
+            "default": 1000000
+          },
+          "flags": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flags"
+          },
+          "primaryChannel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primarychannel"
+          },
+          "channelWidth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channelwidth",
+            "description": "MHz (20, 40, 80, 160, ...)"
+          },
+          "secondaryChannelOffset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondarychanneloffset",
+            "description": "HT secondary channel: none, above, or below control channel"
+          },
+          "bssLoad": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BssLoad"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amendments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amendments"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw",
+            "description": "Full iw BSS block text when detail=full"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid",
+          "bssid",
+          "signal",
+          "freq"
+        ],
+        "title": "WlanNetwork"
+      },
+      "WlanPciDriversResponse": {
+        "properties": {
+          "adapters": {
+            "items": {
+              "$ref": "#/components/schemas/WlanAdapterDriver"
+            },
+            "type": "array",
+            "title": "Adapters",
+            "description": "WLAN interfaces on PCI or platform/SDIO buses. Multiple entries can share one PHY (e.g. wlan0 + wlanpi0)."
+          },
+          "pci_devices": {
+            "items": {
+              "$ref": "#/components/schemas/PciDevice"
+            },
+            "type": "array",
+            "title": "Pci Devices",
+            "description": "Wireless PCI functions from lspci (may be non-empty when adapters is empty)"
+          },
+          "interfaces_scanned": {
+            "type": "integer",
+            "title": "Interfaces Scanned",
+            "description": "Wireless interfaces enumerated via iw dev before bus filtering",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "WlanPciDriversResponse"
+      },
+      "WlanRevertRequest": {
+        "properties": {
+          "iface": {
+            "type": "string",
+            "title": "Iface",
+            "example": "wlan0"
+          },
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          },
+          "delete_namespace": {
+            "type": "boolean",
+            "title": "Delete Namespace",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface",
+          "namespace"
+        ],
+        "title": "WlanRevertRequest"
+      },
+      "WlanScanErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ScanAdapter"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "WlanScanErrorResponse"
+      },
+      "WlanScanResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": "short"
+          },
+          "selectedAdapter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanAdapter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/WlanNetwork"
+            },
+            "type": "array",
+            "title": "Networks"
+          },
+          "scannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scannedat"
+          },
+          "needsSelection": {
+            "type": "boolean",
+            "title": "Needsselection",
+            "default": false
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ScanAdapter"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "title": "WlanScanResponse"
+      },
+      "WlanUsbDriversResponse": {
+        "properties": {
+          "adapters": {
+            "items": {
+              "$ref": "#/components/schemas/WlanAdapterDriver"
+            },
+            "type": "array",
+            "title": "Adapters",
+            "description": "USB-attached WLAN interfaces only. Empty array is normal on devices with only PCI/on-board WiFi \u2014 use GET /network/wlan/pci-drivers instead."
+          },
+          "interfaces_scanned": {
+            "type": "integer",
+            "title": "Interfaces Scanned",
+            "description": "Wireless interfaces enumerated via iw dev before USB filtering",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "WlanUsbDriversResponse"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "authentication",
+      "description": "JWT issuance and revocation. Remote clients authenticate once, then send `Authorization: Bearer` on every request."
+    },
+    {
+      "name": "system",
+      "description": "Device identity, stats, battery, date/time, regulatory domain, service control (systemd), power actions, and **hotspot-only** reads (`/system/hotspot/*` require device mode `hotspot`)."
+    },
+    {
+      "name": "network",
+      "description": "Interface listing, VLANs, routing, sockets, DHCP, link stats, WLAN driver discovery, and **legacy** `/network/wlan/*` routes (deprecated \u2014 see operation notes)."
+    },
+    {
+      "name": "network_config",
+      "description": "NetConfig CRUD and activate/deactivate (classic mode). Activation is asynchronous \u2014 poll `/network/config/status` for connection state."
+    },
+    {
+      "name": "network_information",
+      "description": "Aggregated network document (LLDP, CDP, public IP, interface summaries)."
+    },
+    {
+      "name": "wifi",
+      "description": "WiFi PHY capabilities, regulatory domain, and **hotspot-only** station/link stats (`409` when not in hotspot mode)."
+    },
+    {
+      "name": "device utils",
+      "description": "Reachability, speedtest (slow), WLAN scan, USB list, UFW, port blinker."
+    },
+    {
+      "name": "bluetooth",
+      "description": "Adapter status, power, and pairing (starts `bt-timedpair`)."
+    },
+    {
+      "name": "profiler",
+      "description": "WLAN Pi profiler start/stop/status."
+    },
+    {
+      "name": "streaming",
+      "description": "WebSocket packet capture (`/streaming/capture`). JSON command protocol; binary pcapng frames follow. REST capture session API is planned separately."
+    }
+  ],
+  "externalDocs": {
+    "description": "API Integration Guide (workflows & worked examples)",
+    "url": "https://github.com/bentumbler/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md"
+  }
+}

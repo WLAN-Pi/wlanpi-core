@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
 from wlanpi_core.core.config import settings
-from wlanpi_core.schemas.auth import KeyResponse, Token, TokenRequest
+from wlanpi_core.schemas.auth import KeyResponse, Token, TokenRequest, TokenRevokeResponse
+from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
 
 router = APIRouter()
 from wlanpi_core.core.logging import get_logger
@@ -20,9 +21,24 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
-@router.post("/token", dependencies=[Depends(verify_auth_wrapper)])
+@router.post(
+    "/token",
+    response_model=Token,
+    summary="Issue JWT bearer token",
+    responses={
+        401: RESPONSES_AUTH[401],
+        412: {"description": "device_id missing from request body"},
+        500: {"description": "Token generation failed"},
+    },
+    dependencies=[Depends(verify_auth_wrapper)],
+)
 async def generate_token(request: Request, token_request: TokenRequest):
-    """Generate a new JWT token"""
+    """
+    Issue a JWT for remote clients.
+
+    Send the returned `access_token` as `Authorization: Bearer <token>` on all
+    subsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.
+    """
     try:
         if not token_request.device_id:
             raise HTTPException(status_code=412, detail="Device ID (did) is required")
@@ -39,20 +55,22 @@ async def generate_token(request: Request, token_request: TokenRequest):
         )
 
 
-@router.delete("/token", dependencies=[Depends(verify_jwt_token)])
+@router.delete(
+    "/token",
+    response_model=TokenRevokeResponse,
+    summary="Revoke current JWT",
+    responses={
+        401: RESPONSES_AUTH[401],
+        412: {"description": "device_id missing from request body"},
+        500: {"description": "Revocation failed"},
+    },
+    dependencies=[Depends(verify_jwt_token)],
+)
 async def revoke_token(request: Request, token_request: TokenRequest):
     """
-    Revoke an existing token
+    Revoke the bearer token sent in the `Authorization` header.
 
-    Args:
-        request: FastAPI request object
-        token_request: Token request containing device_id
-
-    Returns:
-        dict: Status message
-
-    Raises:
-        HTTPException: If token revocation fails or device_id is missing
+    The request body must include the same `device_id` used when the token was issued.
     """
     try:
         if not token_request.device_id:

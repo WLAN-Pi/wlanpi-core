@@ -2,7 +2,7 @@
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [WiFi capture API design](./P0-wifi-capture-api.md), [WiFi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [API integration guide](./API-INTEGRATION-GUIDE.md), [deprecated endpoints](./API-DEPRECATED-ENDPOINTS.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [WiFi capture API design](./P0-wifi-capture-api.md), [WiFi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
