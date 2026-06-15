@@ -100,32 +100,50 @@ async def speedtest():
 
 # @router.post("/port_blinker/{action}", response_model=utils.PortBlinkerState)
 # async def port_blinker(action: str):
-#     """
-#     Turns on bluetooth
+#     ...
 
-#     - action: "on" or "off"
-#     """
+@router.post(
+    "/blinker/start",
+    response_model=utils.BlinkerActionResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def start_blinker(interface: str = "eth0"):
+    """Start the Ethernet port blinker (cable finder)."""
+    try:
+        return await asyncio.to_thread(utils_service.start_port_blinker, interface)
+    except FileNotFoundError:
+        return Response(content="Port blinker script not found", status_code=503)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to start port blinker", status_code=503)
 
-#     # Validate action parameter
-#     if action not in ["on", "off"]:
-#         return Response(content="Invalid action. Use 'on' or 'off'.", status_code=400)
 
-#     # Convert action to Boolean
-#     state = action == "on"
+@router.post(
+    "/blinker/stop",
+    response_model=utils.BlinkerActionResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def stop_blinker():
+    """Stop the Ethernet port blinker."""
+    try:
+        return await asyncio.to_thread(utils_service.stop_port_blinker)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to stop port blinker", status_code=503)
 
-#     try:
-#         status = utils_service.port_blinker_state(state)
 
-#         if status == False:
-#             return Response(content=f"Port blinker failed to turn {action}", status_code=503)
-
-#         return {"status": "success", "action": action}
-
-#     except ValidationError as ve:
-#         return Response(content=ve.error_msg, status_code=ve.status_code)
-#     except Exception as ex:
-#         log.error(ex)
-#         return Response(content=f"Internal Server Error {ex}", status_code=500)
+@router.get(
+    "/blinker/status",
+    response_model=utils.BlinkerStatus,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def blinker_status():
+    """Return whether the port blinker is running."""
+    try:
+        return await asyncio.to_thread(utils_service.port_blinker_status)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read port blinker status", status_code=503)
 
 
 @router.get(

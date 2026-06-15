@@ -9,15 +9,15 @@ P0,system,GET,/system/datetime,"sys.tz.show; system.date",Live,Core,bind,,timeda
 P0,system,GET,/system/timezone,sys.tz.get,Live,Core,bind,,timedatectl or /etc/timezone.
 P0,system,GET,/system/timezone/list,sys.tz.list,Live,Core,bind,,timedatectl list-timezones.
 P0,system,POST,/system/timezone/set,"sys.tz.set; system.timezone.set",Live,Core,bind,,wlanpi-timezone script or timedatectl set-timezone.
-P0,system,POST,/system/timezone/auto,system.timezone.auto,Gap,Core,build,,Enable NTP auto. fpms2-only capability.
+P0,system,POST,/system/timezone/auto,system.timezone.auto,Live,Core,bind,,Enable NTP auto. fpms2-only capability.
 P0,system,GET,/system/reg-domain,"sys.rf.show; system.reg_domain.show",Live,Core,bind,,wlanpi-reg-domain or iw reg get.
 P0,system,POST,/system/reg-domain/set,"sys.rf.set; system.reg_domain.set_*",Live,Core,bind,,Body {country}. wlanpi-reg-domain or iw reg set.
 P0,system,GET,/system/reg-domain/list,sys.rf.list,Live,Core,bind,,Fixed FPMS country set (US CA GB BR FR CZ NL DE NO).
-P0,system,POST,/system/reboot,"sys.restart; system.reboot",Gap,Core,build,,Auth-gated. Reboot persistence handles namespace via existing startup recovery.
-P0,system,POST,/system/shutdown,"sys.shutdown; system.shutdown",Gap,Core,build,,Auth-gated.
+P0,system,POST,/system/reboot,"sys.restart; system.reboot",Live,Core,bind,,Auth-gated. Reboot persistence handles namespace via existing startup recovery.
+P0,system,POST,/system/shutdown,"sys.shutdown; system.shutdown",Live,Core,bind,,Auth-gated.
 P0,system,POST,/system/mode/switch,"mode.hotspot; mode.server; mode.bridge; mode.classic; mode.wconsole",Gap,Core,build,,Body {mode}. API must work in any mode. Namespace activate/deactivate remains classic-only. Mode switch must refuse or warn if namespace config active.
-P0,system,GET,/system/clients,system.clients,Gap,Core,build,,Hotspot client count. fpms2 homepage.
-P0,system,GET,/system/ssid-passphrase,"utils.ssid; utils.ssid_passphrase",Gap,Core,build,,Hotspot/profiler credentials.
+P0,system,GET,/system/hotspot/clients,system.clients,Live,Core,bind,,Hotspot mode only (409 otherwise). iw station count on AP iface.
+P0,system,GET,/system/hotspot/ssid-passphrase,"utils.ssid; utils.ssid_passphrase",Live,Core,bind,,Hotspot mode only. hostapd.conf ssid + wpa_passphrase.
 P0,system,GET,/system/service/status?name=,"orb.*; app.kismet.*; utils.freeradius.*",Live,Core,bind,,Query param name=. Allowed services list enforced. Uses systemd DBus — NOT legacy; keep.
 P0,system,POST,/system/service/start?name=,app.kismet.start,Live,Core,bind,,
 P0,system,POST,/system/service/stop?name=,"orb.*.stop; app.kismet.stop",Live,Core,bind,,
@@ -27,11 +27,11 @@ P0,network,GET,/network/info/publicip6,network.public_ipv6,Live,Core,bind,,Uses 
 P0,network,GET,/network/interfaces,network.interfaces.ip_summary,Live,Core,bind,,UI plan incorrectly marked Gap. ip-style output.
 P0,network,GET,/network/interfaces/{iface},network.eth0_ipconfig,Live,Core,bind,,Per-interface detail.
 P0,network,GET,/network/ethernet/{iface}/vlan,network.vlan,Live,Core,bind,,UI plan incorrectly marked Gap.
-P0,network,GET,/network/wlan/getInterfaces,"wifi.radio.interfaces; network.interfaces.wlan.summary",Deprecated,Core,repurpose,,LEGACY wpa_supplicant DBus. Reimplement via iw dev / config/status. Do not extend DBus.
-P0,network,GET,/network/wlan/scan,,Deprecated,Core,repurpose,,LEGACY wpa_supplicant DBus scan. Superseded by GET /utils/wlan/scan. Path may wrap new impl then drop DBus.
-P0,network,POST,/network/wlan/set-dbus,,Deprecated,Core,deprecate,,LEGACY DBus AddNetwork. Superseded by POST /network/config/ + activate. Remove P1.
-P0,network,POST,/network/wlan/set,,Deprecated,Core,deprecate,,Broken stub (hardcoded testns). Superseded by config system. Remove P1.
-P0,network,GET,/network/wlan/getConnected,,Deprecated,Core,repurpose,,LEGACY DBus CurrentNetwork. Reimplement via wpa_cli status. P1 connection endpoint.
+P0,network,GET,/network/wlan/getInterfaces,"wifi.radio.interfaces; network.interfaces.wlan.summary",Deprecated,Core,repurpose,,Delegates to iw dev discovery. Marked deprecated in OpenAPI.
+P0,network,GET,/network/wlan/scan,,Deprecated,Core,repurpose,,Delegates to GET /utils/wlan/scan. Marked deprecated in OpenAPI.
+P0,network,POST,/network/wlan/set-dbus,,Deprecated,Core,deprecate,,Returns 410 — use POST /network/config/ + activate.
+P0,network,POST,/network/wlan/set,,Deprecated,Core,deprecate,,Returns 410 — use POST /network/config/ + activate.
+P0,network,GET,/network/wlan/getConnected,,Deprecated,Core,repurpose,,Delegates to wpa_cli status. Marked deprecated in OpenAPI.
 P0,network,POST,/network/wlan/revert,,Live,Core,align,,Valid namespace revert. Align with POST /network/config/deactivate/{id}; not DBus.
 P0,network,GET,/network/routing,network.routing_table,Live,Core,bind,,Structured ip -j route via ns_exec (root default).
 P0,network,GET,/network/connections/tcp,network.active_tcp,Live,Core,bind,,ss -Htn in root namespace.
@@ -50,10 +50,10 @@ P0,network_config,DELETE,/network/config/{id},,Live,Core,bind,,
 P0,network_config,POST,/network/config/activate/{id},,Live,Core,bind,,Classic mode only for namespace ops. Returns provisioned async.
 P0,network_config,POST,/network/config/deactivate/{id},,Live,Core,bind,,Revert namespace. Classic mode only.
 P0,wifi,GET,/utils/wlan/scan,"wifi.scan.quick; wifi.scan.full; app.scanner.scan; app.scanner.scan_nohidden",Live,Both,bind,30,"P0 canonical scan. Namespace-aware. Auto-select single monitor adapter; if multiple monitor adapters return needsSelection candidates. UI→Core job + optional job WS."
-P0,wifi,GET,/wifi/capabilities,wifi.radio.capabilities,Gap,Core,build,300,Large output; UI job cache recommended.
-P0,wifi,GET,/wifi/regulatory,wifi.radio.regulatory,Gap,Core,build,,
-P0,wifi,GET,/wifi/client/stations,wifi.client.stations,Gap,Core,build,,Query iface=.
-P0,wifi,GET,/wifi/client/link,wifi.client.link,Gap,Core,build,,
+P0,wifi,GET,/wifi/capabilities,wifi.radio.capabilities,Live,Core,bind,300,iw phy info per adapter.
+P0,wifi,GET,/wifi/regulatory,wifi.radio.regulatory,Live,Core,bind,,iw reg get + parsed country.
+P0,wifi,GET,/wifi/hotspot/stations,wifi.client.stations,Live,Core,bind,,Hotspot mode only. iw station dump.
+P0,wifi,GET,/wifi/hotspot/link,wifi.client.link,Live,Core,bind,,Hotspot mode only. Per-station link stats.
 P0,wifi,POST,/wifi/monitor/enable,wifi.monitor.enable,Gap,Core,build,,Destructive. P1 candidate if fpms2 P0 slips.
 P0,wifi,POST,/wifi/monitor/disable,wifi.monitor.disable,Gap,Core,build,,Destructive. P1 candidate if fpms2 P0 slips.
 P0,wifi,POST,/wifi/capture/start,wifi.capture.start,Gap,Both,build,,"REST wrapper over existing WS /streaming/capture. UI job."
@@ -64,15 +64,15 @@ P0,wifi,WS,/streaming/capture,,Live,Core,document,,"Existing capture WebSocket. 
 P0,bluetooth,GET,/bluetooth/status,"bt.status; bluetooth.status",Live,Core,bind,,
 P0,bluetooth,POST,/bluetooth/power/on,"bt.on; bluetooth.on",Live,Core,bind,,
 P0,bluetooth,POST,/bluetooth/power/off,"bt.off; bluetooth.off",Live,Core,bind,,
-P0,bluetooth,POST,/bluetooth/pair,"bt.pair; bluetooth.pair",Gap,Core,build,,
+P0,bluetooth,POST,/bluetooth/pair,"bt.pair; bluetooth.pair",Live,Core,bind,,Starts bt-timedpair after unpairing existing devices.
 P0,utils,GET,/utils/reachability,utils.reachability,Live,Core,bind,,Supports optional targets query for custom ICMP ping stats.
 P0,utils,GET,/utils/usb,utils.usb,Live,Core,bind,,
 P0,utils,GET,/utils/ufw,utils.ufw,Live,Core,bind,,
 P0,utils,GET,/utils/speedtest,utils.speedtest,Live,Both,bind,10,LibreSpeed CLI wrapper. Long-running; UI→Core job + job WS.
 P0,utils,GET,/utils/cloud-test/{vendor},"cloud.arista; cloud.aruba; cloud.extreme; cloud.meraki; cloud.mist; cloud.ruckus",Gap,Both,build,60,Per-vendor reachability. UI→Core job.
-P0,utils,POST,/utils/blinker/start,"utils.blinker.start; utils.port_blinker.start",Gap,Core,build,,Port blinker code exists commented out in utils_api.
-P0,utils,POST,/utils/blinker/stop,"utils.blinker.stop; utils.port_blinker.stop",Gap,Core,build,,
-P0,utils,GET,/utils/blinker/status,utils.blinker.status,Gap,Core,build,,
+P0,utils,POST,/utils/blinker/start,"utils.blinker.start; utils.port_blinker.start",Live,Core,bind,,portblinker.sh background process.
+P0,utils,POST,/utils/blinker/stop,"utils.blinker.stop; utils.port_blinker.stop",Live,Core,bind,,
+P0,utils,GET,/utils/blinker/status,utils.blinker.status,Live,Core,bind,,
 P0,utils,POST,/utils/freeradius/test,utils.freeradius.test,Gap,Core,build,,
 P0,profiler,GET,/profiler/status,"app.profiler.status; apps.profiler.status",Live,Core,bind,,
 P0,profiler,POST,/profiler/start,"app.profiler.start; apps.profiler.start_*",Live,Core,bind,,Variants via request body.

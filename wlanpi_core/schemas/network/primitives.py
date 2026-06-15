@@ -46,20 +46,49 @@ class DhcpLeasesResponse(BaseModel):
 
 
 class WlanAdapterDriver(BaseModel):
-    interface: str
-    driver: Optional[str] = None
-    bus: str
+    interface: str = Field(description="Linux interface name from iw dev, e.g. wlan0")
+    driver: Optional[str] = Field(
+        default=None,
+        description="Kernel driver from ethtool -i, e.g. iwlwifi, ath9k_htc",
+    )
+    bus: str = Field(
+        description="Attachment bus for this interface: usb, pci, or platform (SDIO/on-board)",
+    )
 
 
 class WlanUsbDriversResponse(BaseModel):
-    adapters: list[WlanAdapterDriver] = Field(default_factory=list)
+    adapters: list[WlanAdapterDriver] = Field(
+        default_factory=list,
+        description=(
+            "USB-attached WLAN interfaces only. "
+            "Empty array is normal on devices with only PCI/on-board WiFi — use "
+            "GET /network/wlan/pci-drivers instead."
+        ),
+    )
+    interfaces_scanned: int = Field(
+        default=0,
+        description="Wireless interfaces enumerated via iw dev before USB filtering",
+    )
 
 
 class PciDevice(BaseModel):
-    pci_id: str
-    description: str
+    pci_id: str = Field(description="lspci BDF prefix, e.g. 0000:01:00.0")
+    description: str = Field(description="Human-readable lspci device line")
 
 
 class WlanPciDriversResponse(BaseModel):
-    adapters: list[WlanAdapterDriver] = Field(default_factory=list)
-    pci_devices: list[PciDevice] = Field(default_factory=list)
+    adapters: list[WlanAdapterDriver] = Field(
+        default_factory=list,
+        description=(
+            "WLAN interfaces on PCI or platform/SDIO buses. "
+            "Multiple entries can share one PHY (e.g. wlan0 + wlanpi0)."
+        ),
+    )
+    pci_devices: list[PciDevice] = Field(
+        default_factory=list,
+        description="Wireless PCI functions from lspci (may be non-empty when adapters is empty)",
+    )
+    interfaces_scanned: int = Field(
+        default=0,
+        description="Wireless interfaces enumerated via iw dev before bus filtering",
+    )

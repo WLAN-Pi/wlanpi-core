@@ -2,7 +2,7 @@
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [WiFi capture API design](./P0-wifi-capture-api.md), [WiFi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
@@ -273,16 +273,22 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 
 ### Stream D — Capture REST bridge (priority 4)
 
-Wrap existing `streaming/connection_manager.py`:
+**Design:** [P0-wifi-capture-api.md](./P0-wifi-capture-api.md) (core) · [P0-wifi-capture-consumer-guide.md](./P0-wifi-capture-consumer-guide.md) (app developers)
 
-| Endpoint | Maps to |
+Session-based capture wrapping `streaming/connection_manager.py`:
+
+| Endpoint | Purpose |
 |----------|---------|
-| `POST /wifi/capture/start` | Start WS capture session |
-| `POST /wifi/capture/stop` | Stop session |
-| `GET /wifi/capture/status` | Running state |
-| `GET /wifi/capture/files` | Output directory listing |
+| `GET /wifi/capture/sources` | Namespace-aware discovery; usable/risk flags |
+| `POST /wifi/capture/sessions` | Create session (`summary` default for MCP) |
+| `GET /wifi/capture/sessions/{id}` | Status |
+| `PATCH /wifi/capture/sessions/{id}` | Channels, filter (control token) |
+| `POST /wifi/capture/sessions/{id}/stop` | Stop |
+| `GET /wifi/capture/sessions/{id}/frames` | Parsed frames (MCP / summary mode) |
+| `GET /wifi/capture/sessions/{id}/files` | Output file list |
+| `WS /streaming/capture?session=&token=` | pcapng stream (subscribers) |
 
-Add auth to underlying WebSocket before UI job exposure.
+Secure by default: subscribers require token; `subscriberAccess: public` is explicit opt-in. Add auth to legacy WebSocket during migration.
 
 ---
 
@@ -367,7 +373,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
 3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
-4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done** (see [WLAN scan guide](./P0-utils-wlan-scan-api.md)); ~~speedtest~~ **Done** (see [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md)); cloud-test; capture REST bridge
+4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done**; ~~speedtest~~ **Done**; cloud-test; **capture** (design: [capture API](./P0-wifi-capture-api.md), [consumer guide](./P0-wifi-capture-consumer-guide.md))
 5. **Utils misc:** Blinker, freeradius test, bluetooth pair
 6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -59,6 +60,16 @@ class SpeedTest(BaseModel):
 class PortBlinkerState(BaseModel):
     status: str = Field(example="success")
     action: str = Field(examples=["on", "off"])
+
+
+class BlinkerStatus(BaseModel):
+    active: bool = Field(example=True)
+
+
+class BlinkerActionResponse(BaseModel):
+    active: bool = Field(example=True)
+    status: str = Field(examples=["started", "stopped", "already_running", "not_running"])
+    interface: Optional[str] = Field(default=None, example="eth0")
 
 
 class Usb(BaseModel):

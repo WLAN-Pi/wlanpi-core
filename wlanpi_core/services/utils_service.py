@@ -1,9 +1,10 @@
 import asyncio
 import os
 import re
+import subprocess
 from typing import Optional
 
-from wlanpi_core.constants import UFW_FILE
+from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
 
 from ..models.runcommand_error import RunCommandError
 from ..utils.general import run_command_async
@@ -231,3 +232,75 @@ async def show_ufw():
     response = ufw_info
 
     return response
+
+
+_blinker_process: Optional[subprocess.Popen] = None
+
+
+def _blinker_script_running() -> bool:
+    result = subprocess.run(
+        ["pidof", "-x", "portblinker.sh"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    return len(result.stdout.strip().split()) > 0
+
+
+def start_port_blinker(interface: str = "eth0") -> dict:
+    """Start the port blinker script (runs until stopped)."""
+    global _blinker_process
+
+    if not os.path.isfile(BLINKER_FILE):
+        raise FileNotFoundError(f"Port blinker script not found: {BLINKER_FILE}")
+
+    if _blinker_process and _blinker_process.poll() is None:
+        return {"active": True, "status": "already_running", "interface": interface}
+
+    if _blinker_script_running():
+        return {"active": True, "status": "already_running", "interface": interface}
+
+    cmd = [BLINKER_FILE, "-i", interface, "--no-color"]
+    _blinker_process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"active": True, "status": "started", "interface": interface}
+
+
+def stop_port_blinker() -> dict:
+    """Stop a running port blinker process."""
+    global _blinker_process
+    stopped = False
+
+    if _blinker_process and _blinker_process.poll() is None:
+        _blinker_process.terminate()
+        try:
+            _blinker_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _blinker_process.kill()
+        stopped = True
+        _blinker_process = None
+
+    if _blinker_script_running():
+        subprocess.run(
+            ["pkill", "-f", "portblinker.sh"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        stopped = True
+
+    return {"active": False, "status": "stopped" if stopped else "not_running"}
+
+
+def port_blinker_status() -> dict:
+    """Return whether the port blinker script is running."""
+    global _blinker_process
+    active = _blinker_script_running()
+    if not active and _blinker_process and _blinker_process.poll() is not None:
+        _blinker_process = None
+    return {"active": active}

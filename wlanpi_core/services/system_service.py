@@ -4,6 +4,7 @@ import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from dbus import Interface, SystemBus
@@ -661,6 +662,37 @@ def _parse_reg_country(raw: str) -> str:
         if line.startswith("country "):
             return line.split()[1].rstrip(":")
     return "unknown"
+
+
+def enable_timezone_auto():
+    """Enable NTP time synchronization via timedatectl."""
+    run_command(["timedatectl", "set-ntp", "true"], raise_on_fail=True)
+    ntp = run_command(
+        ["timedatectl", "show", "-p", "NTP", "--value"],
+        raise_on_fail=True,
+    ).stdout.strip()
+    timezone = get_timezone()["timezone"]
+    return {"ntp": ntp.lower() in ("yes", "1", "true"), "timezone": timezone}
+
+
+def reboot_system():
+    """Initiate an immediate system reboot."""
+    subprocess.Popen(
+        ["/usr/bin/systemctl", "reboot"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "rebooting"}
+
+
+def shutdown_system():
+    """Initiate an immediate system shutdown."""
+    subprocess.Popen(
+        ["/usr/bin/systemctl", "poweroff"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {"status": "shutting_down"}
 
 
 def get_battery():

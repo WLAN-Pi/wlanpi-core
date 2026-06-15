@@ -1,9 +1,11 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
-from wlanpi_core.services import system_service
+from wlanpi_core.services import hotspot_service, system_service
 
 router = APIRouter()
 
@@ -314,3 +316,87 @@ async def show_battery():
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/timezone/auto",
+    response_model=system.NtpAutoInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def enable_timezone_auto():
+    """Enable NTP automatic time synchronization."""
+    try:
+        return system_service.enable_timezone_auto()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to enable NTP", status_code=503)
+
+
+@router.post(
+    "/reboot",
+    response_model=system.PowerActionResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def reboot_device():
+    """Reboot the device immediately."""
+    try:
+        return system_service.reboot_system()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to reboot", status_code=503)
+
+
+@router.post(
+    "/shutdown",
+    response_model=system.PowerActionResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def shutdown_device():
+    """Shut down the device immediately."""
+    try:
+        return system_service.shutdown_system()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to shut down", status_code=503)
+
+
+@router.get(
+    "/hotspot/clients",
+    response_model=system.HotspotClients,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_hotspot_clients(iface: Optional[str] = None):
+    """
+    Connected client count for hotspot mode.
+
+    Returns 409 when the device is not in hotspot mode.
+    """
+    try:
+        return hotspot_service.get_hotspot_clients(iface=iface)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read hotspot clients", status_code=503)
+
+
+@router.get(
+    "/hotspot/ssid-passphrase",
+    response_model=system.HotspotCredentials,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_hotspot_ssid_passphrase():
+    """
+    Hotspot SSID and WPA passphrase from hostapd configuration.
+
+    Returns 409 when the device is not in hotspot mode.
+    """
+    try:
+        return hotspot_service.get_hotspot_ssid_passphrase()
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read hotspot credentials", status_code=503)

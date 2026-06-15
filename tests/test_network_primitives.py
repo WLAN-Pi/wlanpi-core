@@ -1,5 +1,6 @@
 """Tests for P0 network primitive modules."""
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -147,6 +148,23 @@ def test_get_usb_wlan_drivers_filters_bus():
     assert len(result["adapters"]) == 1
     assert result["adapters"][0]["interface"] == "wlan0"
     assert result["adapters"][0]["bus"] == "usb"
+    assert result["interfaces_scanned"] == 2
+
+
+def test_bus_from_sysfs_path_pci_bdf():
+    path = Path("/sys/class/ieee80211/phy0/device")
+    with patch.object(Path, "resolve", return_value=Path("/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0")):
+        assert wlan_drivers._bus_from_sysfs_path(path) == "pci"
+
+
+def test_bus_from_sysfs_path_usb():
+    path = Path("/sys/class/ieee80211/phy1/device")
+    with patch.object(
+        Path,
+        "resolve",
+        return_value=Path("/sys/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0"),
+    ):
+        assert wlan_drivers._bus_from_sysfs_path(path) == "usb"
 
 
 def test_get_pci_wlan_drivers():

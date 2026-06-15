@@ -1,4 +1,6 @@
 import re
+import subprocess
+import time
 
 from wlanpi_core.constants import BT_ADAPTER
 from wlanpi_core.utils.general import run_command
@@ -120,50 +122,49 @@ def bluetooth_status():
     return status
 
 
-# Pairing not yet implemented
+def _unpair_all_devices(timeout_sec: int = 30) -> None:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        paired = bluetooth_paired_devices()
+        if not paired:
+            return
+        for mac in list(paired.keys()):
+            run_command(
+                f"bluetoothctl -- remove {mac}",
+                shell=True,
+                raise_on_fail=False,
+            )
+        time.sleep(1)
 
-# def bluetooth_pair():
-#     if not bluetooth_present():
-#         return False
 
-#     ok = False
-#     if bluetooth_set_power(True):
-#         if not bluetooth_paired_devices() == {}:
-#             # Unpair existing paired devices
-#             paired_devices = bluetooth_paired_devices()
-#             '''
-#             For some reason removing devices isn't working immediately in Bullseye,
-#             so we need to keep trying until all devices are removed.
-#             Give up after 30 seconds.
-#             '''
-#             timeout = 30
-#             elapsed_time = 0
-#             while paired_devices != None and elapsed_time < timeout:
-#                 for dev in paired_devices:
-#                     try:
-#                         cmd = f"bluetoothctl -- remove {dev}"
-#                         subprocess.run(cmd, shell=True,
-#                             stdout=subprocess.DEVNULL,
-#                             stderr=subprocess.DEVNULL)
-#                     except:
-#                         pass
-#                 paired_devices = bluetooth_paired_devices()
-#                 time.sleep(1)
-#                 elapsed_time += 1
+def bluetooth_pair():
+    """
+    Enter discoverable pairing mode via ``bt-timedpair``.
 
-#         else:
-#             paired_devices = bluetooth_paired_devices()
-#             if paired_devices != None:
-#                 for dev in paired_devices:
-#                     return {True: paired_devices[dev]}
-#             else:
-#                 alias = bluetooth_alias()
-#                 try:
-#                     cmd = "systemctl start bt-timedpair"
-#                     subprocess.run(cmd, shell=True).check_returncode()
-#                     return True
-#                 except subprocess.CalledProcessError as exc:
-#                     return False
+    Unpairs existing devices first (fpms parity) then starts timed pairing.
+    """
+    if not bluetooth_present():
+        raise ValueError("Bluetooth hardware not found")
 
-#     else:
-#         return False
+    if not bluetooth_set_power(True):
+        raise RuntimeError("Failed to enable Bluetooth")
+
+    _unpair_all_devices()
+
+    paired = bluetooth_paired_devices()
+    if paired:
+        mac, name = next(iter(paired.items()))
+        return {
+            "status": "paired",
+            "alias": bluetooth_alias(),
+            "device": {"name": name, "addr": mac},
+            "message": f"Paired to {name}",
+        }
+
+    run_command("systemctl start bt-timedpair", shell=True, raise_on_fail=True)
+    alias = bluetooth_alias()
+    return {
+        "status": "discoverable",
+        "alias": alias,
+        "message": f'Bluetooth is on. Discoverable as "{alias}"',
+    }

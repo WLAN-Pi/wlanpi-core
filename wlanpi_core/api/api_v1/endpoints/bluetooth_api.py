@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
@@ -72,3 +74,19 @@ async def bt_power(action: str):
     except Exception as ex:
         log.error(ex)
         return Response(content=f"Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/pair",
+    response_model=bluetooth.BluetoothPairResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def bt_pair():
+    """Enter Bluetooth discoverable pairing mode (starts bt-timedpair)."""
+    try:
+        return await asyncio.to_thread(bluetooth_service.bluetooth_pair)
+    except ValueError as exc:
+        return Response(content=str(exc), status_code=503)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to start Bluetooth pairing", status_code=503)

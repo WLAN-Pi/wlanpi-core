@@ -253,6 +253,7 @@ def handle_wlan_usb_drivers(client, auth_headers, scenario):
         "wlanpi_core.network.get_usb_wlan_drivers",
         return_value={
             "adapters": [{"interface": "wlan0", "driver": "ath9k_htc", "bus": "usb"}],
+            "interfaces_scanned": 2,
         },
     ):
         response = client.get("/api/v1/network/wlan/usb-drivers")
@@ -266,6 +267,7 @@ def handle_wlan_pci_drivers(client, auth_headers, scenario):
         return_value={
             "adapters": [{"interface": "wlanpi0", "driver": "brcmfmac", "bus": "pci"}],
             "pci_devices": [{"pci_id": "0000:01:00.0", "description": "Wireless"}],
+            "interfaces_scanned": 2,
         },
     ):
         response = client.get("/api/v1/network/wlan/pci-drivers")

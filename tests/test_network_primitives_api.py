@@ -119,6 +119,7 @@ def test_api_get_network_wlan_usb_drivers(client):
             "adapters": [
                 {"interface": "wlan0", "driver": "ath9k_htc", "bus": "usb"},
             ],
+            "interfaces_scanned": 2,
         },
     ):
         response = client.get("/api/v1/network/wlan/usb-drivers")
@@ -137,6 +138,7 @@ def test_api_get_network_wlan_pci_drivers(client):
             "pci_devices": [
                 {"pci_id": "0000:01:00.0", "description": "Wireless controller"},
             ],
+            "interfaces_scanned": 2,
         },
     ):
         response = client.get("/api/v1/network/wlan/pci-drivers")

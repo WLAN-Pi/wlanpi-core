@@ -110,3 +110,24 @@ class BatteryInfo(BaseModel):
     capacity_percent: Optional[int] = Field(default=None, example=85)
     status: Optional[str] = Field(default=None, example="Discharging")
     source: Optional[str] = Field(default=None, example="BAT0")
+
+
+class NtpAutoInfo(BaseModel):
+    ntp: bool = Field(description="Whether NTP synchronization is enabled")
+    timezone: str = Field(example="Europe/London")
+
+
+class PowerActionResponse(BaseModel):
+    status: str = Field(examples=["rebooting", "shutting_down"])
+
+
+class HotspotClients(BaseModel):
+    mode: str = Field(example="hotspot")
+    interface: str = Field(example="wlan0")
+    count: int = Field(example=2)
+
+
+class HotspotCredentials(BaseModel):
+    mode: str = Field(example="hotspot")
+    ssid: str = Field(example="WLAN Pi abc")
+    passphrase: str = Field(example="example-passphrase")

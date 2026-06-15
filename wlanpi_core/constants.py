@@ -75,3 +75,4 @@ SPEEDTEST_TIMEOUT_SEC: int = 120
 PUBLICIP_CMD: str = "/opt/wlanpi-common/networkinfo/publicip.sh"
 PUBLICIP6_CMD: str = "/opt/wlanpi-common/networkinfo/publicip6.sh"
 BLINKER_FILE: str = "/opt/wlanpi-common/networkinfo/portblinker.sh"
+HOSTAPD_CONF_FILE: str = "/etc/hostapd/hostapd.conf"
