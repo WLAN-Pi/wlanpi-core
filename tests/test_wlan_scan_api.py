@@ -147,3 +147,13 @@ def test_api_wlan_scan_invalid_detail(client):
         response = client.get("/api/v1/utils/wlan/scan", params={"detail": "verbose"})
     assert response.status_code == 400
     assert "detail must be one of" in response.text
+
+
+def test_api_wlan_scan_error_never_returned_as_200(client):
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan",
+        return_value={"error": "scan failed", "networks": []},
+    ):
+        response = client.get("/api/v1/utils/wlan/scan")
+    assert response.status_code == 503
+    assert response.json()["error"] == "scan failed"

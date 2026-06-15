@@ -5,8 +5,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 
+from wlanpi_core.api.openapi_docs import RESPONSES_API_ERROR
 from wlanpi_core.constants import SPEEDTEST_TIMEOUT_SEC
-
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
@@ -24,6 +24,7 @@ log = get_logger(__name__)
     "/reachability",
     response_model=utils.ReachabilityTest,
     response_model_exclude_none=True,
+    responses={**RESPONSES_API_ERROR},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def reachability(
@@ -67,7 +68,8 @@ async def reachability(
     summary="Internet speed test (slow)",
     responses={
         503: {
-            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)"
+            "model": utils.SpeedTestErrorResponse,
+            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)",
         },
     },
     dependencies=[Depends(verify_auth_wrapper)],
@@ -158,11 +160,14 @@ async def blinker_status():
     "/wlan/scan",
     response_model=utils.WlanScanResponse,
     response_model_exclude_none=True,
+    summary="WLAN scan (canonical)",
     responses={
+        400: RESPONSES_API_ERROR[400],
         422: {
             "model": utils.WlanScanErrorResponse,
             "description": "No suitable scan adapter",
-        }
+        },
+        503: RESPONSES_API_ERROR[503],
     },
     dependencies=[Depends(verify_auth_wrapper)],
 )
@@ -182,13 +187,20 @@ async def wlan_scan_endpoint(
     ``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).
     """
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             wlan_scan,
             iface=iface,
             namespace=namespace,
             hidden=hidden,
             detail=detail,
         )
+        if result.get("error"):
+            return Response(
+                content=json.dumps({"error": result["error"]}),
+                status_code=503,
+                media_type="application/json",
+            )
+        return result
     except ValueError as exc:
         return Response(content=str(exc), status_code=400)
     except NoScanAdapterError as exc:

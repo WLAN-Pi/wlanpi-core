@@ -60,7 +60,10 @@ class WlanScanResponse(BaseModel):
     needs_selection: bool = Field(default=False, alias="needsSelection")
     candidates: list[ScanAdapter] = Field(default_factory=list)
 
-    model_config = {"populate_by_name": True}
+    model_config = {
+        "populate_by_name": True,
+        "extra": "forbid",
+    }
 
 
 class WlanScanErrorResponse(BaseModel):

@@ -34,7 +34,7 @@ class DeviceStats(BaseModel):
     cpu: str = Field(example="23%")
     ram: str = Field(example="1022/3792MB 26.95%")
     disk: str = Field(example="6/59GB 11%")
-    cpu_temp: str = Field(example="1h 40m")
+    cpu_temp: str = Field(example="52.0C")
     uptime: str = Field(example="1h 40m")
 
 

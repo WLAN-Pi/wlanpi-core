@@ -5,7 +5,11 @@ def get_status():
     running = profiler_beaconing()
     ssid = profiler_beaconing_ssid()
 
-    return {"running": running, "ssid": ssid, "passphrase": "12345678"}
+    return {
+        "running": running,
+        "ssid": ssid,
+        "passphrase": "12345678" if running else None,
+    }
 
 
 def profiler_beaconing():

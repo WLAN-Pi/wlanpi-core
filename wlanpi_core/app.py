@@ -546,6 +546,40 @@ def create_app(debug: bool = False):
             "description": "API Integration Guide (workflows & worked examples)",
             "url": "https://github.com/bentumbler/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md",
         }
+        components = schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        security_schemes["HmacSignature"] = {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Request-Signature",
+            "description": (
+                "HMAC-SHA256 hex digest of canonical request "
+                "(method, path, query, body). Localhost callers only."
+            ),
+        }
+        token_path = f"{settings.API_V1_STR}/auth/token"
+        token_post = schema.get("paths", {}).get(token_path, {}).get("post")
+        if token_post is not None:
+            token_post["security"] = [{"HmacSignature": []}, {}]
+        ws_path = f"{settings.API_V1_STR}/streaming/capture"
+        schema.setdefault("paths", {})[ws_path] = {
+            "get": {
+                "tags": ["streaming"],
+                "summary": "Packet capture WebSocket",
+                "description": (
+                    "Upgrade to WebSocket for live WiFi capture. Send JSON text "
+                    "commands (`get_supported_frequencies`, `configure`, `start`, "
+                    "`stop`); receive JSON events and binary pcapng frames. "
+                    "Auth not enforced today — treat as privileged."
+                ),
+                "operationId": "streaming_capture_websocket",
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols — WebSocket capture session",
+                    }
+                },
+            }
+        }
         app.openapi_schema = schema
         return app.openapi_schema
 

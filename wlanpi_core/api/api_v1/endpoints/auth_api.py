@@ -25,6 +25,7 @@ log = get_logger(__name__)
     "/token",
     response_model=Token,
     summary="Issue JWT bearer token",
+    openapi_extra={"security": []},
     responses={
         401: RESPONSES_AUTH[401],
         412: {"description": "device_id missing from request body"},
@@ -35,6 +36,11 @@ log = get_logger(__name__)
 async def generate_token(request: Request, token_request: TokenRequest):
     """
     Issue a JWT for remote clients.
+
+    **Authentication for this call:** localhost HMAC (`X-Request-Signature`) from
+    on-device services. Remote HTTP clients already holding a Bearer token may also
+    call this to rotate. Pure remote bootstrap requires a device-local pairing step
+    (UI proxy) — see `docs/API-INTEGRATION-GUIDE.md` §1.
 
     Send the returned `access_token` as `Authorization: Bearer <token>` on all
     subsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.

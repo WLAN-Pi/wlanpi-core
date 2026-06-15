@@ -43,6 +43,10 @@ class ReachabilityTest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SpeedTestErrorResponse(BaseModel):
+    error: str = Field(description="Failure reason, e.g. speedtest timed out")
+
+
 class SpeedTest(BaseModel):
     ip_address: str = Field(example="1.2.3.4", alias="ipAddress")
     download_speed: str = Field(example="12.34 Mbps", alias="downloadSpeed")

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
     NetConfig,
     NetConfigUpdate,
@@ -21,12 +22,15 @@ log = get_logger(__name__)
 
 @router.get(
     "/status",
-    response_model=dict,
+    response_model=NetworkConfigStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_status():
     """
-    Get the status of network configurations.
+    Per-namespace `iw dev` adapter layout (`root` plus each netns).
+
+    Namespace values are interface maps or `{ "error": "…" }` when a netns could
+    not be queried.
     """
     try:
         status = await asyncio.to_thread(network_config.status)

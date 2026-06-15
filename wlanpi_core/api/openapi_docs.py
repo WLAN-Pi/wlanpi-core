@@ -25,7 +25,7 @@ HTTP API for WLAN Pi device control, network configuration, WiFi primitives, and
 
 | Caller | Header | How to obtain |
 |--------|--------|----------------|
-| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | `POST /api/v1/auth/token` with `{ "device_id": "…" }` |
+| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |
 | On-device services (wlanpi-ui) | `X-Request-Signature: …` | HMAC with shared secret |
 
 JWT default lifetime: **7 days**. All documented routes require auth unless noted.
@@ -35,7 +35,8 @@ JWT default lifetime: **7 days**. All documented routes require auth unless note
 - **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).
 - **Device mode** (`classic`, `hotspot`, `wiperf`, …) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.
 - **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.
-- **Deprecated** routes remain for backward compatibility; prefer replacements listed in each operation.
+- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.
+- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.
 
 ## Long-running and multi-step work
 
@@ -80,8 +81,15 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "network",
         "description": (
             "Interface listing, VLANs, routing, sockets, DHCP, link stats, "
-            "WLAN driver discovery, and **legacy** `/network/wlan/*` routes "
-            "(deprecated — see operation notes)."
+            "and WLAN driver discovery."
+        ),
+    },
+    {
+        "name": "deprecated",
+        "description": (
+            "Legacy `/network/wlan/*` paths kept for backward compatibility. "
+            "Each operation documents its replacement. Prefer `network_config` "
+            "and `device utils` WLAN scan for new development."
         ),
     },
     {
@@ -119,8 +127,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "streaming",
         "description": (
-            "WebSocket packet capture (`/streaming/capture`). JSON command protocol; "
-            "binary pcapng frames follow. REST capture session API is planned separately."
+            "**WebSocket only** — no REST HTTP routes in this API version. "
+            "Connect to `WS /api/v1/streaming/capture` (JSON command protocol; "
+            "binary pcapng frames). Listed in OpenAPI for discoverability. "
+            "REST capture session API is planned separately."
         ),
     },
 ]
@@ -155,6 +165,17 @@ RESPONSES_SCAN = {
     422: {
         "model": ScanNoAdapterResponse,
         "description": "No suitable scan adapter available",
+    },
+}
+
+RESPONSES_API_ERROR = {
+    400: {
+        "model": ApiErrorResponse,
+        "description": "Invalid request (e.g. bad query parameters)",
+    },
+    503: {
+        "model": ApiErrorResponse,
+        "description": "Underlying command or dependency unavailable",
     },
 }
 

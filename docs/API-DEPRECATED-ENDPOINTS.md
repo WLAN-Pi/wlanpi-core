@@ -1,6 +1,6 @@
 # Deprecated API endpoints
 
-**OpenAPI:** deprecated routes show `deprecated: true` in `/api/v1/openapi.json` and strikethrough in `/docs`.
+**OpenAPI:** legacy routes are grouped under the **`deprecated`** tag, show `deprecated: true`, and remain visible in `/docs` (including **410 Gone** routes). Regenerate `docs/openapi.json` after core changes.
 
 | Legacy path | Status | Replacement | Notes |
 |-------------|--------|-------------|-------|

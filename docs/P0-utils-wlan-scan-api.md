@@ -156,7 +156,9 @@ Shown when no monitor adapter is available and no managed adapter exists in root
 
 ### 3.4 Server error (`503`)
 
-Plain-text body: `Unable to complete WLAN scan`. Scan failed (e.g. `wpa_cli` error, supplicant not running). Offer retry after delay.
+JSON `{ "error": "…" }` when the scan worker reports failure, or plain-text `Unable to complete WLAN scan` for unexpected errors. Scan failed (e.g. `wpa_cli` error, supplicant not running). Offer retry after delay.
+
+**Note:** `WlanScanResponse` never includes an `error` field on **200**. Do not expect `{ "error": … }` in a success body — use HTTP status instead.
 
 ---
 

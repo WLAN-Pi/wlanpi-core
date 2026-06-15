@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
 from wlanpi_core.adapters.discovery import list_interfaces
-from wlanpi_core.api.openapi_docs import RESPONSES_GONE, RESPONSES_SCAN
+from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
+from wlanpi_core.schemas.common.errors import DeprecatedEndpointResponse
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core import network as network_primitives
@@ -25,6 +26,7 @@ from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.status import get_wpa_status
 
 router = APIRouter()
+legacy_wlan_router = APIRouter()
 
 from wlanpi_core.core.logging import get_logger
 
@@ -71,7 +73,7 @@ async def show_all_interfaces(interface: Optional[str] = None):
     response_model=dict[str, list[IPInterface]],
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_all_ethernet_interfaces(interface: Optional[str] = None):
+async def show_all_ethernet_interfaces(interface: str):
     """
     Returns all ethernet interfaces.
     """
@@ -382,7 +384,7 @@ async def show_wlan_pci_drivers():
 ################################
 
 
-@router.get(
+@legacy_wlan_router.get(
     "/wlan/getInterfaces",
     response_model=network.Interfaces,
     dependencies=[Depends(verify_auth_wrapper)],
@@ -406,7 +408,7 @@ async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_T
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get(
+@legacy_wlan_router.get(
     "/wlan/scan",
     response_model=network.ScanResults,
     response_model_exclude_none=True,
@@ -471,13 +473,13 @@ async def get_a_systemd_network_scan(
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.post(
+@legacy_wlan_router.post(
     "/wlan/set-dbus",
-    response_model=network.NetworkSetupStatus,
+    status_code=410,
+    response_model=DeprecatedEndpointResponse,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
     summary="[Deprecated] DBus network setup — removed",
-    responses={**RESPONSES_GONE},
 )
 async def set_a_systemd_network_dbus(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
@@ -485,26 +487,22 @@ async def set_a_systemd_network_dbus(
     """
     **Deprecated — returns 410 Gone.**
 
-  **Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`
+    **Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`
     """
     del setup, timeout
-    return JSONResponse(
-        status_code=410,
-        content={
-            "error": "ENDPOINT_DEPRECATED",
-            "message": "Use POST /api/v1/network/config/ then POST /api/v1/network/config/activate/{id}",
-            "replacement": "/api/v1/network/config/",
-        },
+    return DeprecatedEndpointResponse(
+        message="Use POST /api/v1/network/config/ then POST /api/v1/network/config/activate/{id}",
+        replacement="/api/v1/network/config/",
     )
 
 
-@router.post(
+@legacy_wlan_router.post(
     "/wlan/set",
-    response_model=network.NetworkSetupStatus,
+    status_code=410,
+    response_model=DeprecatedEndpointResponse,
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
     summary="[Deprecated] Namespace stub — removed",
-    responses={**RESPONSES_GONE},
 )
 async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
@@ -512,16 +510,12 @@ async def set_a_systemd_network(
     """
     **Deprecated — returns 410 Gone.**
 
-  **Replacement:** same as `/wlan/set-dbus` — use `/network/config/` + activate.
+    **Replacement:** same as `/wlan/set-dbus` — use `/network/config/` + activate.
     """
     del setup, timeout
-    return JSONResponse(
-        status_code=410,
-        content={
-            "error": "ENDPOINT_DEPRECATED",
-            "message": "Use POST /api/v1/network/config/ then POST /api/v1/network/config/activate/{id}",
-            "replacement": "/api/v1/network/config/",
-        },
+    return DeprecatedEndpointResponse(
+        message="Use POST /api/v1/network/config/ then POST /api/v1/network/config/activate/{id}",
+        replacement="/api/v1/network/config/",
     )
 
 
@@ -553,7 +547,7 @@ async def revert_wlan_namespace(
         return Response(content="Internal Server Error", status_code=500)
 
 
-@router.get(
+@legacy_wlan_router.get(
     "/wlan/getConnected",
     response_model=network.ConnectedNetwork,
     response_model_exclude_none=True,
@@ -567,9 +561,9 @@ async def get_a_systemd_currentNetwork_details(
     """
     **Deprecated** — prefer `GET /api/v1/network/config/status` plus wpa state.
 
-  **Replacement:** `GET /api/v1/network/config/status`
+    **Replacement:** `GET /api/v1/network/config/status`
 
-  **Behaviour today:** delegates to `wpa_cli status` for the given `interface`.
+    **Behaviour today:** delegates to `wpa_cli status` for the given `interface`.
     """
     del timeout
     try:

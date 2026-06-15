@@ -4,6 +4,7 @@ from .utils import (
     PingTargetResult,
     ReachabilityTest,
     SpeedTest,
+    SpeedTestErrorResponse,
     Ufw,
     Usb,
 )

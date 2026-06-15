@@ -4,6 +4,8 @@
 **OpenAPI:** `/docs` · `/api/v1/openapi.json`  
 **Machine export:** `python scripts/export_openapi.py` → `docs/openapi.json`
 
+**Touch-panel alignment:** [APP-OPENAPI-ALIGNMENT.md](./APP-OPENAPI-ALIGNMENT.md) — app vs spec review, pushback on client bugs, missing P0 endpoints.
+
 This guide is a **progressive tutorial**. Each lesson builds on the previous one and includes exact HTTP examples, response fields to parse, and common mistakes.
 
 ---
@@ -35,9 +37,12 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 
 ### 1.1 Issue a token
 
+On-device services (touch UI, wlanpi-ui) call this with **localhost HMAC** (`X-Request-Signature`). Remote apps receive a JWT from a device-local pairing flow; they do not bootstrap anonymously over the network.
+
 ```http
 POST /api/v1/auth/token
 Content-Type: application/json
+X-Request-Signature: <hmac-sha256-hex>   # on-device only
 
 { "device_id": "my-app-install-id" }
 ```
@@ -146,6 +151,23 @@ GET /api/v1/utils/reachability?targets=8.8.8.8&targets=1.1.1.1
 ```
 
 Response uses **labeled keys** (`Ping Google`, `Ping Gateway`, …) plus optional `custom[]` array with structured ping stats.
+
+### 3.4 Network interfaces (iproute2) — not the same as `/network/info`
+
+```http
+GET /api/v1/network/interfaces
+```
+
+**Shape:** map of string → `IPInterface[]` (arrays of iproute2 JSON objects). There is **no** top-level `interfaces` array.
+
+```json
+{
+  "eth0": [{ "ifname": "eth0", "operstate": "UP", "addr_info": [] }],
+  "wlan0": [{ "ifname": "wlan0", "operstate": "DOWN" }]
+}
+```
+
+Use `iface["ifname"]` when iterating. For WLAN summary tiles prefer `GET /network/info/` → `wlan_interfaces`. See [APP-OPENAPI-ALIGNMENT.md](./APP-OPENAPI-ALIGNMENT.md).
 
 ---
 

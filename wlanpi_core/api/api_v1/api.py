@@ -21,6 +21,9 @@ api_router.include_router(bluetooth_api.router, prefix="/bluetooth", tags=["blue
 
 api_router.include_router(network_api.router, prefix="/network", tags=["network"])
 api_router.include_router(
+    network_api.legacy_wlan_router, prefix="/network", tags=["deprecated"]
+)
+api_router.include_router(
     network_config_api.router, prefix="/network/config", tags=["network_config"]
 )
 

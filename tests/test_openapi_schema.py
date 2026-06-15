@@ -17,6 +17,7 @@ EXPECTED_TAGS = {
     "authentication",
     "system",
     "network",
+    "deprecated",
     "network_config",
     "network_information",
     "wifi",
@@ -52,6 +53,20 @@ def test_deprecated_wlan_routes_marked(openapi_schema):
             if method.startswith("x-"):
                 continue
             assert spec.get("deprecated") is True, f"{path} {method} not deprecated"
+            assert spec.get("tags") == ["deprecated"], (
+                f"{path} {method} should use deprecated tag only, got {spec.get('tags')}"
+            )
+
+
+def test_deprecated_wlan_routes_not_under_network_tag(openapi_schema):
+    paths = openapi_schema["paths"]
+    for path in DEPRECATED_WLAN_PATHS:
+        for method, spec in paths[path].items():
+            if method.startswith("x-"):
+                continue
+            assert "network" not in (spec.get("tags") or []), (
+                f"{path} {method} should not appear under network tag"
+            )
 
 
 def test_auth_token_has_response_schema(openapi_schema):
@@ -69,6 +84,71 @@ def test_gone_endpoints_document_410(openapi_schema):
     ):
         post = openapi_schema["paths"][path]["post"]
         assert "410" in post["responses"]
+        assert "200" not in post["responses"]
+
+
+def test_auth_token_openapi_security(openapi_schema):
+    post = openapi_schema["paths"]["/api/v1/auth/token"]["post"]
+    security = post.get("security", [])
+    assert {"HTTPBearer": []} not in security
+    assert security == [{"HmacSignature": []}, {}]
+
+
+def test_reachability_documents_targets_and_errors(openapi_schema):
+    get = openapi_schema["paths"]["/api/v1/utils/reachability"]["get"]
+    param_names = {p["name"] for p in get.get("parameters", [])}
+    assert "targets" in param_names
+    assert "400" in get["responses"]
+    assert "503" in get["responses"]
+    schema = get["responses"]["200"]["content"]["application/json"]["schema"]
+    assert schema["$ref"].endswith("/ReachabilityTest")
+
+
+def test_speedtest_in_openapi(openapi_schema):
+    get = openapi_schema["paths"]["/api/v1/utils/speedtest"]["get"]
+    assert "200" in get["responses"]
+    assert "503" in get["responses"]
+    ref = get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref.endswith("/SpeedTest")
+
+
+def test_canonical_wlan_scan_in_openapi(openapi_schema):
+    get = openapi_schema["paths"]["/api/v1/utils/wlan/scan"]["get"]
+    assert get.get("summary")
+    assert "canonical" in get["summary"].lower()
+    assert "422" in get["responses"]
+    assert "503" in get["responses"]
+    ref = get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref.endswith("/WlanScanResponse")
+    schema = openapi_schema["components"]["schemas"]["WlanScanResponse"]
+    assert schema.get("additionalProperties") is False
+
+
+def test_network_config_status_typed(openapi_schema):
+    get = openapi_schema["paths"]["/api/v1/network/config/status"]["get"]
+    ref = get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref.endswith("/NetworkConfigStatus")
+    assert "IwInterfaceStatus" in openapi_schema["components"]["schemas"]
+
+
+def test_profiler_passphrase_optional_when_idle(openapi_schema):
+    schema = openapi_schema["components"]["schemas"]["Status"]
+    props = schema["properties"]
+    assert "passphrase" in props
+    assert "passphrase" not in schema.get("required", [])
+
+
+def test_device_stats_cpu_temp_example(openapi_schema):
+    schema = openapi_schema["components"]["schemas"]["DeviceStats"]
+    assert schema["properties"]["cpu_temp"]["example"] == "52.0C"
+
+
+def test_streaming_websocket_documented(openapi_schema):
+    path = openapi_schema["paths"].get("/api/v1/streaming/capture")
+    assert path is not None
+    assert "get" in path
+    assert path["get"]["tags"] == ["streaming"]
+    assert "101" in path["get"]["responses"]
 
 
 def test_hotspot_clients_documents_409(openapi_schema):

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wlanpi-core",
-    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, WiFi primitives, and utilities.\n\n**Base path:** `/api/v1`  \n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | `POST /api/v1/auth/token` with `{ \"device_id\": \"\u2026\" }` |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. All documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes remain for backward compatibility; prefer replacements listed in each operation.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
+    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, WiFi primitives, and utilities.\n\n**Base path:** `/api/v1`  \n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. All documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
     "version": "2.1.10"
   },
   "paths": {
@@ -12,7 +12,7 @@
           "authentication"
         ],
         "summary": "Issue JWT bearer token",
-        "description": "Issue a JWT for remote clients.\n\nSend the returned `access_token` as `Authorization: Bearer <token>` on all\nsubsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.",
+        "description": "Issue a JWT for remote clients.\n\n**Authentication for this call:** localhost HMAC (`X-Request-Signature`) from\non-device services. Remote HTTP clients already holding a Bearer token may also\ncall this to rotate. Pure remote bootstrap requires a device-local pairing step\n(UI proxy) \u2014 see `docs/API-INTEGRATION-GUIDE.md` \u00a71.\n\nSend the returned `access_token` as `Authorization: Bearer <token>` on all\nsubsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.",
         "operationId": "generate_token_api_v1_auth_token_post",
         "requestBody": {
           "content": {
@@ -64,8 +64,9 @@
         },
         "security": [
           {
-            "HTTPBearer": []
-          }
+            "HmacSignature": []
+          },
+          {}
         ]
       },
       "delete": {
@@ -375,14 +376,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "string",
               "title": "Interface"
             }
           }
@@ -1219,10 +1213,69 @@
         ]
       }
     },
+    "/api/v1/network/wlan/revert": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Revert Wlan Namespace",
+        "description": "Reverts the PHY and interface back to the root namespace.",
+        "operationId": "revert_wlan_namespace_api_v1_network_wlan_revert_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WlanRevertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevertNamespace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/network/wlan/getInterfaces": {
       "get": {
         "tags": [
-          "network"
+          "deprecated"
         ],
         "summary": "[Deprecated] List wireless interfaces",
         "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status`.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `iw dev` (no DBus).",
@@ -1272,7 +1325,7 @@
     "/api/v1/network/wlan/scan": {
       "get": {
         "tags": [
-          "network"
+          "deprecated"
         ],
         "summary": "[Deprecated] WLAN scan",
         "description": "**Deprecated** \u2014 use `GET /api/v1/utils/wlan/scan`.\n\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
@@ -1350,7 +1403,7 @@
     "/api/v1/network/wlan/set-dbus": {
       "post": {
         "tags": [
-          "network"
+          "deprecated"
         ],
         "summary": "[Deprecated] DBus network setup \u2014 removed",
         "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`",
@@ -1384,18 +1437,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NetworkSetupStatus"
-                }
-              }
-            }
-          },
           "410": {
-            "description": "Endpoint removed \u2014 use the `replacement` path in the body",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -1420,7 +1463,7 @@
     "/api/v1/network/wlan/set": {
       "post": {
         "tags": [
-          "network"
+          "deprecated"
         ],
         "summary": "[Deprecated] Namespace stub \u2014 removed",
         "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** same as `/wlan/set-dbus` \u2014 use `/network/config/` + activate.",
@@ -1454,18 +1497,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NetworkSetupStatus"
-                }
-              }
-            }
-          },
           "410": {
-            "description": "Endpoint removed \u2014 use the `replacement` path in the body",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,69 +1520,10 @@
         }
       }
     },
-    "/api/v1/network/wlan/revert": {
-      "post": {
-        "tags": [
-          "network"
-        ],
-        "summary": "Revert Wlan Namespace",
-        "description": "Reverts the PHY and interface back to the root namespace.",
-        "operationId": "revert_wlan_namespace_api_v1_network_wlan_revert_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "timeout",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "title": "Timeout"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WlanRevertRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevertNamespace"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/network/wlan/getConnected": {
       "get": {
         "tags": [
-          "network"
+          "deprecated"
         ],
         "summary": "[Deprecated] Connected network details",
         "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status` plus wpa state.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`.",
@@ -1611,7 +1585,7 @@
           "network_config"
         ],
         "summary": "Get Status",
-        "description": "Get the status of network configurations.",
+        "description": "Per-namespace `iw dev` adapter layout (`root` plus each netns).\n\nNamespace values are interface maps or `{ \"error\": \"\u2026\" }` when a netns could\nnot be queried.",
         "operationId": "get_status_api_v1_network_config_status_get",
         "responses": {
           "200": {
@@ -1619,9 +1593,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Status Api V1 Network Config Status Get"
+                  "$ref": "#/components/schemas/NetworkConfigStatus"
                 }
               }
             }
@@ -2847,6 +2819,26 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid request (e.g. bad query parameters)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Underlying command or dependency unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2880,7 +2872,14 @@
             }
           },
           "503": {
-            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)"
+            "description": "LibreSpeed failed or timed out (default server-side timeout 120s)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedTestErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2998,7 +2997,7 @@
         "tags": [
           "device utils"
         ],
-        "summary": "Wlan Scan Endpoint",
+        "summary": "WLAN scan (canonical)",
         "description": "Namespace-aware WLAN scan with automatic monitor adapter selection.\n\nWhen multiple monitor adapters exist and ``iface`` is omitted, returns\n``needsSelection`` with candidates instead of scanning.\n\n``detail=short`` (default) returns list-friendly fields plus RF extensions.\n``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).",
         "operationId": "wlan_scan_endpoint_api_v1_utils_wlan_scan_get",
         "security": [
@@ -3071,12 +3070,32 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid request (e.g. bad query parameters)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "No suitable scan adapter",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WlanScanErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Underlying command or dependency unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -3422,10 +3441,51 @@
           }
         ]
       }
+    },
+    "/api/v1/streaming/capture": {
+      "get": {
+        "tags": [
+          "streaming"
+        ],
+        "summary": "Packet capture WebSocket",
+        "description": "Upgrade to WebSocket for live WiFi capture. Send JSON text commands (`get_supported_frequencies`, `configure`, `start`, `stop`); receive JSON events and binary pcapng frames. Auth not enforced today \u2014 treat as privileged.",
+        "operationId": "streaming_capture_websocket",
+        "responses": {
+          "101": {
+            "description": "Switching Protocols \u2014 WebSocket capture session"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApiErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Machine-readable error code, e.g. NO_SCAN_ADAPTER"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Optional human-readable detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ApiErrorResponse"
+      },
       "BatteryInfo": {
         "properties": {
           "present": {
@@ -3862,7 +3922,7 @@
           "cpu_temp": {
             "type": "string",
             "title": "Cpu Temp",
-            "example": "1h 40m"
+            "example": "52.0C"
           },
           "uptime": {
             "type": "string",
@@ -4565,6 +4625,31 @@
         ],
         "title": "IPInterfaceAddress"
       },
+      "InfoLinesSection": {
+        "properties": {
+          "info": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Info"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Present when the section could not be populated"
+          }
+        },
+        "type": "object",
+        "title": "InfoLinesSection"
+      },
       "Interface": {
         "properties": {
           "interface": {
@@ -4578,6 +4663,44 @@
           "interface"
         ],
         "title": "Interface"
+      },
+      "InterfaceSummary": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "examples": [
+              "UP",
+              "DOWN"
+            ]
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip",
+            "description": "IPv4 address, `-` when none, or `Monitor` for monitor-mode WLAN",
+            "examples": [
+              "192.168.1.10",
+              "-",
+              "Monitor"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "InterfaceSummary"
       },
       "Interfaces": {
         "properties": {
@@ -4594,6 +4717,71 @@
           "interfaces"
         ],
         "title": "Interfaces"
+      },
+      "IwInterfaceStatus": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type",
+            "description": "Interface type/mode, e.g. managed, monitor, AP"
+          },
+          "addr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Addr",
+            "description": "MAC address"
+          },
+          "ssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssid"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "wiphy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiphy"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "IwInterfaceStatus",
+        "description": "Parsed `iw dev` fields for one interface (extra keys allowed)."
       },
       "LinkStats": {
         "properties": {
@@ -4757,6 +4945,20 @@
           "namespace"
         ],
         "title": "NamespaceConfig"
+      },
+      "NamespaceStatusError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Namespace could not be queried (corrupted netns, exec failure, etc.)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "NamespaceStatusError"
       },
       "NetConfig": {
         "properties": {
@@ -4964,62 +5166,63 @@
         "type": "object",
         "title": "NetworkConfigResponse"
       },
-      "NetworkEvent": {
-        "properties": {
-          "event": {
-            "type": "string",
-            "title": "Event",
-            "example": "authenticated"
-          },
-          "time": {
-            "type": "string",
-            "title": "Time",
-            "example": "2024-09-01 03:52:31.232828"
-          }
+      "NetworkConfigStatus": {
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/IwInterfaceStatus"
+              },
+              "type": "object"
+            },
+            {
+              "$ref": "#/components/schemas/NamespaceStatusError"
+            }
+          ]
         },
         "type": "object",
-        "required": [
-          "event",
-          "time"
-        ],
-        "title": "NetworkEvent"
+        "title": "NetworkConfigStatus",
+        "description": "Per-namespace adapter layout from `iw dev`.\n\nKeys are `root` plus each network namespace name. Values are either a map of\ninterface name \u2192 parsed `iw` fields, or `{ \"error\": \"\u2026\" }` when that namespace\ncould not be queried."
       },
       "NetworkInfo": {
         "properties": {
           "interfaces": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/InterfaceSummary"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
             "type": "object",
-            "title": "Interfaces"
+            "title": "Interfaces",
+            "description": "Per-interface ifconfig summary (`status`, `ip`). On failure the dict may contain only an `error` string key instead of interface entries."
           },
           "wlan_interfaces": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WlanInterfaceSummary"
+            },
             "type": "object",
-            "title": "Wlan Interfaces"
+            "title": "Wlan Interfaces",
+            "description": "Per-WLAN-interface summary from `iw` / `ethtool`"
           },
           "eth0_ipconfig_info": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Eth0 Ipconfig Info"
+            "$ref": "#/components/schemas/InfoLinesSection"
           },
           "vlan_info": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Vlan Info"
+            "$ref": "#/components/schemas/InfoLinesSection"
           },
           "lldp_neighbour_info": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Lldp Neighbour Info"
+            "$ref": "#/components/schemas/InfoLinesSection"
           },
           "cdp_neighbour_info": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Cdp Neighbour Info"
+            "$ref": "#/components/schemas/InfoLinesSection"
           },
           "public_ip": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Public Ip"
+            "$ref": "#/components/schemas/InfoLinesSection"
           }
         },
         "type": "object",
@@ -5041,62 +5244,6 @@
           "monitor"
         ],
         "title": "NetworkModeEnum"
-      },
-      "NetworkSetupLog": {
-        "properties": {
-          "selectErr": {
-            "type": "string",
-            "title": "Selecterr",
-            "example": "fi.w1.wpa_supplicant1.NetworkUnknown"
-          },
-          "eventLog": {
-            "items": {
-              "$ref": "#/components/schemas/NetworkEvent"
-            },
-            "type": "array",
-            "title": "Eventlog"
-          }
-        },
-        "type": "object",
-        "required": [
-          "selectErr",
-          "eventLog"
-        ],
-        "title": "NetworkSetupLog"
-      },
-      "NetworkSetupStatus": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "example": "connected"
-          },
-          "response": {
-            "$ref": "#/components/schemas/NetworkSetupLog"
-          },
-          "connectedNet": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScanItem"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "input": {
-            "type": "string",
-            "title": "Input"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "response",
-          "connectedNet",
-          "input"
-        ],
-        "title": "NetworkSetupStatus"
       },
       "NtpAutoInfo": {
         "properties": {
@@ -5310,7 +5457,8 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Info"
+            "title": "Info",
+            "description": "Lines of text from the public IP probe script"
           },
           "error": {
             "anyOf": [
@@ -5911,6 +6059,20 @@
         ],
         "title": "SpeedTest"
       },
+      "SpeedTestErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Failure reason, e.g. speedtest timed out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "SpeedTestErrorResponse"
+      },
       "Start-Input": {
         "properties": {
           "channel": {
@@ -6088,8 +6250,8 @@
             "type": "boolean",
             "title": "Success",
             "examples": [
-              "true",
-              "false"
+              true,
+              false
             ]
           }
         },
@@ -6105,8 +6267,8 @@
             "type": "boolean",
             "title": "Running",
             "examples": [
-              "true",
-              "false"
+              true,
+              false
             ]
           },
           "ssid": {
@@ -6122,16 +6284,22 @@
             "example": "Profiler 193"
           },
           "passphrase": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Passphrase",
+            "description": "Present when profiler AP is running; omitted when idle",
             "example": "12345678"
           }
         },
         "type": "object",
         "required": [
-          "running",
-          "ssid",
-          "passphrase"
+          "running"
         ],
         "title": "Status"
       },
@@ -6141,8 +6309,8 @@
             "type": "boolean",
             "title": "Success",
             "examples": [
-              "true",
-              "false"
+              true,
+              false
             ]
           }
         },
@@ -6446,6 +6614,84 @@
         ],
         "title": "WlanInterfaceSetup"
       },
+      "WlanInterfaceSummary": {
+        "properties": {
+          "driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver"
+          },
+          "addr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Addr",
+            "description": "MAC without colons, uppercase"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode",
+            "description": "WLAN mode as a one-element list (legacy wire format from iw parsing)"
+          },
+          "ssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssid"
+          },
+          "freq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freq",
+            "description": "Centre frequency MHz"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          }
+        },
+        "type": "object",
+        "title": "WlanInterfaceSummary"
+      },
       "WlanNetwork": {
         "properties": {
           "ssid": {
@@ -6686,6 +6932,7 @@
             "title": "Candidates"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "WlanScanResponse"
       },
@@ -6714,6 +6961,12 @@
       "HTTPBearer": {
         "type": "http",
         "scheme": "bearer"
+      },
+      "HmacSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Request-Signature",
+        "description": "HMAC-SHA256 hex digest of canonical request (method, path, query, body). Localhost callers only."
       }
     }
   },
@@ -6728,7 +6981,11 @@
     },
     {
       "name": "network",
-      "description": "Interface listing, VLANs, routing, sockets, DHCP, link stats, WLAN driver discovery, and **legacy** `/network/wlan/*` routes (deprecated \u2014 see operation notes)."
+      "description": "Interface listing, VLANs, routing, sockets, DHCP, link stats, and WLAN driver discovery."
+    },
+    {
+      "name": "deprecated",
+      "description": "Legacy `/network/wlan/*` paths kept for backward compatibility. Each operation documents its replacement. Prefer `network_config` and `device utils` WLAN scan for new development."
     },
     {
       "name": "network_config",
@@ -6756,7 +7013,7 @@
     },
     {
       "name": "streaming",
-      "description": "WebSocket packet capture (`/streaming/capture`). JSON command protocol; binary pcapng frames follow. REST capture session API is planned separately."
+      "description": "**WebSocket only** \u2014 no REST HTTP routes in this API version. Connect to `WS /api/v1/streaming/capture` (JSON command protocol; binary pcapng frames). Listed in OpenAPI for discoverability. REST capture session API is planned separately."
     }
   ],
   "externalDocs": {
