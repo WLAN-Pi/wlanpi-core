@@ -3,8 +3,7 @@ Section: contrib/python
 Priority: optional
 Maintainer: Josh Schmelzle <josh@joshschmelzle.com>
 Uploaders: 
-Build-Depends: debhelper (>= 11),
-               dh-python,
+Build-Depends: dh-python,
                dh-virtualenv (>= 1.2), 
                debhelper-compat (= 13),
                python3,
@@ -14,14 +13,14 @@ Build-Depends: debhelper (>= 11),
                dbus,
                libdbus-1-dev,
                libdbus-glib-1-dev
-Standards-Version: 4.6.0
+Standards-Version: 4.7.0
 X-Python3-Version: >= 3.9
 Homepage: https://github.com/WLAN-Pi/wlanpi-core
 
 Package: wlanpi-core
 Architecture: any
 Pre-Depends: dpkg (>= 1.16.1), python3 (>=3.9), ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}, dbus, lldpd, vlan, jc, sqlite3 (>= 3.34.0), sqlite3 (<< 3.41.2), nginx-light | nginx-full | nginx-extras, ufw, nftables, python3-gi, xxd
+Depends: ${misc:Depends}, ${shlibs:Depends}, dbus, lldpd, vlan, jc, sqlite3 (>= 3.34.0), nginx-light | nginx-full | nginx-extras, ufw, nftables, python3-gi, xxd
 Description: WLAN Pi - core backend services
  wlanpi-core provides API endpoints for various consumers on
  the WLAN Pi.
