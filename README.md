@@ -2,7 +2,7 @@
 
 # wlanpi-core
 
-`wlanpi-core` is a FastAPI backend that provides centralized API services for the WLAN Pi platform. It serves as the primary data provider for consumers including `wlanpi-webui`, `wlanpi-fpms`, and the chatbot, ensuring each consumer gets the same data in a consistent way rather than reimplementing data collection independently.
+`wlanpi-core` is a FastAPI backend that provides centralized API services for the WLAN Pi platform. It serves as the primary data provider for consumers including `wlanpi-webui` and `wlanpi-fpms`, ensuring each consumer gets the same data in a consistent way rather than reimplementing data collection independently.
 
 ## Development Workflow
 
