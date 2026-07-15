@@ -1,4 +1,5 @@
 import asyncio
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
@@ -16,19 +17,26 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
-def _read_device_info():
-    """Collect device information without occupying the API event loop."""
+@lru_cache(maxsize=1)
+def _read_static_device_info():
+    """Cache device identity fields that only change across system reconfiguration."""
     model = system_service.get_platform()
     hostname = system_service.get_hostname()
     name = hostname.split(".")[0]
     software_ver = system_service.get_image_ver()
-    mode = system_service.get_mode()
     return {
         "model": model,
         "hostname": hostname,
         "name": name,
         "software_version": software_ver,
-        "mode": mode,
+    }
+
+
+def _read_device_info():
+    """Combine cached device identity with the current operating mode."""
+    return {
+        **_read_static_device_info(),
+        "mode": system_service.get_mode(),
     }
 
 

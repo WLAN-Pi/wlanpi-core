@@ -10,6 +10,43 @@ import pytest
 from wlanpi_core.api.api_v1.endpoints import system_api
 
 
+def test_device_info_caches_static_fields_but_not_mode(mocker):
+    get_platform = mocker.patch.object(
+        system_api.system_service,
+        "get_platform",
+        return_value="WLAN Pi Pro",
+    )
+    get_hostname = mocker.patch.object(
+        system_api.system_service,
+        "get_hostname",
+        return_value="wlanpi.local",
+    )
+    get_image_ver = mocker.patch.object(
+        system_api.system_service,
+        "get_image_ver",
+        return_value="3.0.0",
+    )
+    get_mode = mocker.patch.object(
+        system_api.system_service,
+        "get_mode",
+        side_effect=["classic", "hotspot"],
+    )
+    system_api._read_static_device_info.cache_clear()
+
+    try:
+        first = system_api._read_device_info()
+        second = system_api._read_device_info()
+    finally:
+        system_api._read_static_device_info.cache_clear()
+
+    assert first["mode"] == "classic"
+    assert second["mode"] == "hotspot"
+    get_platform.assert_called_once_with()
+    get_hostname.assert_called_once_with()
+    get_image_ver.assert_called_once_with()
+    assert get_mode.call_count == 2
+
+
 @pytest.mark.asyncio
 async def test_device_stats_does_not_block_event_loop(mocker):
     started = threading.Event()
