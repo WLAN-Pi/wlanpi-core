@@ -1,8 +1,9 @@
 """Tests for P0 worker batch: system control, hotspot, wifi, blinker, bluetooth."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +11,12 @@ from fastapi.testclient import TestClient
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.services import bluetooth_service, hotspot_service, system_service, utils_service
+from wlanpi_core.services import (
+    bluetooth_service,
+    hotspot_service,
+    system_service,
+    utils_service,
+)
 
 
 @pytest.fixture
@@ -151,15 +157,53 @@ def test_bluetooth_pair(client, mocker):
     mocker.patch.object(
         bluetooth_service,
         "bluetooth_pair",
-        return_value={
-            "status": "discoverable",
-            "alias": "wlanpi-test",
-            "message": 'Bluetooth is on. Discoverable as "wlanpi-test"',
-        },
+        new=AsyncMock(
+            return_value={
+                "status": "discoverable",
+                "alias": "wlanpi-test",
+                "message": 'Bluetooth is on. Discoverable as "wlanpi-test"',
+            }
+        ),
     )
     response = client.post("/api/v1/bluetooth/pair")
     assert response.status_code == 200
     assert response.json()["status"] == "discoverable"
+
+
+def test_bluetooth_pair_conflict(client, mocker):
+    mocker.patch.object(
+        bluetooth_service,
+        "bluetooth_pair",
+        new=AsyncMock(
+            side_effect=bluetooth_service.BluetoothPairingInProgressError(
+                "Bluetooth pairing is already in progress"
+            )
+        ),
+    )
+    response = client.post("/api/v1/bluetooth/pair")
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "PAIRING_IN_PROGRESS",
+        "message": "Bluetooth pairing is already in progress",
+    }
+
+
+def test_bluetooth_pair_failure(client, mocker):
+    mocker.patch.object(
+        bluetooth_service,
+        "bluetooth_pair",
+        new=AsyncMock(
+            side_effect=bluetooth_service.BluetoothUnpairError(
+                "Unable to remove the existing Bluetooth pairing before the deadline"
+            )
+        ),
+    )
+    response = client.post("/api/v1/bluetooth/pair")
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": "BLUETOOTH_PAIRING_FAILED",
+        "message": "Unable to remove the existing Bluetooth pairing before the deadline",
+    }
 
 
 def test_legacy_wlan_set_returns_410(client):
