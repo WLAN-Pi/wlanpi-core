@@ -41,7 +41,7 @@ def _signal_process_group(proc, sig: signal.Signals) -> None:
         pass
 
 
-def _terminate_sync_process(proc: subprocess.Popen) -> None:
+def terminate_process(proc: subprocess.Popen) -> None:
     """Terminate, force-kill when needed, and reap a synchronous child group."""
     if proc.poll() is not None:
         return
@@ -54,7 +54,7 @@ def _terminate_sync_process(proc: subprocess.Popen) -> None:
         proc.communicate()
 
 
-async def _terminate_async_process(proc: Process) -> None:
+async def terminate_process_async(proc: Process) -> None:
     """Terminate, force-kill when needed, and reap an asyncio child group."""
     if proc.returncode is not None:
         return
@@ -149,7 +149,7 @@ def run_command(
             log.warning(
                 "Command did not complete normally; terminating its process group"
             )
-            _terminate_sync_process(proc)
+            terminate_process(proc)
             raise
 
         if raise_on_fail and proc.returncode != 0:
@@ -251,7 +251,7 @@ async def run_command_async(
         )
     except BaseException:
         log.warning("Command did not complete normally; terminating its process group")
-        await _terminate_async_process(proc)
+        await terminate_process_async(proc)
         raise
 
     if raise_on_fail and proc.returncode != 0:

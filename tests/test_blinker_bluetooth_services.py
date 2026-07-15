@@ -1,6 +1,7 @@
 """Unit tests for blinker and bluetooth pair services."""
 
 import asyncio
+import subprocess
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,12 +10,19 @@ from wlanpi_core.services import bluetooth_service, utils_service
 
 
 def test_port_blinker_status_not_running(mocker):
-    mocker.patch.object(
+    run = mocker.patch.object(
         utils_service.subprocess,
         "run",
         return_value=MagicMock(returncode=1, stdout=""),
     )
     assert utils_service.port_blinker_status() == {"active": False}
+    run.assert_called_once_with(
+        ["pidof", "-x", "portblinker.sh"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=utils_service._BLINKER_CONTROL_TIMEOUT_SEC,
+    )
 
 
 def test_start_port_blinker_missing_script(mocker, tmp_path):
@@ -22,6 +30,64 @@ def test_start_port_blinker_missing_script(mocker, tmp_path):
     mocker.patch.object(utils_service, "_blinker_script_running", return_value=False)
     with pytest.raises(FileNotFoundError):
         utils_service.start_port_blinker()
+
+
+def test_start_port_blinker_isolates_process_group(mocker, tmp_path):
+    script = tmp_path / "portblinker.sh"
+    script.touch()
+    mocker.patch.object(utils_service, "BLINKER_FILE", str(script))
+    mocker.patch.object(utils_service, "_blinker_script_running", return_value=False)
+    popen = mocker.patch.object(utils_service.subprocess, "Popen")
+    utils_service._blinker_process = None
+
+    assert utils_service.start_port_blinker("eth0")["status"] == "started"
+
+    popen.assert_called_once_with(
+        [str(script), "-i", "eth0", "--no-color"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    utils_service._blinker_process = None
+
+
+def test_stop_port_blinker_terminates_owned_process(mocker):
+    process = MagicMock()
+    process.poll.return_value = None
+    utils_service._blinker_process = process
+    terminate = mocker.patch.object(utils_service, "terminate_process")
+    mocker.patch.object(utils_service, "_blinker_script_running", return_value=False)
+
+    assert utils_service.stop_port_blinker() == {
+        "active": False,
+        "status": "stopped",
+    }
+
+    terminate.assert_called_once_with(process)
+    assert utils_service._blinker_process is None
+
+
+def test_stop_unowned_blinker_bounds_control_commands(mocker):
+    running = mocker.patch.object(
+        utils_service,
+        "_blinker_script_running",
+        side_effect=[True, False],
+    )
+    run = mocker.patch.object(utils_service.subprocess, "run")
+
+    assert utils_service.stop_port_blinker() == {
+        "active": False,
+        "status": "stopped",
+    }
+
+    run.assert_called_once_with(
+        ["pkill", "-TERM", "-f", "portblinker.sh"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=utils_service._BLINKER_CONTROL_TIMEOUT_SEC,
+    )
+    assert running.call_count == 2
 
 
 def test_bluetooth_paired_devices_uses_bluez_devices_filter(mocker):
