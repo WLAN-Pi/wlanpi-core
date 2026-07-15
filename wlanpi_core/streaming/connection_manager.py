@@ -1,15 +1,16 @@
 import asyncio
 import json
 import re
-import subprocess
 from typing import Any, Dict
 
 from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.utils.general import run_command_async, terminate_process_async
 
 log = get_logger(__name__)
+_IW_TIMEOUT_SEC = 5
 
 
 class ConnectionManager:
@@ -57,7 +58,12 @@ class ConnectionManager:
 
     async def send_supported_frequencies(self, websocket: WebSocket) -> None:
         try:
-            output = subprocess.check_output([IW_FILE, "dev"], encoding="utf-8")
+            output = (
+                await run_command_async(
+                    [IW_FILE, "dev"],
+                    timeout=_IW_TIMEOUT_SEC,
+                )
+            ).stdout
             interfaces = re.findall(r"Interface (wlanpi\d+)", output)
 
             freqs_by_iface = {}
@@ -67,9 +73,12 @@ class ConnectionManager:
                     index = int(re.search(r"wlanpi(\d+)", iface).group(1))
                     phy = f"phy{index}"
 
-                    chan_output = subprocess.check_output(
-                        [IW_FILE, "phy", phy, "channels"], encoding="utf-8"
-                    )
+                    chan_output = (
+                        await run_command_async(
+                            [IW_FILE, "phy", phy, "channels"],
+                            timeout=_IW_TIMEOUT_SEC,
+                        )
+                    ).stdout
 
                     freqs = []
                     for line in chan_output.splitlines():
@@ -111,6 +120,20 @@ class ConnectionManager:
             )
             return
 
+        if (
+            client["task"] and not client["task"].done()
+        ) or (client["proc"] and client["proc"].returncode is None):
+            await self.send_message_event(
+                websocket,
+                "error",
+                "CAPTURE_ALREADY_RUNNING",
+                "A capture is already running for this client.",
+            )
+            return
+
+        if client["task"] or client["proc"] or client["channel_tasks"]:
+            await self.stop_streaming(websocket, notify=False)
+
         missing = [i for i in interfaces if i not in client["configs"]]
         if missing:
             await self.send_message_event(
@@ -151,6 +174,7 @@ class ConnectionManager:
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
             )
         except Exception as e:
             log.warning(f"Failed to start capture process: {e!r}")
@@ -170,8 +194,7 @@ class ConnectionManager:
                     websocket, "status", "CAPTURE_ENDED", "Capture ended."
                 )
             except asyncio.CancelledError:
-                proc.terminate()
-                await proc.wait()
+                raise
             except Exception:
                 await self.send_message_event(
                     websocket,
@@ -179,6 +202,12 @@ class ConnectionManager:
                     "CAPTURE_STREAM_ERROR",
                     "Error while streaming capture data.",
                 )
+            finally:
+                await terminate_process_async(proc)
+                if client.get("proc") is proc:
+                    client["proc"] = None
+                if client.get("task") is asyncio.current_task():
+                    client["task"] = None
 
         client["proc"] = proc
         client["task"] = asyncio.create_task(stream())
@@ -203,45 +232,51 @@ class ConnectionManager:
             f"Started capture on {', '.join(interfaces)}",
         )
 
-    async def stop_streaming(self, websocket: WebSocket) -> None:
+    async def stop_streaming(self, websocket: WebSocket, notify: bool = True) -> None:
         client = self.clients.get(websocket)
         if not client:
             return
 
-        if client["task"]:
-            client["task"].cancel()
-            try:
-                await client["task"]
-            except asyncio.CancelledError:
-                pass
-            client["task"] = None
+        task = client.get("task")
+        proc = client.get("proc")
+        channel_tasks = list(client.get("channel_tasks", {}).values())
 
-        if client["proc"]:
-            try:
-                client["proc"].terminate()
-                await client["proc"].wait()
-            except ProcessLookupError:
-                pass
-            except Exception as e:
-                log.debug(f"Capture process termination failed: {e}")
-            client["proc"] = None
-
-        for task in client.get("channel_tasks", {}).values():
+        for channel_task in channel_tasks:
+            channel_task.cancel()
+        if task:
             task.cancel()
-        for task in client["channel_tasks"].values():
+
+        if task:
             try:
                 await task
             except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                log.debug(f"Capture streaming task shutdown failed: {e}")
+
+        if proc:
+            await terminate_process_async(proc)
+
+        for channel_task in channel_tasks:
+            try:
+                await channel_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                log.debug(f"Channel hopping task shutdown failed: {e}")
+
+        client["task"] = None
+        client["proc"] = None
         client["channel_tasks"] = {}
         client.pop("channel_state", None)
 
-        try:
-            await self.send_message_event(
-                websocket, "status", "CAPTURE_STOPPED", "Capture stopped."
-            )
-        except Exception:
-            pass
+        if notify:
+            try:
+                await self.send_message_event(
+                    websocket, "status", "CAPTURE_STOPPED", "Capture stopped."
+                )
+            except Exception:
+                pass
 
     async def _hop_channels(
         self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int
@@ -298,13 +333,12 @@ class ConnectionManager:
             cmd.append(str(self._center_frequency(freq, width)))
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+            result = await run_command_async(
+                cmd,
+                raise_on_fail=False,
+                timeout=_IW_TIMEOUT_SEC,
             )
-            await proc.wait()
-            return proc.returncode == 0
+            return result.success
         except Exception:
             return False
 
