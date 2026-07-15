@@ -7,7 +7,8 @@
 
 ## List supported countries
 
-`GET /api/v1/system/reg-domain/list` returns the fixed set used by legacy FPMS (`sys.rf.list`):
+`GET /api/v1/system/reg-domain/list` returns the country records present in the
+appliance's active Linux `wireless-regdb` database:
 
 ```json
 {
@@ -23,7 +24,8 @@
 | `countries[].code` | Value for set + comparison with current `country` |
 | `countries[].name` | Display label in pickers |
 
-Supported codes: **US, CA, GB, BR, FR, CZ, NL, DE, NO**. SET rejects codes outside this list with **400**.
+The exact list follows the installed `wireless-regdb` package and can change with
+regulatory database updates. SET rejects codes absent from that database with **400**.
 
 ## Current domain response
 

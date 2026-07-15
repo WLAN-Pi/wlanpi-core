@@ -232,7 +232,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 | `POST /system/timezone/set` | `wlanpi-timezone` |
 | `POST /system/timezone/auto` | timedatectl NTP |
 | `GET /system/reg-domain` | `wlanpi-reg-domain` |
-| `GET /system/reg-domain/list` | Fixed FPMS country set |
+| `GET /system/reg-domain/list` | Installed Linux wireless-regdb country set |
 | `POST /system/reg-domain/set` | `wlanpi-reg-domain` |
 | `POST /system/reboot` | `systemctl reboot` / `shutdown -r` |
 | `POST /system/shutdown` | `systemctl poweroff` |

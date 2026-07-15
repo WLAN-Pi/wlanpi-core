@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from wlanpi_core.data import reg_domain_countries
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services import system_service
@@ -285,13 +286,33 @@ def test_set_reg_domain_unsupported_country():
 
 
 def test_list_reg_domains():
+    reg_domain_countries._country_data.cache_clear()
     result = system_service.list_reg_domains()
 
-    assert len(result["countries"]) == 9
+    assert len(result["countries"]) > 9
     codes = {entry["code"] for entry in result["countries"]}
-    assert codes == {"US", "CA", "GB", "BR", "FR", "CZ", "NL", "DE", "NO"}
+    assert {"AU", "CA", "GB", "JP", "US"}.issubset(codes)
+    assert "ZZ" not in codes
     gb = next(c for c in result["countries"] if c["code"] == "GB")
     assert gb["name"] == "United Kingdom"
+
+
+def test_set_reg_domain_accepts_installed_database_country(mocker):
+    mocker.patch.object(
+        system_service,
+        "is_supported_reg_domain",
+        return_value=True,
+    )
+    mocker.patch.object(Path, "exists", return_value=False)
+    run = mocker.patch.object(system_service, "run_command")
+    mocker.patch.object(
+        system_service,
+        "get_reg_domain",
+        return_value={"country": "AU", "raw": "AU", "source": "iw"},
+    )
+
+    assert system_service.set_reg_domain("au")["country"] == "AU"
+    run.assert_called_once_with(["iw", "reg", "set", "AU"], raise_on_fail=True)
 
 
 def test_get_platform_missing_wlanpi_model(mocker):

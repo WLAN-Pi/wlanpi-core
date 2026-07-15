@@ -12,7 +12,7 @@ P0,system,POST,/system/timezone/set,"sys.tz.set; system.timezone.set",Live,Core,
 P0,system,POST,/system/timezone/auto,system.timezone.auto,Live,Core,bind,,Enable NTP auto. fpms2-only capability.
 P0,system,GET,/system/reg-domain,"sys.rf.show; system.reg_domain.show",Live,Core,bind,,wlanpi-reg-domain or iw reg get.
 P0,system,POST,/system/reg-domain/set,"sys.rf.set; system.reg_domain.set_*",Live,Core,bind,,Body {country}. wlanpi-reg-domain or iw reg set.
-P0,system,GET,/system/reg-domain/list,sys.rf.list,Live,Core,bind,,Fixed FPMS country set (US CA GB BR FR CZ NL DE NO).
+P0,system,GET,/system/reg-domain/list,sys.rf.list,Live,Core,bind,,Country records from the installed Linux wireless-regdb.
 P0,system,POST,/system/reboot,"sys.restart; system.reboot",Live,Core,bind,,Auth-gated. Reboot persistence handles namespace via existing startup recovery.
 P0,system,POST,/system/shutdown,"sys.shutdown; system.shutdown",Live,Core,bind,,Auth-gated.
 P0,system,POST,/system/mode/switch,"mode.hotspot; mode.server; mode.bridge; mode.classic; mode.wconsole",Gap,Core,build,,Body {mode}. API must work in any mode. Namespace activate/deactivate remains classic-only. Mode switch must refuse or warn if namespace config active.

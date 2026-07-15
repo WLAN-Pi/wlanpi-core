@@ -108,7 +108,7 @@ Grouped by priority. Paths use `/api/v1` prefix.
 | POST | `/system/timezone/set` | Body `{timezone}` — wraps `wlanpi-timezone` |
 | POST | `/system/timezone/auto` | NTP auto |
 | GET | `/system/reg-domain` | Wraps `wlanpi-reg-domain` |
-| GET | `/system/reg-domain/list` | Supported country codes (FPMS set) |
+| GET | `/system/reg-domain/list` | Supported country codes from wireless-regdb |
 | POST | `/system/reg-domain/set` | Body `{country}` |
 | POST | `/system/reboot` | Auth-gated |
 | POST | `/system/shutdown` | Auth-gated |
