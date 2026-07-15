@@ -66,7 +66,7 @@ The UI team's **two services, four channels** model is adopted. Core owns system
 **wlanpi-core owns:**
 - Device/system queries and privileged actions
 - Network namespace config CRUD and activation (`/network/config/*`)
-- WiFi scan/connect **primitives** (namespace-aware)
+- Wi-Fi scan/connect **primitives** (namespace-aware)
 - Service control, profiler, bluetooth, utils
 - Existing packet capture WebSocket (wrapped by UI platform as a job)
 
@@ -127,10 +127,10 @@ Grouped by priority. Paths use `/api/v1` prefix.
 | POST | `/network/interfaces/{iface}/renew` | dhclient renew |
 | GET | `/network/dhcp/leases` | Lease file parse |
 | GET | `/network/interfaces/{iface}/link-stats` | ethtool |
-| GET | `/network/wlan/usb-drivers` | USB WiFi driver info |
-| GET | `/network/wlan/pci-drivers` | PCI WiFi driver info |
+| GET | `/network/wlan/usb-drivers` | USB Wi-Fi driver info |
+| GET | `/network/wlan/pci-drivers` | PCI Wi-Fi driver info |
 
-#### WiFi workers (UI platform wraps as jobs with `freshnessSec`)
+#### Wi-Fi workers (UI platform wraps as jobs with `freshnessSec`)
 
 | Method | Path | Notes |
 |--------|------|-------|
@@ -204,7 +204,7 @@ Grouped by priority. Paths use `/api/v1` prefix.
 
 ## Namespace integration (for reviewers)
 
-The namespace system is the **correct** way for the UI to connect WiFi adapters to networks. Internally, activation:
+The namespace system is the **correct** way for the UI to connect Wi-Fi adapters to networks. Internally, activation:
 
 1. Validates config JSON
 2. Creates namespace if needed, moves PHY, creates interface
@@ -238,7 +238,7 @@ Remote clients authenticate to **wlanpi-ui only**; they do not need direct core 
 - [ ] Menu JSON served from `wlanpi-ui`; core has no `/touch-ui` or `/ui/menu` routes
 - [ ] Navigate on built-in display; mobile shows same `UiSession.revision`
 - [ ] Two speedtest requests within 10s → one core run (UI platform cache)
-- [ ] WiFi scan: job WS streams BSS lines; cancel on same socket; session WS stays small
+- [ ] Wi-Fi scan: job WS streams BSS lines; cancel on same socket; session WS stays small
 - [ ] fpms2 `test_endpoints.py` equivalent green against core P0 endpoints
 - [ ] Core OpenAPI documents worker primitives only
 - [ ] Namespace connect flow works through config system without exposing internals
@@ -268,6 +268,6 @@ Remote clients authenticate to **wlanpi-ui only**; they do not need direct core 
 ## Open questions
 
 1. **Repo packaging:** `wlanpi-ui` as separate GitHub repo (evolved from fpms2) vs monorepo package — recommend **separate repo**, shared `wlanpi_touch_ui` assets package.
-2. **Simplified WiFi connect:** Build `POST /network/wifi/connect` in core P1, or keep config CRUD only?
+2. **Simplified Wi-Fi connect:** Build `POST /network/wifi/connect` in core P1, or keep config CRUD only?
 3. **Mobile card menu:** Stay on direct core REST permanently, or migrate to wlanpi-ui for consistency?
 4. **Capture migration:** Keep core WebSocket for binary stream with UI platform job WS as proxy, or move stream to UI platform long-term?

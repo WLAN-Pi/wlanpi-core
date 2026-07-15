@@ -1,4 +1,4 @@
-"""WLAN Pi supported WiFi regulatory domain country codes.
+"""WLAN Pi supported Wi-Fi regulatory domain country codes.
 
 Matches the fixed set exposed by legacy FPMS (sys.rf.* menu entries).
 """

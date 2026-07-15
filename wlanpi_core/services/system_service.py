@@ -569,7 +569,7 @@ def set_timezone(timezone: str):
 
 def get_reg_domain():
     """
-    Return current WiFi regulatory domain country code.
+    Return current Wi-Fi regulatory domain country code.
 
     Uses `wlanpi-reg-domain get` (not `show` — the script subcommand is `get`).
     Falls back to `iw reg get` when the script output is not a valid country code.

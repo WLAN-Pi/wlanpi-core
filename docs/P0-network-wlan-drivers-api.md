@@ -18,10 +18,10 @@ They then **filter by hardware bus** and return only matching adapters:
 
 | Endpoint | Includes | Excludes |
 |----------|----------|----------|
-| **usb-drivers** | USB dongles (e.g. Atheros `ath9k_htc`) | On-board PCI, SDIO, platform WiFi |
+| **usb-drivers** | USB dongles (e.g. Atheros `ath9k_htc`) | On-board PCI, SDIO, platform Wi-Fi |
 | **pci-drivers** | PCI and platform/SDIO interfaces (e.g. `wlan0`, `wlanpi0` on Intel `iwlwifi`) | USB dongles |
 
-On a WLAN Pi Pro / R4 with built-in Intel WiFi, **`usb-drivers` legitimately returns an empty `adapters` array**. That is not an error. Use **`pci-drivers`** for on-board radios.
+On a WLAN Pi Pro / R4 with built-in Intel Wi-Fi, **`usb-drivers` legitimately returns an empty `adapters` array**. That is not an error. Use **`pci-drivers`** for on-board radios.
 
 ---
 
@@ -83,7 +83,7 @@ On a WLAN Pi Pro / R4 with built-in Intel WiFi, **`usb-drivers` legitimately ret
 
 1. **Always expect HTTP 200** on success, even when `adapters` is empty.
 2. **Do not treat empty `adapters` as failure** — check `interfaces_scanned`:
-   - `interfaces_scanned > 0` and `adapters.length === 0` on **usb-drivers** → show “No USB WiFi adapters” and offer pci-drivers data if relevant.
+   - `interfaces_scanned > 0` and `adapters.length === 0` on **usb-drivers** → show “No USB Wi-Fi adapters” and offer pci-drivers data if relevant.
    - `interfaces_scanned === 0` → no wireless interfaces at all (unusual).
 3. **Same PHY, multiple interfaces:** `wlan0` and `wlanpi0` often share one chip; pci-drivers may list both with the same `driver`. Display as separate rows or collapse by driver — both are valid.
 4. **`pci_devices` vs `adapters`:** `pci_devices` can be non-empty while `adapters` was empty on older core builds; after bus-detection fix they should align on PCI hardware. Prefer `adapters` for per-interface driver display.
@@ -93,7 +93,7 @@ On a WLAN Pi Pro / R4 with built-in Intel WiFi, **`usb-drivers` legitimately ret
 
 | Endpoint | `interfaces_scanned` | `adapters` | Suggested UI |
 |----------|---------------------|------------|--------------|
-| usb-drivers | 2 | `[]` | “No USB WiFi adapters detected (2 on-board interfaces scanned)” |
+| usb-drivers | 2 | `[]` | “No USB Wi-Fi adapters detected (2 on-board interfaces scanned)” |
 | usb-drivers | 0 | `[]` | “No wireless interfaces found” |
 | pci-drivers | 2 | `[…]` | List drivers per interface |
 
@@ -104,10 +104,10 @@ On a WLAN Pi Pro / R4 with built-in Intel WiFi, **`usb-drivers` legitimately ret
 | Capability | Endpoint | When to use |
 |------------|----------|-------------|
 | `network.interfaces.wlan.usb_drivers` | `GET /network/wlan/usb-drivers` | USB dongle / external adapter menu |
-| `network.interfaces.wlan.pci_drivers` | `GET /network/wlan/pci-drivers` | Built-in / M.2 / SDIO WiFi menu |
+| `network.interfaces.wlan.pci_drivers` | `GET /network/wlan/pci-drivers` | Built-in / M.2 / SDIO Wi-Fi menu |
 | `wifi.radio.usb_drivers` | same as usb-drivers | Touch menu alias |
 
-For a **generic “WiFi drivers” screen** on unknown hardware, call **both** endpoints and merge `adapters`, or call pci-drivers first on WLAN Pi images without USB WiFi.
+For a **generic “Wi-Fi drivers” screen** on unknown hardware, call **both** endpoints and merge `adapters`, or call pci-drivers first on WLAN Pi images without USB Wi-Fi.
 
 ---
 

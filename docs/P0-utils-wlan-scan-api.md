@@ -11,7 +11,7 @@
 
 ## 1. What this endpoint does
 
-Returns a **single snapshot** of visible WiFi networks from one adapter, with namespace-aware adapter selection. Core hides network-namespace complexity from end users.
+Returns a **single snapshot** of visible Wi-Fi networks from one adapter, with namespace-aware adapter selection. Core hides network-namespace complexity from end users.
 
 - **One HTTP request → one scan** (`wpa_cli scan` + parsed results).
 - **Not** a continuous or streaming scan. For live RF survey, use `/streaming/capture` (see §8).

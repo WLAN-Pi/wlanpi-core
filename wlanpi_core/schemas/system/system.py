@@ -74,7 +74,7 @@ class TimezoneSetRequest(BaseModel):
 
 
 class RegDomainInfo(BaseModel):
-    """WiFi regulatory domain. Always parse `country` (ISO 3166-1 alpha-2)."""
+    """Wi-Fi regulatory domain. Always parse `country` (ISO 3166-1 alpha-2)."""
 
     country: str = Field(
         description="Two-letter country code, e.g. GB, US",

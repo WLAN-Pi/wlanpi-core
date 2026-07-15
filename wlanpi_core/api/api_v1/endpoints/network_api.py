@@ -407,7 +407,7 @@ async def show_wlan_usb_drivers():
 
     Returns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.
     Check ``interfaces_scanned`` — if > 0 and ``adapters`` is empty, use
-    ``GET /network/wlan/pci-drivers`` for built-in WiFi.
+    ``GET /network/wlan/pci-drivers`` for built-in Wi-Fi.
     """
     try:
         return await asyncio.to_thread(network_primitives.get_usb_wlan_drivers)

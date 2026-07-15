@@ -43,7 +43,7 @@ These touch-panel usages match live core + OpenAPI:
 | **Speedtest** | `GET /utils/speedtest` | `speedtestEndpoint` | Present in OpenAPI (`SpeedTest` schema). |
 | Network primitives | `/network/routing`, `/connections/*`, `/dhcp/leases`, link-stats, renew, wlan drivers | capabilities P0 | All in current export. |
 | System control | reboot, shutdown, datetime, timezone/*, reg-domain/*, hotspot reads | capabilities P0 | In export; hotspot routes document **409** outside hotspot mode. |
-| WiFi | `/wifi/capabilities`, `/regulatory`, `/hotspot/stations`, `/hotspot/link` | capabilities P0 | In export. |
+| Wi-Fi | `/wifi/capabilities`, `/regulatory`, `/hotspot/stations`, `/hotspot/link` | capabilities P0 | In export. |
 | Utils | blinker start/stop/status | capabilities | In export. |
 
 ---
@@ -163,7 +163,7 @@ Remaining known limitations:
 | Interface list (iproute2) | `GET /network/interfaces` — parse map of `IPInterface[]` |
 | WLAN summary tiles | `GET /network/info/` → `wlan_interfaces` |
 | Namespace / wpa state | `GET /network/config/status` |
-| Connect / activate WiFi | `POST /network/config/` + `activate/{id}` |
+| Connect / activate Wi-Fi | `POST /network/config/` + `activate/{id}` |
 | Deprecated connect | `POST /network/wlan/set-dbus` → **410** |
 
 ---

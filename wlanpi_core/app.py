@@ -567,7 +567,7 @@ def create_app(debug: bool = False):
                 "tags": ["streaming"],
                 "summary": "Packet capture WebSocket",
                 "description": (
-                    "Upgrade to WebSocket for live WiFi capture. Send JSON text "
+                    "Upgrade to WebSocket for live Wi-Fi capture. Send JSON text "
                     "commands (`get_supported_frequencies`, `configure`, `start`, "
                     "`stop`); receive JSON events and binary pcapng frames. "
                     "Auth not enforced today — treat as privileged."

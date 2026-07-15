@@ -242,7 +242,7 @@ def test_get_pci_wlan_drivers():
     with patch(
         "wlanpi_core.network.wlan_drivers.run_command",
         return_value=MagicMock(
-            stdout="0000:01:00.0 Wireless controller: Example PCI WiFi\n"
+            stdout="0000:01:00.0 Wireless controller: Example PCI Wi-Fi\n"
         ),
     ):
         with patch(

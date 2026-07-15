@@ -2,7 +2,7 @@
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [API integration guide](./API-INTEGRATION-GUIDE.md), [deprecated endpoints](./API-DEPRECATED-ENDPOINTS.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [WiFi capture API design](./P0-wifi-capture-api.md), [WiFi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [API integration guide](./API-INTEGRATION-GUIDE.md), [deprecated endpoints](./API-DEPRECATED-ENDPOINTS.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [Wi-Fi capture API design](./P0-wifi-capture-api.md), [Wi-Fi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
@@ -57,7 +57,7 @@ Two different concepts must not be conflated:
 
 Mode switch wraps existing switcher scripts (`wlanpi_core/constants.py`: `HOTSPOT_SWITCHER_FILE`, etc.).
 
-### 2.4 Namespace-aware WiFi scan — hide complexity from end users
+### 2.4 Namespace-aware Wi-Fi scan — hide complexity from end users
 
 End users should not need to understand network namespaces. Core scan primitive:
 
@@ -168,14 +168,14 @@ P1 adds `GET /network/adapters/{iface}/connection` in core for precise `wpa_stat
 
 ### 2.6 DBus — what is legacy and what stays
 
-**Confirmed:** The P0 plan supersedes **wpa_supplicant DBus** (`fi.w1.wpa_supplicant1`) for all WiFi operations. That stack in `network_service.py` is **legacy** — root-namespace only, no namespace awareness, polling-based, and parallel to the namespace/wpa_cli path the project is standardising on.
+**Confirmed:** The P0 plan supersedes **wpa_supplicant DBus** (`fi.w1.wpa_supplicant1`) for all Wi-Fi operations. That stack in `network_service.py` is **legacy** — root-namespace only, no namespace awareness, polling-based, and parallel to the namespace/wpa_cli path the project is standardising on.
 
 **Not superseded:** **systemd DBus** (`org.freedesktop.systemd1`) in `system_service.py` remains the implementation for service start/stop/status (and P0 `restart`). That is a different bus, different purpose, and stays unless we explicitly choose a `systemctl` subprocess refactor later.
 
 | DBus stack | Status under P0 | Rationale |
 |------------|-----------------|-----------|
 | `fi.w1.wpa_supplicant1` (scan, connect, getConnected, getInterfaces) | **Legacy — deprecate** | Replaced by namespace config + `wpa_cli` + `iw` |
-| `org.freedesktop.systemd1` (service control) | **Keep** | Allowed-service gate + live today; not WiFi-related |
+| `org.freedesktop.systemd1` (service control) | **Keep** | Allowed-service gate + live today; not Wi-Fi-related |
 | Bluetooth | **No DBus in core** | `bluetooth_service` uses CLI/hardware paths |
 
 #### Legacy endpoints — deprecate and repurpose paths
@@ -201,7 +201,7 @@ API endpoint
   → namespaces/*, connection/monitor.py               (namespace ops, async connect)
 ```
 
-**`network_service.py`:** WiFi DBus code becomes dead after migration. Remove in P1 once consumers are off legacy paths. **Do not** build new P0 features on `AsyncDBusManager` or `setup_DBus_Supplicant_Access`.
+**`network_service.py`:** Wi-Fi DBus code becomes dead after migration. Remove in P1 once consumers are off legacy paths. **Do not** build new P0 features on `AsyncDBusManager` or `setup_DBus_Supplicant_Access`.
 
 **Consumer migration:** wlanpi-ui capability bindings and mobile app must target new paths only. Legacy paths exist solely for transitional compatibility.
 
@@ -255,7 +255,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 | `GET /network/wlan/usb-drivers` | `lsusb` + driver binding |
 | `GET /network/wlan/pci-drivers` | `lspci` wireless |
 
-### Stream C — WiFi and utils workers (priority 3)
+### Stream C — Wi-Fi and utils workers (priority 3)
 
 | Endpoint | Notes |
 |----------|-------|
@@ -373,7 +373,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
 3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
-4. **WiFi/utils workers:** ~~`/utils/wlan/scan`~~ **Done**; ~~speedtest~~ **Done**; cloud-test; **capture** (design: [capture API](./P0-wifi-capture-api.md), [consumer guide](./P0-wifi-capture-consumer-guide.md))
+4. **Wi-Fi/utils workers:** ~~`/utils/wlan/scan`~~ **Done**; ~~speedtest~~ **Done**; cloud-test; **capture** (design: [capture API](./P0-wifi-capture-api.md), [consumer guide](./P0-wifi-capture-consumer-guide.md))
 5. **Utils misc:** Blinker, freeradius test, bluetooth pair
 6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 
@@ -388,7 +388,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 | 3 | JWT expiry for panel/mobile | **7 days (existing `ACCESS_TOKEN_EXPIRE_DAYS`); no refresh token in P0** |
 | 4 | wlanpi-ui packaging | **Separate package/repo evolved from fpms2**; shared `wlanpi_touch_ui` assets |
 | 5 | P0 test approach | **CSV matrix** (`p0_api_test_matrix.csv`); stub **adapter layout only** for hardware permutations |
-| 6 | DBus WiFi stack | **Legacy — deprecate**; repurpose `/network/wlan/*` paths; keep systemd DBus for services |
+| 6 | DBus Wi-Fi stack | **Legacy — deprecate**; repurpose `/network/wlan/*` paths; keep systemd DBus for services |
 
 ---
 

@@ -16,7 +16,7 @@ from wlanpi_core.schemas.common.errors import (
 OPENAPI_DESCRIPTION = """
 # wlanpi-core REST API
 
-HTTP API for WLAN Pi device control, network configuration, WiFi primitives, and utilities.
+HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.
 
 **Base path:** `/api/v1`  
 **Interactive docs:** `/docs` (this page) · **OpenAPI JSON:** `/api/v1/openapi.json`
@@ -106,7 +106,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "wifi",
         "description": (
-            "WiFi PHY capabilities, regulatory domain, and **hotspot-only** "
+            "Wi-Fi PHY capabilities, regulatory domain, and **hotspot-only** "
             "station/link stats (`409` when not in hotspot mode)."
         ),
     },

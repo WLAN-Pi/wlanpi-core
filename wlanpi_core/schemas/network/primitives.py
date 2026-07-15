@@ -61,7 +61,7 @@ class WlanUsbDriversResponse(BaseModel):
         default_factory=list,
         description=(
             "USB-attached WLAN interfaces only. "
-            "Empty array is normal on devices with only PCI/on-board WiFi — use "
+            "Empty array is normal on devices with only PCI/on-board Wi-Fi — use "
             "GET /network/wlan/pci-drivers instead."
         ),
     )

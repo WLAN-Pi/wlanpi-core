@@ -773,7 +773,7 @@ class NetworkConfigCLI:
 
         # Mode selection
         print("\nInterface Mode:")
-        print("1. managed (normal WiFi client)")
+        print("1. managed (normal Wi-Fi client)")
         print("2. monitor (packet capture)")
         
         current_mode = existing_data.get("mode", "managed")

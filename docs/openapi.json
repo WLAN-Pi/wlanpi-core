@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wlanpi-core",
-    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, WiFi primitives, and utilities.\n\n**Base path:** `/api/v1`  \n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. All documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
+    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`  \n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. All documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
     "version": "2.1.10"
   },
   "paths": {
@@ -1215,7 +1215,7 @@
           "network"
         ],
         "summary": "Show Wlan Usb Drivers",
-        "description": "USB-attached WLAN adapters and bound drivers.\n\nReturns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.\nCheck ``interfaces_scanned`` \u2014 if > 0 and ``adapters`` is empty, use\n``GET /network/wlan/pci-drivers`` for built-in WiFi.",
+        "description": "USB-attached WLAN adapters and bound drivers.\n\nReturns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.\nCheck ``interfaces_scanned`` \u2014 if > 0 and ``adapters`` is empty, use\n``GET /network/wlan/pci-drivers`` for built-in Wi-Fi.",
         "operationId": "show_wlan_usb_drivers_api_v1_network_wlan_usb_drivers_get",
         "responses": {
           "200": {
@@ -2517,7 +2517,7 @@
           "system"
         ],
         "summary": "List Reg Domains",
-        "description": "Returns supported WiFi regulatory domain country codes.",
+        "description": "Returns supported Wi-Fi regulatory domain country codes.",
         "operationId": "list_reg_domains_api_v1_system_reg_domain_list_get",
         "responses": {
           "200": {
@@ -2544,7 +2544,7 @@
           "system"
         ],
         "summary": "Show Reg Domain",
-        "description": "Returns the current WiFi regulatory domain.",
+        "description": "Returns the current Wi-Fi regulatory domain.",
         "operationId": "show_reg_domain_api_v1_system_reg_domain_get",
         "responses": {
           "200": {
@@ -2571,7 +2571,7 @@
           "system"
         ],
         "summary": "Set Reg Domain",
-        "description": "Sets the WiFi regulatory domain country code.",
+        "description": "Sets the Wi-Fi regulatory domain country code.",
         "operationId": "set_reg_domain_api_v1_system_reg_domain_set_post",
         "requestBody": {
           "content": {
@@ -3212,7 +3212,7 @@
         "tags": [
           "wifi"
         ],
-        "summary": "Show Wifi Capabilities",
+        "summary": "Show Wi-Fi capabilities",
         "description": "Return ``iw phy`` capability dumps for each PHY.",
         "operationId": "show_wifi_capabilities_api_v1_wifi_capabilities_get",
         "responses": {
@@ -3239,8 +3239,8 @@
         "tags": [
           "wifi"
         ],
-        "summary": "Show Wifi Regulatory",
-        "description": "Return WiFi regulatory domain information.",
+        "summary": "Show Wi-Fi regulatory information",
+        "description": "Return Wi-Fi regulatory domain information.",
         "operationId": "show_wifi_regulatory_api_v1_wifi_regulatory_get",
         "responses": {
           "200": {
@@ -3498,7 +3498,7 @@
           "streaming"
         ],
         "summary": "Packet capture WebSocket",
-        "description": "Upgrade to WebSocket for live WiFi capture. Send JSON text commands (`get_supported_frequencies`, `configure`, `start`, `stop`); receive JSON events and binary pcapng frames. Auth not enforced today \u2014 treat as privileged.",
+        "description": "Upgrade to WebSocket for live Wi-Fi capture. Send JSON text commands (`get_supported_frequencies`, `configure`, `start`, `stop`); receive JSON events and binary pcapng frames. Auth not enforced today \u2014 treat as privileged.",
         "operationId": "streaming_capture_websocket",
         "responses": {
           "101": {
@@ -5641,7 +5641,7 @@
           "country"
         ],
         "title": "RegDomainInfo",
-        "description": "WiFi regulatory domain. Always parse `country` (ISO 3166-1 alpha-2)."
+        "description": "Wi-Fi regulatory domain. Always parse `country` (ISO 3166-1 alpha-2)."
       },
       "RegDomainList": {
         "properties": {
@@ -6956,7 +6956,7 @@
             },
             "type": "array",
             "title": "Adapters",
-            "description": "USB-attached WLAN interfaces only. Empty array is normal on devices with only PCI/on-board WiFi \u2014 use GET /network/wlan/pci-drivers instead."
+            "description": "USB-attached WLAN interfaces only. Empty array is normal on devices with only PCI/on-board Wi-Fi \u2014 use GET /network/wlan/pci-drivers instead."
           },
           "interfaces_scanned": {
             "type": "integer",
@@ -7009,7 +7009,7 @@
     },
     {
       "name": "wifi",
-      "description": "WiFi PHY capabilities, regulatory domain, and **hotspot-only** station/link stats (`409` when not in hotspot mode)."
+      "description": "Wi-Fi PHY capabilities, regulatory domain, and **hotspot-only** station/link stats (`409` when not in hotspot mode)."
     },
     {
       "name": "device utils",

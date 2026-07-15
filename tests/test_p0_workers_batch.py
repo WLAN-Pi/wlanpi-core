@@ -1,4 +1,4 @@
-"""Tests for P0 worker batch: system control, hotspot, wifi, blinker, bluetooth."""
+"""Tests for P0 worker batch: system control, hotspot, Wi-Fi, blinker, Bluetooth."""
 
 from __future__ import annotations
 

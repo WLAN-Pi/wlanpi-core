@@ -21,6 +21,7 @@ log = get_logger(__name__)
 @router.get(
     "/capabilities",
     response_model=wifi_schema.WifiCapabilitiesResponse,
+    summary="Show Wi-Fi capabilities",
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_wifi_capabilities():
@@ -31,16 +32,17 @@ async def show_wifi_capabilities():
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content="Unable to read WiFi capabilities", status_code=503)
+        return Response(content="Unable to read Wi-Fi capabilities", status_code=503)
 
 
 @router.get(
     "/regulatory",
     response_model=wifi_schema.WifiRegulatoryResponse,
+    summary="Show Wi-Fi regulatory information",
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_wifi_regulatory():
-    """Return WiFi regulatory domain information."""
+    """Return Wi-Fi regulatory domain information."""
     try:
         return await asyncio.to_thread(get_wifi_regulatory)
     except ValidationError as ve:

@@ -252,7 +252,7 @@ Prefer over legacy `POST /network/wlan/revert`.
 
 ---
 
-## Lesson 6 — WiFi drivers and PHY info
+## Lesson 6 — Wi-Fi drivers and PHY info
 
 ### 6.1 USB dongles
 
@@ -266,7 +266,7 @@ GET /api/v1/network/wlan/usb-drivers
 
 **Empty `adapters` with `interfaces_scanned > 0` is normal** on PCI-only hardware.
 
-### 6.2 On-board / PCI WiFi
+### 6.2 On-board / PCI Wi-Fi
 
 ```http
 GET /api/v1/network/wlan/pci-drivers

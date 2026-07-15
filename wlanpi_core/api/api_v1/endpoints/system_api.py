@@ -262,7 +262,7 @@ async def set_timezone(body: system.TimezoneSetRequest):
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def list_reg_domains():
-    """Returns supported WiFi regulatory domain country codes."""
+    """Returns supported Wi-Fi regulatory domain country codes."""
     try:
         log.debug("GET /system/reg-domain/list request")
         result = system_service.list_reg_domains()
@@ -281,7 +281,7 @@ async def list_reg_domains():
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_reg_domain():
-    """Returns the current WiFi regulatory domain."""
+    """Returns the current Wi-Fi regulatory domain."""
     try:
         log.debug("GET /system/reg-domain request")
         result = await asyncio.to_thread(system_service.get_reg_domain)
@@ -303,7 +303,7 @@ async def show_reg_domain():
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_reg_domain(body: system.RegDomainSetRequest):
-    """Sets the WiFi regulatory domain country code."""
+    """Sets the Wi-Fi regulatory domain country code."""
     try:
         log.debug("POST /system/reg-domain/set request country=%s", body.country)
         result = await asyncio.to_thread(system_service.set_reg_domain, body.country)

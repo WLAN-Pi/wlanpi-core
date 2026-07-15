@@ -23,7 +23,7 @@ manager = ConnectionManager()
 )
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """
-    Live WiFi packet capture over WebSocket (pcapng binary stream).
+    Live Wi-Fi packet capture over WebSocket (pcapng binary stream).
 
     **Protocol:** send JSON text commands; receive JSON events and binary frames.
 
