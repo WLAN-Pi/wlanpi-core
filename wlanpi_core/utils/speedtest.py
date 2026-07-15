@@ -66,11 +66,14 @@ def parse_librespeed_output(stdout: str) -> dict[str, Any]:
 
 async def run_speedtest() -> dict[str, Any]:
     """Run LibreSpeed CLI and return parsed results."""
-    result = await run_command_async(
-        [LIBRESPEED_CLI, "--json", "--simple"],
-        raise_on_fail=False,
-        timeout=SPEEDTEST_TIMEOUT_SEC,
-    )
+    try:
+        result = await run_command_async(
+            [LIBRESPEED_CLI, "--json", "--simple"],
+            raise_on_fail=False,
+            timeout=SPEEDTEST_TIMEOUT_SEC,
+        )
+    except OSError as exc:
+        raise RuntimeError("LibreSpeed CLI is unavailable") from exc
     if not result.success:
         detail = (result.stderr or result.stdout or "speedtest failed").strip()
         raise RuntimeError(detail)

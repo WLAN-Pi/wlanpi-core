@@ -7,13 +7,35 @@ import time
 from typing import Optional
 
 from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
+from wlanpi_core.core.logging import get_logger
 
 from ..models.runcommand_error import RunCommandError
 from ..utils.general import run_command_async, terminate_process
 from ..utils.network import get_default_gateways
-from ..utils.reachability import parse_targets_param, ping_target
+from ..utils.reachability import parse_targets_param, ping_stats_from_jc, ping_target
 from ..utils.speedtest import run_speedtest
 from ..utils.validation import validate_interface_name
+
+log = get_logger(__name__)
+
+
+def _read_dns_servers(path: str = "/etc/resolv.conf") -> list[str]:
+    """Read well-formed nameserver entries without leaking a file handle."""
+    servers: list[str] = []
+    with open(path, encoding="utf-8") as resolv_conf:
+        for line in resolv_conf:
+            fields = line.split()
+            if len(fields) >= 2 and fields[0] == "nameserver":
+                servers.append(fields[1])
+    return servers
+
+
+async def _cancel_tasks(tasks: list[asyncio.Task]) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def show_reachability(targets: Optional[list[str]] = None):
@@ -27,17 +49,12 @@ async def show_reachability(targets: Optional[list[str]] = None):
 
     # --- Variables ---
     try:
-        gateways = get_default_gateways()
+        gateways = await asyncio.to_thread(get_default_gateways)
         if not gateways:
             return {"error": "No default gateway found"}
 
         dg_interface, default_gateway = list(gateways.items())[0]
-
-        dns_servers = [
-            line.split()[1]
-            for line in open("/etc/resolv.conf")
-            if line.startswith("nameserver")
-        ]
+        dns_servers = await asyncio.to_thread(_read_dns_servers)
         custom_targets = parse_targets_param(targets)
     except ValueError as err:
         return {"error": str(err)}
@@ -48,74 +65,97 @@ async def show_reachability(targets: Optional[list[str]] = None):
     if not default_gateway:
         return {"error": "No default gateway"}
 
-    # Start executing tests in the background
-    ping_google_cr = run_command_async(
-        "jc ping -c1 -W2 -q google.com", raise_on_fail=False
-    )
-    browse_google_result_cr = run_command_async(
-        "timeout 2 curl -s -L www.google.com", raise_on_fail=False
-    )
-    ping_gateway_cr = run_command_async(
-        f"jc ping -c1 -W2 -q {default_gateway}", raise_on_fail=False
-    )
-    arping_gateway_cr = run_command_async(
-        f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway}",
-        raise_on_fail=False,
-    )
-    dns_res_crs = [
-        (
-            i,
-            run_command_async(
-                f"dig +short +time=2 +tries=1 @{dns} NS google.com", raise_on_fail=False
-            ),
+    ping_google_task = asyncio.create_task(
+        run_command_async(
+            ["jc", "ping", "-c1", "-W2", "-q", "google.com"],
+            raise_on_fail=False,
         )
-        for i, dns in enumerate(dns_servers[:3], start=1)
-    ]
-    custom_ping_crs = [
-        (target, asyncio.create_task(ping_target(target))) for target in custom_targets
-    ]
-
-    # Ping Google
-    ping_google = await ping_google_cr
-    output["results"]["Ping Google"] = (
-        f"{ping_google.output_from_json()['round_trip_ms_avg']}ms"
-        if ping_google.success
-        else "FAIL"
     )
+    browse_google_task = asyncio.create_task(
+        run_command_async(
+            ["curl", "-s", "-L", "www.google.com"],
+            raise_on_fail=False,
+            timeout=2,
+        )
+    )
+    ping_gateway_task = asyncio.create_task(
+        run_command_async(
+            ["jc", "ping", "-c1", "-W2", "-q", default_gateway],
+            raise_on_fail=False,
+        )
+    )
+    arping_gateway_task = asyncio.create_task(
+        run_command_async(
+            ["arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
+            raise_on_fail=False,
+            timeout=2,
+        )
+    )
+    dns_tasks = [
+        asyncio.create_task(
+            run_command_async(
+                [
+                    "dig",
+                    "+short",
+                    "+time=2",
+                    "+tries=1",
+                    f"@{dns}",
+                    "NS",
+                    "google.com",
+                ],
+                raise_on_fail=False,
+            )
+        )
+        for dns in dns_servers[:3]
+    ]
+    custom_tasks = [
+        asyncio.create_task(ping_target(target)) for target in custom_targets
+    ]
+    all_tasks = [
+        ping_google_task,
+        browse_google_task,
+        ping_gateway_task,
+        arping_gateway_task,
+        *dns_tasks,
+        *custom_tasks,
+    ]
 
-    # Browse Google.com
-    browse_google_result = await browse_google_result_cr
+    try:
+        ping_google, browse_google, ping_gateway, arping_gateway = await asyncio.gather(
+            ping_google_task,
+            browse_google_task,
+            ping_gateway_task,
+            arping_gateway_task,
+        )
+        dns_results = await asyncio.gather(*dns_tasks)
+        custom_results = await asyncio.gather(*custom_tasks)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.warning("Reachability check failed: %r", exc)
+        return {"error": "Reachability check failed"}
+    finally:
+        await _cancel_tasks(all_tasks)
+
+    output["results"]["Ping Google"] = ping_stats_from_jc(
+        ping_google.output_from_json() if ping_google.success else None
+    )["display"]
     output["results"]["Browse Google"] = (
         "OK"
-        if (
-            browse_google_result.success and "google.com" in browse_google_result.stdout
-        )
+        if browse_google.success and "google.com" in browse_google.stdout
         else "FAIL"
     )
+    output["results"]["Ping Gateway"] = ping_stats_from_jc(
+        ping_gateway.output_from_json() if ping_gateway.success else None
+    )["display"]
 
-    # Ping default gateway
-    ping_gateway = await ping_gateway_cr
-    output["results"]["Ping Gateway"] = (
-        f"{ping_gateway.output_from_json()['round_trip_ms_avg']}ms"
-        if ping_gateway.success
-        else "FAIL"
-    )
-
-    # DNS resolution checks
-    for i, cr in dns_res_crs:
-        dns_res = await cr
-        output["results"][f"DNS Server {i} Resolution"] = (
-            "OK" if dns_res.success else "FAIL"
+    for index, dns_result in enumerate(dns_results, start=1):
+        output["results"][f"DNS Server {index} Resolution"] = (
+            "OK" if dns_result.success else "FAIL"
         )
 
-    # ARPing default gateway
-    arping_gateway = (await arping_gateway_cr).stdout
-    arping_rtt = re.search(r"\d+ms", arping_gateway)
+    arping_rtt = re.search(r"\d+(?:\.\d+)?ms", arping_gateway.stdout)
     output["results"]["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
-
-    custom_results = []
-    for target, task in custom_ping_crs:
-        custom_results.append(await task)
     output["results"]["custom"] = custom_results
 
     return output
@@ -148,7 +188,7 @@ async def show_usb():
         ]
     except RunCommandError as err:
         error_descr = "Issue getting usb info using lsusb command"
-        interfaces["error"] = {"error": {error_descr + ": " + err.error_msg}}
+        interfaces["error"] = {"error": error_descr + ": " + err.error_msg}
         return interfaces
 
     interfaces["interfaces"] = []
@@ -156,7 +196,7 @@ async def show_usb():
     for result in (result for result in lsusb_info if result != ""):
         interfaces["interfaces"].append(result)
 
-    if len(interfaces) == 0:
+    if not interfaces["interfaces"]:
         interfaces["interfaces"].append("No devices detected")
 
     return interfaces
@@ -219,16 +259,15 @@ async def show_ufw():
 
     try:
         ufw_output = (
-            await run_command_async(
-                "sudo {} status".format(ufw_file), raise_on_fail=True
-            )
+            await run_command_async([ufw_file, "status"], raise_on_fail=True)
         ).stdout
         ufw_info = parse_ufw(ufw_output)
 
-    except:
+    except Exception as exc:
+        log.warning("Unable to read UFW status: %r", exc)
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
-        return
+        return response
 
     # Add in status line
 

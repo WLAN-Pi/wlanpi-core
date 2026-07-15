@@ -85,8 +85,9 @@ def ping_stats_from_jc(data: Optional[dict[str, Any]]) -> dict[str, Any]:
 
 async def ping_target(target: str) -> dict[str, Any]:
     """Ping one target and return structured stats."""
+    target = validate_ping_target(target)
     result = await run_command_async(
-        f"jc ping -c1 -W2 -q {target}",
+        ["jc", "ping", "-c1", "-W2", "-q", target],
         raise_on_fail=False,
     )
     stats = ping_stats_from_jc(result.output_from_json())
