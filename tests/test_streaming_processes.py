@@ -111,6 +111,7 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         new=AsyncMock(return_value=process),
     )
     mocker.patch.object(manager, "send_message_event", new=AsyncMock())
+    manager.configure(websocket, "wlanpi0", {})
 
     await manager.start_streaming(websocket, ["wlanpi0"], "")
 
@@ -167,3 +168,90 @@ async def test_second_capture_does_not_orphan_first_process(mocker):
         "CAPTURE_ALREADY_RUNNING",
         "A capture is already running for this client.",
     )
+
+
+@pytest.mark.asyncio
+async def test_capture_rejects_missing_interface_config_before_process(mocker):
+    manager = ConnectionManager()
+    websocket = object()
+    _connected_client(manager, websocket)
+    create_process = mocker.patch.object(
+        connection_manager.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(),
+    )
+    send_event = mocker.patch.object(
+        manager,
+        "send_message_event",
+        new=AsyncMock(),
+    )
+
+    await manager.start_streaming(websocket, ["wlanpi0"], "")
+
+    create_process.assert_not_awaited()
+    send_event.assert_awaited_once_with(
+        websocket,
+        "error",
+        "CONFIG_MISSING",
+        "No config for: wlanpi0",
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"dwell_time": 1},
+        {"channels": [{"freq": 2412, "width": 10}]},
+        {"channels": [{"freq": 99999, "width": 20}]},
+        {"unknown": True},
+    ],
+)
+def test_capture_rejects_unsafe_interface_configuration(config):
+    manager = ConnectionManager()
+    websocket = object()
+    _connected_client(manager, websocket)
+
+    with pytest.raises(ValueError):
+        manager.configure(websocket, "wlanpi0", config)
+
+    assert manager.clients[websocket]["configs"] == {}
+
+
+@pytest.mark.asyncio
+async def test_capture_rejects_invalid_start_before_process(mocker):
+    manager = ConnectionManager()
+    websocket = object()
+    _connected_client(manager, websocket)
+    create_process = mocker.patch.object(
+        connection_manager.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(),
+    )
+    send_event = mocker.patch.object(
+        manager,
+        "send_message_event",
+        new=AsyncMock(),
+    )
+
+    await manager.start_streaming(websocket, ["--help"], "tcp\nport 22")
+
+    create_process.assert_not_awaited()
+    send_event.assert_awaited_once_with(
+        websocket,
+        "error",
+        "CAPTURE_CONFIG_INVALID",
+        "Invalid capture start configuration.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_channel_rejects_invalid_center_before_command(mocker):
+    manager = ConnectionManager()
+    run_command = mocker.patch.object(
+        connection_manager,
+        "run_command_async",
+        new=AsyncMock(),
+    )
+
+    assert await manager._set_channel("wlanpi0", 5000, 160) is False
+    run_command.assert_not_awaited()

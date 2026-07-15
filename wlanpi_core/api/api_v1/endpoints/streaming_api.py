@@ -6,9 +6,11 @@ See docs/API-INTEGRATION-GUIDE.md §7 for the capture command protocol.
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.streaming.connection_manager import ConnectionManager
+from wlanpi_core.streaming.models import CaptureConfigurations
 
 router = APIRouter()
 log = get_logger(__name__)
@@ -54,6 +56,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
                 continue
 
+            if not isinstance(data, dict):
+                await manager.send_message_event(
+                    websocket,
+                    "error",
+                    "COMMAND_INVALID",
+                    "Capture command must be a JSON object.",
+                )
+                continue
+
             command = data.get("command")
 
             if command == "get_supported_frequencies":
@@ -61,21 +72,23 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             elif command == "configure":
                 configs = data.get("interfaces")
-                if isinstance(configs, dict):
-                    for iface, config in configs.items():
+                try:
+                    validated_configs = CaptureConfigurations.model_validate(configs)
+                except PydanticValidationError:
+                    await manager.send_message_event(
+                        websocket,
+                        "error",
+                        "CONFIG_INVALID",
+                        "Invalid capture interface configuration.",
+                    )
+                else:
+                    for iface, config in validated_configs.root.items():
                         manager.configure(websocket, iface, config)
                     await manager.send_message_event(
                         websocket,
                         "config",
                         "CONFIG_APPLIED",
-                        f"Configured: {', '.join(configs.keys())}",
-                    )
-                else:
-                    await manager.send_message_event(
-                        websocket,
-                        "error",
-                        "CONFIG_INVALID",
-                        "Expected 'interfaces' to be a dictionary.",
+                        f"Configured: {', '.join(validated_configs.root.keys())}",
                     )
 
             elif command == "start":

@@ -8,6 +8,13 @@ from fastapi import WebSocket
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import run_command_async, terminate_process_async
+from wlanpi_core.streaming.models import (
+    CaptureInterfaceConfig,
+    CaptureStart,
+    validate_capture_frequency,
+    validate_capture_interface,
+    validate_capture_width,
+)
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
@@ -28,7 +35,9 @@ class ConnectionManager:
 
     def configure(self, websocket: WebSocket, iface: str, config: dict) -> None:
         if websocket in self.clients:
-            self.clients[websocket]["configs"][iface] = config
+            iface = validate_capture_interface(iface)
+            validated = CaptureInterfaceConfig.model_validate(config)
+            self.clients[websocket]["configs"][iface] = validated.model_dump()
 
     async def disconnect(self, websocket: WebSocket) -> None:
         try:
@@ -120,6 +129,22 @@ class ConnectionManager:
             )
             return
 
+        try:
+            start = CaptureStart(
+                interfaces=interfaces,
+                pcap_filter=pcap_filter,
+            )
+        except ValueError:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "CAPTURE_CONFIG_INVALID",
+                "Invalid capture start configuration.",
+            )
+            return
+        interfaces = start.interfaces
+        pcap_filter = start.pcap_filter
+
         if (
             client["task"] and not client["task"].done()
         ) or (client["proc"] and client["proc"].returncode is None):
@@ -142,6 +167,7 @@ class ConnectionManager:
                 "CONFIG_MISSING",
                 f"No config for: {', '.join(missing)}",
             )
+            return
 
         for iface in interfaces:
             config = client["configs"].get(iface)
@@ -327,10 +353,20 @@ class ConnectionManager:
             )
 
     async def _set_channel(self, iface: str, freq: int, width: int) -> bool:
+        try:
+            iface = validate_capture_interface(iface)
+            freq = validate_capture_frequency(freq)
+            width = validate_capture_width(width)
+        except ValueError:
+            return False
+
         cmd = [IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)]
 
         if width >= 40:
-            cmd.append(str(self._center_frequency(freq, width)))
+            center_frequency = self._center_frequency(freq, width)
+            if center_frequency < 0:
+                return False
+            cmd.append(str(center_frequency))
 
         try:
             result = await run_command_async(
