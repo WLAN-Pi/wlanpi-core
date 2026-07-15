@@ -27,10 +27,7 @@ class WlanInterfaceSummary(BaseModel):
     addr: Optional[str] = Field(
         default=None, description="MAC without colons, uppercase"
     )
-    mode: Optional[list[str]] = Field(
-        default=None,
-        description="WLAN mode as a one-element list (legacy wire format from iw parsing)",
-    )
+    mode: Optional[str] = Field(default=None, description="WLAN interface mode")
     ssid: Optional[str] = None
     freq: Optional[int] = Field(default=None, description="Centre frequency MHz")
     channel: Optional[int] = None

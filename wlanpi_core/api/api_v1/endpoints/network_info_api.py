@@ -28,7 +28,6 @@ async def show_network_info():
         log.debug("GET /network/info request")
         info = await asyncio.to_thread(network_info_service.show_info)
         log.debug("GET /network/info response keys: %s", list(info.keys()))
-        log.debug("GET /network/info response: %s", info)
         return info
 
     except ValidationError as ve:
