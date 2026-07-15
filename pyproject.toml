@@ -65,6 +65,7 @@ Source = "https://github.com/wlan-pi/wlanpi-core"
 [project.scripts]
 getjwt = "wlanpi_core.cli.getjwt:main"
 networkcfg = "wlanpi_core.cli.network_config:main"
+wlanpi-techsupport = "wlanpi_core.cli.techsupport:main"
 
 [tool.setuptools]
 include-package-data = true
