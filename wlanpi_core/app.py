@@ -671,6 +671,11 @@ def create_app(debug: bool = False):
         if hasattr(app.state, "health_manager"):
             await app.state.health_manager.stop_health_checks()
 
+        from wlanpi_core.api.api_v1.endpoints.streaming_api import (
+            manager as capture_manager,
+        )
+
+        await capture_manager.shutdown_all()
         await _stop_token_purge_task(app)
 
         if hasattr(app.state, "db_manager"):

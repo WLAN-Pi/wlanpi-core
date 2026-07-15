@@ -23,6 +23,7 @@ _IW_TIMEOUT_SEC = 5
 class ConnectionManager:
     def __init__(self):
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
+        self.interface_owners: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
         self.clients[websocket] = {
@@ -30,8 +31,51 @@ class ConnectionManager:
             "proc": None,
             "task": None,
             "channel_tasks": {},
+            "interfaces": set(),
         }
         await websocket.accept()
+
+    def _claim_interfaces(
+        self, websocket: WebSocket, interfaces: list[str]
+    ) -> list[str]:
+        """Atomically claim capture interfaces for one WebSocket client."""
+        conflicts = sorted(
+            iface
+            for iface in interfaces
+            if (owner := self.interface_owners.get(iface)) is not None
+            and owner is not websocket
+        )
+        if conflicts:
+            return conflicts
+
+        client = self.clients[websocket]
+        claimed = set(interfaces)
+        for iface in claimed:
+            self.interface_owners[iface] = websocket
+        client["interfaces"] = claimed
+        return []
+
+    def _release_interfaces(self, websocket: WebSocket) -> None:
+        client = self.clients.get(websocket)
+        if not client:
+            return
+        for iface in client.get("interfaces", set()):
+            if self.interface_owners.get(iface) is websocket:
+                self.interface_owners.pop(iface, None)
+        client["interfaces"] = set()
+
+    async def _stop_channel_tasks(self, client: Dict[str, Any]) -> None:
+        channel_tasks = list(client.get("channel_tasks", {}).values())
+        client["channel_tasks"] = {}
+        for channel_task in channel_tasks:
+            channel_task.cancel()
+        for channel_task in channel_tasks:
+            try:
+                await channel_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                log.debug("Channel hopping task shutdown failed: %s", exc)
 
     def configure(self, websocket: WebSocket, iface: str, config: dict) -> None:
         if websocket in self.clients:
@@ -169,6 +213,16 @@ class ConnectionManager:
             )
             return
 
+        conflicts = self._claim_interfaces(websocket, interfaces)
+        if conflicts:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "INTERFACE_IN_USE",
+                f"Capture interface already in use: {', '.join(conflicts)}",
+            )
+            return
+
         for iface in interfaces:
             config = client["configs"].get(iface)
             if not config:
@@ -203,6 +257,7 @@ class ConnectionManager:
                 start_new_session=True,
             )
         except Exception as e:
+            self._release_interfaces(websocket)
             log.warning(f"Failed to start capture process: {e!r}")
             await self.send_message_event(
                 websocket, "error", "CAPTURE_START_FAILED", "Failed to start capture."
@@ -230,6 +285,8 @@ class ConnectionManager:
                 )
             finally:
                 await terminate_process_async(proc)
+                await self._stop_channel_tasks(client)
+                self._release_interfaces(websocket)
                 if client.get("proc") is proc:
                     client["proc"] = None
                 if client.get("task") is asyncio.current_task():
@@ -265,10 +322,6 @@ class ConnectionManager:
 
         task = client.get("task")
         proc = client.get("proc")
-        channel_tasks = list(client.get("channel_tasks", {}).values())
-
-        for channel_task in channel_tasks:
-            channel_task.cancel()
         if task:
             task.cancel()
 
@@ -283,18 +336,11 @@ class ConnectionManager:
         if proc:
             await terminate_process_async(proc)
 
-        for channel_task in channel_tasks:
-            try:
-                await channel_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                log.debug(f"Channel hopping task shutdown failed: {e}")
+        await self._stop_channel_tasks(client)
+        self._release_interfaces(websocket)
 
         client["task"] = None
         client["proc"] = None
-        client["channel_tasks"] = {}
-        client.pop("channel_state", None)
 
         if notify:
             try:
@@ -303,6 +349,16 @@ class ConnectionManager:
                 )
             except Exception:
                 pass
+
+    async def shutdown_all(self) -> None:
+        """Stop every capture and discard all client state during app shutdown."""
+        for websocket in list(self.clients):
+            try:
+                await self.stop_streaming(websocket, notify=False)
+            except Exception as exc:
+                log.warning("Capture shutdown failed for a client: %r", exc)
+        self.clients.clear()
+        self.interface_owners.clear()
 
     async def _hop_channels(
         self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int

@@ -42,6 +42,7 @@ def _connected_client(manager, websocket):
         "proc": None,
         "task": None,
         "channel_tasks": {},
+        "interfaces": set(),
     }
 
 
@@ -195,6 +196,65 @@ async def test_capture_rejects_missing_interface_config_before_process(mocker):
         "CONFIG_MISSING",
         "No config for: wlanpi0",
     )
+
+
+@pytest.mark.asyncio
+async def test_capture_interface_can_only_have_one_owner(mocker):
+    manager = ConnectionManager()
+    first_websocket = object()
+    second_websocket = object()
+    _connected_client(manager, first_websocket)
+    _connected_client(manager, second_websocket)
+    manager.configure(first_websocket, "wlanpi0", {})
+    manager.configure(second_websocket, "wlanpi0", {})
+    process = CaptureProcess()
+    create_process = mocker.patch.object(
+        connection_manager.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(return_value=process),
+    )
+    send_event = mocker.patch.object(
+        manager,
+        "send_message_event",
+        new=AsyncMock(),
+    )
+
+    await manager.start_streaming(first_websocket, ["wlanpi0"], "")
+    await manager.start_streaming(second_websocket, ["wlanpi0"], "")
+
+    assert create_process.await_count == 1
+    assert manager.interface_owners == {"wlanpi0": first_websocket}
+    send_event.assert_any_await(
+        second_websocket,
+        "error",
+        "INTERFACE_IN_USE",
+        "Capture interface already in use: wlanpi0",
+    )
+
+    await manager.stop_streaming(first_websocket, notify=False)
+    assert manager.interface_owners == {}
+
+
+@pytest.mark.asyncio
+async def test_shutdown_all_reaps_captures_and_discards_clients(mocker):
+    manager = ConnectionManager()
+    websocket = object()
+    _connected_client(manager, websocket)
+    manager.configure(websocket, "wlanpi0", {})
+    process = CaptureProcess()
+    mocker.patch.object(
+        connection_manager.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(return_value=process),
+    )
+    mocker.patch.object(manager, "send_message_event", new=AsyncMock())
+
+    await manager.start_streaming(websocket, ["wlanpi0"], "")
+    await manager.shutdown_all()
+
+    assert process.terminated is True
+    assert manager.clients == {}
+    assert manager.interface_owners == {}
 
 
 @pytest.mark.parametrize(
