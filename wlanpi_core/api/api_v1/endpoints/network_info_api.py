@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
@@ -24,7 +26,7 @@ async def show_network_info():
 
     try:
         log.debug("GET /network/info request")
-        info = network_info_service.show_info()
+        info = await asyncio.to_thread(network_info_service.show_info)
         log.debug("GET /network/info response keys: %s", list(info.keys()))
         log.debug("GET /network/info response: %s", info)
         return info
@@ -46,7 +48,7 @@ async def show_public_ip6():
     Returns public IPv6 address and related details.
     """
     try:
-        return network_info_service.show_publicip(ip_version=6)
+        return await asyncio.to_thread(network_info_service.show_publicip, ip_version=6)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

@@ -36,6 +36,12 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
+def _read_interface_link_stats(iface: str):
+    """Resolve interface ownership and read link stats in one worker thread."""
+    namespace = resolve_interface_namespace(iface)
+    return network_primitives.get_link_stats(iface, namespace=namespace)
+
+
 ################################
 # General Network Management   #
 ################################
@@ -264,7 +270,10 @@ async def delete_ethernet_vlan(
 async def show_routing_table(namespace: Optional[str] = None):
     """Structured routing table from ``ip -j route show`` (root by default)."""
     try:
-        return network_primitives.get_routing_table(namespace=namespace)
+        return await asyncio.to_thread(
+            network_primitives.get_routing_table,
+            namespace=namespace,
+        )
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read routing table", status_code=503)
@@ -278,7 +287,10 @@ async def show_routing_table(namespace: Optional[str] = None):
 async def show_tcp_connections(namespace: Optional[str] = None):
     """Active TCP sockets from ``ss``."""
     try:
-        return network_primitives.get_tcp_connections(namespace=namespace)
+        return await asyncio.to_thread(
+            network_primitives.get_tcp_connections,
+            namespace=namespace,
+        )
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list TCP connections", status_code=503)
@@ -292,7 +304,10 @@ async def show_tcp_connections(namespace: Optional[str] = None):
 async def show_udp_connections(namespace: Optional[str] = None):
     """Active UDP sockets from ``ss``."""
     try:
-        return network_primitives.get_udp_connections(namespace=namespace)
+        return await asyncio.to_thread(
+            network_primitives.get_udp_connections,
+            namespace=namespace,
+        )
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list UDP connections", status_code=503)
@@ -306,7 +321,7 @@ async def show_udp_connections(namespace: Optional[str] = None):
 async def show_dhcp_leases():
     """Parse dhclient lease files under ``/var/lib/dhcp``."""
     try:
-        return network_primitives.get_dhcp_leases()
+        return await asyncio.to_thread(network_primitives.get_dhcp_leases)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read DHCP leases", status_code=503)
@@ -320,8 +335,7 @@ async def show_dhcp_leases():
 async def show_interface_link_stats(iface: str):
     """Per-interface link statistics via ethtool."""
     try:
-        namespace = resolve_interface_namespace(iface)
-        return network_primitives.get_link_stats(iface, namespace=namespace)
+        return await asyncio.to_thread(_read_interface_link_stats, iface=iface)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read link statistics", status_code=503)
