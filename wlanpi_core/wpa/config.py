@@ -17,6 +17,12 @@ from wlanpi_core.schemas.network.network import (
 log = logging.getLogger(__name__)
 
 
+def _quote_wpa_value(value: str) -> str:
+    """Quote a validated value for wpa_supplicant configuration syntax."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def generate_global_header(
     ctrl_interface: str = "/run/wpa_supplicant",
     update_config: int = 1,
@@ -71,7 +77,7 @@ def generate_network_block(
 
     # Preserve exact SSID case
     original_ssid = cfg.security.ssid
-    lines.append(f'    ssid="{original_ssid}"')
+    lines.append(f"    ssid={_quote_wpa_value(original_ssid)}")
     lines.append(f"    priority={priority}")
 
     # Get security type safely
@@ -92,20 +98,20 @@ def generate_network_block(
         lines.append("    ieee80211w=2")
     elif sec in ("WPA2-PSK", "WPA-PSK"):
         if cfg.security.psk:
-            lines.append(f'    psk="{cfg.security.psk}"')
+            lines.append(f"    psk={_quote_wpa_value(cfg.security.psk)}")
         lines.append("    key_mgmt=WPA-PSK")
         lines.append("    ieee80211w=1")
     elif sec == "WPA3-PSK":
         if cfg.security.psk:
-            lines.append(f'    psk="{cfg.security.psk}"')
+            lines.append(f"    psk={_quote_wpa_value(cfg.security.psk)}")
         lines.append("    key_mgmt=SAE")  # WPA3 uses SAE
         lines.append("    ieee80211w=2")  # PMF required for WPA3
     elif sec in ("802.1X", "WPA2-EAP", "WPA3-EAP"):
         lines.append("    key_mgmt=WPA-EAP")
         if cfg.security.identity:
-            lines.append(f'    identity="{cfg.security.identity}"')
+            lines.append(f"    identity={_quote_wpa_value(cfg.security.identity)}")
         if cfg.security.password:
-            lines.append(f'    password="{cfg.security.password}"')
+            lines.append(f"    password={_quote_wpa_value(cfg.security.password)}")
 
         # Enhanced EAP method support
         eap_method = getattr(cfg.security, 'eap_method', 'PEAP')
@@ -116,13 +122,16 @@ def generate_network_block(
             lines.append(f'    phase2="auth={phase2_method}"')
         elif eap_method == "TLS":
             if cfg.security.client_cert:
-                lines.append(f'    client_cert="{cfg.security.client_cert}"')
+                lines.append(
+                    f"    client_cert={_quote_wpa_value(cfg.security.client_cert)}"
+                )
             if cfg.security.private_key:
-                lines.append(f'    private_key="{cfg.security.private_key}"')
+                lines.append(
+                    f"    private_key={_quote_wpa_value(cfg.security.private_key)}"
+                )
 
-        lines.append(
-            f'    ca_cert="{cfg.security.ca_cert or "/etc/ssl/certs/ca-certificates.crt"}"'
-        )
+        ca_cert = cfg.security.ca_cert or "/etc/ssl/certs/ca-certificates.crt"
+        lines.append(f"    ca_cert={_quote_wpa_value(ca_cert)}")
 
         if sec == "WPA3-EAP":
             lines.append("    ieee80211w=2")

@@ -1,7 +1,16 @@
 from enum import Enum
 from typing import Any, List, Optional, Union
 
-from pydantic import BaseModel, Extra, Field, model_validator
+from pydantic import BaseModel, Extra, Field, field_validator, model_validator
+
+from wlanpi_core.utils.validation import (
+    validate_config_id,
+    validate_interface_name,
+    validate_namespace_name,
+    validate_phy_name,
+    validate_ssid,
+    validate_wpa_text,
+)
 
 
 class PublicIP(BaseModel):
@@ -113,6 +122,25 @@ class NetSecurity(BaseModel):
     private_key: Optional[str] = None
     ca_cert: Optional[str] = None
 
+    @field_validator("ssid")
+    @classmethod
+    def validate_ssid_field(cls, value: str) -> str:
+        return validate_ssid(value)
+
+    @field_validator(
+        "psk",
+        "identity",
+        "password",
+        "client_cert",
+        "private_key",
+        "ca_cert",
+    )
+    @classmethod
+    def validate_wpa_text_field(cls, value: Optional[str], info) -> Optional[str]:
+        if value is None:
+            return None
+        return validate_wpa_text(value, info.field_name)
+
     def __str__(self) -> str:
         return str(_redact_security_dict(self.model_dump()))
 
@@ -129,6 +157,16 @@ class RootConfig(BaseModel):
     default_route: bool = False
     autostart_app: Optional[str] = None
 
+    @field_validator("interface", "iface_display_name")
+    @classmethod
+    def validate_interface_fields(cls, value: str) -> str:
+        return validate_interface_name(value)
+
+    @field_validator("phy")
+    @classmethod
+    def validate_phy_field(cls, value: str) -> str:
+        return validate_phy_name(value)
+
     def __str__(self) -> str:
         return str(_redact_root_config_dict(self.model_dump()))
 
@@ -138,11 +176,21 @@ class RootConfig(BaseModel):
 class NamespaceConfig(RootConfig):
     namespace: str
 
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace_field(cls, value: str) -> str:
+        return validate_namespace_name(value)
+
 
 class NetConfig(BaseModel):
     id: str
     namespaces: Optional[list[NamespaceConfig]] = None
     roots: Optional[list[RootConfig]] = None
+
+    @field_validator("id")
+    @classmethod
+    def validate_id_field(cls, value: str) -> str:
+        return validate_config_id(value)
 
     def __str__(self) -> str:
         data = self.model_dump()
@@ -180,11 +228,26 @@ class WlanInterfaceSetup(BaseModel):
     netConfig: NetConfig
     removeAllFirst: bool
 
+    @field_validator("interface")
+    @classmethod
+    def validate_interface_field(cls, value: str) -> str:
+        return validate_interface_name(value)
+
 
 class WlanRevertRequest(BaseModel):
     iface: str = Field(example="wlan0")
     namespace: str
     delete_namespace: bool = True
+
+    @field_validator("iface")
+    @classmethod
+    def validate_iface_field(cls, value: str) -> str:
+        return validate_interface_name(value)
+
+    @field_validator("namespace")
+    @classmethod
+    def validate_revert_namespace_field(cls, value: str) -> str:
+        return validate_namespace_name(value)
 
 
 class NetworkEvent(BaseModel):
