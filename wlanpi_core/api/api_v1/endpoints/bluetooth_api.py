@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
@@ -14,6 +16,13 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
+def _set_power_if_present(state: bool):
+    """Run the complete synchronous Bluetooth power transaction in one worker."""
+    if not bluetooth_service.bluetooth_present():
+        return None
+    return bluetooth_service.bluetooth_set_power(state)
+
+
 @router.get(
     "/status",
     response_model=bluetooth.BluetoothStatus,
@@ -25,7 +34,7 @@ async def btstatus():
     """
 
     try:
-        status = bluetooth_service.bluetooth_status()
+        status = await asyncio.to_thread(bluetooth_service.bluetooth_status)
         if status == False:
             return Response(content=f"Bluetooth hardware not found", status_code=503)
         return status
@@ -56,11 +65,11 @@ async def bt_power(action: str):
     # Convert action to Boolean
     state = action == "on"
 
-    if not bluetooth_service.bluetooth_present():
-        return Response(content=f"Bluetooth hardware not found", status_code=503)
-
     try:
-        status = bluetooth_service.bluetooth_set_power(state)
+        status = await asyncio.to_thread(_set_power_if_present, state)
+
+        if status is None:
+            return Response(content="Bluetooth hardware not found", status_code=503)
 
         if status == False:
             return Response(

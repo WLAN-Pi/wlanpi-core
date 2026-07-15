@@ -183,3 +183,27 @@ def test_api_get_network_wlan_pci_drivers(client):
     body = response.json()
     assert body["adapters"][0]["bus"] == "pci"
     assert body["pci_devices"][0]["pci_id"] == "0000:01:00.0"
+
+
+def test_api_revert_wlan_namespace_delegates_to_service(client, mocker):
+    revert = mocker.patch(
+        "wlanpi_core.services.network_namespace_service."
+        "NetworkNamespaceService.revert_to_root"
+    )
+
+    response = client.post(
+        "/api/v1/network/wlan/revert",
+        json={
+            "iface": "wlan0",
+            "namespace": "scan_ns",
+            "delete_namespace": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    revert.assert_called_once_with(
+        iface="wlan0",
+        namespace="scan_ns",
+        delete_namespace=True,
+    )

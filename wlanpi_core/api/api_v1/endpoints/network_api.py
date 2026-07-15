@@ -594,7 +594,8 @@ async def revert_wlan_namespace(
     """
     try:
         namespace_service = network_namespace_service.NetworkNamespaceService()
-        namespace_service.revert_to_root(
+        await asyncio.to_thread(
+            namespace_service.revert_to_root,
             iface=req.iface,
             namespace=req.namespace,
             delete_namespace=req.delete_namespace,
