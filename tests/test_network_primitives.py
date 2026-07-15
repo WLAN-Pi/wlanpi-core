@@ -1,11 +1,12 @@
 """Tests for P0 network primitive modules."""
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network import (
     dhcp,
@@ -101,24 +102,87 @@ lease {
     assert leases[0]["option_routers"] == "10.10.0.254"
 
 
-def test_renew_interface_dhcp_uses_namespace_lookup():
-    with patch(
-        "wlanpi_core.network.dhcp.resolve_interface_namespace",
-        return_value="scan_ns",
-    ):
-        with patch(
-            "wlanpi_core.network.dhcp.restart_dhcp_with_timeout"
-        ) as restart:
-            result = dhcp.renew_interface_dhcp("wlanpi0")
+@pytest.mark.asyncio
+async def test_renew_interface_dhcp_uses_networkctl():
+    status = CommandResult(
+        json.dumps(
+            {
+                "Name": "eth1",
+                "AdministrativeState": "configured",
+                "NetworkFile": "/etc/systemd/network/eth1.network",
+            }
+        ),
+        "",
+        0,
+    )
+    command = AsyncMock(side_effect=[status, CommandResult("", "", 0)])
+    with patch("wlanpi_core.network.dhcp.run_command_async", new=command):
+        result = await dhcp.renew_interface_dhcp("eth1")
 
-    restart.assert_called_once_with("wlanpi0", "scan_ns", timeout=15)
+    assert command.await_args_list[0].args[0] == [
+        "/usr/bin/networkctl",
+        "status",
+        "eth1",
+        "--json=short",
+        "--no-pager",
+    ]
+    assert command.await_args_list[1].args[0] == [
+        "/usr/bin/networkctl",
+        "renew",
+        "eth1",
+    ]
     assert result["status"] == "renewed"
-    assert result["namespace"] == "scan_ns"
+    assert result["namespace"] is None
 
 
-def test_renew_interface_dhcp_requires_iface():
-    with pytest.raises(ValidationError):
-        dhcp.renew_interface_dhcp("")
+@pytest.mark.asyncio
+async def test_renew_interface_dhcp_rejects_non_networkd_interface():
+    status = CommandResult(
+        json.dumps(
+            {
+                "Name": "eth0",
+                "AdministrativeState": "unmanaged",
+            }
+        ),
+        "",
+        0,
+    )
+    command = AsyncMock(return_value=status)
+    with patch("wlanpi_core.network.dhcp.run_command_async", new=command):
+        with pytest.raises(ValidationError) as exc:
+            await dhcp.renew_interface_dhcp("eth0")
+
+    assert exc.value.status_code == 409
+    assert command.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_renew_interface_dhcp_propagates_networkctl_failure():
+    status = CommandResult(
+        json.dumps(
+            {
+                "Name": "eth1",
+                "AdministrativeState": "configured",
+                "NetworkFile": "/etc/systemd/network/eth1.network",
+            }
+        ),
+        "",
+        0,
+    )
+    command = AsyncMock(
+        side_effect=[status, RunCommandError("renew failed", return_code=1)]
+    )
+    with patch("wlanpi_core.network.dhcp.run_command_async", new=command):
+        with pytest.raises(RunCommandError):
+            await dhcp.renew_interface_dhcp("eth1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("iface", ["", "eth0;reboot", "a" * 16, ".."])
+async def test_renew_interface_dhcp_rejects_invalid_iface(iface):
+    with pytest.raises(ValidationError) as exc:
+        await dhcp.renew_interface_dhcp(iface)
+    assert exc.value.status_code == 400
 
 
 def test_resolve_interface_namespace_root():

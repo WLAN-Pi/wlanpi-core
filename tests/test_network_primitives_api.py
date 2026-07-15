@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.models.validation_error import ValidationError
 
 
 @pytest.fixture
@@ -99,17 +100,38 @@ def test_api_get_network_link_stats(client):
 def test_api_post_network_dhcp_renew(client):
     with patch(
         "wlanpi_core.network.renew_interface_dhcp",
-        return_value={
-            "interface": "eth0",
-            "namespace": None,
-            "status": "renewed",
-        },
+        new=AsyncMock(
+            return_value={
+                "interface": "eth1",
+                "namespace": None,
+                "status": "renewed",
+            }
+        ),
     ):
-        response = client.post("/api/v1/network/interfaces/eth0/renew")
+        response = client.post("/api/v1/network/interfaces/eth1/renew")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "renewed"
-    assert body["interface"] == "eth0"
+    assert body["interface"] == "eth1"
+
+
+def test_api_post_network_dhcp_renew_rejects_non_networkd(client):
+    with patch(
+        "wlanpi_core.network.renew_interface_dhcp",
+        new=AsyncMock(
+            side_effect=ValidationError(
+                "interface eth0 is not managed by systemd-networkd",
+                status_code=409,
+            )
+        ),
+    ):
+        response = client.post("/api/v1/network/interfaces/eth0/renew")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "INTERFACE_NOT_NETWORKD_MANAGED",
+        "message": "interface eth0 is not managed by systemd-networkd",
+    }
 
 
 def test_api_get_network_wlan_usb_drivers(client):

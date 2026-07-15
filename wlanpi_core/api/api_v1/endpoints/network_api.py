@@ -13,7 +13,10 @@ from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network
-from wlanpi_core.schemas.common.errors import DeprecatedEndpointResponse
+from wlanpi_core.schemas.common.errors import (
+    ApiErrorResponse,
+    DeprecatedEndpointResponse,
+)
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core import network as network_primitives
@@ -327,17 +330,45 @@ async def show_interface_link_stats(iface: str):
 @router.post(
     "/interfaces/{iface}/renew",
     response_model=network.DhcpRenewResponse,
+    responses={
+        400: {
+            "model": ApiErrorResponse,
+            "description": "Invalid interface name",
+        },
+        409: {
+            "model": ApiErrorResponse,
+            "description": "Interface is not managed by systemd-networkd",
+        },
+        503: {
+            "model": ApiErrorResponse,
+            "description": "networkctl failed or timed out",
+        },
+    },
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def renew_interface_dhcp(iface: str):
-    """Renew DHCP lease for an interface in its current namespace."""
+    """Renew DHCP for a systemd-networkd-managed root interface."""
     try:
-        return network_primitives.renew_interface_dhcp(iface)
+        return await network_primitives.renew_interface_dhcp(iface)
     except ValidationError as ve:
-        return Response(content=ve.error_msg, status_code=ve.status_code)
+        error = (
+            "INTERFACE_NOT_NETWORKD_MANAGED"
+            if ve.status_code == 409
+            else "INVALID_INTERFACE"
+        )
+        return JSONResponse(
+            content={"error": error, "message": ve.error_msg},
+            status_code=ve.status_code,
+        )
     except Exception as ex:
         log.error(ex)
-        return Response(content="Unable to renew DHCP lease", status_code=503)
+        return JSONResponse(
+            content={
+                "error": "DHCP_RENEW_FAILED",
+                "message": "Unable to renew DHCP lease",
+            },
+            status_code=503,
+        )
 
 
 @router.get(

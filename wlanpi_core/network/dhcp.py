@@ -1,33 +1,66 @@
 """DHCP lease read and interface renew."""
+
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.network.lookup import resolve_interface_namespace
-from wlanpi_core.utils.network_management import restart_dhcp_with_timeout
+from wlanpi_core.utils.general import run_command_async
 
 log = logging.getLogger(__name__)
 
 DHCP_LEASE_DIR = Path("/var/lib/dhcp")
 _DHCP_LEASE_FILE_GLOB = "dhclient*.leases"
+_INTERFACE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+_NETWORKCTL = "/usr/bin/networkctl"
+_NETWORKCTL_STATUS_TIMEOUT_SEC = 5
 
 
-def renew_interface_dhcp(iface: str, timeout: int = 15) -> dict[str, Any]:
-    """Renew DHCP on ``iface`` in its current namespace (or root)."""
+async def renew_interface_dhcp(iface: str, timeout: int = 15) -> dict[str, Any]:
+    """Renew DHCP only when ``iface`` is managed by systemd-networkd."""
     iface = iface.strip()
-    if not iface:
-        raise ValidationError("interface name is required", status_code=400)
+    if not _INTERFACE_NAME_RE.fullmatch(iface) or iface in {".", ".."}:
+        raise ValidationError("invalid interface name", status_code=400)
 
-    namespace = resolve_interface_namespace(iface)
-    log.debug("renew_interface_dhcp iface=%s namespace=%r", iface, namespace)
-    restart_dhcp_with_timeout(iface, namespace, timeout=timeout)
+    status_result = await run_command_async(
+        [_NETWORKCTL, "status", iface, "--json=short", "--no-pager"],
+        raise_on_fail=False,
+        timeout=min(timeout, _NETWORKCTL_STATUS_TIMEOUT_SEC),
+    )
+    if not status_result.success:
+        raise ValidationError(
+            f"interface {iface} is not managed by systemd-networkd",
+            status_code=409,
+        )
+
+    try:
+        status = json.loads(status_result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("networkctl returned invalid interface status") from exc
+
+    if (
+        status.get("Name") != iface
+        or status.get("AdministrativeState") == "unmanaged"
+        or not status.get("NetworkFile")
+    ):
+        raise ValidationError(
+            f"interface {iface} is not managed by systemd-networkd",
+            status_code=409,
+        )
+
+    log.info("Renewing DHCP lease for networkd-managed interface %s", iface)
+    await run_command_async(
+        [_NETWORKCTL, "renew", iface],
+        raise_on_fail=True,
+        timeout=timeout,
+    )
     return {
         "interface": iface,
-        "namespace": namespace,
+        "namespace": None,
         "status": "renewed",
     }
 

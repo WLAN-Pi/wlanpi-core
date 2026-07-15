@@ -6,7 +6,7 @@ stub run_command for CLI wrappers; keep FastAPI routing and auth real.
 from __future__ import annotations
 
 from typing import Callable
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.scenarios.p0_loader import ApiScenario
 
@@ -236,11 +236,13 @@ def handle_link_stats(client, auth_headers, scenario):
 def handle_dhcp_renew(client, auth_headers, scenario):
     with patch(
         "wlanpi_core.network.renew_interface_dhcp",
-        return_value={
-            "interface": "eth0",
-            "namespace": None,
-            "status": "renewed",
-        },
+        new=AsyncMock(
+            return_value={
+                "interface": "eth0",
+                "namespace": None,
+                "status": "renewed",
+            }
+        ),
     ):
         response = client.post("/api/v1/network/interfaces/eth0/renew")
     _expect_status(response, scenario.expected_http)
