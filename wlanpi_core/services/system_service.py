@@ -58,6 +58,7 @@ allowed_services = [
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
+_POWER_ACTION_TIMEOUT_SEC = 10
 
 
 def get_mode():
@@ -685,20 +686,20 @@ def enable_timezone_auto():
 
 def reboot_system():
     """Initiate an immediate system reboot."""
-    subprocess.Popen(
-        ["/usr/bin/systemctl", "reboot"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    run_command(
+        ["/usr/bin/systemctl", "reboot", "--no-block"],
+        raise_on_fail=True,
+        timeout=_POWER_ACTION_TIMEOUT_SEC,
     )
     return {"status": "rebooting"}
 
 
 def shutdown_system():
     """Initiate an immediate system shutdown."""
-    subprocess.Popen(
-        ["/usr/bin/systemctl", "poweroff"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    run_command(
+        ["/usr/bin/systemctl", "poweroff", "--no-block"],
+        raise_on_fail=True,
+        timeout=_POWER_ACTION_TIMEOUT_SEC,
     )
     return {"status": "shutting_down"}
 

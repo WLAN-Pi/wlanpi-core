@@ -44,7 +44,7 @@ def test_timezone_auto(client, mocker):
 
 
 def test_reboot_and_shutdown(client, mocker):
-    popen = mocker.patch("wlanpi_core.services.system_service.subprocess.Popen")
+    run_command = mocker.patch("wlanpi_core.services.system_service.run_command")
 
     reboot = client.post("/api/v1/system/reboot")
     assert reboot.status_code == 200
@@ -54,7 +54,18 @@ def test_reboot_and_shutdown(client, mocker):
     assert shutdown.status_code == 200
     assert shutdown.json()["status"] == "shutting_down"
 
-    assert popen.call_count == 2
+    assert run_command.call_args_list == [
+        mocker.call(
+            ["/usr/bin/systemctl", "reboot", "--no-block"],
+            raise_on_fail=True,
+            timeout=system_service._POWER_ACTION_TIMEOUT_SEC,
+        ),
+        mocker.call(
+            ["/usr/bin/systemctl", "poweroff", "--no-block"],
+            raise_on_fail=True,
+            timeout=system_service._POWER_ACTION_TIMEOUT_SEC,
+        ),
+    ]
 
 
 def test_hotspot_clients_requires_hotspot_mode(client, mocker):
