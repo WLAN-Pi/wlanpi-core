@@ -562,7 +562,7 @@ def create_app(debug: bool = False):
         )
         schema["externalDocs"] = {
             "description": "API Integration Guide (workflows & worked examples)",
-            "url": "https://github.com/bentumbler/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md",
+            "url": "https://github.com/WLAN-Pi/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md",
         }
         components = schema.setdefault("components", {})
         security_schemes = components.setdefault("securitySchemes", {})

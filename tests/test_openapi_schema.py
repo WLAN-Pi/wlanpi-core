@@ -37,7 +37,10 @@ def openapi_schema():
 
 def test_openapi_has_external_docs(openapi_schema):
     assert "externalDocs" in openapi_schema
-    assert "API-INTEGRATION-GUIDE" in openapi_schema["externalDocs"]["url"]
+    assert openapi_schema["externalDocs"]["url"] == (
+        "https://github.com/WLAN-Pi/wlanpi-core/blob/dev/"
+        "docs/API-INTEGRATION-GUIDE.md"
+    )
 
 
 def test_openapi_tags_cover_all_routers(openapi_schema):

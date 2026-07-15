@@ -32,9 +32,16 @@ def test_p0_api_matrix_scenario(scenario, client, auth_headers):
     run_api_scenario(scenario, client, auth_headers)
 
 
-def test_p0_matrix_row_count():
+def test_p0_matrix_has_unique_scenarios():
     scenarios = load_api_scenarios()
-    assert len(scenarios) == 41
+    assert scenarios, "P0 API matrix must not be empty"
+    identifiers = [(scenario.scope, scenario.name) for scenario in scenarios]
+    assert len(identifiers) == len(set(identifiers)), "Duplicate P0 API matrix rows"
+
+    # HANDLERS is keyed by name, so names must also remain globally unique even
+    # when the matrix grows to cover additional scopes.
+    names = [scenario.name for scenario in scenarios]
+    assert len(names) == len(set(names)), "Duplicate P0 API scenario names"
 
 
 def test_p0_matrix_handler_registry_documents_gaps():

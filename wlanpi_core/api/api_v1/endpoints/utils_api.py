@@ -109,11 +109,6 @@ async def speedtest():
         return Response(content="Unable to complete speedtest", status_code=503)
 
 
-# @router.post("/port_blinker/{action}", response_model=utils.PortBlinkerState)
-# async def port_blinker(action: str):
-#     ...
-
-
 @router.post(
     "/blinker/start",
     response_model=utils.BlinkerActionResponse,

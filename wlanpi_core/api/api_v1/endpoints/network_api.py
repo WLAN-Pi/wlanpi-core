@@ -257,10 +257,6 @@ async def delete_ethernet_vlan(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
-
-        return Response(content="Internal Server Error", status_code=500)
-
-
 ################################
 # Network primitives (P0)      #
 ################################
