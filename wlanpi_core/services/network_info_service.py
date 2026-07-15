@@ -1,5 +1,6 @@
 import os
 import re
+import stat
 import subprocess
 
 from wlanpi_core.constants import (
@@ -17,6 +18,62 @@ from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import run_command
 
 log = get_logger(__name__)
+
+_NEIGHBOUR_FILE_MAX_BYTES = 64 * 1024
+
+
+def _read_neighbour_file(path: str) -> list[str] | None:
+    """Read a trusted networkinfo output file without following links."""
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        return None
+
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise OSError(f"refusing non-regular networkinfo file: {path}")
+        if file_stat.st_uid != 0:
+            raise OSError(f"refusing non-root-owned networkinfo file: {path}")
+        if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise OSError(f"refusing writable networkinfo file: {path}")
+        if file_stat.st_nlink != 1:
+            raise OSError(f"refusing multiply-linked networkinfo file: {path}")
+        if file_stat.st_size > _NEIGHBOUR_FILE_MAX_BYTES:
+            raise OSError(f"networkinfo file is too large: {path}")
+
+        with os.fdopen(fd, "rb", closefd=True) as file_obj:
+            fd = -1
+            content = file_obj.read(_NEIGHBOUR_FILE_MAX_BYTES + 1)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+    if len(content) > _NEIGHBOUR_FILE_MAX_BYTES:
+        raise OSError(f"networkinfo file is too large: {path}")
+
+    return content.decode("utf-8", errors="replace").splitlines()
+
+
+def _show_neighbour(path: str, protocol: str) -> dict:
+    response = {"info": []}
+    try:
+        lines = _read_neighbour_file(path)
+    except OSError as exc:
+        log.warning("Unable to read %s neighbour data: %s", protocol, exc)
+        response["error"] = f"Issue getting {protocol} neighbour"
+        return response
+
+    if not lines:
+        response["error"] = "No neighbour"
+        return response
+
+    response["info"] = lines
+    return response
 
 
 def _section_debug_label(section: str, value) -> dict:
@@ -286,27 +343,20 @@ def show_vlan():
     Display untagged VLAN number on eth0
     Todo: Add tagged VLAN info
     """
-    lldpneigh_file = LLDPNEIGH_FILE
-    cdpneigh_file = CDPNEIGH_FILE
-
     vlan_info = {"info": []}
 
-    vlan_cmd = (
-        "sudo grep -a VLAN " + lldpneigh_file + " || grep -a VLAN " + cdpneigh_file
-    )
-
-    if os.path.exists(lldpneigh_file):
+    for neighbour_file in (LLDPNEIGH_FILE, CDPNEIGH_FILE):
         try:
-            vlan_output = run_command(vlan_cmd, shell=True).stdout.strip().split("\n")
-            for line in vlan_output:
-                vlan_info["info"].append(line)
+            lines = _read_neighbour_file(neighbour_file)
+        except OSError as exc:
+            log.warning("Unable to read neighbour VLAN data from %s: %s", neighbour_file, exc)
+            continue
 
-            if len(vlan_info) == 0:
-                vlan_info["error"] = "No VLAN found"
+        vlan_info["info"] = [line for line in lines or [] if "VLAN" in line]
+        if vlan_info["info"]:
+            return vlan_info
 
-        except:
-            vlan_info["error"] = "No VLAN found"
-
+    vlan_info["error"] = "No VLAN found"
     return vlan_info
 
 
@@ -314,60 +364,14 @@ def show_lldp_neighbour():
     """
     Display LLDP neighbour on eth0
     """
-    lldpneigh_file = LLDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + lldpneigh_file
-
-    if os.path.exists(lldpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting LLDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+    return _show_neighbour(LLDPNEIGH_FILE, "LLDP")
 
 
 def show_cdp_neighbour():
     """
     Display CDP neighbour on eth0
     """
-    cdpneigh_file = CDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + cdpneigh_file
-
-    if os.path.exists(cdpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting CDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+    return _show_neighbour(CDPNEIGH_FILE, "CDP")
 
 
 def show_publicip(ip_version=4):
