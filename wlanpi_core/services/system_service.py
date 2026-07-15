@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import socket
@@ -326,7 +327,7 @@ async def get_systemd_service_status(name: str):
     status = ""
     name = name.strip().lower()
     if is_allowed_service(name):
-        status = check_service_status(name)
+        status = await asyncio.to_thread(check_service_status, name)
         return {"name": name, "active": status}
 
     raise ValidationError(
@@ -364,7 +365,7 @@ async def stop_systemd_service(name: str):
     status = ""
     name = name.strip().lower()
     if is_allowed_service(name):
-        status = stop_service(name)
+        status = await asyncio.to_thread(stop_service, name)
         return {"name": name, "active": status}
 
     raise ValidationError(
@@ -399,7 +400,7 @@ async def start_systemd_service(name: str):
     status = ""
     name = name.strip().lower()
     if is_allowed_service(name):
-        status = start_service(name)
+        status = await asyncio.to_thread(start_service, name)
         return {"name": name, "active": status}
 
     raise ValidationError(
@@ -434,7 +435,7 @@ def restart_service(service: str):
 async def restart_systemd_service(name: str):
     name = name.strip().lower()
     if is_allowed_service(name):
-        active = restart_service(name)
+        active = await asyncio.to_thread(restart_service, name)
         return {"name": name, "active": active}
 
     raise ValidationError(

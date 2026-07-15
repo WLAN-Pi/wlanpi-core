@@ -1,5 +1,6 @@
 """Tests for P0 system API additions."""
 import asyncio
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,12 +12,20 @@ from wlanpi_core.services import system_service
 
 @pytest.mark.asyncio
 async def test_restart_systemd_service_allowed(mocker):
+    worker_thread = None
+
+    def restart_service(_name):
+        nonlocal worker_thread
+        worker_thread = threading.get_ident()
+        return True
+
     mocker.patch.object(system_service, "is_allowed_service", return_value=True)
-    mocker.patch.object(system_service, "restart_service", return_value=True)
+    mocker.patch.object(system_service, "restart_service", side_effect=restart_service)
 
     result = await system_service.restart_systemd_service("orb")
 
     assert result == {"name": "orb", "active": True}
+    assert worker_thread != threading.get_ident()
 
 
 @pytest.mark.asyncio
