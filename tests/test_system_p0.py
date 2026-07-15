@@ -113,6 +113,22 @@ def test_get_hostname_falls_back_to_socket(mocker):
     assert system_service.get_hostname() == "wlanpi.local"
 
 
+def test_read_cpu_temperature_handles_missing_sensor(mocker):
+    mocker.patch.object(
+        system_service.Path,
+        "read_text",
+        side_effect=FileNotFoundError,
+    )
+
+    assert system_service._read_cpu_temperature() == "unknown"
+
+
+def test_read_cpu_temperature_converts_millidegrees(mocker):
+    mocker.patch.object(system_service.Path, "read_text", return_value="52123\n")
+
+    assert system_service._read_cpu_temperature() == "52.1C"
+
+
 def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):
     tz_file = tmp_path / "timezone"
     tz_file.write_text("Europe/London\n")
@@ -164,6 +180,11 @@ def test_set_timezone_uses_script_when_present(mocker, tmp_path):
     script = tmp_path / "wlanpi-timezone"
     script.write_text("#!/bin/sh\n")
     mocker.patch.object(system_service, "TIME_ZONE_FILE", str(script))
+    mocker.patch.object(
+        system_service,
+        "_timezone_names",
+        return_value=("Europe/London",),
+    )
     run = mocker.patch.object(system_service, "run_command")
     mocker.patch.object(
         system_service, "get_timezone", return_value={"timezone": "Europe/London"}
@@ -173,6 +194,21 @@ def test_set_timezone_uses_script_when_present(mocker, tmp_path):
 
     run.assert_called_once_with([str(script), "set", "Europe/London"], raise_on_fail=True)
     assert result["timezone"] == "Europe/London"
+
+
+def test_set_timezone_rejects_unknown_name_before_command(mocker):
+    mocker.patch.object(
+        system_service,
+        "_timezone_names",
+        return_value=("Europe/London",),
+    )
+    run = mocker.patch.object(system_service, "run_command")
+
+    with pytest.raises(ValidationError) as exc:
+        system_service.set_timezone("../../etc/passwd")
+
+    assert exc.value.status_code == 400
+    run.assert_not_called()
 
 
 def test_get_reg_domain_from_wlanpi_script(mocker):

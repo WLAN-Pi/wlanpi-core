@@ -291,6 +291,21 @@ def get_model():
     return platform
 
 
+def _read_cpu_temperature() -> str:
+    """Return the thermal-zone temperature without mixing strings and numbers."""
+    try:
+        raw_temperature = Path("/sys/class/thermal/thermal_zone0/temp").read_text(
+            encoding="utf-8"
+        )
+        temperature = int(raw_temperature.strip())
+    except (OSError, ValueError):
+        return "unknown"
+
+    if temperature > 1000:
+        temperature /= 1000
+    return f"{round(temperature, 1)}C"
+
+
 def get_stats():
     # figure out our IP
     IP = ""
@@ -307,7 +322,6 @@ def get_stats():
     ipStr = f"{IP}"
 
     # determine CPU load
-    # cmd = "top -bn1 | grep load | awk '{printf \"%.2f%%\", $(NF-2)}'"
     cmd = "mpstat 1 1 -o JSON"
     try:
         CPU_JSON = run_command(cmd).grep_stdout_for_string("idle")
@@ -334,18 +348,10 @@ def get_stats():
     except Exception:
         Disk = "unknown"
 
-    # determine temp
-    try:
-        tempI = int(open("/sys/class/thermal/thermal_zone0/temp").read())
-    except Exception:
-        tempI = "unknown"
-
-    if tempI > 1000:
-        tempI = tempI / 1000
-    tempStr = "%sC" % str(round(tempI, 1))
+    tempStr = _read_cpu_temperature()
 
     # determine uptime
-    cmd = "uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
+    cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
         uptime = run_command(cmd, shell=True).stdout.strip()
     except Exception:
@@ -662,6 +668,11 @@ def set_timezone(timezone: str):
     timezone = timezone.strip()
     if not timezone:
         raise ValidationError("timezone is required", status_code=400)
+    if timezone not in _timezone_names():
+        raise ValidationError(
+            "timezone is not a supported IANA timezone",
+            status_code=400,
+        )
     if Path(TIME_ZONE_FILE).exists():
         run_command([TIME_ZONE_FILE, "set", timezone], raise_on_fail=True)
     else:
