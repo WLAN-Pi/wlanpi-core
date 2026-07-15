@@ -157,9 +157,12 @@ def handle_reg_domain_list(client, auth_headers, scenario):
     response = client.get("/api/v1/system/reg-domain/list")
     _expect_status(response, scenario.expected_http)
     body = response.json()
-    assert len(body["countries"]) == 9
-    assert body["countries"][0]["code"]
-    assert body["countries"][0]["name"]
+    countries = body["countries"]
+    assert len(countries) > 9
+    codes = [country["code"] for country in countries]
+    assert len(codes) == len(set(codes))
+    assert all(len(code) == 2 and code.isalpha() and code.isupper() for code in codes)
+    assert all(country["name"] for country in countries)
 
 
 def handle_routing_table(client, auth_headers, scenario):
