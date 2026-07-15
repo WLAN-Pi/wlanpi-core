@@ -341,7 +341,14 @@ GET /api/v1/utils/speedtest
 POST /api/v1/bluetooth/pair
 ```
 
-Returns `{ "status": "discoverable" | "paired", "alias", "message" }`.
+The device removes its existing pairing, enters a 30-second pairing window, and
+returns `{ "status": "discoverable", "alias", "message" }`.
+
+- `409 PAIRING_IN_PROGRESS` — another request is starting pairing, or the
+  adapter is already in its pairing window.
+- `503 BLUETOOTH_UNAVAILABLE` — no Bluetooth adapter is available.
+- `503 BLUETOOTH_PAIRING_FAILED` — the old pairing could not be removed or the
+  adapter did not become pairable and discoverable.
 
 ```http
 POST /api/v1/utils/blinker/start?interface=eth0

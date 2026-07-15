@@ -1,4 +1,5 @@
 """OpenAPI schema sanity checks for Swagger / MCP accuracy."""
+
 from __future__ import annotations
 
 import pytest
@@ -160,3 +161,16 @@ def test_speedtest_documents_slow_operation(openapi_schema):
     get = openapi_schema["paths"]["/api/v1/utils/speedtest"]["get"]
     assert get.get("summary")
     assert "slow" in get["summary"].lower() or "slow" in get.get("description", "").lower()
+
+
+def test_bluetooth_pair_contract(openapi_schema):
+    post = openapi_schema["paths"]["/api/v1/bluetooth/pair"]["post"]
+    assert "409" in post["responses"]
+    assert "503" in post["responses"]
+
+    schema = openapi_schema["components"]["schemas"]["BluetoothPairResponse"]
+    status = schema["properties"]["status"]
+    assert status.get("const") == "discoverable" or status.get("enum") == [
+        "discoverable"
+    ]
+    assert "PairedDevice" not in openapi_schema["components"]["schemas"]

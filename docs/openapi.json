@@ -224,6 +224,26 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Bluetooth is already in its pairing window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bluetooth is unavailable or pairing could not be started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3591,21 +3611,12 @@
         "properties": {
           "status": {
             "type": "string",
+            "const": "discoverable",
             "title": "Status",
-            "examples": [
-              "discoverable",
-              "paired"
-            ]
+            "example": "discoverable"
           },
           "alias": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Alias",
             "example": "wlanpi-bc2"
           },
@@ -3613,21 +3624,12 @@
             "type": "string",
             "title": "Message",
             "example": "Bluetooth is on. Discoverable as \"wlanpi-bc2\""
-          },
-          "device": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PairedDevice"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "type": "object",
         "required": [
           "status",
+          "alias",
           "message"
         ],
         "title": "BluetoothPairResponse"
@@ -5264,26 +5266,6 @@
           "timezone"
         ],
         "title": "NtpAutoInfo"
-      },
-      "PairedDevice": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "example": "My Phone"
-          },
-          "addr": {
-            "type": "string",
-            "title": "Addr",
-            "example": "00:11:22:33:44:55"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "addr"
-        ],
-        "title": "PairedDevice"
       },
       "PciDevice": {
         "properties": {

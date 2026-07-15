@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import bluetooth
+from wlanpi_core.schemas.common import ApiErrorResponse
 from wlanpi_core.services import bluetooth_service
 
 router = APIRouter()
@@ -78,6 +79,16 @@ async def bt_power(action: str):
 @router.post(
     "/pair",
     response_model=bluetooth.BluetoothPairResponse,
+    responses={
+        409: {
+            "model": ApiErrorResponse,
+            "description": "Bluetooth is already in its pairing window",
+        },
+        503: {
+            "model": ApiErrorResponse,
+            "description": "Bluetooth is unavailable or pairing could not be started",
+        },
+    },
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def bt_pair():
