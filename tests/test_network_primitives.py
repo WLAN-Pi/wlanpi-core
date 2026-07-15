@@ -18,6 +18,13 @@ from wlanpi_core.network import (
 )
 
 
+@pytest.fixture(autouse=True)
+def clear_wlan_driver_inventory_cache():
+    wlan_drivers._clear_wlan_driver_inventory_cache()
+    yield
+    wlan_drivers._clear_wlan_driver_inventory_cache()
+
+
 def test_get_routing_table_parses_json():
     routes = [{"dst": "default", "gateway": "10.10.0.254", "dev": "eth0"}]
     with patch(
@@ -255,3 +262,46 @@ def test_get_pci_wlan_drivers():
     assert len(result["pci_devices"]) == 1
     assert result["adapters"][0]["interface"] == "wlanpi0"
     assert result["adapters"][0]["driver"] == "brcmfmac"
+
+
+def test_wlan_driver_inventory_cache_is_shared_within_ttl():
+    inventory = {
+        "adapters": [
+            {"interface": "wlan0", "driver": "ath9k_htc", "bus": "usb"},
+            {"interface": "wlan1", "driver": "brcmfmac", "bus": "pci"},
+        ],
+        "pci_devices": [
+            {"pci_id": "0000:01:00.0", "description": "Wireless controller"}
+        ],
+        "interfaces_scanned": 2,
+    }
+    with patch.object(
+        wlan_drivers,
+        "_collect_wlan_driver_inventory",
+        return_value=inventory,
+    ) as collect:
+        with patch.object(wlan_drivers.time, "monotonic", return_value=100.0):
+            usb = wlan_drivers.get_usb_wlan_drivers()
+            pci = wlan_drivers.get_pci_wlan_drivers()
+
+    collect.assert_called_once_with()
+    assert [adapter["interface"] for adapter in usb["adapters"]] == ["wlan0"]
+    assert [adapter["interface"] for adapter in pci["adapters"]] == ["wlan1"]
+
+
+def test_wlan_driver_inventory_cache_expires_after_two_seconds():
+    inventory = {"adapters": [], "pci_devices": [], "interfaces_scanned": 0}
+    with patch.object(
+        wlan_drivers,
+        "_collect_wlan_driver_inventory",
+        return_value=inventory,
+    ) as collect:
+        with patch.object(
+            wlan_drivers.time,
+            "monotonic",
+            side_effect=[100.0, 100.0, 102.0, 102.0],
+        ):
+            wlan_drivers.get_usb_wlan_drivers()
+            wlan_drivers.get_usb_wlan_drivers()
+
+    assert collect.call_count == 2

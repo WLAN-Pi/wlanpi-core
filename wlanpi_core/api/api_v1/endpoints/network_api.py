@@ -385,7 +385,7 @@ async def show_wlan_usb_drivers():
     ``GET /network/wlan/pci-drivers`` for built-in WiFi.
     """
     try:
-        return network_primitives.get_usb_wlan_drivers()
+        return await asyncio.to_thread(network_primitives.get_usb_wlan_drivers)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list USB WLAN drivers", status_code=503)
@@ -404,7 +404,7 @@ async def show_wlan_pci_drivers():
     drivers. Both lists can be populated independently.
     """
     try:
-        return network_primitives.get_pci_wlan_drivers()
+        return await asyncio.to_thread(network_primitives.get_pci_wlan_drivers)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list PCI WLAN drivers", status_code=503)

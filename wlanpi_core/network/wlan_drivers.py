@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,9 @@ from wlanpi_core.utils.general import run_command
 log = logging.getLogger(__name__)
 
 _PCI_DEVICE_RE = re.compile(r"/\d{4}:\d{2}:\d{2}\.\d+(?:/|$)")
+_DRIVER_INVENTORY_CACHE_TTL_SEC = 2.0
+_driver_inventory_cache: tuple[float, dict[str, Any]] | None = None
+_driver_inventory_lock = threading.Lock()
 
 
 def _driver_for_interface(iface: str) -> str | None:
@@ -56,33 +61,9 @@ def _bus_for_interface(iface: str) -> str | None:
     return None
 
 
-def get_usb_wlan_drivers() -> dict[str, Any]:
-    """List wireless interfaces attached via USB with driver names."""
-    adapters: list[dict[str, Any]] = []
-    try:
-        interfaces = discovery.list_interfaces()
-    except RunCommandError as exc:
-        log.warning("Could not list WLAN interfaces: %r", exc)
-        return {"adapters": adapters, "interfaces_scanned": 0}
-
-    for iface in interfaces:
-        if _bus_for_interface(iface) != "usb":
-            continue
-        adapters.append(
-            {
-                "interface": iface,
-                "driver": _driver_for_interface(iface),
-                "bus": "usb",
-            }
-        )
-    return {"adapters": adapters, "interfaces_scanned": len(interfaces)}
-
-
-def get_pci_wlan_drivers() -> dict[str, Any]:
-    """List PCI wireless devices and matched WLAN interfaces."""
-    adapters: list[dict[str, Any]] = []
+def _collect_wlan_driver_inventory() -> dict[str, Any]:
+    """Collect one hardware snapshot shared by the USB and PCI views."""
     pci_devices: list[dict[str, str]] = []
-
     try:
         for line in run_command(["lspci"], raise_on_fail=False).stdout.splitlines():
             if not re.search(r"network controller|wireless", line, re.I):
@@ -98,9 +79,10 @@ def get_pci_wlan_drivers() -> dict[str, Any]:
         log.warning("Could not list WLAN interfaces: %r", exc)
         interfaces = []
 
+    adapters: list[dict[str, Any]] = []
     for iface in interfaces:
         bus = _bus_for_interface(iface)
-        if bus not in ("pci", "platform"):
+        if bus not in ("usb", "pci", "platform"):
             continue
         adapters.append(
             {
@@ -114,4 +96,54 @@ def get_pci_wlan_drivers() -> dict[str, Any]:
         "adapters": adapters,
         "pci_devices": pci_devices,
         "interfaces_scanned": len(interfaces),
+    }
+
+
+def _get_wlan_driver_inventory() -> dict[str, Any]:
+    """Return a bounded hardware snapshot, refreshing it after two seconds."""
+    global _driver_inventory_cache
+
+    now = time.monotonic()
+    with _driver_inventory_lock:
+        if _driver_inventory_cache is not None:
+            cached_at, inventory = _driver_inventory_cache
+            if now - cached_at < _DRIVER_INVENTORY_CACHE_TTL_SEC:
+                return inventory
+
+        inventory = _collect_wlan_driver_inventory()
+        _driver_inventory_cache = (time.monotonic(), inventory)
+        return inventory
+
+
+def _clear_wlan_driver_inventory_cache() -> None:
+    """Clear the single-entry inventory cache (used by tests and invalidation)."""
+    global _driver_inventory_cache
+    with _driver_inventory_lock:
+        _driver_inventory_cache = None
+
+
+def get_usb_wlan_drivers() -> dict[str, Any]:
+    """List wireless interfaces attached via USB with driver names."""
+    inventory = _get_wlan_driver_inventory()
+    return {
+        "adapters": [
+            dict(adapter)
+            for adapter in inventory["adapters"]
+            if adapter["bus"] == "usb"
+        ],
+        "interfaces_scanned": inventory["interfaces_scanned"],
+    }
+
+
+def get_pci_wlan_drivers() -> dict[str, Any]:
+    """List PCI wireless devices and matched WLAN interfaces."""
+    inventory = _get_wlan_driver_inventory()
+    return {
+        "adapters": [
+            dict(adapter)
+            for adapter in inventory["adapters"]
+            if adapter["bus"] in ("pci", "platform")
+        ],
+        "pci_devices": [dict(device) for device in inventory["pci_devices"]],
+        "interfaces_scanned": inventory["interfaces_scanned"],
     }
