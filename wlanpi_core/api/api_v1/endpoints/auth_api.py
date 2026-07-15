@@ -21,11 +21,17 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
+def _require_device_id(token_request: TokenRequest) -> str:
+    device_id = (token_request.device_id or "").strip()
+    if not device_id:
+        raise HTTPException(status_code=412, detail="Device ID (did) is required")
+    return device_id
+
+
 @router.post(
     "/token",
     response_model=Token,
     summary="Issue JWT bearer token",
-    openapi_extra={"security": []},
     responses={
         401: RESPONSES_AUTH[401],
         412: {"description": "device_id missing from request body"},
@@ -46,14 +52,15 @@ async def generate_token(request: Request, token_request: TokenRequest):
     subsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.
     """
     try:
-        if not token_request.device_id:
-            raise HTTPException(status_code=412, detail="Device ID (did) is required")
+        device_id = _require_device_id(token_request)
 
         access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         token = await request.app.state.token_manager.create_token(
-            device_id=token_request.device_id, expires_delta=access_token_expires
+            device_id=device_id, expires_delta=access_token_expires
         )
         return Token(access_token=token, token_type="bearer")
+    except HTTPException:
+        raise
     except Exception:
         log.exception("Unexpected error during token generation")
         raise HTTPException(
@@ -79,8 +86,7 @@ async def revoke_token(request: Request, token_request: TokenRequest):
     The request body must include the same `device_id` used when the token was issued.
     """
     try:
-        if not token_request.device_id:
-            raise HTTPException(status_code=412, detail="Device ID (did) is required")
+        _require_device_id(token_request)
         auth = request.headers.get("Authorization")
         if not auth or not auth.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Invalid authorization header")

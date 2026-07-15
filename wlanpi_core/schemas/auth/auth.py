@@ -10,7 +10,7 @@ class KeyResponse(BaseModel):
 
 
 class TokenRequest(BaseModel):
-    device_id: str
+    device_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class Token(BaseModel):

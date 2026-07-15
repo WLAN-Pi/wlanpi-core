@@ -25,6 +25,10 @@ async def verify_auth_wrapper(
     Use HMAC for internal requests, JWT for external requests, OTG for token bootstrap
     """
 
+    # TODO(#139): HMAC is a transitional compatibility path. Move every client to
+    # Bearer authentication, dispatch on presented credentials instead of source
+    # address, and then remove the shared HMAC secret and this branch.
+
     if is_otg_request(request):
         pass
     elif is_localhost_request(request):

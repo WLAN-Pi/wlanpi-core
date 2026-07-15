@@ -560,7 +560,12 @@ def create_app(debug: bool = False):
         token_path = f"{settings.API_V1_STR}/auth/token"
         token_post = schema.get("paths", {}).get(token_path, {}).get("post")
         if token_post is not None:
-            token_post["security"] = [{"HmacSignature": []}, {}]
+            # TODO(#139): HMAC remains for compatibility while on-device clients
+            # migrate to Bearer. Remove HmacSignature when that migration lands.
+            token_post["security"] = [
+                {"HmacSignature": []},
+                {"HTTPBearer": []},
+            ]
         ws_path = f"{settings.API_V1_STR}/streaming/capture"
         schema.setdefault("paths", {})[ws_path] = {
             "get": {

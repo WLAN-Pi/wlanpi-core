@@ -91,8 +91,7 @@ def test_gone_endpoints_document_410(openapi_schema):
 def test_auth_token_openapi_security(openapi_schema):
     post = openapi_schema["paths"]["/api/v1/auth/token"]["post"]
     security = post.get("security", [])
-    assert {"HTTPBearer": []} not in security
-    assert security == [{"HmacSignature": []}, {}]
+    assert security == [{"HmacSignature": []}, {"HTTPBearer": []}]
 
 
 def test_reachability_documents_targets_and_errors(openapi_schema):
