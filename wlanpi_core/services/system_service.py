@@ -4,6 +4,7 @@ import os
 import socket
 import subprocess
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -539,13 +540,19 @@ def get_timezone():
         raise ValidationError("Unable to determine timezone", status_code=503)
 
 
-def list_timezones():
+@lru_cache(maxsize=1)
+def _timezone_names() -> tuple[str, ...]:
+    """Load the static tzdata name set once per service process."""
     try:
         output = run_command(["timedatectl", "list-timezones"], raise_on_fail=True).stdout
-        zones = [line.strip() for line in output.splitlines() if line.strip()]
-        return {"timezones": zones}
+        return tuple(line.strip() for line in output.splitlines() if line.strip())
     except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError):
         raise ValidationError("Unable to list timezones", status_code=503)
+
+
+def list_timezones():
+    """Return a fresh response around the process-cached timezone names."""
+    return {"timezones": list(_timezone_names())}
 
 
 def set_timezone(timezone: str):

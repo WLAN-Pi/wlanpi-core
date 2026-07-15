@@ -80,6 +80,28 @@ def test_get_timezone(mocker):
     assert system_service.get_timezone() == {"timezone": "Europe/London"}
 
 
+def test_list_timezones_caches_names_but_returns_fresh_list(mocker):
+    run = mocker.patch.object(
+        system_service,
+        "run_command",
+        return_value=MagicMock(stdout="Europe/London\nAmerica/New_York\n"),
+    )
+    system_service._timezone_names.cache_clear()
+
+    try:
+        first = system_service.list_timezones()
+        first["timezones"].append("mutated")
+        second = system_service.list_timezones()
+    finally:
+        system_service._timezone_names.cache_clear()
+
+    run.assert_called_once_with(
+        ["timedatectl", "list-timezones"],
+        raise_on_fail=True,
+    )
+    assert second == {"timezones": ["Europe/London", "America/New_York"]}
+
+
 def test_set_timezone_uses_script_when_present(mocker, tmp_path):
     script = tmp_path / "wlanpi-timezone"
     script.write_text("#!/bin/sh\n")
