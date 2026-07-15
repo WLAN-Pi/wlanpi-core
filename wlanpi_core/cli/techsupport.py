@@ -66,16 +66,20 @@ def read_file(path_str: str) -> str:
     return f"File {path_str} does not exist"
 
 
-def upload_to_termbin(text: str) -> str:
+def upload_to_paste_server(text: str) -> str:
+    url = "https://paste.wlanpi.com/"
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(10)
-            s.connect(("termbin.com", 9999))
-            s.sendall(text.encode("utf-8"))
-            response = s.recv(1024).decode("utf-8").strip()
-            return response
+        import urllib.request
+        req = urllib.request.Request(
+            url,
+            data=text.encode("utf-8"),
+            headers={"Content-Type": "text/plain"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            return response.read().decode("utf-8").strip()
     except Exception as e:
-        return f"Upload to termbin failed: {e}"
+        return f"Upload to {url} failed: {e}"
 
 
 def generate_report() -> str:
@@ -210,7 +214,7 @@ def main() -> int:
         "--paste",
         "-p",
         action="store_true",
-        help="Upload report to termbin.com and print link",
+        help="Upload report to paste.wlanpi.com and print link",
     )
     parser.add_argument(
         "--no-color",
@@ -257,9 +261,9 @@ def main() -> int:
             return 1
 
     if args.paste:
-        log_info("Uploading report to termbin.com...")
-        paste_url = upload_to_termbin(report)
-        if paste_url.startswith("https://"):
+        log_info("Uploading report to paste.wlanpi.com...")
+        paste_url = upload_to_paste_server(report)
+        if paste_url.startswith("http://") or paste_url.startswith("https://"):
             log_success("Report uploaded successfully!")
             if use_color:
                 print(f"Paste link: {GREEN}{paste_url}{NC}")
