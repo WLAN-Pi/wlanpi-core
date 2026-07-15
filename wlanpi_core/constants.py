@@ -72,6 +72,7 @@ REACHABILITY_FILE: str = "/opt/wlanpi-common/networkinfo/reachability.sh"
 REACHABILITY_MAX_CUSTOM_TARGETS: int = 10
 LIBRESPEED_CLI: str = "/usr/bin/librespeed-cli"
 SPEEDTEST_TIMEOUT_SEC: int = 120
+COMMAND_TIMEOUT_SEC: int = 30
 PUBLICIP_CMD: str = "/opt/wlanpi-common/networkinfo/publicip.sh"
 PUBLICIP6_CMD: str = "/opt/wlanpi-common/networkinfo/publicip6.sh"
 BLINKER_FILE: str = "/opt/wlanpi-common/networkinfo/portblinker.sh"

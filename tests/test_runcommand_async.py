@@ -22,6 +22,7 @@ class HangingProcess(MockProcess):
     def __init__(self):
         super().__init__()
         self.returncode = None
+        self.terminated = False
         self.killed = False
         self._finished = asyncio.Event()
 
@@ -34,9 +35,19 @@ class HangingProcess(MockProcess):
         self.returncode = -9
         self._finished.set()
 
+    def terminate(self):
+        self.terminated = True
+        self.returncode = -15
+        self._finished.set()
+
     async def wait(self):
         await self._finished.wait()
         return self.returncode
+
+
+class StubbornProcess(HangingProcess):
+    def terminate(self):
+        self.terminated = True
 
 
 @pytest.mark.asyncio
@@ -53,6 +64,7 @@ async def test_run_command_async_success():
             stdin=None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stdout == "success"
     assert result.stderr == ""
@@ -74,6 +86,7 @@ async def test_run_command_async_success_with_input():
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stdout == test_input
     assert result.stderr == ""
@@ -96,6 +109,7 @@ async def test_run_command_async_success_with_stdin():
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stdout == test_input
     assert result.stderr == ""
@@ -117,6 +131,7 @@ async def test_run_command_async_failure():
         stdin=None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
     assert "error" in str(exc_info.value)
     assert exc_info.value.return_code == 2
@@ -136,6 +151,7 @@ async def test_run_command_async_failure_no_raise():
             stdin=None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stderr == "error"
     assert result.return_code == 2
@@ -154,6 +170,7 @@ async def test_run_command_async_shell_success():
             stdin=None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stdout == "success"
     assert result.stderr == ""
@@ -184,7 +201,11 @@ async def test_run_command_async_shell_failure():
         with pytest.raises(RunCommandError) as exc_info:
             await run_command_async(cmd, shell=True)
     mock_create_subprocess_shell.assert_called_once_with(
-        cmd, stdin=None, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        cmd,
+        stdin=None,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
     assert "error" in str(exc_info.value)
     assert exc_info.value.return_code == 2
@@ -217,6 +238,7 @@ async def test_run_command_async_input_and_stdin_pipe_ok():
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
     assert result.stdout == "success"
     assert result.stderr == ""
@@ -224,7 +246,7 @@ async def test_run_command_async_input_and_stdin_pipe_ok():
 
 
 @pytest.mark.asyncio
-async def test_run_command_async_timeout_kills_process():
+async def test_run_command_async_timeout_terminates_and_reaps_process():
     process = HangingProcess()
     with patch(
         "asyncio.subprocess.create_subprocess_exec",
@@ -233,12 +255,31 @@ async def test_run_command_async_timeout_kills_process():
         with pytest.raises(asyncio.TimeoutError):
             await run_command_async(["slow-command"], timeout=0.01)
 
+    assert process.terminated is True
+    assert process.returncode == -15
+
+
+@pytest.mark.asyncio
+async def test_run_command_async_timeout_force_kills_stubborn_process():
+    process = StubbornProcess()
+    with patch(
+        "asyncio.subprocess.create_subprocess_exec",
+        new=AsyncMock(return_value=process),
+    ):
+        with patch(
+            "wlanpi_core.utils.general._PROCESS_TERMINATE_GRACE_SEC",
+            0.01,
+        ):
+            with pytest.raises(asyncio.TimeoutError):
+                await run_command_async(["stubborn-command"], timeout=0.01)
+
+    assert process.terminated is True
     assert process.killed is True
     assert process.returncode == -9
 
 
 @pytest.mark.asyncio
-async def test_run_command_async_cancellation_kills_process():
+async def test_run_command_async_cancellation_terminates_process():
     process = HangingProcess()
     with patch(
         "asyncio.subprocess.create_subprocess_exec",
@@ -251,5 +292,5 @@ async def test_run_command_async_cancellation_kills_process():
         with pytest.raises(asyncio.CancelledError):
             await task
 
-    assert process.killed is True
-    assert process.returncode == -9
+    assert process.terminated is True
+    assert process.returncode == -15

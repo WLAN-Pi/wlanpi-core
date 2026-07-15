@@ -1,6 +1,8 @@
 import asyncio.subprocess
 import logging
+import os
 import shlex
+import signal
 import subprocess
 import threading
 import time
@@ -9,6 +11,7 @@ from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, Generic, Optional, TextIO, Type, TypeVar, Union
 
+from wlanpi_core.constants import COMMAND_TIMEOUT_SEC
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -16,6 +19,56 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 log = get_logger(__name__)
 
 T = TypeVar("T")
+_PROCESS_TERMINATE_GRACE_SEC = 1.0
+
+
+def _signal_process_group(proc, sig: signal.Signals) -> None:
+    """Signal the isolated process group, falling back to the direct child."""
+    pid = getattr(proc, "pid", None)
+    if isinstance(pid, int):
+        try:
+            os.killpg(pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+
+    action = proc.terminate if sig == signal.SIGTERM else proc.kill
+    try:
+        action()
+    except ProcessLookupError:
+        pass
+
+
+def _terminate_sync_process(proc: subprocess.Popen) -> None:
+    """Terminate, force-kill when needed, and reap a synchronous child group."""
+    if proc.poll() is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        proc.communicate(timeout=_PROCESS_TERMINATE_GRACE_SEC)
+    except subprocess.TimeoutExpired:
+        _signal_process_group(proc, signal.SIGKILL)
+        proc.communicate()
+
+
+async def _terminate_async_process(proc: Process) -> None:
+    """Terminate, force-kill when needed, and reap an asyncio child group."""
+    if proc.returncode is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        await asyncio.wait_for(
+            proc.wait(),
+            timeout=_PROCESS_TERMINATE_GRACE_SEC,
+        )
+    except asyncio.TimeoutError:
+        if proc.returncode is None:
+            _signal_process_group(proc, signal.SIGKILL)
+        await proc.wait()
 
 
 def run_command(
@@ -24,6 +77,7 @@ def run_command(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -41,6 +95,7 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -80,6 +135,7 @@ def run_command(
         stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     ) as proc:
         if input:
             input_data = input.encode()
@@ -87,7 +143,14 @@ def run_command(
             input_data = stdin.read().encode()
         else:
             input_data = None
-        stdout, stderr = proc.communicate(input=input_data)
+        try:
+            stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
+        except BaseException:
+            log.warning(
+                "Command did not complete normally; terminating its process group"
+            )
+            _terminate_sync_process(proc)
+            raise
 
         if raise_on_fail and proc.returncode != 0:
             raise RunCommandError(stderr.decode(), proc.returncode)
@@ -100,7 +163,7 @@ async def run_command_async(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
-    timeout: Optional[float] = None,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -118,8 +181,7 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-        timeout: Maximum number of seconds to wait for the command. By default,
-                 commands have no timeout.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -164,6 +226,7 @@ async def run_command_async(
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         proc: Process
     else:
@@ -178,6 +241,7 @@ async def run_command_async(
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         proc: Process
 
@@ -186,12 +250,8 @@ async def run_command_async(
             proc.communicate(input=input_data), timeout=timeout
         )
     except BaseException:
-        if proc.returncode is None:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            await proc.wait()
+        log.warning("Command did not complete normally; terminating its process group")
+        await _terminate_async_process(proc)
         raise
 
     if raise_on_fail and proc.returncode != 0:
