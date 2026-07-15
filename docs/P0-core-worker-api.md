@@ -249,7 +249,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 | `GET /network/routing` | Parse `ip route` |
 | `GET /network/connections/tcp` | `ss -tn` or `/proc/net/tcp` |
 | `GET /network/connections/udp` | `ss -un` |
-| `POST /network/interfaces/{iface}/renew` | `dhclient` |
+| `POST /network/interfaces/{iface}/renew` | `networkctl renew`; 409 unless the root interface is managed by systemd-networkd |
 | `GET /network/dhcp/leases` | Parse lease file |
 | `GET /network/interfaces/{iface}/link-stats` | `ethtool` |
 | `GET /network/wlan/usb-drivers` | `lsusb` + driver binding |

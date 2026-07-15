@@ -36,7 +36,7 @@ P0,network,POST,/network/wlan/revert,,Live,Core,align,,Valid namespace revert. A
 P0,network,GET,/network/routing,network.routing_table,Live,Core,bind,,Structured ip -j route via ns_exec (root default).
 P0,network,GET,/network/connections/tcp,network.active_tcp,Live,Core,bind,,ss -Htn in root namespace.
 P0,network,GET,/network/connections/udp,network.active_udp,Live,Core,bind,,ss -Hun in root namespace.
-P0,network,POST,/network/interfaces/{iface}/renew,"network.interfaces.renew_wlan0; network.interfaces.renew_eth0",Live,Core,bind,,restart_dhcp_with_timeout + namespace lookup.
+P0,network,POST,/network/interfaces/{iface}/renew,"network.interfaces.renew_wlan0; network.interfaces.renew_eth0",Live,Core,bind,,networkctl renew for systemd-networkd-managed root interfaces; 409 otherwise.
 P0,network,GET,/network/dhcp/leases,network.interfaces.dhcp_leases,Live,Core,bind,,Parse /var/lib/dhcp/dhclient*.leases.
 P0,network,GET,/network/interfaces/{iface}/link-stats,network.interfaces.eth0.link_stats,Live,Core,bind,,ethtool per interface; namespace from config status.
 P0,network,GET,/network/wlan/usb-drivers,"network.interfaces.wlan.usb_drivers; wifi.radio.usb_drivers",Live,Core,bind,,iw + ethtool driver on USB WLAN ifaces.

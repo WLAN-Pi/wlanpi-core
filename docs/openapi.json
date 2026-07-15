@@ -1137,7 +1137,7 @@
           "network"
         ],
         "summary": "Renew Interface Dhcp",
-        "description": "Renew DHCP lease for an interface in its current namespace.",
+        "description": "Renew DHCP for a systemd-networkd-managed root interface.",
         "operationId": "renew_interface_dhcp_api_v1_network_interfaces__iface__renew_post",
         "security": [
           {
@@ -1162,6 +1162,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DhcpRenewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid interface name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Interface is not managed by systemd-networkd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "networkctl failed or timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }

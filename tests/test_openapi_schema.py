@@ -174,3 +174,13 @@ def test_bluetooth_pair_contract(openapi_schema):
         "discoverable"
     ]
     assert "PairedDevice" not in openapi_schema["components"]["schemas"]
+
+
+def test_dhcp_renew_documents_networkd_guard(openapi_schema):
+    post = openapi_schema["paths"][
+        "/api/v1/network/interfaces/{iface}/renew"
+    ]["post"]
+    assert "systemd-networkd" in post["description"]
+    assert "400" in post["responses"]
+    assert "409" in post["responses"]
+    assert "503" in post["responses"]
