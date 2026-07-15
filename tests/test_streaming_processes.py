@@ -202,6 +202,7 @@ async def test_capture_rejects_missing_interface_config_before_process(mocker):
     [
         {"dwell_time": 1},
         {"channels": [{"freq": 2412, "width": 10}]},
+        {"channels": [{"freq": 3000, "width": 20}]},
         {"channels": [{"freq": 99999, "width": 20}]},
         {"unknown": True},
     ],

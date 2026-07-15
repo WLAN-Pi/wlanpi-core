@@ -51,6 +51,17 @@ def validate_vlan_id(value: int | str) -> int:
     return vlan_id
 
 
+def validate_wifi_frequency(value: int) -> int:
+    """Validate a 2.4, 5, or 6 GHz WiFi center frequency in MHz."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("WiFi frequency must be an integer")
+    in_24_ghz_band = 2400 <= value <= 2500
+    in_5_or_6_ghz_band = 4900 <= value <= 7125
+    if not (in_24_ghz_band or in_5_or_6_ghz_band):
+        raise ValueError("WiFi frequency is outside the supported range")
+    return value
+
+
 def validate_ssid(value: str) -> str:
     """Validate an API string representation of an IEEE 802.11 SSID."""
     if not isinstance(value, str) or not value:

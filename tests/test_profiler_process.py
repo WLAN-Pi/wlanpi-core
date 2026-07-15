@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from wlanpi_core.api.api_v1.endpoints import profiler_api
 from wlanpi_core.profiler import cli
@@ -90,3 +91,26 @@ async def test_stop_profiler_endpoint_matches_response_model(mocker):
     )
 
     assert await profiler_api.stop_profiler() == {"success": True}
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"channel": 0},
+        {"channel": 234},
+        {"frequency": 3000},
+        {"frequency": 99999},
+        {"interface": "--help"},
+        {"ssid": "bad\nssid"},
+        {"ssid": "💻" * 9},
+        {"unexpected": True},
+    ],
+)
+def test_profiler_start_rejects_unsafe_launch_arguments(values):
+    with pytest.raises(ValidationError):
+        Start(**values)
+
+
+@pytest.mark.parametrize("frequency", [2400, 2500, 4900, 7125])
+def test_profiler_start_accepts_supported_frequency_band_boundaries(frequency):
+    assert Start(frequency=frequency).frequency == frequency

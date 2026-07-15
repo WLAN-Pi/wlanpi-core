@@ -7,12 +7,13 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 
-from wlanpi_core.utils.validation import validate_interface_name
+from wlanpi_core.utils.validation import (
+    validate_interface_name,
+    validate_wifi_frequency,
+)
 
 _CAPTURE_INTERFACE_RE = re.compile(r"^wlanpi[0-9]{1,3}$")
 _CAPTURE_WIDTHS = {20, 40, 80, 160}
-_MIN_CAPTURE_FREQUENCY_MHZ = 2300
-_MAX_CAPTURE_FREQUENCY_MHZ = 7125
 _MAX_CAPTURE_INTERFACES = 8
 _MAX_CAPTURE_CHANNELS = 128
 _MIN_DWELL_TIME_MS = 50
@@ -28,11 +29,7 @@ def validate_capture_interface(value: str) -> str:
 
 
 def validate_capture_frequency(value: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError("capture frequency must be an integer")
-    if not _MIN_CAPTURE_FREQUENCY_MHZ <= value <= _MAX_CAPTURE_FREQUENCY_MHZ:
-        raise ValueError("capture frequency is outside the supported WiFi range")
-    return value
+    return validate_wifi_frequency(value)
 
 
 def validate_capture_width(value: int) -> int:
