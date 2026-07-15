@@ -32,7 +32,16 @@ def _resolve_hostapd_conf() -> Path:
 def _parse_hostapd_credentials(conf_path: Path) -> dict[str, str]:
     ssid = None
     passphrase = None
-    for line in conf_path.read_text().splitlines():
+    try:
+        lines = conf_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        log.warning("Unable to read hostapd configuration %s: %s", conf_path, exc)
+        raise ValidationError(
+            "Unable to read hostapd configuration",
+            status_code=503,
+        ) from exc
+
+    for line in lines:
         line = line.strip()
         if line.startswith("#") or "=" not in line:
             continue

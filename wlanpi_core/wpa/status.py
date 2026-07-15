@@ -51,7 +51,15 @@ def get_wpa_status(iface: str, namespace: Optional[str]) -> dict:
 
         signal = None
         key_mgmt = "unknown"
-        freq = int(wpa_status.get("freq", 0))
+        try:
+            freq = int(wpa_status.get("freq", 0))
+        except (TypeError, ValueError):
+            log.warning(
+                "Ignoring invalid WPA frequency for %s: %r",
+                iface,
+                wpa_status.get("freq"),
+            )
+            freq = 0
 
         if connected_bssid:
             networks = parse_wpa_scan_results(

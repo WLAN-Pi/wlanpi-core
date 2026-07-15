@@ -346,6 +346,8 @@ async def show_interface_link_stats(iface: str):
     """Per-interface link statistics via ethtool."""
     try:
         return await asyncio.to_thread(_read_interface_link_stats, iface=iface)
+    except ValidationError as ex:
+        return Response(content=ex.error_msg, status_code=ex.status_code)
     except ValueError as ex:
         return Response(content=str(ex), status_code=400)
     except Exception as ex:

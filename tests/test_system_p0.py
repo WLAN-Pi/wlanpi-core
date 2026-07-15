@@ -2,12 +2,15 @@
 import asyncio
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services import system_service
+
+_GET_MODE = system_service.get_mode
 
 
 @pytest.mark.asyncio
@@ -53,6 +56,61 @@ def test_get_datetime_from_date_command(mocker):
     assert result["timezone"] == "Europe/London"
     assert result["source"] == "date"
     assert result["display"] is not None
+
+
+def test_get_mode_missing_file_is_read_only(tmp_path, monkeypatch):
+    mode_file = tmp_path / "missing-mode"
+    monkeypatch.setattr(system_service, "MODE_FILE", str(mode_file))
+
+    assert _GET_MODE() == "classic"
+    assert not mode_file.exists()
+
+
+def test_get_mode_reports_unreadable_file(tmp_path, monkeypatch):
+    mode_dir = tmp_path / "mode-directory"
+    mode_dir.mkdir()
+    monkeypatch.setattr(system_service, "MODE_FILE", str(mode_dir))
+
+    with pytest.raises(ValidationError) as exc:
+        _GET_MODE()
+
+    assert exc.value.status_code == 503
+
+
+def test_get_image_ver_ignores_non_assignment_lines(tmp_path, monkeypatch):
+    release = tmp_path / "wlanpi-release"
+    release.write_text("comment without equals\nVERSION=4.2=beta\n", encoding="utf-8")
+    monkeypatch.setattr(system_service, "WLANPI_IMAGE_FILE", str(release))
+
+    assert system_service.get_image_ver() == "4.2=beta"
+
+
+def test_get_hostname_uses_local_domain_when_domain_lookup_fails(mocker):
+    run = mocker.patch.object(
+        system_service,
+        "run_command",
+        side_effect=[
+            MagicMock(stdout="wlanpi\n"),
+            RunCommandError("domain unavailable", return_code=1),
+        ],
+    )
+
+    assert system_service.get_hostname() == "wlanpi.local"
+    assert run.call_args_list == [
+        call(["/usr/bin/hostname"]),
+        call(["/usr/bin/hostname", "-d"]),
+    ]
+
+
+def test_get_hostname_falls_back_to_socket(mocker):
+    mocker.patch.object(
+        system_service,
+        "run_command",
+        side_effect=RunCommandError("hostname unavailable", return_code=1),
+    )
+    mocker.patch.object(system_service.socket, "gethostname", return_value="wlanpi.local")
+
+    assert system_service.get_hostname() == "wlanpi.local"
 
 
 def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):

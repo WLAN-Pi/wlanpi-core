@@ -154,41 +154,42 @@ def _raise_systemd_dbus_error(
     ) from exc
 
 
-def get_mode():
+def get_mode() -> str:
     valid_modes = ["classic", "wconsole", "hotspot", "wiperf", "server", "bridge"]
 
-    # check mode file exists and read mode...create with classic mode if not
-    if os.path.isfile(MODE_FILE):
-        with open(MODE_FILE, "r") as f:
-            current_mode = f.readline().strip()
+    try:
+        with open(MODE_FILE, "r", encoding="utf-8") as mode_file:
+            current_mode = mode_file.readline().strip()
+    except FileNotFoundError:
+        # Missing state means the device has not selected a non-default mode. A
+        # read-only API guard must not create or mutate system state.
+        return "classic"
+    except OSError as exc:
+        log.warning("Unable to read device mode from %s: %s", MODE_FILE, exc)
+        raise ValidationError("Unable to read device mode", status_code=503) from exc
 
-        # send msg to stdout & exit if mode invalid
-        if not current_mode in valid_modes:
-            print(
-                "The mode read from {} is not a valid mode of operation: {}".format(
-                    MODE_FILE, current_mode
-                )
-            )
-            # sys.exit()
-    else:
-        # create the mode file as it does not exist
-        with open(MODE_FILE, "w") as f:
-            current_mode = "classic"
-            f.write(current_mode)
+    if current_mode not in valid_modes:
+        log.warning(
+            "Invalid device mode %r read from %s",
+            current_mode,
+            MODE_FILE,
+        )
 
     return current_mode
 
 
-def get_image_ver():
+def get_image_ver() -> str:
     wlanpi_ver = "unknown"
 
     if os.path.isfile(WLANPI_IMAGE_FILE):
-        with open(WLANPI_IMAGE_FILE, "r") as f:
-            lines = f.readlines()
+        with open(WLANPI_IMAGE_FILE, "r", encoding="utf-8") as image_file:
+            lines = image_file.readlines()
 
         # pull out the version number for the FPMS home page
         for line in lines:
-            (name, value) = line.split("=")
+            name, separator, value = line.partition("=")
+            if not separator:
+                continue
             if name == "VERSION":
                 wlanpi_ver = value.strip()
                 break
@@ -196,23 +197,26 @@ def get_image_ver():
     return wlanpi_ver
 
 
-def get_hostname():
+def get_hostname() -> str:
     try:
-        hostname = run_command("/usr/bin/hostname").stdout.strip()
-        if not "." in hostname:
-            domain = "local"
-            try:
-                output = run_command("/usr/bin/hostname -d").stdout.strip()
-                if len(output) != 0:
-                    domain = output
-            except:
-                pass
-            hostname = f"{hostname}.{domain}"
-        return hostname
-    except:
-        pass
+        hostname = run_command(["/usr/bin/hostname"]).stdout.strip()
+    except (RunCommandError, OSError) as exc:
+        log.warning("Unable to read hostname with /usr/bin/hostname: %s", exc)
+        hostname = socket.gethostname().strip()
 
-    return None
+    if not hostname:
+        raise ValidationError("Unable to determine hostname", status_code=503)
+
+    if "." not in hostname:
+        domain = "local"
+        try:
+            output = run_command(["/usr/bin/hostname", "-d"]).stdout.strip()
+            if output:
+                domain = output
+        except (RunCommandError, OSError) as exc:
+            log.debug("Unable to read hostname domain: %s", exc)
+        hostname = f"{hostname}.{domain}"
+    return hostname
 
 
 def get_platform():

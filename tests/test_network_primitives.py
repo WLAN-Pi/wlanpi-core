@@ -201,6 +201,28 @@ def test_resolve_interface_namespace_root():
         assert lookup.resolve_interface_namespace("wlanpi0") == "scan_ns"
 
 
+def test_resolve_interface_namespace_fails_closed_on_status_error():
+    with patch(
+        "wlanpi_core.network.lookup.network_config.status",
+        side_effect=RuntimeError("status unavailable"),
+    ):
+        with pytest.raises(ValidationError) as exc:
+            lookup.resolve_interface_namespace("eth0")
+
+    assert exc.value.status_code == 503
+
+
+def test_resolve_interface_namespace_rejects_missing_interface():
+    with patch(
+        "wlanpi_core.network.lookup.network_config.status",
+        return_value={"root": {"eth0": {}}, "scan_ns": {"wlanpi0": {}}},
+    ):
+        with pytest.raises(ValidationError) as exc:
+            lookup.resolve_interface_namespace("eth9")
+
+    assert exc.value.status_code == 404
+
+
 def test_get_usb_wlan_drivers_filters_bus():
     with patch(
         "wlanpi_core.network.wlan_drivers.discovery.list_interfaces",

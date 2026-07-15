@@ -28,6 +28,16 @@ def test_hotspot_ssid_passphrase_parsing(tmp_path):
     assert creds == {"ssid": "MySSID", "passphrase": "MyPass"}
 
 
+def test_hotspot_credentials_report_unreadable_configuration(tmp_path):
+    missing = tmp_path / "missing-hostapd.conf"
+
+    with pytest.raises(ValidationError) as exc:
+        hotspot_service._parse_hostapd_credentials(missing)
+
+    assert exc.value.status_code == 503
+    assert exc.value.error_msg == "Unable to read hostapd configuration"
+
+
 def test_resolve_ap_interface_explicit():
     status = {"root": {"wlan0": {"type": "ap"}}}
     with patch.object(
