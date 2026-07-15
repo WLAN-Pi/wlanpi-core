@@ -165,6 +165,29 @@ def test_disconnected_system_bus_is_rebuilt_on_next_request(mocker):
     )
 
 
+def test_start_and_stop_service_use_bounded_systemd_calls(mocker):
+    manager = MagicMock()
+    mocker.patch.object(
+        system_service,
+        "_get_systemd_client",
+        return_value=(MagicMock(), manager),
+    )
+
+    assert system_service.start_service("iperf") is True
+    assert system_service.stop_service("iperf") is False
+
+    manager.StartUnit.assert_called_once_with(
+        "iperf.service",
+        "replace",
+        timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
+    )
+    manager.StopUnit.assert_called_once_with(
+        "iperf.service",
+        "replace",
+        timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
+    )
+
+
 def test_systemd_dbus_calls_are_serialized(mocker):
     bus = MagicMock()
     manager = MagicMock()

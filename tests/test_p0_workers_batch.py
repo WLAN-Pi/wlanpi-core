@@ -43,6 +43,52 @@ def test_timezone_auto(client, mocker):
     assert body["timezone"] == "Europe/London"
 
 
+def test_system_service_start_and_stop_routes(client, mocker):
+    start = mocker.patch.object(
+        system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "iperf", "active": True}),
+    )
+    stop = mocker.patch.object(
+        system_service,
+        "stop_systemd_service",
+        new=AsyncMock(return_value={"name": "iperf", "active": False}),
+    )
+
+    start_response = client.post(
+        "/api/v1/system/service/start",
+        params={"name": "iperf"},
+    )
+    stop_response = client.post(
+        "/api/v1/system/service/stop",
+        params={"name": "iperf"},
+    )
+
+    assert start_response.status_code == 200
+    assert start_response.json() == {"name": "iperf", "active": True}
+    assert stop_response.status_code == 200
+    assert stop_response.json() == {"name": "iperf", "active": False}
+    start.assert_awaited_once_with("iperf")
+    stop.assert_awaited_once_with("iperf")
+
+
+def test_set_reg_domain_happy_path(client, mocker):
+    set_domain = mocker.patch.object(
+        system_service,
+        "set_reg_domain",
+        return_value={"country": "GB", "source": "wlanpi-reg-domain"},
+    )
+
+    response = client.post(
+        "/api/v1/system/reg-domain/set",
+        json={"country": "GB"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["country"] == "GB"
+    set_domain.assert_called_once_with("GB")
+
+
 def test_reboot_and_shutdown(client, mocker):
     run_command = mocker.patch("wlanpi_core.services.system_service.run_command")
 
@@ -140,6 +186,34 @@ def test_wifi_hotspot_stations_wrong_mode(client, mocker):
     assert response.status_code == 409
 
 
+def test_wifi_hotspot_client_link(client, mocker):
+    worker = mocker.patch(
+        "wlanpi_core.api.api_v1.endpoints.wifi_api.get_hotspot_client_link",
+        return_value={
+            "mode": "hotspot",
+            "interface": "wlan0",
+            "count": 1,
+            "links": [
+                {
+                    "mac": "aa:bb:cc:dd:ee:ff",
+                    "interface": "wlan0",
+                    "signal_dbm": -48,
+                    "tx_bitrate": "72.2 MBit/s",
+                }
+            ],
+        },
+    )
+
+    response = client.get(
+        "/api/v1/wifi/hotspot/link",
+        params={"iface": "wlan0"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["links"][0]["signal_dbm"] == -48
+    worker.assert_called_once_with(iface="wlan0")
+
+
 def test_blinker_lifecycle(client, mocker):
     mocker.patch.object(
         utils_service,
@@ -191,6 +265,26 @@ def test_bluetooth_pair(client, mocker):
     response = client.post("/api/v1/bluetooth/pair")
     assert response.status_code == 200
     assert response.json()["status"] == "discoverable"
+
+
+def test_bluetooth_power(client, mocker):
+    present = mocker.patch.object(
+        bluetooth_service,
+        "bluetooth_present",
+        return_value="hci0",
+    )
+    set_power = mocker.patch.object(
+        bluetooth_service,
+        "bluetooth_set_power",
+        return_value=True,
+    )
+
+    response = client.post("/api/v1/bluetooth/power/on")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "success", "action": "on"}
+    present.assert_called_once_with()
+    set_power.assert_called_once_with(True)
 
 
 def test_bluetooth_pair_conflict(client, mocker):
