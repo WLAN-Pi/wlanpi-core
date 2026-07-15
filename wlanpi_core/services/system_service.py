@@ -3,6 +3,7 @@ import json
 import os
 import socket
 import subprocess
+import threading
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -23,10 +24,6 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command
 
 log = get_logger(__name__)
-
-bus = SystemBus()
-systemd = bus.get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
-manager = Interface(systemd, dbus_interface="org.freedesktop.systemd1.Manager")
 
 allowed_services = [
     "wlanpi-profiler",
@@ -59,6 +56,102 @@ allowed_services = [
 
 PLATFORM_UNKNOWN = "Unknown"
 _POWER_ACTION_TIMEOUT_SEC = 10
+_SYSTEMD_DBUS_TIMEOUT_SEC = 10
+_SYSTEMD_BUS_NAME = "org.freedesktop.systemd1"
+_SYSTEMD_OBJECT_PATH = "/org/freedesktop/systemd1"
+_SYSTEMD_MANAGER_INTERFACE = "org.freedesktop.systemd1.Manager"
+_SYSTEMD_PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+_SYSTEMD_CONNECTION_ERRORS = {
+    "org.freedesktop.DBus.Error.Disconnected",
+    "org.freedesktop.DBus.Error.FileNotFound",
+    "org.freedesktop.DBus.Error.NameHasNoOwner",
+    "org.freedesktop.DBus.Error.NoReply",
+    "org.freedesktop.DBus.Error.NoServer",
+    "org.freedesktop.DBus.Error.ServiceUnknown",
+    "org.freedesktop.DBus.Error.Timeout",
+    "org.freedesktop.DBus.Error.TimedOut",
+}
+
+_systemd_client: Optional[tuple[object, object]] = None
+_systemd_lock = threading.RLock()
+
+
+def _reset_systemd_client() -> None:
+    """Discard cached D-Bus proxies so the next request reconnects."""
+    global _systemd_client
+    with _systemd_lock:
+        _systemd_client = None
+
+
+def _get_systemd_client() -> tuple[object, object]:
+    """Create the systemd D-Bus proxies lazily, never during app import."""
+    global _systemd_client
+    with _systemd_lock:
+        if _systemd_client is not None:
+            return _systemd_client
+
+        try:
+            bus = SystemBus()
+            systemd = bus.get_object(_SYSTEMD_BUS_NAME, _SYSTEMD_OBJECT_PATH)
+            manager = Interface(
+                systemd,
+                dbus_interface=_SYSTEMD_MANAGER_INTERFACE,
+            )
+        except (DBusException, OSError) as exc:
+            log.error("Unable to connect to system D-Bus: %r", exc)
+            raise ValidationError(
+                "System D-Bus is unavailable",
+                status_code=503,
+            ) from exc
+
+        _systemd_client = (bus, manager)
+        return _systemd_client
+
+
+def _dbus_error_name(exc: DBusException) -> Optional[str]:
+    """Read a D-Bus error name without relying on private exception fields."""
+    try:
+        return exc.get_dbus_name()
+    except Exception:
+        return None
+
+
+def _raise_systemd_dbus_error(
+    exc: DBusException,
+    *,
+    action: str,
+    service: str,
+    missing_status: int = 400,
+) -> None:
+    """Translate systemd D-Bus errors into stable API-facing failures."""
+    error_name = _dbus_error_name(exc)
+    if error_name == "org.freedesktop.systemd1.NoSuchUnit":
+        raise ValidationError(
+            f"no such unit for {service} on host",
+            status_code=missing_status,
+        ) from exc
+    if error_name == "org.freedesktop.DBus.Error.InvalidArgs":
+        raise ValidationError("Problem with the args", status_code=400) from exc
+    if error_name == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired":
+        raise ValidationError(
+            "Interactive authentication required.",
+            status_code=401,
+        ) from exc
+
+    if error_name in _SYSTEMD_CONNECTION_ERRORS:
+        _reset_systemd_client()
+
+    log.error(
+        "System D-Bus failed while %s %s (%s): %r",
+        action,
+        service,
+        error_name or "unknown error",
+        exc,
+    )
+    raise ValidationError(
+        f"Unable to {action} {service} through system D-Bus",
+        status_code=503,
+    ) from exc
 
 
 def get_mode():
@@ -292,33 +385,46 @@ def check_service_status(service: str):
     You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
     service_running = False
-    try:
-        if ".service" not in service:
-            service = service + ".service"
-        service_proxy = bus.get_object(
-            "org.freedesktop.systemd1", object_path=manager.GetUnit(service)
-        )
-        service_props = Interface(
-            service_proxy, dbus_interface="org.freedesktop.DBus.Properties"
-        )
-        service_load_state = service_props.Get(
-            "org.freedesktop.systemd1.Unit", "LoadState"
-        )
-        service_active_state = service_props.Get(
-            "org.freedesktop.systemd1.Unit", "ActiveState"
-        )
-        if service_load_state == "loaded" and service_active_state == "active":
-            service_running = True
-    except DBusException as de:
-        if de.args:
-            if "not loaded" in de.args[0]:
-                return service_running
-        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
-            raise ValidationError(
-                f"no such unit for {service} on host", status_code=503
+    if ".service" not in service:
+        service = service + ".service"
+    with _systemd_lock:
+        bus, manager = _get_systemd_client()
+        try:
+            unit_path = manager.GetUnit(
+                service,
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-    except ValueError as error:
-        raise ValidationError(f"{error}", status_code=400)
+            service_proxy = bus.get_object(
+                _SYSTEMD_BUS_NAME,
+                object_path=unit_path,
+            )
+            service_props = Interface(
+                service_proxy,
+                dbus_interface=_SYSTEMD_PROPERTIES_INTERFACE,
+            )
+            service_load_state = service_props.Get(
+                "org.freedesktop.systemd1.Unit",
+                "LoadState",
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
+            )
+            service_active_state = service_props.Get(
+                "org.freedesktop.systemd1.Unit",
+                "ActiveState",
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
+            )
+            if service_load_state == "loaded" and service_active_state == "active":
+                service_running = True
+        except DBusException as exc:
+            if exc.args and "not loaded" in str(exc.args[0]):
+                return service_running
+            _raise_systemd_dbus_error(
+                exc,
+                action="checking",
+                service=service,
+                missing_status=503,
+            )
+        except ValueError as error:
+            raise ValidationError(f"{error}", status_code=400)
     return service_running
 
 
@@ -338,24 +444,22 @@ async def get_systemd_service_status(name: str):
 
 
 def stop_service(service: str):
-    try:
-        if ".service" not in service:
-            service = service + ".service"
-        manager.StopUnit(service, "replace")
-        # manager.DisableUnitFiles([service], Boolean(False))
-    except DBusException as de:
-        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
-            raise ValidationError(
-                f"no such unit for {service} on host", status_code=400
+    if ".service" not in service:
+        service = service + ".service"
+    with _systemd_lock:
+        _, manager = _get_systemd_client()
+        try:
+            manager.StopUnit(
+                service,
+                "replace",
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
-            raise ValidationError(f"Problem with the args", status_code=400)
-        if (
-            de._dbus_error_name
-            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
-        ):
-            raise ValidationError(
-                f"Interactive authentication required.", status_code=401
+            # manager.DisableUnitFiles([service], Boolean(False))
+        except DBusException as exc:
+            _raise_systemd_dbus_error(
+                exc,
+                action="stopping",
+                service=service,
             )
     return False
 
@@ -376,24 +480,22 @@ async def stop_systemd_service(name: str):
 
 
 def start_service(service: str):
-    try:
-        if ".service" not in service:
-            service = service + ".service"
-        # manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
-        manager.StartUnit(service, "replace")
-    except DBusException as de:
-        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
-            raise ValidationError(
-                f"no such unit for {service} on host", status_code=400
+    if ".service" not in service:
+        service = service + ".service"
+    with _systemd_lock:
+        _, manager = _get_systemd_client()
+        try:
+            # manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
+            manager.StartUnit(
+                service,
+                "replace",
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
-            raise ValidationError(f"Problem with the args", status_code=400)
-        if (
-            de._dbus_error_name
-            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
-        ):
-            raise ValidationError(
-                f"Interactive authentication required.", status_code=401
+        except DBusException as exc:
+            _raise_systemd_dbus_error(
+                exc,
+                action="starting",
+                service=service,
             )
     return True
 
@@ -411,27 +513,23 @@ async def start_systemd_service(name: str):
 
 
 def restart_service(service: str):
-    try:
-        if ".service" not in service:
-            service = service + ".service"
-        manager.RestartUnit(service, "replace")
-    except DBusException as de:
-        if de._dbus_error_name == "org.freedesktop.systemd1.NoSuchUnit":
-            raise ValidationError(
-                f"no such unit for {service} on host", status_code=400
+    if ".service" not in service:
+        service = service + ".service"
+    with _systemd_lock:
+        _, manager = _get_systemd_client()
+        try:
+            manager.RestartUnit(
+                service,
+                "replace",
+                timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-        if de._dbus_error_name == "org.freedesktop.DBus.Error.InvalidArgs":
-            raise ValidationError("Problem with the args", status_code=400)
-        if (
-            de._dbus_error_name
-            == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"
-        ):
-            raise ValidationError(
-                "Interactive authentication required.", status_code=401
+        except DBusException as exc:
+            _raise_systemd_dbus_error(
+                exc,
+                action="restarting",
+                service=service,
             )
-        raise
-    unit_name = service.replace(".service", "")
-    return check_service_status(service)
+        return check_service_status(service)
 
 
 async def restart_systemd_service(name: str):

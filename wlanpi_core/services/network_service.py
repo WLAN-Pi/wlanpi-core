@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from datetime import datetime
 from typing import Callable
@@ -31,7 +32,17 @@ class AsyncDBusManager:
     """
 
     def __init__(self):
-        self.bus = dbus.SystemBus()
+        self._bus = None
+        self._bus_lock = threading.Lock()
+
+    @property
+    def bus(self):
+        """Open the system bus only when a D-Bus operation is requested."""
+        if self._bus is None:
+            with self._bus_lock:
+                if self._bus is None:
+                    self._bus = dbus.SystemBus()
+        return self._bus
 
     async def poll_until_condition(
         self,
@@ -128,7 +139,6 @@ class AsyncDBusManager:
 # import asyncio
 
 DBUS_MANAGER = AsyncDBusManager()
-BUS = dbus.SystemBus()
 
 API_TIMEOUT = 20
 
