@@ -11,6 +11,7 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
 from wlanpi_core.services import utils_service
 from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
+from wlanpi_core.wpa.scan import ScanInProgressError
 
 router = APIRouter()
 
@@ -166,6 +167,10 @@ async def blinker_status():
     summary="WLAN scan (canonical)",
     responses={
         400: RESPONSES_API_ERROR[400],
+        409: {
+            "model": utils.WlanScanErrorResponse,
+            "description": "Selected adapter is already scanning",
+        },
         422: {
             "model": utils.WlanScanErrorResponse,
             "description": "No suitable scan adapter",
@@ -212,6 +217,14 @@ async def wlan_scan_endpoint(
             content={
                 "error": "NO_SCAN_ADAPTER",
                 "candidates": exc.candidates,
+            },
+        )
+    except ScanInProgressError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "SCAN_IN_PROGRESS",
+                "message": str(exc),
             },
         )
     except ValidationError as ve:

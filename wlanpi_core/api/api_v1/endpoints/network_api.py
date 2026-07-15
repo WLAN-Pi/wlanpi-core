@@ -27,6 +27,7 @@ from wlanpi_core.services import (
 )
 from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.status import get_wpa_status
+from wlanpi_core.wpa.scan import ScanInProgressError
 from wlanpi_core.utils.validation import validate_vlan_id
 
 router = APIRouter()
@@ -521,6 +522,11 @@ async def get_a_systemd_network_scan(
         return JSONResponse(
             status_code=422,
             content={"error": "NO_SCAN_ADAPTER", "candidates": exc.candidates},
+        )
+    except ScanInProgressError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "SCAN_IN_PROGRESS", "message": str(exc)},
         )
     except ValueError as exc:
         return Response(content=str(exc), status_code=400)

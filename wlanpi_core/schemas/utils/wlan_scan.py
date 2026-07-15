@@ -68,4 +68,5 @@ class WlanScanResponse(BaseModel):
 
 class WlanScanErrorResponse(BaseModel):
     error: str
+    message: Optional[str] = None
     candidates: list[ScanAdapter] = Field(default_factory=list)

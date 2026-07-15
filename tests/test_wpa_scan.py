@@ -1,9 +1,13 @@
 """Unit tests for wpa.scan primitives."""
-from unittest.mock import patch
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import call, patch
 
 import pytest
 
 from wlanpi_core.wpa.scan import (
+    ScanInProgressError,
     find_bss,
     normalize_scan_detail,
     parse_iw_scan_output,
@@ -108,25 +112,88 @@ def test_normalize_scan_detail_rejects_invalid():
 
 
 def test_run_interface_scan_full_prefers_iw_over_wpa_cli():
-    with patch("wlanpi_core.wpa.scan.ensure_iface_up"):
-        with patch("wlanpi_core.wpa.scan.wpa_cli_available", return_value=True):
-            with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]) as iw:
-                with patch("wlanpi_core.wpa.scan.run_wpa_cli_scan") as wpa:
-                    run_interface_scan("wlan0", mode="managed", detail="full")
+    with patch(
+        "wlanpi_core.wpa.scan._interface_is_up", return_value=True
+    ) as interface_is_up:
+        with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+            with patch("wlanpi_core.wpa.scan.wpa_cli_available", return_value=True):
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]) as iw:
+                    with patch("wlanpi_core.wpa.scan.run_wpa_cli_scan") as wpa:
+                        run_interface_scan("wlan0", mode="managed", detail="full")
+    interface_is_up.assert_called_once_with("wlan0", None)
+    set_state.assert_not_called()
     iw.assert_called_once()
     wpa.assert_not_called()
 
 
-def test_run_iw_scan_brings_iface_up():
-    with patch("wlanpi_core.wpa.scan.ensure_iface_up") as up:
-        with patch(
-            "wlanpi_core.wpa.scan.ns_exec",
-            return_value=type(
-                "R",
-                (),
-                {"stdout": SAMPLE_IW, "stderr": "", "return_code": 0},
-            )(),
-        ):
-            networks = run_iw_scan("wlan0")
-    up.assert_called_once_with("wlan0", None)
+def test_run_iw_scan_parses_command_output():
+    with patch(
+        "wlanpi_core.wpa.scan.ns_exec",
+        return_value=type(
+            "R",
+            (),
+            {"stdout": SAMPLE_IW, "stderr": "", "return_code": 0},
+        )(),
+    ):
+        networks = run_iw_scan("wlan0")
     assert networks[0]["ssid"] == "TestNet"
+
+
+def test_interface_state_reads_administrative_up_flag():
+    result = type(
+        "R",
+        (),
+        {"stdout": json.dumps([{"flags": ["BROADCAST", "UP", "LOWER_UP"]}])},
+    )()
+    with patch("wlanpi_core.wpa.scan.ns_exec", return_value=result):
+        from wlanpi_core.wpa.scan import _interface_is_up
+
+        assert _interface_is_up("wlan0") is True
+
+
+def test_run_interface_scan_restores_original_down_state():
+    with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False):
+        with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+            with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+                run_interface_scan("wlan0", mode="monitor")
+
+    assert set_state.call_args_list == [
+        call("wlan0", True, None),
+        call("wlan0", False, None),
+    ]
+
+
+def test_run_interface_scan_restores_state_after_failure():
+    with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False):
+        with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+            with patch(
+                "wlanpi_core.wpa.scan.run_iw_scan",
+                side_effect=RuntimeError("scan failed"),
+            ):
+                with pytest.raises(RuntimeError, match="scan failed"):
+                    run_interface_scan("wlan0", mode="monitor")
+
+    set_state.assert_called_with("wlan0", False, None)
+
+
+def test_run_interface_scan_rejects_concurrent_target_without_leaking_claim():
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_scan(*_args, **_kwargs):
+        entered.set()
+        assert release.wait(timeout=2)
+        return []
+
+    with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+        with patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=blocking_scan):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                first = executor.submit(run_interface_scan, "wlan0", mode="monitor")
+                assert entered.wait(timeout=2)
+                with pytest.raises(ScanInProgressError):
+                    run_interface_scan("wlan0", mode="monitor")
+                release.set()
+                assert first.result(timeout=2) == []
+
+        with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+            assert run_interface_scan("wlan0", mode="monitor") == []

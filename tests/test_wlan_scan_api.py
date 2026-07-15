@@ -81,6 +81,22 @@ def test_api_wlan_scan_no_adapter(client):
     assert response.json()["error"] == "NO_SCAN_ADAPTER"
 
 
+def test_api_wlan_scan_reports_concurrent_scan(client):
+    from wlanpi_core.wpa.scan import ScanInProgressError
+
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan",
+        side_effect=ScanInProgressError("wlan0"),
+    ):
+        response = client.get("/api/v1/utils/wlan/scan")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "SCAN_IN_PROGRESS",
+        "message": "A scan is already in progress on wlan0 in root",
+    }
+
+
 def test_api_wlan_scan_explicit_iface_namespace(client):
     payload = {
         "selectedAdapter": {

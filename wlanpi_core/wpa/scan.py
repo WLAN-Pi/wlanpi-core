@@ -1,9 +1,12 @@
 """WPA supplicant and iw scan primitives."""
 from __future__ import annotations
 
+import json
 import logging
 import re
+import threading
 import time
+from contextlib import contextmanager
 from typing import Any, Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -14,10 +17,38 @@ log = logging.getLogger(__name__)
 _SCAN_POLL_INTERVAL_SEC = 0.5
 _SCAN_POLL_ATTEMPTS = 8
 _VALID_DETAIL = frozenset({"short", "full"})
+_active_scans: set[tuple[Optional[str], str]] = set()
+_active_scans_lock = threading.Lock()
 
 
 class ScanNotSupportedError(Exception):
     """Active scan is not supported on this interface."""
+
+
+class ScanInProgressError(Exception):
+    """Raised when the target interface is already running an active scan."""
+
+    def __init__(self, iface: str, namespace: Optional[str] = None):
+        self.iface = iface
+        self.namespace = namespace
+        super().__init__(
+            f"A scan is already in progress on {iface} in {namespace or 'root'}"
+        )
+
+
+@contextmanager
+def _claim_scan(iface: str, namespace: Optional[str] = None):
+    """Claim a scan target without retaining an unbounded lock cache."""
+    key = (namespace, iface)
+    with _active_scans_lock:
+        if key in _active_scans:
+            raise ScanInProgressError(iface, namespace)
+        _active_scans.add(key)
+    try:
+        yield
+    finally:
+        with _active_scans_lock:
+            _active_scans.discard(key)
 
 
 def normalize_scan_detail(detail: str) -> str:
@@ -309,12 +340,29 @@ def find_bss(
     return None
 
 
-def ensure_iface_up(iface: str, namespace: Optional[str] = None) -> None:
-    """Bring ``iface`` up before an active scan (required on some drivers)."""
-    ns_exec(
-        ["ip", "link", "set", iface, "up"],
+def _interface_is_up(iface: str, namespace: Optional[str] = None) -> bool:
+    """Return the interface's administrative state."""
+    result = ns_exec(
+        ["ip", "-j", "link", "show", "dev", iface],
         namespace=namespace,
-        raise_on_fail=False,
+    )
+    try:
+        links = json.loads(result.stdout)
+        flags = links[0]["flags"]
+        if not isinstance(flags, list):
+            raise TypeError("link flags are not a list")
+    except (json.JSONDecodeError, IndexError, KeyError, TypeError) as exc:
+        raise RuntimeError(f"Unable to determine link state for {iface}") from exc
+    return "UP" in flags
+
+
+def _set_interface_state(
+    iface: str, up: bool, namespace: Optional[str] = None
+) -> None:
+    """Set the interface's administrative state."""
+    ns_exec(
+        ["ip", "link", "set", iface, "up" if up else "down"],
+        namespace=namespace,
     )
 
 
@@ -365,7 +413,6 @@ def run_iw_scan(
 ) -> list[dict[str, Any]]:
     """Run ``iw dev <iface> scan`` and return parsed networks."""
     normalize_scan_detail(detail)
-    ensure_iface_up(iface, namespace)
     result = ns_exec(
         ["iw", "dev", iface, "scan"],
         namespace=namespace,
@@ -412,29 +459,40 @@ def run_interface_scan(
     )
     mode = (mode or "").lower()
 
-    if mode == "monitor":
-        return run_iw_scan(
-            iface, namespace, include_hidden=include_hidden, detail=detail
-        )
-
-    ensure_iface_up(iface, namespace)
-    if detail == "full":
-        return run_iw_scan(
-            iface, namespace, include_hidden=include_hidden, detail=detail
-        )
-
-    if wpa_cli_available(iface, namespace):
+    with _claim_scan(iface, namespace):
+        originally_up = _interface_is_up(iface, namespace)
         try:
-            return run_wpa_cli_scan(
+            if not originally_up:
+                _set_interface_state(iface, True, namespace)
+
+            if mode == "monitor" or detail == "full":
+                return run_iw_scan(
+                    iface,
+                    namespace,
+                    include_hidden=include_hidden,
+                    detail=detail,
+                )
+
+            if wpa_cli_available(iface, namespace):
+                try:
+                    return run_wpa_cli_scan(
+                        iface,
+                        namespace,
+                        include_hidden=include_hidden,
+                        detail=detail,
+                    )
+                except RunCommandError as exc:
+                    log.warning(
+                        "wpa_cli scan failed for %s, falling back to iw: %r",
+                        iface,
+                        exc,
+                    )
+            return run_iw_scan(
                 iface,
                 namespace,
                 include_hidden=include_hidden,
                 detail=detail,
             )
-        except RunCommandError as exc:
-            log.warning(
-                "wpa_cli scan failed for %s, falling back to iw: %r", iface, exc
-            )
-    return run_iw_scan(
-        iface, namespace, include_hidden=include_hidden, detail=detail
-    )
+        finally:
+            if not originally_up:
+                _set_interface_state(iface, False, namespace)
