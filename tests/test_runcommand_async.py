@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from io import StringIO
 from unittest.mock import AsyncMock, patch
 
@@ -157,6 +158,20 @@ async def test_run_command_async_shell_success():
     assert result.stdout == "success"
     assert result.stderr == ""
     assert result.return_code == 0
+
+
+@pytest.mark.asyncio
+async def test_run_command_async_shell_logs_safe_injection_warning(caplog):
+    command = "echo sensitive-command-text"
+    with patch(
+        "asyncio.subprocess.create_subprocess_shell",
+        new=AsyncMock(return_value=MockProcess()),
+    ):
+        with caplog.at_level(logging.WARNING):
+            await run_command_async(command, shell=True)
+
+    assert any("shell=True" in record.getMessage() for record in caplog.records)
+    assert command not in caplog.text
 
 
 @pytest.mark.asyncio

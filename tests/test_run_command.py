@@ -1,3 +1,4 @@
+import logging
 from io import StringIO
 from unittest.mock import patch
 
@@ -50,10 +51,13 @@ def test_run_command_input_and_stdin_error():
     assert "You cannot use both 'input' and 'stdin'" in str(context.value)
 
 
-def test_run_command_shell_does_not_log_injection_warning(caplog):
-    with caplog.at_level("DEBUG"):
-        run_command("echo test", shell=True)
-    assert not any("shell script" in r.getMessage() for r in caplog.records)
+def test_run_command_shell_logs_safe_injection_warning(caplog):
+    command = "echo sensitive-command-text"
+    with caplog.at_level(logging.WARNING):
+        run_command(command, shell=True)
+
+    assert any("shell=True" in record.getMessage() for record in caplog.records)
+    assert command not in caplog.text
 
 
 def test_command_result():

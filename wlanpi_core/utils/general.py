@@ -64,6 +64,10 @@ def run_command(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
+        )
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
@@ -150,6 +154,10 @@ async def run_command_async(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
+        )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
             cmd,
