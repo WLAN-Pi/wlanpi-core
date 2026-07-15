@@ -13,7 +13,11 @@ from wlanpi_core.schemas.network.network import (
     SecurityTypes,
 )
 from wlanpi_core.utils import network_config
+from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.validation import validate_vlan_id
 from wlanpi_core.wpa.config import generate_network_block
+from wlanpi_core.network.link_stats import get_link_stats
+from wlanpi_core.services import network_ethernet_service, utils_service
 
 
 def _root_config(**overrides):
@@ -79,3 +83,52 @@ def test_wpa_values_are_quoted_without_config_injection():
 
     assert 'ssid="Cafe \\"Guest\\"\\\\5G"' in block
     assert 'psk="safe\\"pass\\\\word"' in block
+
+
+def test_namespace_execution_rejects_path_syntax_before_command(mocker):
+    run_command = mocker.patch(
+        "wlanpi_core.utils.namespace_execution.run_command"
+    )
+
+    with pytest.raises(ValueError):
+        ns_exec(["ip", "addr"], namespace="../../root")
+
+    run_command.assert_not_called()
+
+
+def test_link_stats_rejects_option_like_interface_before_command(mocker):
+    execute = mocker.patch("wlanpi_core.network.link_stats.ns_exec")
+
+    with pytest.raises(ValueError):
+        get_link_stats("--help")
+
+    execute.assert_not_called()
+
+
+@pytest.mark.parametrize("value", [0, 4095, "1.5", "1;reboot", True])
+def test_vlan_id_rejects_values_outside_kernel_range(value):
+    with pytest.raises(ValueError):
+        validate_vlan_id(value)
+
+
+@pytest.mark.asyncio
+async def test_vlan_service_rejects_input_before_mutation(mocker):
+    create_vlan = mocker.patch.object(
+        network_ethernet_service.LiveVLANs,
+        "create_vlan",
+    )
+
+    with pytest.raises(ValidationError) as error:
+        await network_ethernet_service.create_vlan("eth0", "1;reboot", [])
+
+    assert error.value.status_code == 400
+    create_vlan.assert_not_called()
+
+
+def test_blinker_rejects_interface_before_starting_process(mocker):
+    popen = mocker.patch.object(utils_service.subprocess, "Popen")
+
+    with pytest.raises(ValueError):
+        utils_service.start_port_blinker("--help")
+
+    popen.assert_not_called()

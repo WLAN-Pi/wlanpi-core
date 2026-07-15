@@ -13,6 +13,7 @@ from ..utils.general import run_command_async, terminate_process
 from ..utils.network import get_default_gateways
 from ..utils.reachability import parse_targets_param, ping_target
 from ..utils.speedtest import run_speedtest
+from ..utils.validation import validate_interface_name
 
 
 async def show_reachability(targets: Optional[list[str]] = None):
@@ -282,6 +283,7 @@ def _stop_unowned_blinker() -> None:
 def start_port_blinker(interface: str = "eth0") -> dict:
     """Start the port blinker script (runs until stopped)."""
     global _blinker_process
+    interface = validate_interface_name(interface)
 
     with _blinker_lock:
         if not os.path.isfile(BLINKER_FILE):

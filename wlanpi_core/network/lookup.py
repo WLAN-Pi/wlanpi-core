@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from wlanpi_core.utils import network_config
+from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
@@ -15,9 +16,7 @@ def resolve_interface_namespace(iface: str) -> Optional[str]:
 
     Uses ``network_config.status()`` (same view as ``GET /network/config/status``).
     """
-    iface = iface.strip()
-    if not iface:
-        return None
+    iface = validate_interface_name(iface)
 
     try:
         status = network_config.status()

@@ -38,6 +38,19 @@ def validate_phy_name(value: str) -> str:
     return _validate_name(value, _PHY_NAME_RE, "PHY name")
 
 
+def validate_vlan_id(value: int | str) -> int:
+    """Validate an IEEE 802.1Q VLAN identifier used for network mutation."""
+    if isinstance(value, bool):
+        raise ValueError("VLAN ID must be an integer from 1 through 4094")
+    try:
+        vlan_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("VLAN ID must be an integer from 1 through 4094") from error
+    if str(value).strip() != str(vlan_id) or not 1 <= vlan_id <= 4094:
+        raise ValueError("VLAN ID must be an integer from 1 through 4094")
+    return vlan_id
+
+
 def validate_ssid(value: str) -> str:
     """Validate an API string representation of an IEEE 802.11 SSID."""
     if not isinstance(value, str) or not value:

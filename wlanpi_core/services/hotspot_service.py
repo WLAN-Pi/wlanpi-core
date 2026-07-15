@@ -12,6 +12,7 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils import network_config
+from wlanpi_core.utils.validation import validate_interface_name
 
 log = get_logger(__name__)
 
@@ -69,9 +70,10 @@ def resolve_ap_interface(iface: Optional[str] = None) -> str:
     """Return an AP-mode interface name, preferring ``iface`` when valid."""
     status = network_config.status()
     if iface:
-        iface = iface.strip()
-        if not iface:
-            raise ValidationError("interface name is required", status_code=400)
+        try:
+            iface = validate_interface_name(iface)
+        except ValueError as error:
+            raise ValidationError(str(error), status_code=400) from error
         iface_type = _iface_type(iface, status=status)
         if iface_type not in _AP_TYPES:
             raise ValidationError(

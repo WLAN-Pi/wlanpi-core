@@ -164,6 +164,18 @@ def test_blinker_lifecycle(client, mocker):
     assert stop.json()["status"] == "stopped"
 
 
+def test_blinker_rejects_invalid_interface(client, mocker):
+    popen = mocker.patch.object(utils_service.subprocess, "Popen")
+
+    response = client.post(
+        "/api/v1/utils/blinker/start",
+        params={"interface": "--help"},
+    )
+
+    assert response.status_code == 400
+    popen.assert_not_called()
+
+
 def test_bluetooth_pair(client, mocker):
     mocker.patch.object(
         bluetooth_service,

@@ -7,6 +7,10 @@ from typing import Any, Optional
 
 from wlanpi_core.utils import network_config
 from wlanpi_core.wpa import scan as wpa_scan
+from wlanpi_core.utils.validation import (
+    validate_interface_name,
+    validate_namespace_name,
+)
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ def _ns_from_param(namespace: Optional[str]) -> Optional[str]:
         return None
     if namespace.strip().lower() == "root":
         return None
-    return namespace.strip()
+    return validate_namespace_name(namespace)
 
 
 def _iface_mode(iface_info: dict[str, Any]) -> str:
@@ -122,7 +126,7 @@ def select_scan_adapter(
     ns = _ns_from_param(namespace)
 
     if iface:
-        iface = iface.strip()
+        iface = validate_interface_name(iface)
         matches = [
             adapter
             for adapter in adapters

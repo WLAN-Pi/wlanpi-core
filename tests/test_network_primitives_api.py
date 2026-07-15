@@ -35,6 +35,15 @@ def test_api_get_network_routing(client):
     assert body["routes"] == routes
 
 
+def test_api_rejects_invalid_network_namespace(client):
+    response = client.get(
+        "/api/v1/network/routing",
+        params={"namespace": "../../root"},
+    )
+
+    assert response.status_code == 400
+
+
 def test_api_get_network_connections_tcp(client):
     with patch(
         "wlanpi_core.network.connections.ns_exec",
@@ -95,6 +104,12 @@ def test_api_get_network_link_stats(client):
     body = response.json()
     assert body["interface"] == "eth0"
     assert body["speed_mbps"] == 1000
+
+
+def test_api_rejects_invalid_link_stats_interface(client):
+    response = client.get("/api/v1/network/interfaces/--help/link-stats")
+
+    assert response.status_code == 400
 
 
 def test_api_post_network_dhcp_renew(client):

@@ -27,6 +27,7 @@ from wlanpi_core.services import (
 )
 from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.status import get_wpa_status
+from wlanpi_core.utils.validation import validate_vlan_id
 
 router = APIRouter()
 legacy_wlan_router = APIRouter()
@@ -150,15 +151,17 @@ async def show_all_ethernet_vlans(
     if vlan and vlan.lower() == "all":
         vlan = None
     if vlan and vlan.lower() != "all":
+        try:
+            requested_vlan_id = validate_vlan_id(vlan)
+        except ValueError as ex:
+            return Response(content=str(ex), status_code=400)
 
         def filterfunc(i):
             return i.model_dump().get("linkinfo", {}).get(
                 "info_kind"
             ) == "vlan" and i.model_dump().get("linkinfo", {}).get("info_data", {}).get(
                 "id"
-            ) == int(
-                vlan
-            )
+            ) == requested_vlan_id
 
         custom_filter = filterfunc
     try:
@@ -274,6 +277,8 @@ async def show_routing_table(namespace: Optional[str] = None):
             network_primitives.get_routing_table,
             namespace=namespace,
         )
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read routing table", status_code=503)
@@ -291,6 +296,8 @@ async def show_tcp_connections(namespace: Optional[str] = None):
             network_primitives.get_tcp_connections,
             namespace=namespace,
         )
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list TCP connections", status_code=503)
@@ -308,6 +315,8 @@ async def show_udp_connections(namespace: Optional[str] = None):
             network_primitives.get_udp_connections,
             namespace=namespace,
         )
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list UDP connections", status_code=503)
@@ -336,6 +345,8 @@ async def show_interface_link_stats(iface: str):
     """Per-interface link statistics via ethtool."""
     try:
         return await asyncio.to_thread(_read_interface_link_stats, iface=iface)
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read link statistics", status_code=503)
@@ -511,6 +522,8 @@ async def get_a_systemd_network_scan(
             status_code=422,
             content={"error": "NO_SCAN_ADAPTER", "candidates": exc.candidates},
         )
+    except ValueError as exc:
+        return Response(content=str(exc), status_code=400)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

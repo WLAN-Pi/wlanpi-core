@@ -10,20 +10,21 @@ from typing import Any
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command_async
+from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
 DHCP_LEASE_DIR = Path("/var/lib/dhcp")
 _DHCP_LEASE_FILE_GLOB = "dhclient*.leases"
-_INTERFACE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 _NETWORKCTL = "/usr/bin/networkctl"
 _NETWORKCTL_STATUS_TIMEOUT_SEC = 5
 
 
 async def renew_interface_dhcp(iface: str, timeout: int = 15) -> dict[str, Any]:
     """Renew DHCP only when ``iface`` is managed by systemd-networkd."""
-    iface = iface.strip()
-    if not _INTERFACE_NAME_RE.fullmatch(iface) or iface in {".", ".."}:
+    try:
+        iface = validate_interface_name(iface)
+    except ValueError as error:
         raise ValidationError("invalid interface name", status_code=400)
 
     status_result = await run_command_async(

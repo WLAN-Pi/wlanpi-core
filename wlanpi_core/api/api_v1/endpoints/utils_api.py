@@ -124,6 +124,8 @@ async def start_blinker(interface: str = "eth0"):
         return await asyncio.to_thread(utils_service.start_port_blinker, interface)
     except FileNotFoundError:
         return Response(content="Port blinker script not found", status_code=503)
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to start port blinker", status_code=503)

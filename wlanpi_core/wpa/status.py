@@ -10,6 +10,7 @@ from typing import Optional
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.wpa.scan import fetch_scan_results, find_bss, parse_wpa_scan_results
+from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def get_wpa_status(iface: str, namespace: Optional[str]) -> dict:
         >>> status = get_wpa_status("wlan0", "test_ns")
         >>> print(status.get("wpa_status", {}).get("wpa_state"))
     """
+    iface = validate_interface_name(iface)
     try:
         wpa_status = {}
         wpa = ns_exec(

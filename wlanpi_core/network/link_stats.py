@@ -8,6 +8,7 @@ from typing import Any, Optional
 from wlanpi_core.constants import ETHTOOL_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _parse_ethtool(stdout: str) -> dict[str, str]:
 
 def get_link_stats(iface: str, namespace: Optional[str] = None) -> dict[str, Any]:
     """Return link statistics for ``iface`` using ethtool."""
-    iface = iface.strip()
+    iface = validate_interface_name(iface)
     log.debug("get_link_stats iface=%s namespace=%r", iface, namespace)
     try:
         result = ns_exec([ETHTOOL_FILE, iface], namespace=namespace)
