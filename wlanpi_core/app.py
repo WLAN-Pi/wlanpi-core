@@ -44,6 +44,21 @@ from wlanpi_core.utils.network_config import activate_config, get_config, interf
 from wlanpi_core.views.api import router as views_router
 
 
+async def _stop_token_purge_task(app: FastAPI) -> None:
+    """Cancel and await the token purge worker before database shutdown."""
+    task = getattr(app.state, "token_purge_task", None)
+    if task is None:
+        return
+
+    app.state.token_purge_task = None
+    if not task.done():
+        task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 class ApplicationHealthManager:
     """
     Manager for monitoring and recovering application health
@@ -496,7 +511,10 @@ class InitializationManager:
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
             self.log.debug("Token manager initialized successfully")
-            asyncio.create_task(self.app.state.token_manager.purge_expired_tokens())
+            self.app.state.token_purge_task = asyncio.create_task(
+                self.app.state.token_manager.purge_expired_tokens(),
+                name="token-purge",
+            )
             return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
@@ -652,6 +670,8 @@ def create_app(debug: bool = False):
         log.info("Application shutting down")
         if hasattr(app.state, "health_manager"):
             await app.state.health_manager.stop_health_checks()
+
+        await _stop_token_purge_task(app)
 
         if hasattr(app.state, "db_manager"):
             try:

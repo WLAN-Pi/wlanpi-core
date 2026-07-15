@@ -573,6 +573,8 @@ class TokenManager:
 
                         self.token_cache.clear()
 
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 log.exception(
                     "Failed to purge tokens",
@@ -582,8 +584,8 @@ class TokenManager:
                         "error": str(e),
                     },
                 )
-            finally:
-                await asyncio.sleep(3600)
+
+            await asyncio.sleep(3600)
 
     async def rotate_key(self) -> Tuple[int, str]:
         """
