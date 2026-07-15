@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -282,7 +283,7 @@ _BLINKER_CONTROL_TIMEOUT_SEC = 3
 _BLINKER_TERMINATE_GRACE_SEC = 1
 
 
-def _blinker_script_running() -> bool:
+def _blinker_script_pids() -> list[int]:
     result = subprocess.run(
         ["pidof", "-x", "portblinker.sh"],
         capture_output=True,
@@ -291,18 +292,23 @@ def _blinker_script_running() -> bool:
         timeout=_BLINKER_CONTROL_TIMEOUT_SEC,
     )
     if result.returncode != 0 or not result.stdout.strip():
-        return False
-    return len(result.stdout.strip().split()) > 0
+        return []
+    return [int(pid) for pid in result.stdout.split() if pid.isdecimal()]
+
+
+def _blinker_script_running() -> bool:
+    return bool(_blinker_script_pids())
 
 
 def _signal_unowned_blinker(signal_name: str) -> None:
-    subprocess.run(
-        ["pkill", f"-{signal_name}", "-f", "portblinker.sh"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=_BLINKER_CONTROL_TIMEOUT_SEC,
-    )
+    signal_number = {"TERM": signal.SIGTERM, "KILL": signal.SIGKILL}[signal_name]
+    for pid in _blinker_script_pids():
+        try:
+            os.kill(pid, signal_number)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            log.warning("Unable to signal port blinker PID %s: %s", pid, exc)
 
 
 def _stop_unowned_blinker() -> None:

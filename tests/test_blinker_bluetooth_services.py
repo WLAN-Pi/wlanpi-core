@@ -1,6 +1,7 @@
 """Unit tests for blinker and bluetooth pair services."""
 
 import asyncio
+import signal
 import subprocess
 from unittest.mock import AsyncMock, MagicMock
 
@@ -73,20 +74,15 @@ def test_stop_unowned_blinker_bounds_control_commands(mocker):
         "_blinker_script_running",
         side_effect=[True, False],
     )
-    run = mocker.patch.object(utils_service.subprocess, "run")
+    mocker.patch.object(utils_service, "_blinker_script_pids", return_value=[1234])
+    kill = mocker.patch.object(utils_service.os, "kill")
 
     assert utils_service.stop_port_blinker() == {
         "active": False,
         "status": "stopped",
     }
 
-    run.assert_called_once_with(
-        ["pkill", "-TERM", "-f", "portblinker.sh"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=utils_service._BLINKER_CONTROL_TIMEOUT_SEC,
-    )
+    kill.assert_called_once_with(1234, signal.SIGTERM)
     assert running.call_count == 2
 
 
