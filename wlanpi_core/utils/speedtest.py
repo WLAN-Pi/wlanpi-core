@@ -1,4 +1,5 @@
 """LibreSpeed speedtest helpers for utils API."""
+
 from __future__ import annotations
 
 import json
@@ -7,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from wlanpi_core.constants import LIBRESPEED_CLI, SPEEDTEST_TIMEOUT_SEC
-from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.general import run_command_async
 
 
 def parse_librespeed_output(stdout: str) -> dict[str, Any]:
@@ -63,11 +64,12 @@ def parse_librespeed_output(stdout: str) -> dict[str, Any]:
     }
 
 
-def run_speedtest() -> dict[str, Any]:
+async def run_speedtest() -> dict[str, Any]:
     """Run LibreSpeed CLI and return parsed results."""
-    result = run_command(
+    result = await run_command_async(
         [LIBRESPEED_CLI, "--json", "--simple"],
         raise_on_fail=False,
+        timeout=SPEEDTEST_TIMEOUT_SEC,
     )
     if not result.success:
         detail = (result.stderr or result.stdout or "speedtest failed").strip()

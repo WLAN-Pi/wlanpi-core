@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 
 from wlanpi_core.api.openapi_docs import RESPONSES_API_ERROR
-from wlanpi_core.constants import SPEEDTEST_TIMEOUT_SEC
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
@@ -45,7 +44,11 @@ async def reachability(
 
         if reachability_result.get("error"):
             message = reachability_result["error"]
-            status_code = 400 if "invalid" in message.lower() or "at most" in message.lower() else 503
+            status_code = (
+                400
+                if "invalid" in message.lower() or "at most" in message.lower()
+                else 503
+            )
             return Response(
                 content=json.dumps({"error": message}),
                 status_code=status_code,
@@ -76,18 +79,15 @@ async def reachability(
 )
 async def speedtest():
     """
-    Run LibreSpeed CLI (typically **30–90 seconds**).
+      Run LibreSpeed CLI (typically **30–90 seconds**).
 
-    Use a client HTTP timeout of at least **120 seconds**. UI platforms should
-  wrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.
+      Use a client HTTP timeout of at least **120 seconds**. UI platforms should
+    wrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.
 
-    On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.
+      On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.
     """
     try:
-        result = await asyncio.wait_for(
-            utils_service.show_speedtest(),
-            timeout=SPEEDTEST_TIMEOUT_SEC,
-        )
+        result = await utils_service.show_speedtest()
         if result.get("error"):
             return Response(
                 content=json.dumps({"error": result["error"]}),
@@ -111,6 +111,7 @@ async def speedtest():
 # @router.post("/port_blinker/{action}", response_model=utils.PortBlinkerState)
 # async def port_blinker(action: str):
 #     ...
+
 
 @router.post(
     "/blinker/start",

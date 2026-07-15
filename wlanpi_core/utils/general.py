@@ -96,6 +96,7 @@ async def run_command_async(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    timeout: Optional[float] = None,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -113,6 +114,8 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum number of seconds to wait for the command. By default,
+                 commands have no timeout.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -155,7 +158,6 @@ async def run_command_async(
             stderr=asyncio.subprocess.PIPE,
         )
         proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
@@ -170,7 +172,19 @@ async def run_command_async(
             stderr=asyncio.subprocess.PIPE,
         )
         proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
+
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=input_data), timeout=timeout
+        )
+    except BaseException:
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+        raise
 
     if raise_on_fail and proc.returncode != 0:
         raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)

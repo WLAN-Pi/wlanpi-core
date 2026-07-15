@@ -121,7 +121,7 @@ async def show_reachability(targets: Optional[list[str]] = None):
 async def show_speedtest():
     """Run LibreSpeed CLI speedtest and return parsed results."""
     try:
-        return {"results": await asyncio.to_thread(run_speedtest)}
+        return {"results": await run_speedtest()}
     except RuntimeError as err:
         return {"error": str(err)}
     except ValueError as err:

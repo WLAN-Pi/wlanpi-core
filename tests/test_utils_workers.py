@@ -1,12 +1,17 @@
 """Unit tests for reachability and speedtest helpers."""
+
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from wlanpi_core.constants import LIBRESPEED_CLI, SPEEDTEST_TIMEOUT_SEC
+from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.utils.reachability import (
     parse_targets_param,
     ping_stats_from_jc,
     validate_ping_target,
 )
-from wlanpi_core.utils.speedtest import parse_librespeed_output
+from wlanpi_core.utils.speedtest import parse_librespeed_output, run_speedtest
 
 SAMPLE_LIBRESPEED = """\
 Retrieving server list from https://librespeed.org/backend-servers/servers.php
@@ -70,3 +75,20 @@ def test_parse_librespeed_output_extracts_speeds():
     assert result["pingMs"] == 5
     assert result["server"] == "London, England (Clouvider)"
     assert result["testedAt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_run_speedtest_uses_async_command_timeout():
+    command_result = CommandResult(SAMPLE_LIBRESPEED, "", 0)
+    with patch(
+        "wlanpi_core.utils.speedtest.run_command_async",
+        new=AsyncMock(return_value=command_result),
+    ) as command:
+        result = await run_speedtest()
+
+    command.assert_awaited_once_with(
+        [LIBRESPEED_CLI, "--json", "--simple"],
+        raise_on_fail=False,
+        timeout=SPEEDTEST_TIMEOUT_SEC,
+    )
+    assert result["downloadSpeed"] == "495.79 Mbps"
