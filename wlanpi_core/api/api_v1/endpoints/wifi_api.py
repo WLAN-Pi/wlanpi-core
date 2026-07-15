@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
@@ -25,7 +26,7 @@ log = get_logger(__name__)
 async def show_wifi_capabilities():
     """Return ``iw phy`` capability dumps for each PHY."""
     try:
-        return get_wifi_capabilities()
+        return await asyncio.to_thread(get_wifi_capabilities)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -41,7 +42,7 @@ async def show_wifi_capabilities():
 async def show_wifi_regulatory():
     """Return WiFi regulatory domain information."""
     try:
-        return get_wifi_regulatory()
+        return await asyncio.to_thread(get_wifi_regulatory)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -63,7 +64,7 @@ async def show_hotspot_stations(iface: Optional[str] = None):
     Returns 409 when the device is not in hotspot mode.
     """
     try:
-        return get_hotspot_stations(iface=iface)
+        return await asyncio.to_thread(get_hotspot_stations, iface=iface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -85,7 +86,7 @@ async def show_hotspot_client_link(iface: Optional[str] = None):
     Returns 409 when the device is not in hotspot mode.
     """
     try:
-        return get_hotspot_client_link(iface=iface)
+        return await asyncio.to_thread(get_hotspot_client_link, iface=iface)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
