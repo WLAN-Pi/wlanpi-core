@@ -29,11 +29,36 @@ def test_hotspot_ssid_passphrase_parsing(tmp_path):
 
 
 def test_resolve_ap_interface_explicit():
-    with patch.object(hotspot_service, "_iface_type", return_value="ap"):
+    status = {"root": {"wlan0": {"type": "ap"}}}
+    with patch.object(
+        hotspot_service.network_config,
+        "status",
+        return_value=status,
+    ) as read_status:
         assert hotspot_service.resolve_ap_interface("wlan0") == "wlan0"
+    read_status.assert_called_once_with()
 
 
 def test_resolve_ap_interface_rejects_non_ap():
-    with patch.object(hotspot_service, "_iface_type", return_value="managed"):
+    status = {"root": {"wlan0": {"type": "managed"}}}
+    with patch.object(
+        hotspot_service.network_config,
+        "status",
+        return_value=status,
+    ) as read_status:
         with pytest.raises(ValidationError):
             hotspot_service.resolve_ap_interface("wlan0")
+    read_status.assert_called_once_with()
+
+
+def test_resolve_ap_interface_reuses_status_for_default_fallback():
+    status = {"root": {"wlan0": {"type": "managed"}}}
+    with patch.object(
+        hotspot_service.network_config,
+        "status",
+        return_value=status,
+    ) as read_status:
+        with pytest.raises(ValidationError):
+            hotspot_service.resolve_ap_interface()
+
+    read_status.assert_called_once_with()

@@ -50,8 +50,13 @@ def _parse_hostapd_credentials(conf_path: Path) -> dict[str, str]:
     return {"ssid": ssid, "passphrase": passphrase}
 
 
-def _iface_type(iface: str, namespace: Optional[str] = None) -> Optional[str]:
-    status = network_config.status()
+def _iface_type(
+    iface: str,
+    namespace: Optional[str] = None,
+    status: Optional[dict[str, Any]] = None,
+) -> Optional[str]:
+    if status is None:
+        status = network_config.status()
     ns_key = namespace or "root"
     iface_info = status.get(ns_key, {}).get(iface)
     if not iface_info:
@@ -62,11 +67,12 @@ def _iface_type(iface: str, namespace: Optional[str] = None) -> Optional[str]:
 
 def resolve_ap_interface(iface: Optional[str] = None) -> str:
     """Return an AP-mode interface name, preferring ``iface`` when valid."""
+    status = network_config.status()
     if iface:
         iface = iface.strip()
         if not iface:
             raise ValidationError("interface name is required", status_code=400)
-        iface_type = _iface_type(iface)
+        iface_type = _iface_type(iface, status=status)
         if iface_type not in _AP_TYPES:
             raise ValidationError(
                 f"Interface {iface} is not in AP mode",
@@ -74,12 +80,12 @@ def resolve_ap_interface(iface: Optional[str] = None) -> str:
             )
         return iface
 
-    for name, info in network_config.status().get("root", {}).items():
+    for name, info in status.get("root", {}).items():
         raw_type = (info.get("type") or info.get("Type") or "").lower()
         if raw_type in _AP_TYPES:
             return name
 
-    if _iface_type(_DEFAULT_AP_IFACE) in _AP_TYPES:
+    if _iface_type(_DEFAULT_AP_IFACE, status=status) in _AP_TYPES:
         return _DEFAULT_AP_IFACE
 
     raise ValidationError("No AP-mode wireless interface found", status_code=503)
