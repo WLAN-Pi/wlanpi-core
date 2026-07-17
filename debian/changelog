@@ -1,3 +1,11 @@
+wlanpi-core (2.1.10-4) unstable; urgency=medium
+
+  * Remove sqlite3 upper version bound (uninstallable on trixie).
+  * Drop python3-distutils from Build-Depends and Pre-Depends (removed in
+    trixie; python3-setuptools provides it).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 17 Jul 2026 17:11:43 -0400
+
 wlanpi-core (2.1.10-1) unstable; urgency=medium
 
   * Hardening namespaces functionality for robustness and reliability
