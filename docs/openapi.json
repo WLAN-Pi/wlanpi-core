@@ -1430,11 +1430,19 @@
             }
           },
           "409": {
-            "description": "Multiple monitor adapters \u2014 client must pass `iface` and `namespace`",
+            "description": "Conflict \u2014 branch on JSON `error`: `NEEDS_SELECTION` (multiple monitors; pass `iface`/`namespace`) or `SCAN_IN_PROGRESS` (same adapter already scanning; coalesce/retry).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScanNeedsSelectionResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScanNeedsSelectionResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ScanInProgressResponse"
+                    }
+                  ],
+                  "title": "Response 409 Get A Systemd Network Scan Api V1 Network Wlan Scan Get"
                 }
               }
             }
@@ -1699,7 +1707,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NetConfig-Input"
+                "$ref": "#/components/schemas/NetConfig"
               }
             }
           },
@@ -1768,7 +1776,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NetConfig-Output"
+                  "$ref": "#/components/schemas/NetConfig"
                 }
               }
             }
@@ -1828,7 +1836,7 @@
                   "additionalProperties": {
                     "anyOf": [
                       {
-                        "$ref": "#/components/schemas/NetConfig-Output"
+                        "$ref": "#/components/schemas/NetConfig"
                       },
                       {
                         "type": "string"
@@ -3133,7 +3141,7 @@
             }
           },
           "409": {
-            "description": "Selected adapter is already scanning",
+            "description": "Selected adapter is already scanning (`error`: `SCAN_IN_PROGRESS`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3143,7 +3151,7 @@
             }
           },
           "422": {
-            "description": "No suitable scan adapter",
+            "description": "No suitable scan adapter (`error`: `NO_SCAN_ADAPTER`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3703,6 +3711,7 @@
           },
           "paired_devices": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -3988,6 +3997,7 @@
         "properties": {
           "leases": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -4925,70 +4935,7 @@
         ],
         "title": "MessageResponse"
       },
-      "NamespaceConfig-Input": {
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/NetworkModeEnum",
-            "default": "managed"
-          },
-          "iface_display_name": {
-            "type": "string",
-            "title": "Iface Display Name"
-          },
-          "phy": {
-            "type": "string",
-            "title": "Phy"
-          },
-          "interface": {
-            "type": "string",
-            "title": "Interface"
-          },
-          "security": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NetSecurity"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "mlo": {
-            "type": "boolean",
-            "title": "Mlo",
-            "default": false
-          },
-          "default_route": {
-            "type": "boolean",
-            "title": "Default Route",
-            "default": false
-          },
-          "autostart_app": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Autostart App"
-          },
-          "namespace": {
-            "type": "string",
-            "title": "Namespace"
-          }
-        },
-        "type": "object",
-        "required": [
-          "iface_display_name",
-          "phy",
-          "interface",
-          "namespace"
-        ],
-        "title": "NamespaceConfig"
-      },
-      "NamespaceConfig-Output": {
+      "NamespaceConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5065,7 +5012,7 @@
         ],
         "title": "NamespaceStatusError"
       },
-      "NetConfig-Input": {
+      "NetConfig": {
         "properties": {
           "id": {
             "type": "string",
@@ -5075,7 +5022,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5089,48 +5036,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Roots"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id"
-        ],
-        "title": "NetConfig"
-      },
-      "NetConfig-Output": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "namespaces": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Output"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Namespaces"
-          },
-          "roots": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/RootConfig-Output"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5153,7 +5059,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5167,7 +5073,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5299,6 +5205,7 @@
           "errors": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -5804,65 +5711,7 @@
         ],
         "title": "RevertNamespace"
       },
-      "RootConfig-Input": {
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/NetworkModeEnum",
-            "default": "managed"
-          },
-          "iface_display_name": {
-            "type": "string",
-            "title": "Iface Display Name"
-          },
-          "phy": {
-            "type": "string",
-            "title": "Phy"
-          },
-          "interface": {
-            "type": "string",
-            "title": "Interface"
-          },
-          "security": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NetSecurity"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "mlo": {
-            "type": "boolean",
-            "title": "Mlo",
-            "default": false
-          },
-          "default_route": {
-            "type": "boolean",
-            "title": "Default Route",
-            "default": false
-          },
-          "autostart_app": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Autostart App"
-          }
-        },
-        "type": "object",
-        "required": [
-          "iface_display_name",
-          "phy",
-          "interface"
-        ],
-        "title": "RootConfig"
-      },
-      "RootConfig-Output": {
+      "RootConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5935,6 +5784,7 @@
           },
           "routes": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -5978,6 +5828,31 @@
           "label"
         ],
         "title": "ScanAdapter"
+      },
+      "ScanInProgressResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": "SCAN_IN_PROGRESS",
+            "examples": [
+              "SCAN_IN_PROGRESS"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Which adapter is already scanning",
+            "examples": [
+              "A scan is already in progress on wlan0 in root"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ScanInProgressResponse"
       },
       "ScanItem": {
         "properties": {
@@ -6028,10 +5903,14 @@
           "error": {
             "type": "string",
             "title": "Error",
-            "default": "NEEDS_SELECTION"
+            "default": "NEEDS_SELECTION",
+            "examples": [
+              "NEEDS_SELECTION"
+            ]
           },
           "candidates": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -6050,10 +5929,14 @@
           "error": {
             "type": "string",
             "title": "Error",
-            "default": "NO_SCAN_ADAPTER"
+            "default": "NO_SCAN_ADAPTER",
+            "examples": [
+              "NO_SCAN_ADAPTER"
+            ]
           },
           "candidates": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -6679,6 +6562,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -6780,7 +6670,7 @@
             "example": "wlan0"
           },
           "netConfig": {
-            "$ref": "#/components/schemas/NetConfig-Input"
+            "$ref": "#/components/schemas/NetConfig"
           },
           "removeAllFirst": {
             "type": "boolean",
@@ -7045,7 +6935,12 @@
         "properties": {
           "error": {
             "type": "string",
-            "title": "Error"
+            "title": "Error",
+            "description": "Machine-readable code: `NO_SCAN_ADAPTER` or `SCAN_IN_PROGRESS`",
+            "examples": [
+              "NO_SCAN_ADAPTER",
+              "SCAN_IN_PROGRESS"
+            ]
           },
           "message": {
             "anyOf": [
@@ -7056,14 +6951,19 @@
                 "type": "null"
               }
             ],
-            "title": "Message"
+            "title": "Message",
+            "description": "Human-readable detail (set for SCAN_IN_PROGRESS)",
+            "examples": [
+              "A scan is already in progress on wlan0 in root"
+            ]
           },
           "candidates": {
             "items": {
               "$ref": "#/components/schemas/ScanAdapter"
             },
             "type": "array",
-            "title": "Candidates"
+            "title": "Candidates",
+            "description": "Present for NO_SCAN_ADAPTER; usually empty"
           }
         },
         "type": "object",

@@ -154,7 +154,27 @@ GET /api/v1/utils/wlan/scan?iface=wlanpi1&namespace=scan_ns
 
 Shown when no monitor adapter is available and no managed adapter exists in root. Display a clear error; do not retry in a tight loop.
 
-### 3.4 Server error (`503`)
+### 3.4 Concurrent scan (`409`)
+
+Core serializes active scans per `(namespace, iface)`. A second request that targets the same adapter while a scan is running returns:
+
+```json
+{
+  "error": "SCAN_IN_PROGRESS",
+  "message": "A scan is already in progress on wlan0 in root"
+}
+```
+
+| Field | Use |
+|-------|-----|
+| `error` | Always `SCAN_IN_PROGRESS` |
+| `message` | Human-readable; includes iface and namespace (`root` when default) |
+
+**Client action:** do **not** treat this as adapter selection. Coalesce with the in-flight job, wait briefly, then retry — or reuse results already being fetched for another UI surface. UI job runners with `freshnessSec: 30` should absorb most overlaps.
+
+**Legacy note:** `GET /network/wlan/scan` also returns **409** for multi-adapter `NEEDS_SELECTION`. Always branch on the JSON `error` code, not HTTP status alone.
+
+### 3.5 Server error (`503`)
 
 JSON `{ "error": "…" }` when the scan worker reports failure, or plain-text `Unable to complete WLAN scan` for unexpected errors. Scan failed (e.g. `wpa_cli` error, supplicant not running). Offer retry after delay.
 
@@ -172,7 +192,8 @@ Core uses the same adapter layout as `GET /api/v1/network/config/status` (`iw de
 | 2+ monitor adapters | 200 | `needsSelection: true`; **no scan** |
 | 0 monitor, ≥1 managed in root | 200 | Fallback to first managed in root; scan runs |
 | 0 suitable adapters | 422 | `NO_SCAN_ADAPTER` |
-| `iface` (+ optional `namespace`) set | 200 or 422 | Use named adapter; 422 if not found |
+| Same adapter already scanning | 409 | `SCAN_IN_PROGRESS` — retry / coalesce |
+| `iface` (+ optional `namespace`) set | 200, 409, or 422 | Use named adapter; 422 if not found; 409 if already scanning |
 
 **Device mode:** Scan works in any device mode (classic, hotspot, etc.) as long as adapters exist.
 
@@ -206,7 +227,8 @@ From [gap matrix](./p0-api-gap-matrix.csv):
 ```
 1. GET /utils/wlan/scan
 2. If needsSelection → show candidates → GET with iface + namespace
-3. Render networks[] (SSID, signal bar, security icon from key_mgmt)
+3. If 409 SCAN_IN_PROGRESS → wait / coalesce; do not open adapter picker
+4. Render networks[] (SSID, signal bar, security icon from key_mgmt)
 ```
 
 ### 6.2 Periodic updates (scanner screen, TUI)
@@ -216,7 +238,8 @@ Implement in **wlanpi-ui job layer**, not core:
 ```
 1. Start job with freshnessSec: 30
 2. Loop: GET /utils/wlan/scan → merge/diff networks[] → push on job WebSocket
-3. Stop job on screen exit
+3. On 409 SCAN_IN_PROGRESS → skip tick or short backoff (another client owns the radio)
+4. Stop job on screen exit
 ```
 
 Core remains stateless. Throttle client-side (≥15–30s) to avoid hammering `wpa_cli scan`.
@@ -376,6 +399,7 @@ Matrix scenarios in `tests/scenarios/p0_api_test_matrix.csv`:
 | `scan_explicit_iface_namespace` | 200, matching `selectedAdapter` |
 | `scan_fallback_managed_root` | 200, managed adapter selected |
 | `scan_no_adapter` | 422, `NO_SCAN_ADAPTER` |
+| `scan_in_progress` | 409, `SCAN_IN_PROGRESS` |
 
 ---
 
@@ -383,5 +407,6 @@ Matrix scenarios in `tests/scenarios/p0_api_test_matrix.csv`:
 
 | Date | Change |
 |------|--------|
+| 2026-07-17 | Document concurrent-scan **409** `SCAN_IN_PROGRESS` (canonical + legacy); clarify vs needsSelection |
 | 2026-06-14 | iwlwifi: delegate monitor selection to managed sibling; `iw scan` fallback without wpa_supplicant |
 | 2026-06-14 | Initial Live endpoint; namespace-aware selection; `wpa/scan.py` shared primitives |

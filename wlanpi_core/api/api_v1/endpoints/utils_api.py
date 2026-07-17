@@ -164,11 +164,14 @@ async def blinker_status():
         400: RESPONSES_API_ERROR[400],
         409: {
             "model": utils.WlanScanErrorResponse,
-            "description": "Selected adapter is already scanning",
+            "description": (
+                "Selected adapter is already scanning "
+                "(`error`: `SCAN_IN_PROGRESS`)"
+            ),
         },
         422: {
             "model": utils.WlanScanErrorResponse,
-            "description": "No suitable scan adapter",
+            "description": "No suitable scan adapter (`error`: `NO_SCAN_ADAPTER`)",
         },
         503: RESPONSES_API_ERROR[503],
     },

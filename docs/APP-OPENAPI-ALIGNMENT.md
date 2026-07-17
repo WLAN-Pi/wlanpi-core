@@ -58,8 +58,11 @@ These touch-panel usages match live core + OpenAPI:
 | Query | `iface`, `namespace`, `hidden`, `detail` | `type` (ignored), `interface` |
 | Response | `networks[]`, `selectedAdapter`, `needsSelection`, `candidates`, `scannedAt`, RF extensions | Legacy `nets[]` (`ScanItem`) |
 | Multi-adapter | **200** + `needsSelection: true` | **409** + `NEEDS_SELECTION` |
+| Concurrent scan | **409** + `SCAN_IN_PROGRESS` | **409** + `SCAN_IN_PROGRESS` (same code) |
 
 The scanner capability (`app.scanner.scan`) **must** keep using `/utils/wlan/scan`. The legacy path exists only for old clients.
+
+**409 is overloaded on the legacy path** (`NEEDS_SELECTION` vs `SCAN_IN_PROGRESS`). Canonical clients should key off `error`, and treat `SCAN_IN_PROGRESS` as retry/coalesce — never as an adapter picker.
 
 ### 2. Speedtest is documented
 

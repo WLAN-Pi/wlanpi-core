@@ -5,10 +5,13 @@ Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guid
 """
 from __future__ import annotations
 
+from typing import Union
+
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
     DeprecatedEndpointResponse,
     MessageResponse,
+    ScanInProgressResponse,
     ScanNeedsSelectionResponse,
     ScanNoAdapterResponse,
 )
@@ -159,8 +162,12 @@ RESPONSES_GONE = {
 
 RESPONSES_SCAN = {
     409: {
-        "model": ScanNeedsSelectionResponse,
-        "description": "Multiple monitor adapters — client must pass `iface` and `namespace`",
+        "model": Union[ScanNeedsSelectionResponse, ScanInProgressResponse],
+        "description": (
+            "Conflict — branch on JSON `error`: "
+            "`NEEDS_SELECTION` (multiple monitors; pass `iface`/`namespace`) or "
+            "`SCAN_IN_PROGRESS` (same adapter already scanning; coalesce/retry)."
+        ),
     },
     422: {
         "model": ScanNoAdapterResponse,

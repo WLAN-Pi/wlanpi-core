@@ -189,7 +189,8 @@ GET /api/v1/utils/wlan/scan?detail=full
 | 200 + `networks[]` | Scan completed | Display `networks`; show `selectedAdapter` |
 | 200 + `needsSelection: true` | Multiple monitor radios | Show `candidates[]`; retry with `iface` + `namespace` |
 | 422 + `NO_SCAN_ADAPTER` | No suitable radio | Show error; check adapter layout |
-| 409 | (legacy path only) | Same as needsSelection on old `/network/wlan/scan` |
+| 409 + `SCAN_IN_PROGRESS` | Same adapter already scanning | Coalesce / short retry — **not** adapter selection |
+| 409 + `NEEDS_SELECTION` | Legacy `/network/wlan/scan` only | Same as needsSelection; prefer canonical path |
 
 Full field reference: [P0-utils-wlan-scan-api.md](./P0-utils-wlan-scan-api.md).
 
@@ -430,7 +431,7 @@ Check status before start; stop before starting again.
 2. **Always authenticate first** — tool: `auth_token_issue` → store bearer for subsequent tools.
 3. **Never call deprecated paths** — use [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md).
 4. **Mode-gated tools** — read `device_info` before hotspot tools; return user-facing message on 409.
-5. **Scan tool** — handle three outcomes: networks, needsSelection, NO_SCAN_ADAPTER (see Lesson 4).
+5. **Scan tool** — handle four outcomes: networks, needsSelection, `NO_SCAN_ADAPTER`, `SCAN_IN_PROGRESS` (see Lesson 4).
 6. **Config activate tool** — return after provisioned; document that user must poll `config_status` separately or expose a composite tool.
 7. **Speedtest tool** — set tool timeout ≥ 120s; surface 503 errors verbatim.
 8. **Field names** — generate clients from OpenAPI models; do not guess snake_case for camelCase fields.
@@ -453,7 +454,7 @@ Check status before start; stop before starting again.
 |------|-------------------------------|
 | 200 | Success |
 | 401 | Auth missing/invalid |
-| 409 | Mode conflict or scan needs adapter selection |
+| 409 | Mode conflict; scan `SCAN_IN_PROGRESS`; Bluetooth `PAIRING_IN_PROGRESS`; legacy scan `NEEDS_SELECTION` — always read JSON `error` |
 | 410 | Deprecated endpoint removed (see body.replacement) |
 | 412 | Auth precondition (missing device_id) |
 | 422 | Scan: no adapter |

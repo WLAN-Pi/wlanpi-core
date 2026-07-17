@@ -27,8 +27,11 @@
 
 | HTTP | Body | Meaning |
 |------|------|---------|
-| 409 | `{ "error": "NEEDS_SELECTION", "candidates": [...] }` | Multiple monitor adapters |
+| 409 | `{ "error": "NEEDS_SELECTION", "candidates": [...] }` | Multiple monitor adapters — pass `iface` (and namespace on the canonical path) |
+| 409 | `{ "error": "SCAN_IN_PROGRESS", "message": "…" }` | Same adapter already scanning — coalesce / short retry; **not** adapter selection |
 | 422 | `{ "error": "NO_SCAN_ADAPTER", "candidates": [] }` | No scan-capable adapter |
+
+Always branch on the JSON `error` field — **409 is overloaded** on this legacy path. Prefer `GET /utils/wlan/scan` for new code (multi-adapter is **200** + `needsSelection` there; concurrent scan is still **409** `SCAN_IN_PROGRESS`).
 
 ## Client migration checklist
 

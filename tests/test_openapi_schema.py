@@ -119,12 +119,36 @@ def test_canonical_wlan_scan_in_openapi(openapi_schema):
     get = openapi_schema["paths"]["/api/v1/utils/wlan/scan"]["get"]
     assert get.get("summary")
     assert "canonical" in get["summary"].lower()
+    assert "409" in get["responses"]
     assert "422" in get["responses"]
     assert "503" in get["responses"]
+    assert "SCAN_IN_PROGRESS" in get["responses"]["409"]["description"]
     ref = get["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
     assert ref.endswith("/WlanScanResponse")
     schema = openapi_schema["components"]["schemas"]["WlanScanResponse"]
     assert schema.get("additionalProperties") is False
+    err = openapi_schema["components"]["schemas"]["WlanScanErrorResponse"]
+    assert "SCAN_IN_PROGRESS" in str(err["properties"]["error"])
+
+
+def test_legacy_wlan_scan_documents_both_409_conflicts(openapi_schema):
+    get = openapi_schema["paths"]["/api/v1/network/wlan/scan"]["get"]
+    conflict = get["responses"]["409"]
+    assert "NEEDS_SELECTION" in conflict["description"]
+    assert "SCAN_IN_PROGRESS" in conflict["description"]
+    schema = conflict["content"]["application/json"]["schema"]
+    # Union may be anyOf or oneOf depending on FastAPI/Pydantic version
+    variants = schema.get("anyOf") or schema.get("oneOf") or [schema]
+    refs = []
+    for item in variants:
+        if "$ref" in item:
+            refs.append(item["$ref"])
+        elif "anyOf" in item:
+            refs.extend(p["$ref"] for p in item["anyOf"] if "$ref" in p)
+    joined = " ".join(refs) if refs else str(schema)
+    assert "ScanNeedsSelectionResponse" in joined
+    assert "ScanInProgressResponse" in joined
+    assert "ScanInProgressResponse" in openapi_schema["components"]["schemas"]
 
 
 def test_network_config_status_typed(openapi_schema):

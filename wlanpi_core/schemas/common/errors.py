@@ -32,12 +32,20 @@ class DeprecatedEndpointResponse(BaseModel):
 
 
 class ScanNeedsSelectionResponse(BaseModel):
-    error: str = Field(default="NEEDS_SELECTION")
+    error: str = Field(default="NEEDS_SELECTION", examples=["NEEDS_SELECTION"])
     candidates: list[dict[str, Any]] = Field(
         description="Monitor adapters the client must choose from before retrying scan"
     )
 
 
+class ScanInProgressResponse(BaseModel):
+    error: str = Field(default="SCAN_IN_PROGRESS", examples=["SCAN_IN_PROGRESS"])
+    message: str = Field(
+        description="Which adapter is already scanning",
+        examples=["A scan is already in progress on wlan0 in root"],
+    )
+
+
 class ScanNoAdapterResponse(BaseModel):
-    error: str = Field(default="NO_SCAN_ADAPTER")
+    error: str = Field(default="NO_SCAN_ADAPTER", examples=["NO_SCAN_ADAPTER"])
     candidates: list[dict[str, Any]] = Field(default_factory=list)
