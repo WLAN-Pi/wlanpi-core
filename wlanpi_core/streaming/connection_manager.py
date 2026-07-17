@@ -1,20 +1,29 @@
 import asyncio
 import json
 import re
-import subprocess
 from typing import Any, Dict
 
 from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.utils.general import run_command_async, terminate_process_async
+from wlanpi_core.streaming.models import (
+    CaptureInterfaceConfig,
+    CaptureStart,
+    validate_capture_frequency,
+    validate_capture_interface,
+    validate_capture_width,
+)
 
 log = get_logger(__name__)
+_IW_TIMEOUT_SEC = 5
 
 
 class ConnectionManager:
     def __init__(self):
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
+        self.interface_owners: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
         self.clients[websocket] = {
@@ -22,12 +31,57 @@ class ConnectionManager:
             "proc": None,
             "task": None,
             "channel_tasks": {},
+            "interfaces": set(),
         }
         await websocket.accept()
 
+    def _claim_interfaces(
+        self, websocket: WebSocket, interfaces: list[str]
+    ) -> list[str]:
+        """Atomically claim capture interfaces for one WebSocket client."""
+        conflicts = sorted(
+            iface
+            for iface in interfaces
+            if (owner := self.interface_owners.get(iface)) is not None
+            and owner is not websocket
+        )
+        if conflicts:
+            return conflicts
+
+        client = self.clients[websocket]
+        claimed = set(interfaces)
+        for iface in claimed:
+            self.interface_owners[iface] = websocket
+        client["interfaces"] = claimed
+        return []
+
+    def _release_interfaces(self, websocket: WebSocket) -> None:
+        client = self.clients.get(websocket)
+        if not client:
+            return
+        for iface in client.get("interfaces", set()):
+            if self.interface_owners.get(iface) is websocket:
+                self.interface_owners.pop(iface, None)
+        client["interfaces"] = set()
+
+    async def _stop_channel_tasks(self, client: Dict[str, Any]) -> None:
+        channel_tasks = list(client.get("channel_tasks", {}).values())
+        client["channel_tasks"] = {}
+        for channel_task in channel_tasks:
+            channel_task.cancel()
+        for channel_task in channel_tasks:
+            try:
+                await channel_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                log.debug("Channel hopping task shutdown failed: %s", exc)
+
     def configure(self, websocket: WebSocket, iface: str, config: dict) -> None:
         if websocket in self.clients:
-            self.clients[websocket]["configs"][iface] = config
+            iface = validate_capture_interface(iface)
+            validated = CaptureInterfaceConfig.model_validate(config)
+            self.clients[websocket]["configs"][iface] = validated.model_dump()
 
     async def disconnect(self, websocket: WebSocket) -> None:
         try:
@@ -57,7 +111,12 @@ class ConnectionManager:
 
     async def send_supported_frequencies(self, websocket: WebSocket) -> None:
         try:
-            output = subprocess.check_output([IW_FILE, "dev"], encoding="utf-8")
+            output = (
+                await run_command_async(
+                    [IW_FILE, "dev"],
+                    timeout=_IW_TIMEOUT_SEC,
+                )
+            ).stdout
             interfaces = re.findall(r"Interface (wlanpi\d+)", output)
 
             freqs_by_iface = {}
@@ -67,9 +126,12 @@ class ConnectionManager:
                     index = int(re.search(r"wlanpi(\d+)", iface).group(1))
                     phy = f"phy{index}"
 
-                    chan_output = subprocess.check_output(
-                        [IW_FILE, "phy", phy, "channels"], encoding="utf-8"
-                    )
+                    chan_output = (
+                        await run_command_async(
+                            [IW_FILE, "phy", phy, "channels"],
+                            timeout=_IW_TIMEOUT_SEC,
+                        )
+                    ).stdout
 
                     freqs = []
                     for line in chan_output.splitlines():
@@ -111,6 +173,36 @@ class ConnectionManager:
             )
             return
 
+        try:
+            start = CaptureStart(
+                interfaces=interfaces,
+                pcap_filter=pcap_filter,
+            )
+        except ValueError:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "CAPTURE_CONFIG_INVALID",
+                "Invalid capture start configuration.",
+            )
+            return
+        interfaces = start.interfaces
+        pcap_filter = start.pcap_filter
+
+        if (
+            client["task"] and not client["task"].done()
+        ) or (client["proc"] and client["proc"].returncode is None):
+            await self.send_message_event(
+                websocket,
+                "error",
+                "CAPTURE_ALREADY_RUNNING",
+                "A capture is already running for this client.",
+            )
+            return
+
+        if client["task"] or client["proc"] or client["channel_tasks"]:
+            await self.stop_streaming(websocket, notify=False)
+
         missing = [i for i in interfaces if i not in client["configs"]]
         if missing:
             await self.send_message_event(
@@ -119,6 +211,17 @@ class ConnectionManager:
                 "CONFIG_MISSING",
                 f"No config for: {', '.join(missing)}",
             )
+            return
+
+        conflicts = self._claim_interfaces(websocket, interfaces)
+        if conflicts:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "INTERFACE_IN_USE",
+                f"Capture interface already in use: {', '.join(conflicts)}",
+            )
+            return
 
         for iface in interfaces:
             config = client["configs"].get(iface)
@@ -151,8 +254,10 @@ class ConnectionManager:
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
             )
         except Exception as e:
+            self._release_interfaces(websocket)
             log.warning(f"Failed to start capture process: {e!r}")
             await self.send_message_event(
                 websocket, "error", "CAPTURE_START_FAILED", "Failed to start capture."
@@ -170,8 +275,7 @@ class ConnectionManager:
                     websocket, "status", "CAPTURE_ENDED", "Capture ended."
                 )
             except asyncio.CancelledError:
-                proc.terminate()
-                await proc.wait()
+                raise
             except Exception:
                 await self.send_message_event(
                     websocket,
@@ -179,6 +283,14 @@ class ConnectionManager:
                     "CAPTURE_STREAM_ERROR",
                     "Error while streaming capture data.",
                 )
+            finally:
+                await terminate_process_async(proc)
+                await self._stop_channel_tasks(client)
+                self._release_interfaces(websocket)
+                if client.get("proc") is proc:
+                    client["proc"] = None
+                if client.get("task") is asyncio.current_task():
+                    client["task"] = None
 
         client["proc"] = proc
         client["task"] = asyncio.create_task(stream())
@@ -203,45 +315,50 @@ class ConnectionManager:
             f"Started capture on {', '.join(interfaces)}",
         )
 
-    async def stop_streaming(self, websocket: WebSocket) -> None:
+    async def stop_streaming(self, websocket: WebSocket, notify: bool = True) -> None:
         client = self.clients.get(websocket)
         if not client:
             return
 
-        if client["task"]:
-            client["task"].cancel()
-            try:
-                await client["task"]
-            except asyncio.CancelledError:
-                pass
-            client["task"] = None
-
-        if client["proc"]:
-            try:
-                client["proc"].terminate()
-                await client["proc"].wait()
-            except ProcessLookupError:
-                pass
-            except Exception as e:
-                log.debug(f"Capture process termination failed: {e}")
-            client["proc"] = None
-
-        for task in client.get("channel_tasks", {}).values():
+        task = client.get("task")
+        proc = client.get("proc")
+        if task:
             task.cancel()
-        for task in client["channel_tasks"].values():
+
+        if task:
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-        client["channel_tasks"] = {}
-        client.pop("channel_state", None)
+            except Exception as e:
+                log.debug(f"Capture streaming task shutdown failed: {e}")
 
-        try:
-            await self.send_message_event(
-                websocket, "status", "CAPTURE_STOPPED", "Capture stopped."
-            )
-        except Exception:
-            pass
+        if proc:
+            await terminate_process_async(proc)
+
+        await self._stop_channel_tasks(client)
+        self._release_interfaces(websocket)
+
+        client["task"] = None
+        client["proc"] = None
+
+        if notify:
+            try:
+                await self.send_message_event(
+                    websocket, "status", "CAPTURE_STOPPED", "Capture stopped."
+                )
+            except Exception:
+                pass
+
+    async def shutdown_all(self) -> None:
+        """Stop every capture and discard all client state during app shutdown."""
+        for websocket in list(self.clients):
+            try:
+                await self.stop_streaming(websocket, notify=False)
+            except Exception as exc:
+                log.warning("Capture shutdown failed for a client: %r", exc)
+        self.clients.clear()
+        self.interface_owners.clear()
 
     async def _hop_channels(
         self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int
@@ -292,19 +409,28 @@ class ConnectionManager:
             )
 
     async def _set_channel(self, iface: str, freq: int, width: int) -> bool:
+        try:
+            iface = validate_capture_interface(iface)
+            freq = validate_capture_frequency(freq)
+            width = validate_capture_width(width)
+        except ValueError:
+            return False
+
         cmd = [IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)]
 
         if width >= 40:
-            cmd.append(str(self._center_frequency(freq, width)))
+            center_frequency = self._center_frequency(freq, width)
+            if center_frequency < 0:
+                return False
+            cmd.append(str(center_frequency))
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+            result = await run_command_async(
+                cmd,
+                raise_on_fail=False,
+                timeout=_IW_TIMEOUT_SEC,
             )
-            await proc.wait()
-            return proc.returncode == 0
+            return result.success
         except Exception:
             return False
 

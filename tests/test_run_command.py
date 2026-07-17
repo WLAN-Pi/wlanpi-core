@@ -1,3 +1,8 @@
+import logging
+import os
+import shlex
+import subprocess
+import time
 from io import StringIO
 from unittest.mock import patch
 
@@ -50,11 +55,35 @@ def test_run_command_input_and_stdin_error():
     assert "You cannot use both 'input' and 'stdin'" in str(context.value)
 
 
-def test_run_command_shell_warning(caplog):
-    # Test the warning message when using shell=True
-    with caplog.at_level("WARNING"):
-        run_command("echo test", shell=True)
-    assert "Command echo test being run as a shell script" in caplog.text
+def test_run_command_shell_logs_safe_injection_warning(caplog):
+    command = "echo sensitive-command-text"
+    with caplog.at_level(logging.WARNING):
+        run_command(command, shell=True)
+
+    assert any("shell=True" in record.getMessage() for record in caplog.records)
+    assert command not in caplog.text
+
+
+def test_run_command_timeout_reaps_shell_descendants(tmp_path):
+    child_pid_file = tmp_path / "child.pid"
+    script = (
+        "trap 'wait; exit 0' TERM; "
+        f"sleep 60 & echo $! > {shlex.quote(str(child_pid_file))}; wait"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_command(["/bin/sh", "-c", script], timeout=0.2)
+
+    child_pid = int(child_pid_file.read_text())
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    else:
+        pytest.fail("timed-out command left its child process running")
 
 
 def test_command_result():

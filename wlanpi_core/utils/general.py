@@ -1,6 +1,8 @@
 import asyncio.subprocess
 import logging
+import os
 import shlex
+import signal
 import subprocess
 import threading
 import time
@@ -9,6 +11,7 @@ from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, Generic, Optional, TextIO, Type, TypeVar, Union
 
+from wlanpi_core.constants import COMMAND_TIMEOUT_SEC
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -16,6 +19,56 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 log = get_logger(__name__)
 
 T = TypeVar("T")
+_PROCESS_TERMINATE_GRACE_SEC = 1.0
+
+
+def _signal_process_group(proc, sig: signal.Signals) -> None:
+    """Signal the isolated process group, falling back to the direct child."""
+    pid = getattr(proc, "pid", None)
+    if isinstance(pid, int):
+        try:
+            os.killpg(pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+
+    action = proc.terminate if sig == signal.SIGTERM else proc.kill
+    try:
+        action()
+    except ProcessLookupError:
+        pass
+
+
+def terminate_process(proc: subprocess.Popen) -> None:
+    """Terminate, force-kill when needed, and reap a synchronous child group."""
+    if proc.poll() is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        proc.communicate(timeout=_PROCESS_TERMINATE_GRACE_SEC)
+    except subprocess.TimeoutExpired:
+        _signal_process_group(proc, signal.SIGKILL)
+        proc.communicate()
+
+
+async def terminate_process_async(proc: Process) -> None:
+    """Terminate, force-kill when needed, and reap an asyncio child group."""
+    if proc.returncode is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        await asyncio.wait_for(
+            proc.wait(),
+            timeout=_PROCESS_TERMINATE_GRACE_SEC,
+        )
+    except asyncio.TimeoutError:
+        if proc.returncode is None:
+            _signal_process_group(proc, signal.SIGKILL)
+        await proc.wait()
 
 
 def run_command(
@@ -24,6 +77,7 @@ def run_command(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -41,6 +95,7 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -64,9 +119,9 @@ def run_command(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
         )
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
@@ -80,6 +135,7 @@ def run_command(
         stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     ) as proc:
         if input:
             input_data = input.encode()
@@ -87,7 +143,14 @@ def run_command(
             input_data = stdin.read().encode()
         else:
             input_data = None
-        stdout, stderr = proc.communicate(input=input_data)
+        try:
+            stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
+        except BaseException:
+            log.warning(
+                "Command did not complete normally; terminating its process group"
+            )
+            terminate_process(proc)
+            raise
 
         if raise_on_fail and proc.returncode != 0:
             raise RunCommandError(stderr.decode(), proc.returncode)
@@ -100,6 +163,7 @@ async def run_command_async(
     stdin: Optional[TextIO] = None,
     shell=False,
     raise_on_fail=True,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
     """
@@ -117,6 +181,7 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -151,9 +216,9 @@ async def run_command_async(
             cmd: list
             cmd: str = shlex.join(cmd)
         cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
         )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
@@ -161,9 +226,9 @@ async def run_command_async(
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
@@ -176,9 +241,18 @@ async def run_command_async(
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
+
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=input_data), timeout=timeout
+        )
+    except BaseException:
+        log.warning("Command did not complete normally; terminating its process group")
+        await terminate_process_async(proc)
+        raise
 
     if raise_on_fail and proc.returncode != 0:
         raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)

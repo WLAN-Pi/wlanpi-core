@@ -10,6 +10,7 @@ from wlanpi_core.api.api_v1.endpoints import (
     streaming_api,
     system_api,
     utils_api,
+    wifi_api,
 )
 
 api_router = APIRouter()
@@ -19,6 +20,9 @@ api_router.include_router(auth_api.router, prefix="/auth", tags=["authentication
 api_router.include_router(bluetooth_api.router, prefix="/bluetooth", tags=["bluetooth"])
 
 api_router.include_router(network_api.router, prefix="/network", tags=["network"])
+api_router.include_router(
+    network_api.legacy_wlan_router, prefix="/network", tags=["deprecated"]
+)
 api_router.include_router(
     network_config_api.router, prefix="/network/config", tags=["network_config"]
 )
@@ -30,6 +34,8 @@ api_router.include_router(
 api_router.include_router(system_api.router, prefix="/system", tags=["system"])
 
 api_router.include_router(utils_api.router, prefix="/utils", tags=["device utils"])
+
+api_router.include_router(wifi_api.router, prefix="/wifi", tags=["wifi"])
 
 api_router.include_router(profiler_api.router, prefix="/profiler", tags=["profiler"])
 

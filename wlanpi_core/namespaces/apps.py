@@ -6,18 +6,105 @@ that run within network namespaces.
 """
 import json
 import logging
+import os
 import subprocess
+import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.namespaces import processes
-from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.general import run_command, terminate_process
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class _OwnedAppProcess:
+    process: subprocess.Popen
+    namespace: Optional[str]
+    app_id: str
+
+
+_owned_app_processes: dict[int, _OwnedAppProcess] = {}
+_owned_app_processes_lock = threading.Lock()
+
+
+def _prune_owned_app_processes() -> None:
+    with _owned_app_processes_lock:
+        stopped_pids = [
+            pid
+            for pid, owned in _owned_app_processes.items()
+            if owned.process.poll() is not None
+        ]
+        for pid in stopped_pids:
+            _owned_app_processes.pop(pid, None)
+
+
+def _owned_app_running(namespace: Optional[str]) -> bool:
+    _prune_owned_app_processes()
+    with _owned_app_processes_lock:
+        return any(
+            owned.namespace == namespace for owned in _owned_app_processes.values()
+        )
+
+
+def _stop_owned_app(
+    pid: Optional[int], namespace: Optional[str], app_id: str
+) -> Optional[bool]:
+    """Stop and reap an app launched by this service process, if known."""
+    if not pid:
+        return None
+
+    with _owned_app_processes_lock:
+        owned = _owned_app_processes.get(pid)
+
+    if owned is None:
+        return None
+    if owned.namespace != namespace or (app_id and owned.app_id != app_id):
+        log.error("App PID file does not match the locally owned process")
+        return False
+    if owned.process.poll() is not None:
+        with _owned_app_processes_lock:
+            _owned_app_processes.pop(pid, None)
+        return False
+
+    with _owned_app_processes_lock:
+        _owned_app_processes.pop(pid, None)
+    try:
+        terminate_process(owned.process)
+    except BaseException:
+        with _owned_app_processes_lock:
+            _owned_app_processes[pid] = owned
+        raise
+    return True
+
+
+def _recorded_app_running(pid_file: Path) -> bool:
+    """Fail closed when a PID file still refers to a live process."""
+    if not pid_file.exists():
+        return False
+
+    try:
+        pid_data = json.loads(pid_file.read_text())
+        pid = int(pid_data["pid"] if isinstance(pid_data, dict) else pid_data)
+        if pid <= 0:
+            raise ValueError("PID must be positive")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"Invalid app PID file {pid_file}: {error}") from error
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        pid_file.unlink(missing_ok=True)
+        return False
+    except PermissionError:
+        return True
 
 
 def get_app_command(app_id: str) -> Optional[str]:
@@ -91,6 +178,13 @@ def start_app_in_namespace(
         pid_dir = Path(PID_DIR)
     pid_dir.mkdir(parents=True, exist_ok=True)
 
+    if _owned_app_running(namespace):
+        log.warning(
+            "An application is already running in namespace '%s'",
+            namespace if namespace else "root",
+        )
+        return False
+
     namespace_display = namespace if namespace else "root"
     log.info(f"Starting app '{app_id}' in namespace '{namespace_display}' with command: {app_command}")
 
@@ -101,6 +195,10 @@ def start_app_in_namespace(
     else:
         cmd = ["ip", "netns", "exec", namespace] + app_command.split()
         pid_file = pid_dir / f"{namespace}.pid"
+
+    if _recorded_app_running(pid_file):
+        log.warning("A recorded application process is still running")
+        return False
 
     # Log the full command being executed
     log.info(f"Executing command: {' '.join(cmd)}")
@@ -113,11 +211,25 @@ def start_app_in_namespace(
 
     # Start the process
     with log_file_path.open("w") as log_file:
-        proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True,
+        )
+
+    with _owned_app_processes_lock:
+        _owned_app_processes[proc.pid] = _OwnedAppProcess(proc, namespace, app_id)
 
     # Store both PID and app_command for reliable cleanup
     pid_data = {"pid": proc.pid, "app_id": app_id, "app_command": app_command}
-    pid_file.write_text(json.dumps(pid_data))
+    try:
+        pid_file.write_text(json.dumps(pid_data))
+    except BaseException:
+        with _owned_app_processes_lock:
+            _owned_app_processes.pop(proc.pid, None)
+        terminate_process(proc)
+        raise
 
     log.info(f"Launched app '{app_id}' in namespace '{namespace_display}' with PID {proc.pid}")
 
@@ -131,6 +243,8 @@ def start_app_in_namespace(
         else:
             returncode = proc.poll()
             log.warning(f"Process {proc.pid} exited immediately with return code {returncode}")
+            with _owned_app_processes_lock:
+                _owned_app_processes.pop(proc.pid, None)
             # Try to read some log output for diagnosis
             if log_file_path.exists():
                 try:
@@ -238,17 +352,29 @@ def stop_app_in_namespace(
             app_id = ""
 
         if namespace is None:
-            # Root namespace: use simpler approach
-            return _stop_app_in_root(pid, app_command, namespace_display)
+            owned_result = _stop_owned_app(pid, None, app_id)
+            if owned_result is not None:
+                stopped = owned_result
+            else:
+                # Root namespace: use simpler approach
+                stopped = _stop_app_in_root(pid, app_command, namespace_display)
         else:
-            # Namespace operations: use namespace-aware process management
-            return _stop_app_in_namespace_safe(namespace, pid, app_command, app_id)
+            owned_result = _stop_owned_app(pid, namespace, app_id)
+            if owned_result is not None:
+                stopped = owned_result
+            else:
+                # Namespace operations: use namespace-aware process management
+                stopped = _stop_app_in_namespace_safe(
+                    namespace, pid, app_command, app_id
+                )
+
+        if stopped:
+            pid_file.unlink(missing_ok=True)
+        return stopped
 
     except Exception as e:
         log.error(f"Failed to stop app in {namespace_display}: {e}", exc_info=True)
         return False
-    finally:
-        pid_file.unlink(missing_ok=True)
 
 
 def _stop_app_in_root(pid: Optional[int], app_command: str, namespace_display: str) -> bool:

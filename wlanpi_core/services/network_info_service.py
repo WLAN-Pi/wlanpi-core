@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import os
 import re
-import subprocess
+import stat
 
 from wlanpi_core.constants import (
     CDPNEIGH_FILE,
@@ -13,19 +15,125 @@ from wlanpi_core.constants import (
     PUBLICIP_CMD,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import run_command
+
+log = get_logger(__name__)
+
+_NEIGHBOUR_FILE_MAX_BYTES = 64 * 1024
+
+
+def _read_neighbour_file(path: str) -> list[str] | None:
+    """Read a trusted networkinfo output file without following links."""
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        return None
+
+    try:
+        file_stat = os.fstat(fd)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise OSError(f"refusing non-regular networkinfo file: {path}")
+        if file_stat.st_uid != 0:
+            raise OSError(f"refusing non-root-owned networkinfo file: {path}")
+        if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise OSError(f"refusing writable networkinfo file: {path}")
+        if file_stat.st_nlink != 1:
+            raise OSError(f"refusing multiply-linked networkinfo file: {path}")
+        if file_stat.st_size > _NEIGHBOUR_FILE_MAX_BYTES:
+            raise OSError(f"networkinfo file is too large: {path}")
+
+        with os.fdopen(fd, "rb", closefd=True) as file_obj:
+            fd = -1
+            content = file_obj.read(_NEIGHBOUR_FILE_MAX_BYTES + 1)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+    if len(content) > _NEIGHBOUR_FILE_MAX_BYTES:
+        raise OSError(f"networkinfo file is too large: {path}")
+
+    return content.decode("utf-8", errors="replace").splitlines()
+
+
+def _show_neighbour(path: str, protocol: str) -> dict:
+    response = {"info": []}
+    try:
+        lines = _read_neighbour_file(path)
+    except OSError as exc:
+        log.warning("Unable to read %s neighbour data: %s", protocol, exc)
+        response["error"] = f"Issue getting {protocol} neighbour"
+        return response
+
+    if not lines:
+        response["error"] = "No neighbour"
+        return response
+
+    response["info"] = lines
+    return response
+
+
+def _section_debug_label(section: str, value) -> dict:
+    """Compact shape summary for debug logs (helps UI parsing issues)."""
+    if not isinstance(value, dict):
+        return {"type": type(value).__name__, "value": repr(value)[:200]}
+    label = {"keys": list(value.keys())}
+    if "error" in value:
+        label["error"] = value["error"]
+    if "info" in value and isinstance(value["info"], list):
+        label["info_count"] = len(value["info"])
+    if section == "interfaces":
+        label["interface_count"] = len([k for k in value.keys() if k != "error"])
+        label["interface_names"] = [name for name in value if name != "error"][:8]
+    if section == "wlan_interfaces":
+        label["wlan_count"] = len(value)
+        label["wlan"] = {
+            name: {k: type(v).__name__ for k, v in fields.items()}
+            for name, fields in list(value.items())[:8]
+        }
+    return label
 
 
 def show_info():
+    log.debug("show_info: building network info aggregate")
     output = {}
 
     output["interfaces"] = show_interfaces()
+    log.debug("show_info: interfaces %s", _section_debug_label("interfaces", output["interfaces"]))
+
     output["wlan_interfaces"] = show_wlan_interfaces()
+    log.debug(
+        "show_info: wlan_interfaces %s",
+        _section_debug_label("wlan_interfaces", output["wlan_interfaces"]),
+    )
+
     output["eth0_ipconfig_info"] = show_eth0_ipconfig()
+    log.debug(
+        "show_info: eth0_ipconfig_info %s",
+        _section_debug_label("eth0_ipconfig_info", output["eth0_ipconfig_info"]),
+    )
+
     output["vlan_info"] = show_vlan()
+    log.debug("show_info: vlan_info %s", _section_debug_label("vlan_info", output["vlan_info"]))
+
     output["lldp_neighbour_info"] = show_lldp_neighbour()
+    log.debug(
+        "show_info: lldp_neighbour_info %s",
+        _section_debug_label("lldp_neighbour_info", output["lldp_neighbour_info"]),
+    )
+
     output["cdp_neighbour_info"] = show_cdp_neighbour()
+    log.debug(
+        "show_info: cdp_neighbour_info %s",
+        _section_debug_label("cdp_neighbour_info", output["cdp_neighbour_info"]),
+    )
+
     output["public_ip"] = show_publicip()
+    log.debug("show_info: public_ip %s", _section_debug_label("public_ip", output["public_ip"]))
 
     return output
 
@@ -41,7 +149,7 @@ def show_interfaces():
     interfaces = {}
 
     try:
-        ifconfig_info = run_command(f"{ifconfig_file} -a", raise_on_fail=True).stdout
+        ifconfig_info = run_command([ifconfig_file, "-a"], raise_on_fail=True).stdout
     except Exception as ex:
         interfaces["error"] = "ifconfig error" + str(ex)
         return interfaces
@@ -79,13 +187,13 @@ def show_interfaces():
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
                         iw_info = run_command(
-                            "{} {} info".format(iw_file, interface_name),
+                            [iw_file, interface_name, "info"],
                             raise_on_fail=True,
                         ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
-                    except:
+                    except Exception:
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
@@ -103,11 +211,11 @@ def channel_lookup(freq_mhz):
     """
     if freq_mhz == 2484:
         return 14
-    elif freq_mhz >= 2412 and freq_mhz <= 2484:
+    elif 2412 <= freq_mhz <= 2484:
         return int(((freq_mhz - 2412) / 5) + 1)
-    elif freq_mhz >= 5160 and freq_mhz <= 5885:
+    elif 5160 <= freq_mhz <= 5885:
         return int(((freq_mhz - 5180) / 5) + 36)
-    elif freq_mhz >= 5955 and freq_mhz <= 7115:
+    elif 5955 <= freq_mhz <= 7115:
         return int(((freq_mhz - 5955) / 5) + 1)
 
     return None
@@ -122,12 +230,15 @@ def show_wlan_interfaces():
     output = {}
 
     try:
-        interfaces = run_command(
-            f"{IW_FILE} dev 2>&1", shell=True
-        ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
-        interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
-    except Exception as e:
-        print(e)
+        iw_dev_output = run_command([IW_FILE, "dev"]).stdout
+        interfaces = [
+            fields[1]
+            for line in iw_dev_output.splitlines()
+            if len(fields := line.strip().split()) >= 2
+            and fields[0].lower() == "interface"
+        ]
+    except Exception:
+        log.debug("Unable to enumerate WLAN interfaces", exc_info=True)
 
     for interface in interfaces:
         output[interface] = {}
@@ -135,20 +246,20 @@ def show_wlan_interfaces():
         # Driver
         try:
             ethtool_output = run_command(
-                f"{ETHTOOL_FILE} -i {interface}"
+                [ETHTOOL_FILE, "-i", interface]
             ).stdout.strip()
-            driver = re.search(".*driver:\s+(.*)", ethtool_output).group(1)
+            driver = re.search(r".*driver:\s+(.*)", ethtool_output).group(1)
             output[interface]["driver"] = driver
         except Exception:
             pass
 
         # Addr, SSID, Mode, Channel
         try:
-            iw_output = run_command(f"{IW_FILE} {interface} info").stdout.strip()
+            iw_output = run_command([IW_FILE, interface, "info"]).stdout.strip()
             # Addr
             try:
                 addr = (
-                    re.search(".*addr\s+(.*)", iw_output)
+                    re.search(r".*addr\s+(.*)", iw_output)
                     .group(1)
                     .replace(":", "")
                     .upper()
@@ -159,31 +270,33 @@ def show_wlan_interfaces():
 
             # Mode
             try:
-                mode = re.search(".*type\s+(.*)", iw_output).group(1)
-                output[interface]["mode"] = {
+                mode = re.search(r".*type\s+(.*)", iw_output).group(1)
+                output[interface]["mode"] = (
                     mode.capitalize() if not mode.isupper() else mode
-                }
+                )
             except Exception:
                 pass
 
             # SSID
             try:
-                ssid = re.search(".*ssid\s+(.*)", iw_output).group(1)
+                ssid = re.search(r".*ssid\s+(.*)", iw_output).group(1)
                 output[interface]["ssid"] = ssid
             except Exception:
                 pass
 
             # Frequency
             try:
-                freq = int(re.search(".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
+                freq = int(
+                    re.search(r".*\(([0-9]+)\s+MHz\).*", iw_output).group(1)
+                )
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
             except Exception:
                 pass
 
-        except Exception as e:
-            print(e)
+        except Exception:
+            log.debug("Unable to inspect WLAN interface %s", interface, exc_info=True)
 
     return output
 
@@ -197,19 +310,15 @@ def show_eth0_ipconfig():
     eth0_ipconfig_info = {}
 
     try:
-        # Currently, ipconfig_file is a constant with a shell redirect in it, so need shell=True until it can be refactored
-        ipconfig_info = (
-            run_command(ipconfig_file, shell=True).stdout.strip().split("\n")
-        )
+        ipconfig_info = run_command([ipconfig_file]).stdout.strip().split("\n")
 
     except RunCommandError as exc:
         eth0_ipconfig_info["error"] = (
             f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
         )
         return eth0_ipconfig_info
-    except subprocess.CalledProcessError as exc:
-        output = exc.output.decode()
-        eth0_ipconfig_info["error"] = "Issue getting ipconfig" + str(output)
+    except OSError as exc:
+        eth0_ipconfig_info["error"] = f"Issue getting ipconfig: {exc}"
         return eth0_ipconfig_info
 
     eth0_ipconfig_info["info"] = []
@@ -231,27 +340,20 @@ def show_vlan():
     Display untagged VLAN number on eth0
     Todo: Add tagged VLAN info
     """
-    lldpneigh_file = LLDPNEIGH_FILE
-    cdpneigh_file = CDPNEIGH_FILE
-
     vlan_info = {"info": []}
 
-    vlan_cmd = (
-        "sudo grep -a VLAN " + lldpneigh_file + " || grep -a VLAN " + cdpneigh_file
-    )
-
-    if os.path.exists(lldpneigh_file):
+    for neighbour_file in (LLDPNEIGH_FILE, CDPNEIGH_FILE):
         try:
-            vlan_output = run_command(vlan_cmd, shell=True).stdout.strip().split("\n")
-            for line in vlan_output:
-                vlan_info["info"].append(line)
+            lines = _read_neighbour_file(neighbour_file)
+        except OSError as exc:
+            log.warning("Unable to read neighbour VLAN data from %s: %s", neighbour_file, exc)
+            continue
 
-            if len(vlan_info) == 0:
-                vlan_info["error"] = "No VLAN found"
+        vlan_info["info"] = [line for line in lines or [] if "VLAN" in line]
+        if vlan_info["info"]:
+            return vlan_info
 
-        except:
-            vlan_info["error"] = "No VLAN found"
-
+    vlan_info["error"] = "No VLAN found"
     return vlan_info
 
 
@@ -259,60 +361,14 @@ def show_lldp_neighbour():
     """
     Display LLDP neighbour on eth0
     """
-    lldpneigh_file = LLDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + lldpneigh_file
-
-    if os.path.exists(lldpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting LLDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+    return _show_neighbour(LLDPNEIGH_FILE, "LLDP")
 
 
 def show_cdp_neighbour():
     """
     Display CDP neighbour on eth0
     """
-    cdpneigh_file = CDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + cdpneigh_file
-
-    if os.path.exists(cdpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting CDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+    return _show_neighbour(CDPNEIGH_FILE, "CDP")
 
 
 def show_publicip(ip_version=4):
@@ -327,7 +383,7 @@ def show_publicip(ip_version=4):
         publicip_output = run_command(cmd).stdout.strip().split("\n")
         for line in publicip_output:
             publicip_info["info"].append(line)
-    except subprocess.CalledProcessError:
+    except (RunCommandError, OSError):
         publicip_info["error"] = "Failed to detect public IP address"
         return publicip_info
 

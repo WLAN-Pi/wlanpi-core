@@ -16,8 +16,10 @@ from wlanpi_core.schemas.network.network import (
     NetworkModeEnum,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.validation import validate_config_id
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +27,14 @@ ns = NetworkNamespaceService()
 
 cfg_dir = Path(CONFIG_DIR)
 ccf = Path(CURRENT_CONFIG_FILE)
+
+
+def _config_path(cfg_id: str) -> Path:
+    try:
+        validated_id = validate_config_id(cfg_id)
+    except ValueError as error:
+        raise ValidationError(str(error), status_code=400) from error
+    return cfg_dir / f"{validated_id}.json"
 
 
 def get_default_config(cfg_id: str = "default") -> NetConfig:
@@ -182,7 +192,7 @@ def status():
 
 def get_config(cfg_id: str) -> NetConfig:
     """Get a specific configuration by cfg_id."""
-    path = cfg_dir / f"{cfg_id}.json"
+    path = _config_path(cfg_id)
     if not path.exists():
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
@@ -292,7 +302,7 @@ def _rollback_activated_configs(activated_configs: list[NamespaceConfig | RootCo
 
 def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
-    path = cfg_dir / f"{config.id}.json"
+    path = _config_path(config.id)
     if path.exists():
         raise FileExistsError(f"Configuration {config.id} already exists.")
     path.write_text(config.model_dump_json(indent=4))
@@ -301,7 +311,7 @@ def add_config(config: NetConfig) -> bool:
 
 def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     """Edit an existing configuration."""
-    path = cfg_dir / f"{cfg_id}.json"
+    path = _config_path(cfg_id)
     cfg = get_config(cfg_id)
 
     if is_active(cfg_id):
@@ -319,7 +329,7 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
 
 def delete_config(cfg_id: str, force: bool = False) -> bool:
     """Delete a configuration by cfg_id."""
-    path = cfg_dir / f"{cfg_id}.json"
+    path = _config_path(cfg_id)
 
     if is_active(cfg_id) and not force:
         raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
@@ -421,8 +431,6 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
     On per-adapter failure mid-loop, still writes current.txt to default and calls
     revert_to_root so ccf and runtime state stay consistent before re-raising.
     """
-    path = cfg_dir / f"{cfg_id}.json"
-
     cfg = get_config(cfg_id)
     if not override_active:
         if not is_active(cfg_id):

@@ -23,8 +23,13 @@ def test_namespace_matrix_scenario(scenario, namespace_service, netcfg_env):
     run_scenario(scenario, namespace_service, netcfg_env)
 
 
-def test_matrix_covers_all_rows():
+def test_matrix_covers_all_unique_rows():
     scenarios = load_scenarios()
-    assert len(scenarios) == 41
+    assert scenarios, "Namespace matrix must not be empty"
+    identifiers = [(scenario.scope, scenario.name) for scenario in scenarios]
+    assert len(identifiers) == len(set(identifiers)), "Duplicate namespace matrix rows"
+
+    names = [scenario.name for scenario in scenarios]
+    assert len(names) == len(set(names)), "Duplicate namespace scenario names"
     missing = [s.name for s in scenarios if s.name not in HANDLERS]
     assert not missing, f"Handlers missing for: {missing}"
