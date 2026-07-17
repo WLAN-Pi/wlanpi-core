@@ -32,7 +32,7 @@ jobs:
     name: Post workflow status to Slack
     needs:
       - sbuild_deploy
-    runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-26.04' }}"
     steps:
       - name: Slack Workflow Notification
         uses: Gamesight/slack-workflow-status@master
