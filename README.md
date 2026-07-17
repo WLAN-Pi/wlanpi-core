@@ -2,13 +2,11 @@
 
 # wlanpi-core
 
-wlanpi-core is a full stack application providing API endpoints for various consumers on the WLAN Pi.
+`wlanpi-core` is a FastAPI backend that provides centralized API services for the WLAN Pi platform. It serves as the primary data provider for consumers including `wlanpi-webui` and `wlanpi-fpms`, ensuring each consumer gets the same data in a consistent way rather than reimplementing data collection independently.
 
 ## Development Workflow
 
-Please checkout the workflow document for getting started on developing.
-
-- [WORKFLOW.md](WORKFLOW.md)
+See [WORKFLOW.md](WORKFLOW.md) to get started.
 
 ## Other Important Docs
 
@@ -17,51 +15,34 @@ Please checkout the workflow document for getting started on developing.
 
 ## Authors
 
-- [AUTHORS.md](AUTHORS.md)
+See [AUTHORS.md](AUTHORS.md). If you contribute, feel free to add yourself.
 
-If you contribute, feel free to add yourself to the authors file!
+## Open Source Software
 
-## OSS
-
-This project is powered by some way cool open source software.
+This project is built on open source software:
 
 - [Python](https://www.python.org/)
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [pydantic](https://github.com/samuelcolvin/pydantic/)
+- [SQLAlchemy](https://www.sqlalchemy.org/)
+- [alembic](https://alembic.sqlalchemy.org/)
+- [authlib](https://docs.authlib.org/)
+- [slowapi](https://github.com/laurents/slowapi)
 - [uvicorn](https://www.uvicorn.org/)
 - [gunicorn](https://gunicorn.org/)
-- [nginx](https://docs.nginx.com/nginx/admin-guide/installing-nginx/installing-nginx-open-source/)
-- [dh_virtualenv](https://github.com/spotify/dh-virtualenv)
+- [nginx](https://nginx.org/)
+- [dh-virtualenv](https://github.com/spotify/dh-virtualenv)
 
-Please let us know if we forgot to mention a project here.
-
-## Inspirations
-
-Python:
-
-- [Abstracting FastAPI Services](https://camillovisini.com/article/abstracting-fastapi-services/)
-- [Real-time data streaming using FastAPI and WebSockets](https://stribny.name/blog/2020/07/real-time-data-streaming-using-fastapi-and-websockets/)
-- [Introducing FARM Stack - FastAPI, React, and MongoDB](https://www.mongodb.com/developer/how-to/FARM-Stack-FastAPI-React-MongoDB/)
-- [Modern APIs with FastAPI and Python Course](https://training.talkpython.fm/courses/getting-started-with-fastapi)
-- [Modern APIs with FastAPI Repo](https://github.com/talkpython/modern-apis-with-fastapi/)
-
-Design:
-
-- [API Design Guidelines](https://www.moesif.com/blog/api-guide/api-design-guidelines/)
-
-Packaging:
-
-- [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/)
-- [Debian Best Packaging Practices](https://www.debian.org/doc/manuals/developers-reference/best-pkging-practices.html)
+If we missed something, please let us know.
 
 ## Contributing
 
-Want to contribute? Thanks! Please checkout our [contributing docs](CONTRIBUTING.md) and also first either open an issue or reach out to one of the core members to align your ideas (before starting on them).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Open an issue or reach out to a core team member before starting work to make sure we're aligned.
 
 ## Code of Conduct
 
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+See the [WLAN Pi Code of Conduct](https://github.com/WLAN-Pi/.github/blob/main/docs/code_of_conduct.md).
 
 ## License
 
-- [LICENSE](LICENSE)
+See [LICENSE](LICENSE).

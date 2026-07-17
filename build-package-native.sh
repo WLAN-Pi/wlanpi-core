@@ -1,28 +1,53 @@
 #!/bin/bash
 #
-# Build wlanpi-core Debian package in podman container
+# Build wlanpi-core Debian package in a container (podman or docker)
+#
+# Usage: ./build-package-native.sh [SUITE]
+#   SUITE   Debian release to build for: bullseye | bookworm | trixie (default: trixie)
+#
+# The container engine is auto-detected (podman preferred, then docker).
+# Override it explicitly with CONTAINER_ENGINE, e.g.:
+#   CONTAINER_ENGINE=docker ./build-package-native.sh trixie
 #
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Debian release to build for
+SUITE="${1:-trixie}"
+
+# Detect container engine (override with CONTAINER_ENGINE)
+if [ -n "$CONTAINER_ENGINE" ]; then
+    ENGINE="$CONTAINER_ENGINE"
+elif command -v podman &> /dev/null; then
+    ENGINE="podman"
+elif command -v docker &> /dev/null; then
+    ENGINE="docker"
+else
+    echo "ERROR: no container engine found!"
+    echo "Please install podman or docker (or set CONTAINER_ENGINE)."
+    exit 1
+fi
+
+if ! command -v "$ENGINE" &> /dev/null; then
+    echo "ERROR: container engine '$ENGINE' not found!"
+    exit 1
+fi
+
+IMAGE="wlanpi-core-builder:${SUITE}"
+
 # Clean up old build manifest
 rm -f .build-manifest.txt
 
 echo "========================================="
 echo "Building wlanpi-core Debian Package"
+echo "  engine: $ENGINE"
+echo "  suite:  $SUITE"
 echo "========================================="
 
-# Check for podman
-if ! command -v podman &> /dev/null; then
-    echo "ERROR: podman not found!"
-    echo "Please install podman to use this build script."
-    exit 1
-fi
-
-echo "Step 1: Building Docker image..."
-podman build -f Dockerfile.build -t wlanpi-core-builder .
+echo "Step 1: Building container image..."
+"$ENGINE" build -f Dockerfile.build --build-arg SUITE="$SUITE" -t "$IMAGE" .
 
 echo ""
 echo "Step 2: Building Debian package in container..."
@@ -30,10 +55,10 @@ echo "(This may take several minutes...)"
 echo ""
 
 # Run the build in container
-podman run --rm \
+"$ENGINE" run --rm \
     -v "$(pwd)":/work:Z \
     -w /work \
-    wlanpi-core-builder \
+    "$IMAGE" \
     bash -c '
 set -e
 
