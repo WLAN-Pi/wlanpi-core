@@ -67,8 +67,13 @@ CREATE_MONITOR_PAIRS_UNINIT = True
 # Networkinfo data file names
 LLDPNEIGH_FILE: str = "/tmp/lldpneigh.txt"
 CDPNEIGH_FILE: str = "/tmp/cdpneigh.txt"
-IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh 2>/dev/null"
+IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh"
 REACHABILITY_FILE: str = "/opt/wlanpi-common/networkinfo/reachability.sh"
+REACHABILITY_MAX_CUSTOM_TARGETS: int = 10
+LIBRESPEED_CLI: str = "/usr/bin/librespeed-cli"
+SPEEDTEST_TIMEOUT_SEC: int = 120
+COMMAND_TIMEOUT_SEC: int = 30
 PUBLICIP_CMD: str = "/opt/wlanpi-common/networkinfo/publicip.sh"
 PUBLICIP6_CMD: str = "/opt/wlanpi-common/networkinfo/publicip6.sh"
 BLINKER_FILE: str = "/opt/wlanpi-common/networkinfo/portblinker.sh"
+HOSTAPD_CONF_FILE: str = "/etc/hostapd/hostapd.conf"

@@ -1,1 +1,1 @@
-from .bluetooth import BluetoothStatus, PowerState
+from .bluetooth import BluetoothPairResponse, BluetoothStatus, PowerState

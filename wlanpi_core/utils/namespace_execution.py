@@ -11,6 +11,7 @@ from typing import List, Optional
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.validation import validate_namespace_name
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def ns_exec(
         # Root namespace: use sudo
         full_cmd = ["sudo"] + cmd
     else:
+        namespace = validate_namespace_name(namespace)
         # Named namespace: use ip netns exec
         full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd
 

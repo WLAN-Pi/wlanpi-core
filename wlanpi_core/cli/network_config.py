@@ -14,6 +14,7 @@ import argparse
 import requests
 
 SECRET_PATH = "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
+COMMAND_TIMEOUT_SEC = 10
 
 # Enhanced security type definitions with detailed descriptions
 SECURITY_TYPES = {
@@ -183,7 +184,13 @@ class NetworkConfigCLI:
     def get_available_phys(self) -> List[str]:
         """Get list of available PHY interfaces"""
         try:
-            result = subprocess.run(['iw', 'phy'], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ['iw', 'phy'],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=COMMAND_TIMEOUT_SEC,
+            )
             phys = []
             for line in result.stdout.split('\n'):
                 line = line.strip()
@@ -193,14 +200,24 @@ class NetworkConfigCLI:
                         phy_name = line.split('(phy')[1].split(')')[0]
                         phys.append(f"phy{phy_name}")
             return phys if phys else ["phy0"]  # Fallback to phy0
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+        ):
             self.print_warning("Could not detect available PHY interfaces, using default")
             return ["phy0"]
 
     def get_available_interfaces(self) -> List[str]:
         """Get list of available network interfaces"""
         try:
-            result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ['ip', 'link', 'show'],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=COMMAND_TIMEOUT_SEC,
+            )
             interfaces = []
             for line in result.stdout.split('\n'):
                 if ': ' in line and 'wl' in line:  # Look for wireless interfaces
@@ -208,7 +225,11 @@ class NetworkConfigCLI:
                     if 'wlan' in interface or 'wlp' in interface:
                         interfaces.append(interface)
             return interfaces if interfaces else ["wlan0"]  # Fallback to wlan0
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+        ):
             self.print_warning("Could not detect available interfaces, using default")
             return ["wlan0"]
 
@@ -752,7 +773,7 @@ class NetworkConfigCLI:
 
         # Mode selection
         print("\nInterface Mode:")
-        print("1. managed (normal WiFi client)")
+        print("1. managed (normal Wi-Fi client)")
         print("2. monitor (packet capture)")
         
         current_mode = existing_data.get("mode", "managed")
@@ -1274,5 +1295,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-
-        

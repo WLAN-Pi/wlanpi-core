@@ -7,6 +7,7 @@ from wlanpi_core.constants import ETHTOOL_FILE, IP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
+_SYSTEM_COMMAND_TIMEOUT_SEC = 10
 
 
 class SystemManager:
@@ -19,18 +20,27 @@ class SystemManager:
         try:
             if capture_output:
                 return (
-                    subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+                    subprocess.check_output(
+                        cmd,
+                        stderr=subprocess.DEVNULL,
+                        timeout=_SYSTEM_COMMAND_TIMEOUT_SEC,
+                    )
                     .decode()
                     .strip()
                 )
             elif suppress_output:
                 subprocess.check_call(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=_SYSTEM_COMMAND_TIMEOUT_SEC,
                 )
             else:
-                subprocess.check_call(cmd)
+                subprocess.check_call(cmd, timeout=_SYSTEM_COMMAND_TIMEOUT_SEC)
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            if isinstance(error, subprocess.TimeoutExpired):
+                log.warning("System command timed out")
             return None if capture_output else False
 
     def _iface_up(self, name):

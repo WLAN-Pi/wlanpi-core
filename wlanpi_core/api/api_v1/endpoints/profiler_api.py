@@ -70,9 +70,9 @@ async def stop_profiler():
     """
 
     try:
-        result = cli.stop_profiler()
+        result = await cli.stop_profiler()
 
-        return result
+        return {"success": result}
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

@@ -1,0 +1,101 @@
+priority,domain,method,core_path,capability_ids,verified_status,owner,p0_action,job_freshness_sec,notes
+P0,auth,POST,/auth/token,,Live,Core,bind,,JWT issuance; login once then Bearer on all requests. 7-day default expiry.
+P0,auth,DELETE,/auth/token,,Live,Core,bind,,Revoke token.
+P0,system,GET,/system/device/info,"sys.about; system.about",Live,Core,bind,,Returns model hostname software_version mode.
+P0,system,GET,/system/device/stats,"sys.summary; system.summary",Live,Core,bind,,CPU RAM disk temp uptime. Card menu should align here not /info.
+P0,system,GET,/system/device/model,,Live,Core,bind,,Model only.
+P0,system,GET,/system/battery,system.battery,Live,Core,bind,,Reads /sys/class/power_supply. Returns present=false when absent.
+P0,system,GET,/system/datetime,"sys.tz.show; system.date",Live,Core,bind,,timedatectl with /etc/timezone fallback.
+P0,system,GET,/system/timezone,sys.tz.get,Live,Core,bind,,timedatectl or /etc/timezone.
+P0,system,GET,/system/timezone/list,sys.tz.list,Live,Core,bind,,timedatectl list-timezones.
+P0,system,POST,/system/timezone/set,"sys.tz.set; system.timezone.set",Live,Core,bind,,wlanpi-timezone script or timedatectl set-timezone.
+P0,system,POST,/system/timezone/auto,system.timezone.auto,Live,Core,bind,,Enable NTP auto. fpms2-only capability.
+P0,system,GET,/system/reg-domain,"sys.rf.show; system.reg_domain.show",Live,Core,bind,,wlanpi-reg-domain or iw reg get.
+P0,system,POST,/system/reg-domain/set,"sys.rf.set; system.reg_domain.set_*",Live,Core,bind,,Body {country}. wlanpi-reg-domain or iw reg set.
+P0,system,GET,/system/reg-domain/list,sys.rf.list,Live,Core,bind,,Country records from the installed Linux wireless-regdb.
+P0,system,POST,/system/reboot,"sys.restart; system.reboot",Live,Core,bind,,Auth-gated. Reboot persistence handles namespace via existing startup recovery.
+P0,system,POST,/system/shutdown,"sys.shutdown; system.shutdown",Live,Core,bind,,Auth-gated.
+P0,system,POST,/system/mode/switch,"mode.hotspot; mode.server; mode.bridge; mode.classic; mode.wconsole",Gap,Core,build,,Body {mode}. API must work in any mode. Namespace activate/deactivate remains classic-only. Mode switch must refuse or warn if namespace config active.
+P0,system,GET,/system/hotspot/clients,system.clients,Live,Core,bind,,Hotspot mode only (409 otherwise). iw station count on AP iface.
+P0,system,GET,/system/hotspot/ssid-passphrase,"utils.ssid; utils.ssid_passphrase",Live,Core,bind,,Hotspot mode only. hostapd.conf ssid + wpa_passphrase.
+P0,system,GET,/system/service/status?name=,"orb.*; app.kismet.*; utils.freeradius.*",Live,Core,bind,,Query param name=. Allowed services list enforced. Uses systemd DBus — NOT legacy; keep.
+P0,system,POST,/system/service/start?name=,app.kismet.start,Live,Core,bind,,
+P0,system,POST,/system/service/stop?name=,"orb.*.stop; app.kismet.stop",Live,Core,bind,,
+P0,system,POST,/system/service/restart?name=,"orb.*.restart; app.kismet.restart; utils.freeradius.restart",Live,Core,bind,,systemd DBus RestartUnit. Allowed services gate.
+P0,network,GET,/network/info/,"network.lldp; network.cdp; network.public_ipv4; network.interfaces.*",Live,Core,bind,,Aggregated document. IPv4 public IP included.
+P0,network,GET,/network/info/publicip6,network.public_ipv6,Live,Core,bind,,Uses publicip6.sh via show_publicip(ip_version=6).
+P0,network,GET,/network/interfaces,network.interfaces.ip_summary,Live,Core,bind,,UI plan incorrectly marked Gap. ip-style output.
+P0,network,GET,/network/interfaces/{iface},network.eth0_ipconfig,Live,Core,bind,,Per-interface detail.
+P0,network,GET,/network/ethernet/{iface}/vlan,network.vlan,Live,Core,bind,,UI plan incorrectly marked Gap.
+P0,network,GET,/network/wlan/getInterfaces,"wifi.radio.interfaces; network.interfaces.wlan.summary",Deprecated,Core,repurpose,,Delegates to iw dev discovery. Marked deprecated in OpenAPI.
+P0,network,GET,/network/wlan/scan,,Deprecated,Core,repurpose,,Delegates to GET /utils/wlan/scan. Marked deprecated in OpenAPI.
+P0,network,POST,/network/wlan/set-dbus,,Deprecated,Core,deprecate,,Returns 410 — use POST /network/config/ + activate.
+P0,network,POST,/network/wlan/set,,Deprecated,Core,deprecate,,Returns 410 — use POST /network/config/ + activate.
+P0,network,GET,/network/wlan/getConnected,,Deprecated,Core,repurpose,,Delegates to wpa_cli status. Marked deprecated in OpenAPI.
+P0,network,POST,/network/wlan/revert,,Live,Core,align,,Valid namespace revert. Align with POST /network/config/deactivate/{id}; not DBus.
+P0,network,GET,/network/routing,network.routing_table,Live,Core,bind,,Structured ip -j route via ns_exec (root default).
+P0,network,GET,/network/connections/tcp,network.active_tcp,Live,Core,bind,,ss -Htn in root namespace.
+P0,network,GET,/network/connections/udp,network.active_udp,Live,Core,bind,,ss -Hun in root namespace.
+P0,network,POST,/network/interfaces/{iface}/renew,"network.interfaces.renew_wlan0; network.interfaces.renew_eth0",Live,Core,bind,,networkctl renew for systemd-networkd-managed root interfaces; 409 otherwise.
+P0,network,GET,/network/dhcp/leases,network.interfaces.dhcp_leases,Live,Core,bind,,Parse /var/lib/dhcp/dhclient*.leases.
+P0,network,GET,/network/interfaces/{iface}/link-stats,network.interfaces.eth0.link_stats,Live,Core,bind,,ethtool per interface; namespace from config status.
+P0,network,GET,/network/wlan/usb-drivers,"network.interfaces.wlan.usb_drivers; wifi.radio.usb_drivers",Live,Core,bind,,iw + ethtool driver on USB WLAN ifaces.
+P0,network,GET,/network/wlan/pci-drivers,network.interfaces.wlan.pci_drivers,Live,Core,bind,,lspci + iw PCI WLAN ifaces.
+P0,network_config,GET,/network/config/status,,Live,Core,bind,,Namespace-aware iw dev view. Key input for wlanpi-ui adapter helper.
+P0,network_config,GET,/network/config/,,Live,Core,bind,,List config ids with active flags.
+P0,network_config,GET,/network/config/{id},,Live,Core,bind,,Get config. Credentials redacted in str/repr.
+P0,network_config,POST,/network/config/,,Live,Core,bind,,Create NetConfig. Web-app already builds JSON.
+P0,network_config,PATCH,/network/config/{id},,Live,Core,bind,,Update when deactivated.
+P0,network_config,DELETE,/network/config/{id},,Live,Core,bind,,
+P0,network_config,POST,/network/config/activate/{id},,Live,Core,bind,,Classic mode only for namespace ops. Returns provisioned async.
+P0,network_config,POST,/network/config/deactivate/{id},,Live,Core,bind,,Revert namespace. Classic mode only.
+P0,wifi,GET,/utils/wlan/scan,"wifi.scan.quick; wifi.scan.full; app.scanner.scan; app.scanner.scan_nohidden",Live,Both,bind,30,"P0 canonical scan. Namespace-aware. Auto-select single monitor adapter; if multiple monitor adapters return needsSelection candidates. UI→Core job + optional job WS."
+P0,wifi,GET,/wifi/capabilities,wifi.radio.capabilities,Live,Core,bind,300,iw phy info per adapter.
+P0,wifi,GET,/wifi/regulatory,wifi.radio.regulatory,Live,Core,bind,,iw reg get + parsed country.
+P0,wifi,GET,/wifi/hotspot/stations,wifi.client.stations,Live,Core,bind,,Hotspot mode only. iw station dump.
+P0,wifi,GET,/wifi/hotspot/link,wifi.client.link,Live,Core,bind,,Hotspot mode only. Per-station link stats.
+P0,wifi,POST,/wifi/monitor/enable,wifi.monitor.enable,Gap,Core,build,,Destructive. P1 candidate if fpms2 P0 slips.
+P0,wifi,POST,/wifi/monitor/disable,wifi.monitor.disable,Gap,Core,build,,Destructive. P1 candidate if fpms2 P0 slips.
+P0,wifi,POST,/wifi/capture/start,wifi.capture.start,Gap,Both,build,,"REST wrapper over existing WS /streaming/capture. UI job."
+P0,wifi,POST,/wifi/capture/stop,wifi.capture.stop,Gap,Core,build,,
+P0,wifi,GET,/wifi/capture/status,wifi.capture.status,Gap,Core,build,,
+P0,wifi,GET,/wifi/capture/files,wifi.capture.files,Gap,Core,build,,
+P0,wifi,WS,/streaming/capture,,Live,Core,document,,"Existing capture WebSocket. No auth today — add before UI exposes capture jobs."
+P0,bluetooth,GET,/bluetooth/status,"bt.status; bluetooth.status",Live,Core,bind,,
+P0,bluetooth,POST,/bluetooth/power/on,"bt.on; bluetooth.on",Live,Core,bind,,
+P0,bluetooth,POST,/bluetooth/power/off,"bt.off; bluetooth.off",Live,Core,bind,,
+P0,bluetooth,POST,/bluetooth/pair,"bt.pair; bluetooth.pair",Live,Core,bind,,Starts one serialized and time-bounded bt-timedpair window after unpairing the existing device.
+P0,utils,GET,/utils/reachability,utils.reachability,Live,Core,bind,,Supports optional targets query for custom ICMP ping stats.
+P0,utils,GET,/utils/usb,utils.usb,Live,Core,bind,,
+P0,utils,GET,/utils/ufw,utils.ufw,Live,Core,bind,,
+P0,utils,GET,/utils/speedtest,utils.speedtest,Live,Both,bind,10,LibreSpeed CLI wrapper. Long-running; UI→Core job + job WS.
+P0,utils,GET,/utils/cloud-test/{vendor},"cloud.arista; cloud.aruba; cloud.extreme; cloud.meraki; cloud.mist; cloud.ruckus",Gap,Both,build,60,Per-vendor reachability. UI→Core job.
+P0,utils,POST,/utils/blinker/start,"utils.blinker.start; utils.port_blinker.start",Live,Core,bind,,portblinker.sh background process.
+P0,utils,POST,/utils/blinker/stop,"utils.blinker.stop; utils.port_blinker.stop",Live,Core,bind,,
+P0,utils,GET,/utils/blinker/status,utils.blinker.status,Live,Core,bind,,
+P0,utils,POST,/utils/freeradius/test,utils.freeradius.test,Gap,Core,build,,
+P0,profiler,GET,/profiler/status,"app.profiler.status; apps.profiler.status",Live,Core,bind,,
+P0,profiler,POST,/profiler/start,"app.profiler.start; apps.profiler.start_*",Live,Core,bind,,Variants via request body.
+P0,profiler,POST,/profiler/stop,app.profiler.stop,Live,Core,bind,,
+P1,profiler,POST,/profiler/purge/reports,apps.profiler.purge_reports,Gap,Core,defer,,
+P1,profiler,POST,/profiler/purge/files,apps.profiler.purge_files,Gap,Core,defer,,
+P1,profiler,GET,/profiler/profiles,app.profiler.profiles,Gap,Core,defer,,
+P1,scanner,GET,/scanner/files,app.scanner.files,Gap,Core,defer,,
+P1,scanner,POST,/scanner/scan/csv,app.scanner.scan_csv,Gap,Both,defer,60,UI→Core job.
+P1,scanner,POST,/scanner/capture/start,app.scanner.pcap_start,Gap,Both,defer,,UI→Core job.
+P1,scanner,POST,/scanner/capture/stop,app.scanner.pcap_stop,Gap,Core,defer,,
+P1,orb,GET,/orb/wifi/interface,orb.wifi.interface,Gap,Core,defer,,Netns interface for orb-wifi.
+P1,orb,POST,/orb/reset-identity,orb.reset_identity,Gap,Core,defer,,Destructive.
+P1,system,GET,/system/updates,system.updates.check,Gap,Core,defer,,fpms2 only.
+P1,system,POST,/system/updates/install,system.updates.install,Gap,Both,defer,,Long-running UI job.
+P1,network,GET,/network/adapters/{iface}/connection,,Gap,Core,defer,,Rich wpa_state + IP. wlanpi-ui helper can use /network/config/status for P0 basic display.
+P0,ui_platform,GET,/ui/menu,,UI-only,wlanpi-ui,build,,touch_menu.v1.json. Not in core.
+P0,ui_platform,GET,/ui/capabilities/shared,,UI-only,wlanpi-ui,build,,
+P0,ui_platform,GET,/ui/session,,UI-only,wlanpi-ui,build,,Poll fallback for UiSession.
+P0,ui_platform,WS,/ui/ws,,UI-only,wlanpi-ui,build,,Bidirectional session sync.
+P0,ui_platform,POST,/ui/jobs/run,,UI-only,wlanpi-ui,build,,freshnessSec dedup. Calls core workers underneath.
+P0,ui_platform,WS,/ui/jobs/{id}/ws,,UI-only,wlanpi-ui,build,,Job stream + inline cancel.
+P0,ui_platform,GET,/ui/adapters/summary,,UI-only,wlanpi-ui,build,,Human-readable adapter view. Composes core /network/config/* — see P0 doc.
+P0,ui_platform,POST,/ui/network/config/save,,UI-only,wlanpi-ui,build,,Helper to build/save NetConfig JSON for TUI/panel clients.
+P0,ui_platform,POST,/ui/network/config/activate,,UI-only,wlanpi-ui,build,,Thin wrapper over core activate with confirmation UX.
+P0,capability,static,sys.help,sys.help,UI-only,wlanpi-ui,bind,,Static URL asset not core.

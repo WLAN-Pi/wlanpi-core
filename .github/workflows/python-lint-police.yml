@@ -20,20 +20,16 @@ on:
 jobs:
   python-lint-police:
     name: Python Lint Police
-    runs-on: "${{ vars.RUNS_ON || 'ubuntu-24.04' }}"
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9"]
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-26.04' }}"
 
     steps:
     - name: Checkout
       uses: actions/checkout@v7
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.13
       uses: actions/setup-python@v6
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.13"
 
     - name: Install depends
       run: |
@@ -51,7 +47,7 @@ jobs:
     name: Post Workflow Status to Slack
     needs:
       - python-style-police
-    runs-on: 'ubuntu-22.04'
+    runs-on: 'ubuntu-26.04'
     steps:
       - name: Slack Workflow Notification
         uses: Gamesight/slack-workflow-status@master

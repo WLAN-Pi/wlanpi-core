@@ -1,1 +1,1 @@
-from .network_info import NetworkInfo
+from .network_info import NetworkInfo, PublicIpInfo

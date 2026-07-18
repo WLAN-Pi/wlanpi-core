@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings
 
 from wlanpi_core import constants
+from wlanpi_core.api.openapi_docs import OPENAPI_DESCRIPTION, OPENAPI_TAGS
 
 
 class Settings(BaseSettings):
@@ -14,14 +15,9 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = constants.PROJECT_NAME
 
-    PROJECT_DESCRIPTION: str = constants.PROJECT_DESCRIPTION
+    PROJECT_DESCRIPTION: str = OPENAPI_DESCRIPTION
 
-    TAGS_METADATA: list = [
-        {
-            "name": "system",
-            "description": "Some system utility endpoints",
-        },
-    ]
+    TAGS_METADATA: list = OPENAPI_TAGS
 
     class Config:
         case_sensitive = True

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -14,3 +16,9 @@ class BluetoothStatus(BaseModel):
 class PowerState(BaseModel):
     status: str = Field(example="success")
     action: str = Field(examples=["on", "off"])
+
+
+class BluetoothPairResponse(BaseModel):
+    status: Literal["discoverable"] = Field(example="discoverable")
+    alias: str = Field(example="wlanpi-bc2")
+    message: str = Field(example='Bluetooth is on. Discoverable as "wlanpi-bc2"')
