@@ -178,4 +178,13 @@ else
     fi
 fi
 
+# Our lldpd drop-in enables CDP reception; reload and restart lldpd so it
+# takes effect (lldpd's own maintainer scripts won't pick up our drop-in).
+if ! ischroot; then
+    systemctl daemon-reload || true
+    if systemctl is-enabled lldpd.service >/dev/null 2>&1; then
+        deb-systemd-invoke restart lldpd.service || true
+    fi
+fi
+
 exit 0

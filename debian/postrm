@@ -43,4 +43,15 @@ if [ "$1" = "purge" ]; then
     rm -rf /etc/wlanpi-core
 fi
 
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # Our lldpd CDP drop-in was removed with the package; restart lldpd
+    # without it if lldpd is still around.
+    if ! ischroot 2>/dev/null; then
+        systemctl daemon-reload || true
+        if systemctl is-enabled lldpd.service >/dev/null 2>&1; then
+            deb-systemd-invoke restart lldpd.service || systemctl restart lldpd.service || true
+        fi
+    fi
+fi
+
 exit 0
