@@ -47,8 +47,12 @@ class IPInterfaceAddress(BaseModel, extra=Extra.allow):
     def check_dynamic_condition(self) -> Any:
         # print(self)
         if self.dynamic:
-            self.prefixlen = 24
-            self.local = "0.0.0.0"
+            # Placeholders for DHCP requests; parsed `ip -j addr` output also
+            # sets dynamic=true and must keep its real address (issue #147)
+            if self.prefixlen is None:
+                self.prefixlen = 24
+            if self.local is None:
+                self.local = "0.0.0.0"
         else:
             if self.prefixlen is None:
                 raise ValueError("prefixlen required unless dynamic is True")
