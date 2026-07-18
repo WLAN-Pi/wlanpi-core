@@ -116,7 +116,13 @@ def get_paste(slug: str):
             status_code=400, detail="Invalid paste identifier format"
         )
 
-    paste_file = PASTES_DIR / slug
+    base_dir = PASTES_DIR.resolve()
+    paste_file = (base_dir / slug).resolve()
+    try:
+        paste_file.relative_to(base_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid paste identifier format")
+
     if not paste_file.exists() or not paste_file.is_file():
         raise HTTPException(status_code=404, detail="Paste not found")
 
