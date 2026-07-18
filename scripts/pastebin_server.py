@@ -6,6 +6,7 @@
 # uvicorn pastebin_server:app --host 0.0.0.0 --port 8000
 #
 
+import re
 import secrets
 import string
 import time
@@ -110,14 +111,14 @@ async def create_paste(request: Request):
 @app.get("/{slug}", response_class=PlainTextResponse)
 def get_paste(slug: str):
     # 7. Strict Slug Sanitization (guards against directory traversal)
-    allowed_chars = string.ascii_lowercase + string.digits
-    if not all(c in allowed_chars for c in slug) or len(slug) != 6:
+    if not re.fullmatch(r"[a-z0-9]{6}", slug):
         raise HTTPException(
             status_code=400, detail="Invalid paste identifier format"
         )
 
+    safe_slug = slug
     base_dir = PASTES_DIR.resolve()
-    paste_file = (base_dir / slug).resolve()
+    paste_file = (base_dir / safe_slug).resolve()
     try:
         paste_file.relative_to(base_dir)
     except ValueError:
