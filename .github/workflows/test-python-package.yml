@@ -22,20 +22,17 @@ on:
 
 jobs:
   python:
-    runs-on: "ubuntu-22.04"
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.11"]
+    name: Python Tests
+    runs-on: "ubuntu-24.04"
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v6
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.13"
 
     - name: Install depends
       run: |
