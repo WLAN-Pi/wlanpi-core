@@ -1707,7 +1707,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NetConfig"
+                "$ref": "#/components/schemas/NetConfig-Input"
               }
             }
           },
@@ -1776,7 +1776,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NetConfig"
+                  "$ref": "#/components/schemas/NetConfig-Output"
                 }
               }
             }
@@ -1836,7 +1836,7 @@
                   "additionalProperties": {
                     "anyOf": [
                       {
-                        "$ref": "#/components/schemas/NetConfig"
+                        "$ref": "#/components/schemas/NetConfig-Output"
                       },
                       {
                         "type": "string"
@@ -3711,7 +3711,6 @@
           },
           "paired_devices": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -3997,7 +3996,6 @@
         "properties": {
           "leases": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -4935,7 +4933,70 @@
         ],
         "title": "MessageResponse"
       },
-      "NamespaceConfig": {
+      "NamespaceConfig-Input": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/NetworkModeEnum",
+            "default": "managed"
+          },
+          "iface_display_name": {
+            "type": "string",
+            "title": "Iface Display Name"
+          },
+          "phy": {
+            "type": "string",
+            "title": "Phy"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mlo": {
+            "type": "boolean",
+            "title": "Mlo",
+            "default": false
+          },
+          "default_route": {
+            "type": "boolean",
+            "title": "Default Route",
+            "default": false
+          },
+          "autostart_app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autostart App"
+          },
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface_display_name",
+          "phy",
+          "interface",
+          "namespace"
+        ],
+        "title": "NamespaceConfig"
+      },
+      "NamespaceConfig-Output": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5012,7 +5073,7 @@
         ],
         "title": "NamespaceStatusError"
       },
-      "NetConfig": {
+      "NetConfig-Input": {
         "properties": {
           "id": {
             "type": "string",
@@ -5022,7 +5083,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig"
+                  "$ref": "#/components/schemas/NamespaceConfig-Input"
                 },
                 "type": "array"
               },
@@ -5036,7 +5097,48 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig"
+                  "$ref": "#/components/schemas/RootConfig-Input"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "NetConfig"
+      },
+      "NetConfig-Output": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "namespaces": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NamespaceConfig-Output"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespaces"
+          },
+          "roots": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RootConfig-Output"
                 },
                 "type": "array"
               },
@@ -5059,7 +5161,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig"
+                  "$ref": "#/components/schemas/NamespaceConfig-Input"
                 },
                 "type": "array"
               },
@@ -5073,7 +5175,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig"
+                  "$ref": "#/components/schemas/RootConfig-Input"
                 },
                 "type": "array"
               },
@@ -5205,7 +5307,6 @@
           "errors": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -5711,7 +5812,65 @@
         ],
         "title": "RevertNamespace"
       },
-      "RootConfig": {
+      "RootConfig-Input": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/NetworkModeEnum",
+            "default": "managed"
+          },
+          "iface_display_name": {
+            "type": "string",
+            "title": "Iface Display Name"
+          },
+          "phy": {
+            "type": "string",
+            "title": "Phy"
+          },
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mlo": {
+            "type": "boolean",
+            "title": "Mlo",
+            "default": false
+          },
+          "default_route": {
+            "type": "boolean",
+            "title": "Default Route",
+            "default": false
+          },
+          "autostart_app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autostart App"
+          }
+        },
+        "type": "object",
+        "required": [
+          "iface_display_name",
+          "phy",
+          "interface"
+        ],
+        "title": "RootConfig"
+      },
+      "RootConfig-Output": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5784,7 +5943,6 @@
           },
           "routes": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -5910,7 +6068,6 @@
           },
           "candidates": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -5936,7 +6093,6 @@
           },
           "candidates": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -6562,13 +6718,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",
@@ -6670,7 +6819,7 @@
             "example": "wlan0"
           },
           "netConfig": {
-            "$ref": "#/components/schemas/NetConfig"
+            "$ref": "#/components/schemas/NetConfig-Input"
           },
           "removeAllFirst": {
             "type": "boolean",
@@ -7062,7 +7211,7 @@
   "tags": [
     {
       "name": "authentication",
-      "description": "JWT issuance and revocation. Remote clients authenticate once, then send `Authorization: Bearer` on every request."
+      "description": "JWT issuance and revocation. Remote clients authenticate once, then send `Authorization: Bearer <jwt>` on every request."
     },
     {
       "name": "system",
