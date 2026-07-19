@@ -37,7 +37,13 @@ deterministic and warning-clean. Hard rules, each one from a real failure:
 6. **No hardware or network access.** Tests run offline on CI runners. Anything
    touching wpa_supplicant, iw, dbus, or subprocesses is mocked. Hardware
    verification happens on a WLAN Pi, not in unit tests.
-7. **Follow the matrix pattern.** Namespace scenarios live in
+7. **Patching `x.time.sleep` patches stdlib `time` globally.** Modules that do
+   plain `import time` all share the one `time` module object, so
+   `patch("wlanpi_core.connection.monitor.time.sleep")` also no-ops the test's
+   own `time.sleep` calls, turning polling loops into GIL-hogging busy-spins.
+   Synchronize with `threading.Event.wait` (blocks in C, unaffected by the
+   mock) instead of sleeping.
+8. **Follow the matrix pattern.** Namespace scenarios live in
    `tests/scenarios/*.csv` with handlers in `tests/test_namespace_matrix/`.
    Add scenarios there rather than writing parallel one-off tests.
 

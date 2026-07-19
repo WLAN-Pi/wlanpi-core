@@ -726,8 +726,6 @@ def handle_ssid_delayed_beyond_monitor_timeout(namespace_service, netcfg_env, sc
             with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
                 with patch("wlanpi_core.connection.monitor.time.sleep"):
                     ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
-                    import time
-
                     time.sleep(0.1)
                     stop_all_connection_monitors()
                     _wait_for_monitors_idle()
