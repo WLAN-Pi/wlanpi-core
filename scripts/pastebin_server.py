@@ -99,7 +99,7 @@ async def create_paste(request: Request):
         slug = generate_slug()
 
     # 6. Save Paste to disk
-    (PASTES_DIR / slug).write_bytes(body_bytes)
+    (PASTES_DIR / f"{slug}.txt").write_bytes(body_bytes)
 
     # Build response URL
     host = request.headers.get("host", "paste.wlanpi.com")
@@ -116,9 +116,9 @@ def get_paste(slug: str):
             status_code=400, detail="Invalid paste identifier format"
         )
 
-    safe_slug = slug
+    safe_filename = f"{slug}.txt"
     base_dir = PASTES_DIR.resolve()
-    paste_file = (base_dir / safe_slug).resolve()
+    paste_file = (base_dir / safe_filename).resolve()
     try:
         paste_file.relative_to(base_dir)
     except ValueError:
