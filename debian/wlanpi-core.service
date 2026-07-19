@@ -43,6 +43,7 @@ ExecStart=/opt/wlanpi-core/bin/gunicorn \
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed
 TimeoutStopSec=5
+TimeoutStartSec=30
 PrivateTmp=false
 
 # Restart on failed startup (now that critical-init failures fail the lifespan)
