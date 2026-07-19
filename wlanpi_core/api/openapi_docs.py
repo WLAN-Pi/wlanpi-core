@@ -69,7 +69,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "authentication",
         "description": (
             "JWT issuance and revocation. Remote clients authenticate once, "
-            "then send `Authorization: Bearer` on every request."
+            "then send `Authorization: Bearer <jwt>` on every request."
         ),
     },
     {
