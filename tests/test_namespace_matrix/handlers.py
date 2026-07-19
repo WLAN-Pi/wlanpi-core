@@ -701,11 +701,12 @@ def handle_ssid_delayed_connect_within_monitor(namespace_service, netcfg_env, sc
                         side_effect=lambda *a, **k: app_started.set(),
                     ) as start_app:
                         ConnectionMonitor.start_monitor(cfg, "wlan0", "ns_a", timeout=5)
-                        assert app_started.wait(timeout=5), (
-                            "start_app_in_namespace not called within 5s"
-                        )
+                        app_ran = app_started.wait(timeout=5)
+                        # clean up BEFORE asserting so a failure cannot leak
+                        # a running monitor thread into the next test
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
+    assert app_ran, "start_app_in_namespace not called within 5s"
     dhcp.assert_called_once()
     start_app.assert_called_once_with("ns_a", "orb")
 
@@ -776,11 +777,12 @@ def handle_files_apps_json_missing_orb(namespace_service, netcfg_env, scenario: 
                 ) as start_app:
                     with patch("wlanpi_core.connection.monitor.time.sleep"):
                         ConnectionMonitor.start_monitor(cfg, "wlan1", "orb_ns", timeout=5)
-                        assert app_called.wait(timeout=5), (
-                            "start_app_in_namespace not called within 5s"
-                        )
+                        app_ran = app_called.wait(timeout=5)
+                        # clean up BEFORE asserting so a failure cannot leak
+                        # a running monitor thread into the next test
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
+    assert app_ran, "start_app_in_namespace not called within 5s"
     start_app.assert_called_once_with("orb_ns", "orb")
 
 
