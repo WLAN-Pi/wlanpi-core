@@ -5,6 +5,9 @@ activate_config persist vs rollback paths: tests/scenarios/ACTIVATION_OUTCOMES.m
 from __future__ import annotations
 
 import json
+import threading
+import time
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -115,7 +118,10 @@ def handle_validate_invalid_mode(namespace_service, netcfg_env, scenario: Scenar
         security=None,
         mlo=False,
     )
-    result = namespace_service.activate_config(cfg)
+    with warnings.catch_warnings():
+        # intentionally-invalid model; pydantic serializer warnings are expected
+        warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+        result = namespace_service.activate_config(cfg)
     assert result.status == "error"
     assert "mode must be one of" in result.response.selectErr
 
@@ -171,7 +177,10 @@ def handle_validate_invalid_security_type(namespace_service, netcfg_env, scenari
         mlo=False,
         security=NetSecurity.model_construct(ssid="x", security="WEP-OLD", psk="x"),
     )
-    result = namespace_service.activate_config(cfg)
+    with warnings.catch_warnings():
+        # intentionally-invalid model; pydantic serializer warnings are expected
+        warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+        result = namespace_service.activate_config(cfg)
     assert result.status == "error"
     assert "security.security must be one of" in result.response.selectErr
 
@@ -203,7 +212,10 @@ def handle_validate_default_route_non_bool(namespace_service, netcfg_env, scenar
         security=None,
         mlo=False,
     )
-    result = namespace_service.activate_config(cfg)
+    with warnings.catch_warnings():
+        # intentionally-invalid model; pydantic serializer warnings are expected
+        warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+        result = namespace_service.activate_config(cfg)
     assert result.status == "error"
     assert "default_route must be a boolean" in result.response.selectErr
 
@@ -621,16 +633,33 @@ def handle_user_manual_phy_move_then_recover(namespace_service, netcfg_env, scen
 # --- connection monitor ---
 
 
-def _wait_for_monitors_idle(timeout_seconds: float = 3.0) -> None:
-    import time
+def _wait_for_monitors_idle(timeout_seconds: float = 5.0) -> None:
+    """Wait until no ConnectionMonitor registry entries or threads remain.
+
+    Fails loudly instead of returning silently: a leftover monitor thread from
+    one scenario keeps doing module-attribute lookups and consumes the next
+    scenario's mocks, which surfaces as unrelated flaky failures.
+    """
     from wlanpi_core.connection import monitor as mon
 
+    registry_empty = False
+    zombies: list[str] = []
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         with mon._monitor_lock:
-            if not mon._connection_monitors:
-                return
+            registry_empty = not mon._connection_monitors
+        zombies = [
+            t.name
+            for t in threading.enumerate()
+            if t.name.startswith("ConnectionMonitor-") and t.is_alive()
+        ]
+        if registry_empty and not zombies:
+            return
         time.sleep(0.05)
+    raise RuntimeError(
+        f"ConnectionMonitor cleanup timed out: registry_empty={registry_empty}, "
+        f"zombie_threads={zombies}"
+    )
 
 
 def handle_ssid_delayed_connect_within_monitor(namespace_service, netcfg_env, scenario: Scenario):
@@ -650,26 +679,31 @@ def handle_ssid_delayed_connect_within_monitor(namespace_service, netcfg_env, sc
         {"wpa_status": {"wpa_state": "COMPLETED"}},
     ]
 
-    def wpa_side_effect():
-        pending = iter(status_sequence)
-        for item in pending:
-            yield item
-        while True:
-            yield {"wpa_status": {"wpa_state": "COMPLETED"}}
+    seq_lock = threading.Lock()
+    seq_state = {"i": 0}
 
-    with patch("wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_side_effect()):
+    def wpa_side_effect(*args, **kwargs):
+        with seq_lock:
+            i = seq_state["i"]
+            seq_state["i"] = i + 1
+        if i < len(status_sequence):
+            return status_sequence[i]
+        return {"wpa_status": {"wpa_state": "COMPLETED"}}
+
+    app_started = threading.Event()
+
+    with patch("wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_side_effect):
         with patch("wlanpi_core.connection.monitor.time.sleep"):
             with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout") as dhcp:
                 with patch("wlanpi_core.connection.monitor.set_default_route"):
-                    with patch("wlanpi_core.namespaces.apps.start_app_in_namespace") as start_app:
+                    with patch(
+                        "wlanpi_core.namespaces.apps.start_app_in_namespace",
+                        side_effect=lambda *a, **k: app_started.set(),
+                    ) as start_app:
                         ConnectionMonitor.start_monitor(cfg, "wlan0", "ns_a", timeout=5)
-                        import time
-
-                        deadline = time.time() + 2
-                        while time.time() < deadline and not (
-                            dhcp.called and start_app.called
-                        ):
-                            time.sleep(0.01)
+                        assert app_started.wait(timeout=5), (
+                            "start_app_in_namespace not called within 5s"
+                        )
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
     dhcp.assert_called_once()
@@ -678,6 +712,7 @@ def handle_ssid_delayed_connect_within_monitor(namespace_service, netcfg_env, sc
 
 def handle_ssid_delayed_beyond_monitor_timeout(namespace_service, netcfg_env, scenario: Scenario):
     stop_all_connection_monitors()
+    _wait_for_monitors_idle()
     cfg = _root(
         security=_security("VeryLateNet"),
         autostart_app="orb",
@@ -718,11 +753,17 @@ def handle_move_wlan1_to_ns_with_orb_monitor(namespace_service, netcfg_env, scen
 
 def handle_files_apps_json_missing_orb(namespace_service, netcfg_env, scenario: Scenario):
     """Missing orb in apps.json: monitor calls start_app; ValueError is caught gracefully."""
-    import time
-
     stop_all_connection_monitors()
     _wait_for_monitors_idle()
     cfg = _ns("orb_ns", interface="wlan1", phy="phy1", iface_display_name="wlan1", autostart_app="orb")
+    app_called = threading.Event()
+
+    def missing_app(*args, **kwargs):
+        try:
+            raise ValueError("App ID orb not found in apps file")
+        finally:
+            app_called.set()
+
     with patch(
         "wlanpi_core.connection.monitor.get_wpa_status",
         return_value={"wpa_status": {"wpa_state": "COMPLETED"}},
@@ -731,13 +772,13 @@ def handle_files_apps_json_missing_orb(namespace_service, netcfg_env, scenario: 
             with patch("wlanpi_core.connection.monitor.set_default_route"):
                 with patch(
                     "wlanpi_core.namespaces.apps.start_app_in_namespace",
-                    side_effect=ValueError("App ID orb not found in apps file"),
+                    side_effect=missing_app,
                 ) as start_app:
                     with patch("wlanpi_core.connection.monitor.time.sleep"):
                         ConnectionMonitor.start_monitor(cfg, "wlan1", "orb_ns", timeout=5)
-                        deadline = time.time() + 2
-                        while time.time() < deadline and not start_app.called:
-                            time.sleep(0.01)
+                        assert app_called.wait(timeout=5), (
+                            "start_app_in_namespace not called within 5s"
+                        )
                         stop_all_connection_monitors()
                         _wait_for_monitors_idle()
     start_app.assert_called_once_with("orb_ns", "orb")
