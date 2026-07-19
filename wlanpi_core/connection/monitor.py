@@ -55,6 +55,17 @@ class ConnectionMonitor:
         monitor_key = f"{namespace_display}:{iface}"
 
         def monitor_loop():
+            try:
+                _monitor_body()
+            finally:
+                # Deregister only after ALL side effects (dhcp, route, app
+                # start) have run, and on every exit path, so stop helpers
+                # and tests observe a live thread until it is truly done.
+                with _monitor_lock:
+                    _connection_monitors.pop(monitor_key, None)
+                    _monitor_stop_flags.pop(monitor_key, None)
+
+        def _monitor_body():
             log.info(
                 f"[ConnectionMonitor] Starting connection monitor for {iface} in {namespace_display} "
                 f"(timeout={timeout}s)"
@@ -113,11 +124,6 @@ class ConnectionMonitor:
                         exc_info=True,
                     )
                     time.sleep(poll_interval)
-
-            # Clean up monitor tracking
-            with _monitor_lock:
-                _connection_monitors.pop(monitor_key, None)
-                _monitor_stop_flags.pop(monitor_key, None)
 
             if connected_state:
                 # Start DHCP after connection
@@ -205,13 +211,15 @@ def stop_connection_monitor(namespace: Optional[str], iface: str) -> None:
     with _monitor_lock:
         stop_event = _monitor_stop_flags.get(monitor_key)
         monitor_thread = _connection_monitors.get(monitor_key)
-
         if stop_event:
             stop_event.set()
 
-        if monitor_thread and monitor_thread.is_alive():
-            monitor_thread.join(timeout=2.0)
+    # Join OUTSIDE the lock: the monitor thread's own deregistration needs
+    # _monitor_lock, so joining while holding it guarantees a timeout.
+    if monitor_thread and monitor_thread.is_alive():
+        monitor_thread.join(timeout=2.0)
 
+    with _monitor_lock:
         _connection_monitors.pop(monitor_key, None)
         _monitor_stop_flags.pop(monitor_key, None)
 
@@ -229,14 +237,17 @@ def stop_all_connection_monitors() -> None:
         # Signal all monitors to stop
         for stop_event in _monitor_stop_flags.values():
             stop_event.set()
+        threads = list(_connection_monitors.items())
 
-        # Wait for all threads to finish (with timeout)
-        for monitor_key, monitor_thread in list(_connection_monitors.items()):
+    # Join OUTSIDE the lock: each monitor thread's own deregistration needs
+    # _monitor_lock, so joining while holding it guarantees a timeout.
+    for monitor_key, monitor_thread in threads:
+        if monitor_thread.is_alive():
+            monitor_thread.join(timeout=2.0)
             if monitor_thread.is_alive():
-                monitor_thread.join(timeout=2.0)
-                if monitor_thread.is_alive():
-                    log.warning(f"Connection monitor {monitor_key} did not stop within timeout")
+                log.warning(f"Connection monitor {monitor_key} did not stop within timeout")
 
+    with _monitor_lock:
         _connection_monitors.clear()
         _monitor_stop_flags.clear()
 
