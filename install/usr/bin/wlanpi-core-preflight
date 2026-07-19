@@ -1,0 +1,40 @@
+#!/bin/sh
+# wlanpi-core-preflight
+#
+# ExecStartPre writable probe for wlanpi-core. Fails (non-zero exit) if the
+# state directory backing our secrets/token database is not writable, so the
+# service refuses to start rather than coming up half-initialized. systemd's
+# restart policy then retries (bounded by StartLimit*), which papers over the
+# transient first-boot filesystem races that make early writes fail.
+#
+# NOTE: a .service ExecStartPre cannot import Python constants, so these paths
+# are duplicated from wlanpi_core/constants.py (SECRETS_DIR). A0 keeps the
+# CURRENT paths under /home/wlanpi; the flip to /home/wlanpi-core is a later PR
+# and must update this script in lockstep.
+
+set -eu
+
+# Keep in sync with wlanpi_core.constants.SECRETS_DIR
+STATE_DIR="/home/wlanpi/.local/share/wlanpi-core/secrets"
+
+fail() {
+    echo "wlanpi-core-preflight: FATAL: $1" >&2
+    exit 1
+}
+
+# Create the tree if missing (mkdir -p is idempotent). SecurityManager also
+# does this in-process, but doing it here lets the probe below be meaningful on
+# a truly fresh boot.
+mkdir -p "$STATE_DIR" 2>/dev/null || fail "cannot create state directory $STATE_DIR"
+
+[ -d "$STATE_DIR" ] || fail "state directory $STATE_DIR does not exist"
+
+# Verify we can actually write+read+remove in the state directory.
+PROBE="$STATE_DIR/.preflight_$$"
+if ! ( : > "$PROBE" ) 2>/dev/null; then
+    fail "state directory $STATE_DIR is not writable"
+fi
+rm -f "$PROBE" 2>/dev/null || true
+
+echo "wlanpi-core-preflight: state directory $STATE_DIR is writable"
+exit 0

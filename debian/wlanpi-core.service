@@ -5,6 +5,17 @@ Description=gunicorn daemon which manages uvicorn workers for wlanpi-core
 Wants=nginx.service
 Requires=wlanpi-core.socket var-log-wlanpi_core-debug.mount
 After=network-pre.target var-log-wlanpi_core-debug.mount nginx.service
+# Refuse to start until the filesystems backing our state and logs are mounted.
+# A0 keeps the current state paths; the path flip to /home/wlanpi-core is a
+# later PR. On a single-partition image these resolve to the (always-present)
+# root mount and are harmless no-ops; on split partitions they add correct
+# ordering.
+RequiresMountsFor=/home/wlanpi /var/log/wlanpi_core
+# Bound restart attempts so a permanently-failing start (e.g. a genuine
+# security-init failure that now fails the lifespan) cannot tight-loop forever.
+# StartLimit* belong in [Unit], not [Service].
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=notify
@@ -12,10 +23,17 @@ Type=notify
 # this is a soft link created via maintainer script
 WorkingDirectory=/opt/wlanpi-core/workingdirectory
 
+# Fail fast if the state directory is not writable before we launch workers.
+ExecStartPre=/usr/bin/wlanpi-core-preflight
+
+# Bind the absolute socket path that the socket unit (ListenStream) and the
+# nginx proxy_pass (unix:/run/wlanpi_core.sock) both use. The previous relative
+# "unix:wlanpi_core.sock" resolved under WorkingDirectory to a DIFFERENT socket
+# than the one nginx connects to.
 ExecStart=/opt/wlanpi-core/bin/gunicorn \
     --workers 1 \
     -k uvicorn.workers.UvicornWorker \
-    --bind unix:wlanpi_core.sock asgi:app \
+    --bind unix:/run/wlanpi_core.sock asgi:app \
     --name wlanpi_core_svc \
     --access-logfile /var/log/wlanpi_core/gunicorn_access.log \
     --error-logfile /var/log/wlanpi_core/gunicorn_error.log \
@@ -27,8 +45,11 @@ KillMode=mixed
 TimeoutStopSec=5
 PrivateTmp=false
 
-# Restart=always
-Type=notify
+# Restart on failed startup (now that critical-init failures fail the lifespan)
+# and on worker crashes, so a transient first-boot failure self-heals via a full
+# process restart. Bounded by StartLimit* in [Unit] above.
+Restart=on-failure
+RestartSec=2
 NotifyAccess=all
 
 [Install]
