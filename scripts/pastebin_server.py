@@ -27,6 +27,8 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 
 # In-memory rate limiting store: client_ip -> list of timestamps
 upload_records = defaultdict(list)
+# In-memory slug index: slug -> trusted absolute file path
+slug_to_file: dict[str, Path] = {}
 
 
 def check_rate_limit(ip: str) -> bool:
@@ -99,7 +101,9 @@ async def create_paste(request: Request):
         slug = generate_slug()
 
     # 6. Save Paste to disk
-    (PASTES_DIR / f"{slug}.txt").write_bytes(body_bytes)
+    paste_file = (PASTES_DIR / f"{slug}.txt").resolve()
+    paste_file.write_bytes(body_bytes)
+    slug_to_file[slug] = paste_file
 
     # Build response URL
     host = request.headers.get("host", "paste.wlanpi.com")
@@ -116,13 +120,9 @@ def get_paste(slug: str):
             status_code=400, detail="Invalid paste identifier format"
         )
 
-    safe_filename = f"{slug}.txt"
-    base_dir = PASTES_DIR.resolve()
-    paste_file = (base_dir / safe_filename).resolve()
-    try:
-        paste_file.relative_to(base_dir)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid paste identifier format")
+    paste_file = slug_to_file.get(slug)
+    if paste_file is None:
+        raise HTTPException(status_code=404, detail="Paste not found")
 
     if not paste_file.exists() or not paste_file.is_file():
         raise HTTPException(status_code=404, detail="Paste not found")
