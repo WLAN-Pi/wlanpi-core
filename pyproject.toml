@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wlanpi-core"
 description = "backend services for the WLAN Pi"
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 dynamic = ["version"]
 authors = [
     {name = "Josh Schmelzle", email = "josh@joshschmelzle.com"},
@@ -13,8 +13,6 @@ authors = [
 classifiers = [
     "Natural Language :: English",
     "Development Status :: 1 - Planning",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.13",
     "Intended Audience :: System Administrators",
     "Topic :: Utilities",
