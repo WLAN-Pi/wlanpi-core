@@ -2,8 +2,10 @@ import asyncio
 import base64
 import json
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from authlib.jose import jwt
@@ -22,6 +24,22 @@ from wlanpi_core.core.repositories import DeviceRepository, TokenRepository
 from wlanpi_core.services import system_service
 
 log = get_logger(__name__)
+
+
+def current_boot_id() -> str:
+    """Kernel boot id; changes on every reboot."""
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        # Non-Linux dev environments: constant fallback keeps tokens
+        # boot-agnostic rather than unusable.
+        return "unknown-boot"
+
+
+def current_uptime() -> float:
+    """Seconds since boot. Monotonic: immune to wall-clock resets, which the
+    WLAN Pi (no RTC) cannot be trusted to avoid."""
+    return time.clock_gettime(time.CLOCK_BOOTTIME)
 
 
 class TokenError(Exception):
@@ -312,6 +330,18 @@ class TokenManager:
                         or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
                     )
 
+                    # exp/iat are advisory (client display): the device has no
+                    # RTC, so lifetime is enforced with bid/upt/ttl instead —
+                    # token dies with the boot, and within a boot its age is
+                    # measured on CLOCK_BOOTTIME, which a wall-clock reset
+                    # cannot rewind. A reboot may invalidate tokens early but
+                    # can never resurrect an expired one.
+                    ttl_seconds = int(
+                        (
+                            expires_delta
+                            or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+                        ).total_seconds()
+                    )
                     claims = {
                         "sub": system_service.get_hostname(),
                         "iss": "wlanpi-core",
@@ -320,6 +350,9 @@ class TokenManager:
                         "iat": int(now.timestamp()),
                         "kid": str(signing_key.id),
                         "jti": secrets.token_hex(8),
+                        "bid": current_boot_id(),
+                        "upt": current_uptime(),
+                        "ttl": ttl_seconds,
                     }
 
                     jwt_token = jwt.encode(
@@ -373,6 +406,40 @@ class TokenManager:
                     )
                     raise HTTPException(status_code=500, detail=str(e))
 
+    @staticmethod
+    def boot_lifetime_error(payload: dict) -> Optional[str]:
+        """Return an error string if the token's lifetime has ended.
+
+        Within the issuing boot, age is measured against CLOCK_BOOTTIME in
+        both modes, so setting the wall clock can never extend or resurrect
+        a token. Across reboots, settings.TOKEN_LIFETIME_MODE decides:
+        boot_bound kills the token outright; wall_clock_grace falls back to
+        wall-clock expiry once the clock has caught up to the token's
+        issuance time (until then: retryable rejection, nothing purged).
+        """
+        if payload.get("bid") == current_boot_id():
+            upt = payload.get("upt")
+            ttl = payload.get("ttl")
+            if not isinstance(upt, (int, float)) or not isinstance(ttl, (int, float)):
+                return "Token missing lifetime claims"
+            if current_uptime() - upt > ttl:
+                return "Token expired"
+            return None
+
+        if settings.TOKEN_LIFETIME_MODE != "wall_clock_grace":
+            return "Token from previous boot"
+
+        exp = payload.get("exp")
+        iat = payload.get("iat")
+        if not isinstance(exp, (int, float)) or not isinstance(iat, (int, float)):
+            return "Token missing lifetime claims"
+        now = datetime.now(timezone.utc).timestamp()
+        if now < iat:
+            return "Clock not yet synchronized"
+        if now > exp:
+            return "Token expired"
+        return None
+
     async def verify_token(self, token: str) -> TokenValidationResult:
         """Verify JWT token and return validation result"""
         try:
@@ -390,6 +457,10 @@ class TokenManager:
             cached = self.token_cache.get_cached_token(normalized_token)
             if cached:
                 log.debug("Token found in cache")
+                stale = self.boot_lifetime_error(cached)
+                if stale:
+                    self.token_cache.invalidate_token(normalized_token)
+                    return TokenValidationResult(is_valid=False, error=stale)
                 if (
                     not self.time_validation_enabled
                     or not self.token_cache._is_token_expired(cached)
@@ -468,6 +539,10 @@ class TokenManager:
                         if not payload.get("did"):
                             raise JWTError("Invalid device ID")
 
+                    stale = self.boot_lifetime_error(payload)
+                    if stale:
+                        raise JWTError(stale)
+
                     self.token_cache.cache_token(token, payload)
                     return TokenValidationResult(
                         is_valid=True,
@@ -517,6 +592,11 @@ class TokenManager:
                 token_model.revoked = True
                 await session.commit()
 
+                # Evict so verify_token's cache fast-path cannot keep accepting
+                # this token. Sufficient while gunicorn runs a single worker;
+                # multiple workers would need a shared invalidation channel.
+                self.token_cache.invalidate_token(token)
+
                 return {
                     "status": "success",
                     "message": "Token revoked",
@@ -534,10 +614,58 @@ class TokenManager:
                 )
                 raise
 
+    @staticmethod
+    def _token_boot_id(token: str) -> Optional[str]:
+        """Extract the bid claim without verifying the signature (cleanup only)."""
+        try:
+            payload_b64 = token.split(".")[1]
+            payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
+            std_b64 = payload_b64.replace("-", "+").replace("_", "/")
+            return json.loads(base64.b64decode(std_b64)).get("bid")
+        except Exception:
+            return None
+
+    async def purge_previous_boot_tokens(self) -> int:
+        """Delete tokens issued before the current boot.
+
+        Only meaningful in boot_bound mode, where such tokens can never verify
+        again (boot id mismatch in boot_lifetime_error) — cleanup rather than
+        policy enforcement. In wall_clock_grace mode previous-boot tokens are
+        still live, so this is a no-op and the hourly wall-clock purge is the
+        only cleanup.
+        """
+        if settings.TOKEN_LIFETIME_MODE == "wall_clock_grace":
+            return 0
+
+        boot_id = current_boot_id()
+        removed = 0
+        async with self.app_state.db_manager.session() as session:
+            result = await session.execute(select(Token))
+            for token_model in result.scalars().all():
+                if self._token_boot_id(token_model.token) != boot_id:
+                    await session.delete(token_model)
+                    removed += 1
+            await session.commit()
+
+        if removed:
+            self.token_cache.clear()
+            log.debug(
+                f"Purged {removed} tokens from previous boots",
+                extra={"component": "auth", "action": "boot_token_purge"},
+            )
+        return removed
+
     async def purge_expired_tokens(self) -> None:
         """
         Background task to purge expired tokens
         """
+        try:
+            await self.purge_previous_boot_tokens()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Failed to purge previous-boot tokens")
+
         while True:
             try:
                 async with self.app_state.db_manager.session() as session:
