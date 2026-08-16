@@ -218,7 +218,12 @@ def _dependency_calls(dependant):
 def test_every_api_route_declares_auth_or_is_allowlisted():
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
-    from wlanpi_core.asgi import app
+    # Build the app directly (same pattern as test_openapi_schema) rather
+    # than importing the wlanpi_core.asgi singleton: the walker must see the
+    # full route table regardless of import order or module caching.
+    from wlanpi_core.app import create_app
+
+    app = create_app(debug=False)
 
     unprotected = []
     seen_public = set()
