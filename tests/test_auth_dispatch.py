@@ -20,8 +20,10 @@ import pytest
 from fastapi import HTTPException
 from fastapi.requests import Request
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.routing import Route, WebSocketRoute
 
 from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
+from wlanpi_core.core.config import settings
 
 SECRET = b"test_secret"
 
@@ -195,10 +197,12 @@ def test_nginx_config_contains_no_auth_header_rewriting():
 # Routes deliberately reachable without core auth. Additions require review.
 PUBLIC_API_ROUTES = {
     # Capture WS pre-dates auth; tracked debt: WLAN-Pi/wlanpi-core#141
-    ("WS", "/api/v1/streaming/capture"),
+    ("WS", f"{settings.API_V1_STR}/streaming/capture"),
     # HTML landing page listing endpoint names/descriptions — discovery
     # metadata also available via the OpenAPI docs; serves no device data.
-    ("HTTP", "/api/v1"),
+    ("HTTP", settings.API_V1_STR),
+    # FastAPI-generated schema; same discovery surface as /docs.
+    ("HTTP", f"{settings.API_V1_STR}/openapi.json"),
 }
 
 AUTH_DEPENDENCIES = {verify_auth_wrapper, verify_hmac, verify_jwt_token}
@@ -215,9 +219,45 @@ def _dependency_calls(dependant):
     return calls
 
 
-def test_every_api_route_declares_auth_or_is_allowlisted():
-    from fastapi.routing import APIRoute, APIWebSocketRoute
+def _join_path(prefix, path):
+    if not prefix:
+        return path or ""
+    if not path or path == "/":
+        return prefix
+    if prefix.endswith("/") and path.startswith("/"):
+        return prefix + path[1:]
+    if not prefix.endswith("/") and not path.startswith("/"):
+        return prefix + "/" + path
+    return prefix + path
 
+
+def _iter_routes(routes, prefix=""):
+    """Yield (route, full_path), including nested Mount / sub-router routes."""
+    for route in routes:
+        path = getattr(route, "path", "") or ""
+        full = _join_path(prefix, path)
+        yield route, full
+        nested = getattr(route, "routes", None)
+        if nested:
+            yield from _iter_routes(nested, full)
+
+
+def _norm_path(path):
+    if path != "/" and path.endswith("/"):
+        return path.rstrip("/")
+    return path
+
+
+def _route_key(route, path):
+    path = _norm_path(path)
+    if isinstance(route, WebSocketRoute):
+        return ("WS", path)
+    if isinstance(route, Route):
+        return ("HTTP", path)
+    return None
+
+
+def test_every_api_route_declares_auth_or_is_allowlisted():
     # Build the app directly (same pattern as test_openapi_schema) rather
     # than importing the wlanpi_core.asgi singleton: the walker must see the
     # full route table regardless of import order or module caching.
@@ -225,22 +265,18 @@ def test_every_api_route_declares_auth_or_is_allowlisted():
 
     app = create_app(debug=False)
 
+    found = set()
     unprotected = []
-    seen_public = set()
-    for route in app.routes:
-        if not getattr(route, "path", "").startswith("/api/"):
+    for route, path in _iter_routes(app.routes):
+        key = _route_key(route, path)
+        if key is None or not key[1].startswith("/api/"):
             continue
-        if isinstance(route, APIRoute):
-            key = ("HTTP", route.path)
-        elif isinstance(route, APIWebSocketRoute):
-            key = ("WS", route.path)
-        else:
-            continue
-
-        if _dependency_calls(route.dependant) & AUTH_DEPENDENCIES:
-            continue
-        if key in PUBLIC_API_ROUTES:
-            seen_public.add(key)
+        found.add(key)
+        dependant = getattr(route, "dependant", None)
+        has_auth = bool(
+            dependant is not None and _dependency_calls(dependant) & AUTH_DEPENDENCIES
+        )
+        if has_auth or key in PUBLIC_API_ROUTES:
             continue
         unprotected.append(key)
 
@@ -249,5 +285,5 @@ def test_every_api_route_declares_auth_or_is_allowlisted():
         "Add Depends(verify_auth_wrapper) or, if deliberately public, add the "
         "route to PUBLIC_API_ROUTES with a comment saying why."
     )
-    stale = PUBLIC_API_ROUTES - seen_public
+    stale = PUBLIC_API_ROUTES - found
     assert not stale, f"PUBLIC_API_ROUTES entries no longer match any route: {stale}"
