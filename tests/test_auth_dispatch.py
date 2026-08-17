@@ -286,4 +286,10 @@ def test_every_api_route_declares_auth_or_is_allowlisted():
         "route to PUBLIC_API_ROUTES with a comment saying why."
     )
     stale = PUBLIC_API_ROUTES - found
-    assert not stale, f"PUBLIC_API_ROUTES entries no longer match any route: {stale}"
+    route_dump = sorted(
+        (type(route).__name__, path) for route, path in _iter_routes(app.routes)
+    )
+    assert not stale, (
+        f"PUBLIC_API_ROUTES entries no longer match any route: {stale}. "
+        f"Full route table as seen by the walker: {route_dump}"
+    )
