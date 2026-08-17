@@ -258,19 +258,36 @@ def _route_key(route, path):
 
 
 def test_every_api_route_declares_auth_or_is_allowlisted():
-    # Build the app directly (same pattern as test_openapi_schema) rather
-    # than importing the wlanpi_core.asgi singleton: the walker must see the
-    # full route table regardless of import order or module caching.
+    # Walk the source routers directly, plus the app's own route table for
+    # framework-added routes (openapi.json, docs). Depending on app.routes
+    # alone is not version-safe: newer FastAPI represents include_router as
+    # a lazy _IncludedRouter placeholder whose children are not reachable
+    # from the app route list, which made this walker sweep zero /api
+    # routes in CI while older local versions flattened them.
+    from wlanpi_core.api.api_v1.api import api_router
     from wlanpi_core.app import create_app
+    from wlanpi_core.views.api import router as views_router
 
     app = create_app(debug=False)
 
+    route_sources = [
+        (api_router.routes, settings.API_V1_STR),
+        (views_router.routes, ""),
+        (app.routes, ""),
+    ]
+
     found = set()
     unprotected = []
-    for route, path in _iter_routes(app.routes):
+    for route, path in (
+        item
+        for routes, prefix in route_sources
+        for item in _iter_routes(routes, prefix)
+    ):
         key = _route_key(route, path)
         if key is None or not key[1].startswith("/api/"):
             continue
+        if key in found:  # older FastAPI flattens included routes into
+            continue  # app.routes too; process each route once
         found.add(key)
         dependant = getattr(route, "dependant", None)
         has_auth = bool(
@@ -287,7 +304,9 @@ def test_every_api_route_declares_auth_or_is_allowlisted():
     )
     stale = PUBLIC_API_ROUTES - found
     route_dump = sorted(
-        (type(route).__name__, path) for route, path in _iter_routes(app.routes)
+        (type(route).__name__, path)
+        for routes, prefix in route_sources
+        for route, path in _iter_routes(routes, prefix)
     )
     assert not stale, (
         f"PUBLIC_API_ROUTES entries no longer match any route: {stale}. "
