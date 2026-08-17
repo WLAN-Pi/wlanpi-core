@@ -232,8 +232,23 @@ def _join_path(prefix, path):
 
 
 def _iter_routes(routes, prefix=""):
-    """Yield (route, full_path), including nested Mount / sub-router routes."""
+    """Yield (route, full_path), including nested Mount / sub-router routes.
+
+    FastAPI >= 0.141 represents include_router as a lazy _IncludedRouter
+    placeholder: the included APIRouter hangs off `original_router` and the
+    include prefix off `include_context.prefix` (its own `path` is empty and
+    its children are not exposed via `.routes`). Older versions flatten
+    included routes into the parent route list; the walk handles both.
+    """
     for route in routes:
+        inner_router = getattr(route, "original_router", None)
+        if inner_router is not None:
+            context = getattr(route, "include_context", None)
+            include_prefix = getattr(context, "prefix", "") or ""
+            yield from _iter_routes(
+                inner_router.routes, _join_path(prefix, include_prefix)
+            )
+            continue
         path = getattr(route, "path", "") or ""
         full = _join_path(prefix, path)
         yield route, full
