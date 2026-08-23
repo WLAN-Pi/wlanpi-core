@@ -347,13 +347,13 @@ class ConnectionManager:
                 freq = first.get("freq")
                 width = first.get("width")
                 if freq and width:
-                    success = await self._set_channel(iface, freq, width)
-                    if not success:
+                    error = await self._set_channel(iface, freq, width)
+                    if error:
                         await self.send_message_event(
                             websocket,
                             "error",
                             "CHANNEL_SET_FAILED",
-                            f"Could not set initial channel for {iface}",
+                            f"Could not set initial channel for {iface}: {error}",
                         )
 
         args = [DUMPCAP_FILE]
@@ -492,8 +492,8 @@ class ConnectionManager:
             width = ch.get("width")
 
             if freq and width:
-                success = await self._set_channel(iface, freq, width)
-                if success:
+                error = await self._set_channel(iface, freq, width)
+                if not error:
                     await self.send_message_event(
                         websocket,
                         "info",
@@ -505,7 +505,7 @@ class ConnectionManager:
                         websocket,
                         "error",
                         "CHANNEL_SET_FAILED",
-                        f"{iface}: failed to set {freq} MHz / {width} MHz",
+                        f"{iface}: failed to set {freq} MHz / {width} MHz ({error})",
                     )
 
         try:
@@ -532,20 +532,24 @@ class ConnectionManager:
                 websocket, "error", "CHANNEL_HOP_ERROR", f"{iface} hopping failed."
             )
 
-    async def _set_channel(self, iface: str, freq: int, width: int) -> bool:
+    async def _set_channel(self, iface: str, freq: int, width: int) -> Optional[str]:
+        """Tune a capture interface. Returns None on success, else a short
+        reason suitable for the CHANNEL_SET_FAILED event (e.g. iw's
+        'Device or resource busy (-16)' when a managed vif on the same phy
+        blocks retuning - common on single-radio devices)."""
         try:
             iface = validate_capture_interface(iface)
             freq = validate_capture_frequency(freq)
             width = validate_capture_width(width)
-        except ValueError:
-            return False
+        except ValueError as exc:
+            return str(exc)
 
         cmd = [IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)]
 
         if width >= 40:
             center_frequency = self._center_frequency(freq, width)
             if center_frequency < 0:
-                return False
+                return "no valid center frequency for this channel/width"
             cmd.append(str(center_frequency))
 
         try:
@@ -554,9 +558,12 @@ class ConnectionManager:
                 raise_on_fail=False,
                 timeout=_IW_TIMEOUT_SEC,
             )
-            return result.success
-        except Exception:
-            return False
+        except Exception as exc:
+            return str(exc)
+        if result.success:
+            return None
+        detail = (result.stderr or result.stdout or "").strip().splitlines()
+        return detail[-1] if detail else f"iw exited {result.return_code}"
 
     def _center_frequency(self, freq: int, channel_width: int) -> int:
         def compute_center(start: int, span: int) -> int:

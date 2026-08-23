@@ -91,7 +91,7 @@ async def test_set_channel_uses_bounded_async_command(mocker):
         new=AsyncMock(return_value=CommandResult("", "", 0)),
     )
 
-    assert await manager._set_channel("wlanpi0", 5180, 20) is True
+    assert await manager._set_channel("wlanpi0", 5180, 20) is None
 
     run_command.assert_awaited_once_with(
         [connection_manager.IW_FILE, "dev", "wlanpi0", "set", "freq", "5180", "20"],
@@ -314,5 +314,5 @@ async def test_set_channel_rejects_invalid_center_before_command(mocker):
         new=AsyncMock(),
     )
 
-    assert await manager._set_channel("wlanpi0", 5000, 160) is False
+    assert await manager._set_channel("wlanpi0", 5000, 160) is not None
     run_command.assert_not_awaited()
