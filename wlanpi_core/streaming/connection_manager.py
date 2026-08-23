@@ -552,18 +552,28 @@ class ConnectionManager:
                 return "no valid center frequency for this channel/width"
             cmd.append(str(center_frequency))
 
-        try:
-            result = await run_command_async(
-                cmd,
-                raise_on_fail=False,
-                timeout=_IW_TIMEOUT_SEC,
-            )
-        except Exception as exc:
-            return str(exc)
-        if result.success:
-            return None
-        detail = (result.stderr or result.stdout or "").strip().splitlines()
-        return detail[-1] if detail else f"iw exited {result.return_code}"
+        # A shared phy is briefly locked while another vif scans (e.g.
+        # wpa_supplicant's periodic scan on a disconnected managed vif), so
+        # EBUSY here is often transient: retry once before reporting.
+        detail = ""
+        for attempt in range(2):
+            try:
+                result = await run_command_async(
+                    cmd,
+                    raise_on_fail=False,
+                    timeout=_IW_TIMEOUT_SEC,
+                )
+            except Exception as exc:
+                return str(exc)
+            if result.success:
+                return None
+            lines = (result.stderr or result.stdout or "").strip().splitlines()
+            detail = lines[-1] if lines else f"iw exited {result.return_code}"
+            if attempt == 0 and "busy" in detail.lower():
+                await asyncio.sleep(0.3)
+                continue
+            break
+        return detail
 
     def _center_frequency(self, freq: int, channel_width: int) -> int:
         def compute_center(start: int, span: int) -> int:

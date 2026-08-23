@@ -306,6 +306,34 @@ async def test_capture_rejects_invalid_start_before_process(mocker):
 
 
 @pytest.mark.asyncio
+async def test_set_channel_retries_once_when_phy_is_busy(mocker):
+    """A scan on a shared phy makes iw fail with EBUSY transiently; one
+    retry absorbs the common collision."""
+    manager = ConnectionManager()
+    busy = CommandResult("", "command failed: Device or resource busy (-16)", 240)
+    ok = CommandResult("", "", 0)
+    run = mocker.patch(
+        "wlanpi_core.streaming.connection_manager.run_command_async",
+        side_effect=[busy, ok],
+    )
+
+    assert await manager._set_channel("wlanpi0", 2412, 20) is None
+    assert run.call_count == 2
+
+
+async def test_set_channel_does_not_retry_non_busy_failures(mocker):
+    manager = ConnectionManager()
+    failed = CommandResult("", "command failed: Operation not supported (-95)", 240)
+    run = mocker.patch(
+        "wlanpi_core.streaming.connection_manager.run_command_async",
+        return_value=failed,
+    )
+
+    error = await manager._set_channel("wlanpi0", 2412, 20)
+    assert error is not None and "not supported" in error
+    assert run.call_count == 1
+
+
 async def test_set_channel_rejects_invalid_center_before_command(mocker):
     manager = ConnectionManager()
     run_command = mocker.patch.object(
