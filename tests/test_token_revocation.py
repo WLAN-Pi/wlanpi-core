@@ -73,13 +73,22 @@ async def test_revoking_twice_reports_already_revoked(token_manager):
 # --- Boot-bound, monotonic token lifetime ---------------------------------
 #
 # The device has no RTC, so wall-clock exp is advisory. Lifetime enforcement:
-# a token dies with the boot it was issued in, and within a boot its age is
-# measured on CLOCK_BOOTTIME. A reboot (or wall-clock reset to a base time)
-# may invalidate tokens early but must never resurrect an expired one.
+# within a boot its age is measured on CLOCK_BOOTTIME. In boot_bound mode a
+# token also dies with the boot it was issued in; wall_clock_grace (the default)
+# keeps previous-boot tokens valid until wall-clock expiry (7 days by default).
+
+
+@pytest.fixture
+def boot_bound_mode(monkeypatch):
+    monkeypatch.setattr(
+        token_module.settings, "TOKEN_LIFETIME_MODE", "boot_bound"
+    )
 
 
 @pytest.mark.asyncio
-async def test_token_from_previous_boot_is_rejected(token_manager, monkeypatch):
+async def test_token_from_previous_boot_is_rejected(
+    token_manager, monkeypatch, boot_bound_mode
+):
     token = await token_manager.create_token(device_id="boot-bound")
     assert (await token_manager.verify_token(token)).is_valid
 
@@ -117,7 +126,7 @@ async def test_monotonic_expiry_rejects_on_cache_hit_and_cold_path(
 
 @pytest.mark.asyncio
 async def test_wall_clock_reset_cannot_resurrect_expired_token(
-    token_manager, monkeypatch
+    token_manager, monkeypatch, boot_bound_mode
 ):
     token = await token_manager.create_token(
         device_id="no-resurrection", expires_delta=timedelta(seconds=60)
@@ -139,7 +148,9 @@ async def test_wall_clock_reset_cannot_resurrect_expired_token(
 
 
 @pytest.mark.asyncio
-async def test_previous_boot_tokens_are_swept(token_manager, monkeypatch):
+async def test_previous_boot_tokens_are_swept(
+    token_manager, monkeypatch, boot_bound_mode
+):
     stale = await token_manager.create_token(device_id="sweep-stale")
 
     monkeypatch.setattr(token_module, "current_boot_id", lambda: "boot-2")
@@ -176,6 +187,11 @@ def grace_mode(monkeypatch):
     monkeypatch.setattr(
         token_module.settings, "TOKEN_LIFETIME_MODE", "wall_clock_grace"
     )
+
+
+def test_default_lifetime_mode_is_wall_clock_grace():
+    assert token_module.settings.TOKEN_LIFETIME_MODE == "wall_clock_grace"
+    assert token_module.settings.ACCESS_TOKEN_EXPIRE_DAYS == 7
 
 
 @pytest.mark.asyncio
