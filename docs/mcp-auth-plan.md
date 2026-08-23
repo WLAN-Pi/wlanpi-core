@@ -119,8 +119,9 @@ Target: wlanpi-mcp as a spec-conformant **OAuth 2.1 resource server** on MCP Str
 | # | Item | Repo | Size | Notes |
 |---|---|---|---|---|
 | P1 | Credential-based auth dispatch; remove nginx sentinel; remove OTG fall-through | wlanpi-core | S | This **is** #139; tests already enumerated on the issue |
-| P2 | Revocation cache eviction fix; enable `exp` validation; `ttl` param on token issuance; 24h default for interactive tokens | wlanpi-core | S | Makes P4/P5 meaningful; small diffs in `token.py` |
-| P3 | nginx TLS vhosts for core API and MCP (existing cert); UFW updates; cert-distribution note for classrooms | wlanpi-core (+pi-gen) | S–M | Highest security value per line of config |
+| P2 | Revocation cache eviction fix; boot-bound monotonic lifetime (`bid`/`upt`); `ttl` on issuance; `TOKEN_LIFETIME_MODE` (`wall_clock_grace` default, 7-day `ACCESS_TOKEN_EXPIRE_DAYS`; `boot_bound` optional) | wlanpi-core | S | Makes P4/P5 meaningful; small diffs in `token.py` / `config.py` |
+| P3 | Feature-flagged nginx TLS front-ends (off by default): `:31416` core API, `:8767` MCP, `:8443` dev uvicorn; plain `:31415` unchanged; UFW via `wlanpi-core-tls`; existing postinst self-signed cert | wlanpi-core (+pi-gen) | S–M | PR in flight — design and ports, not “shipped” until merged; runbook in branch `docs/TLS.md` |
+| P3.1 | `:31415` transition (post-Prague): `WLANPI_CORE_HTTP_API` (LAN cleartext on/off → loopback-only HTTP for HMAC/`getjwt` when off); `WLANPI_CORE_TLS_API_PORT` (`31416` default, or `31415` only when LAN HTTP is off); coordinate WLAN Pi app cert trust before removing cleartext | wlanpi-core (+WLAN Pi app) | S | Deliberate migration after P3; not part of the initial TLS PR |
 | P4 | `getjwt --export` / `--write-env` (0600) + stderr warning; docs stop showing paste-into-config | wlanpi-core | S | |
 | P5 | MCP: drop `X-Wlanpi-Client`; HTTPS endpoint docs; classroom tool-allowlist profile; token from env only | wlanpi-mcp | S | Depends on P1, P3 |
 | P6 | Capture WS auth (#141) + `did`-owned stream handles + subscribe rights (Appendix A policy) | wlanpi-core | M | Required for MCP capture at Prague |
@@ -129,7 +130,7 @@ Target: wlanpi-mcp as a spec-conformant **OAuth 2.1 resource server** on MCP Str
 | P9 | WebUI front-door auth: session login + CSRF on mutating routes (Appendix B) | wlanpi-webui | M | Closes the live anonymous confused-deputy hole; Prague candidate — see B.3 |
 | P10 | Core route-auth guard rail: CI test asserting every route carries an auth dependency or is on an explicit public allowlist | wlanpi-core | S | Core is clean today (only the #141 WS lacks auth); this keeps it that way |
 
-Dependency chain: P1 → P5; P2 independent; P3 → P5/P8; P6 → P7. P1–P4 are individually small and can land as separate PRs immediately.
+Dependency chain: P1 → P5; P2 independent; P3 → P5/P8; P3.1 after P3 and app cert-trust coordination; P6 → P7. P1–P4 are individually small and can land as separate PRs immediately.
 
 ### 4.2 Beyond-Prague elements
 
@@ -158,7 +159,7 @@ Every security property above must be pinned by a test that fails when the prope
 | P1 (#139) | Bearer from a **loopback** source validates as JWT (no HMAC demanded); HMAC signature from loopback validates; loopback request with **neither** credential → 401; non-loopback with valid Bearer → 200; non-loopback without Bearer → 401; request carrying **both** → defined precedence (Bearer wins) asserted; `X-Wlanpi-Client` header has **no effect** on dispatch |
 | P1 (OTG) | `verify_auth_wrapper` has no code path returning `None`/unauthenticated — property test: for every combination of (source, headers) with invalid or missing credentials, the result is 401/403, never success |
 | P2 (revocation) | Issue token → verify (populates cache) → revoke → **immediate** re-verify fails (this is the cache-eviction regression test; it fails on today's code); revoke unknown/already-revoked token → stable status responses |
-| P2 (expiry) | Token issued with `ttl=1s` → verify after expiry fails via `exp` (not via purge); `iat`/`exp` claims present and consistent; default interactive TTL is the configured 24h |
+| P2 (expiry / lifetime) | Token issued with `ttl=1s` → verify after expiry fails via `exp` (not via purge); `iat`/`exp` claims present and consistent; default mode is `wall_clock_grace` with 7-day ceiling; `boot_bound` mode ties validity to monotonic uptime (`bid`/`upt`) and is pinned by explicit tests |
 | P2 (rotation) | After `rotate_key`, old-key tokens fail immediately including from cache |
 | P6 (WS auth) | Connect without auth frame within window → closed 4401; valid first-message auth → subscribed; revoked/expired token → refused; **owner** can stop, non-owner valid token cannot (403); non-owner valid token **can** subscribe (policy A) — flips if C is chosen; renewed token (same `did`, new string) retains ownership of an existing handle; token in query string is rejected (forces the safe handshake) |
 | P10 (guard rail) | Iterate `app.routes`; assert each route's dependencies include `verify_auth_wrapper`/`verify_hmac` **or** the route is in an explicit `PUBLIC_ROUTES` allowlist checked into the repo; WS routes included; test fails on any new unlisted route |
@@ -169,7 +170,7 @@ Every security property above must be pinned by a test that fails when the prope
 | Backs | Check |
 |---|---|
 | P1 | nginx configs under `install/etc/wlanpi-core/nginx/` contain **no auth-related header rewriting**: grep-fails on `map $http_x_wlanpi_client`, hardcoded `X-Real-IP` sentinels, or any `proxy_set_header` derived from a client-supplied identity header (this is #139's acceptance criterion, executable) |
-| P3 | `nginx -t` against the shipped configs in CI (container with nginx-light); TLS vhosts reference the postinst cert paths; UFW rules file parses |
+| P3 | `nginx -t` against the shipped configs in CI (container with nginx-light); TLS vhosts reference the postinst cert paths, listen on `:31416`/`:8767`/`:8443` (never replace plain `:31415` in the same PR); flags default off; UFW rules file parses; helper link/unlink logic exercised |
 | P4 | Repo-wide secret scan: no `eyJ`-prefixed literals in docs/examples/tests fixtures (allowlist for deliberately-invalid sample tokens); `getjwt --write-env` output file asserted mode `0600` in its unit test; no code path writes under `.cursor/` or `claude_desktop_config.json` |
 | P2/B5 | `SecurityManager` sets secret file mode/owner as specified (0640 root:wlanpi now; flips to 0600 root-only with B5 — the test encodes the *current* policy so tightening is a deliberate test change) |
 
@@ -192,7 +193,7 @@ Every security property above must be pinned by a test that fails when the prope
 
 | Backs | Check |
 |---|---|
-| P3 | From an off-box network namespace: `:31415`/MCP endpoints answer HTTPS with the device cert; cleartext HTTP either absent or loopback-only (per the §5.1 dual-stack window — the test encodes the current phase); UFW rules active |
+| P3 | From an off-box network namespace: with flags enabled, `:31416`/`:8767` answer HTTPS with the device cert; plain `:31415`/`:8766` cleartext unchanged until P3.1 (dual-stack window — test encodes current phase); UFW TLS profiles active when enabled |
 | P1+P3 | End-to-end: `getjwt` on-box → Bearer call from off-box over TLS → 200; same call with revoked token → 401 |
 | P9 | Anonymous fetch of a WebUI mutating route from off-box → login redirect |
 
@@ -208,6 +209,8 @@ Short answer: **it would not be a breaking change if sequenced with the compatib
 
 | Item | Breaking for the WLAN Pi app? | Breaking for internal HMAC clients (fpms, `getjwt`)? | Notes |
 |---|---|---|---|
+| P2 Token lifetime | No | No | Default `wall_clock_grace`: app tokens survive reboots within the 7-day window. Optional `boot_bound` tightens to monotonic uptime — opt-in via config, not the shipped default |
+| P3 TLS front-ends | No | No | Off by default; enabling adds HTTPS on new ports only. Plain `:31415` stays until P3.1 |
 | B1 Streamable HTTP for MCP | No | No | MCP-only; the app talks REST to core directly, never through MCP |
 | B2 `aud` claims | **No, if lenient** | No | Rule: core *issues* `aud` going forward but *accepts* tokens without `aud` (legacy) at core endpoints. Only MCP enforces `aud=mcp`. Existing 7-day app tokens age out naturally; the app's next SSH `getjwt` run returns an `aud=core` token transparently — same command, same JSON shape |
 | B3 Introspection endpoint | No | No | Purely additive |
@@ -216,7 +219,7 @@ Short answer: **it would not be a breaking change if sequenced with the compatib
 | B6 Pairing flow | No | No | Additive; SSH+`getjwt` remains as fallback until the app adopts pairing |
 | B7 Scopes | **No, if lenient** | No | Rule: tokens without a scope claim get full legacy rights; scoping becomes opt-in per issuance |
 
-The one genuinely app-facing transition in either track is **TLS on `:31415` — and that is already in the Prague slice (P3), not a beyond-Prague deviation.** If plain HTTP were switched off, the deployed app would break until it speaks HTTPS and trusts the self-signed cert. Rule: dual-stack `:31415` (HTTP + HTTPS) for one release cycle, or keep HTTP bound to loopback only, and coordinate the app's cert-trust update before removing cleartext.
+The one genuinely app-facing transition in either track is **retiring cleartext `:31415` on the LAN** — P3 adds optional TLS on **`:31416`** without touching HTTP `:31415`; P3.1 is the deliberate cutover (loopback-only HTTP + optional TLS on `:31415` via `WLANPI_CORE_TLS_API_PORT`). If LAN cleartext were switched off before the app trusts the device cert and speaks HTTPS, deployed clients break. Rule: dual-stack (HTTP `:31415` + HTTPS `:31416`) for at least one release cycle; P3.1's `WLANPI_CORE_HTTP_API=0` only after the WLAN Pi app update ships; internal HMAC/`getjwt` keep loopback HTTP.
 
 ### 5.2 Why the Prague slice still wins
 
