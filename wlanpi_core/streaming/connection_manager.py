@@ -1,7 +1,8 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict
+import secrets
+from typing import Any, Dict, Optional
 
 from fastapi import WebSocket
 
@@ -24,6 +25,9 @@ class ConnectionManager:
     def __init__(self):
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
         self.interface_owners: Dict[str, WebSocket] = {}
+        # Running captures by session id -> owning WebSocket. Sessions exist
+        # so other authenticated principals can subscribe read-only (#141).
+        self.sessions: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
         self.clients[websocket] = {
@@ -32,8 +36,23 @@ class ConnectionManager:
             "task": None,
             "channel_tasks": {},
             "interfaces": set(),
+            "did": None,
+            "session_id": None,
+            "subscribers": set(),
+            "subscribed_to": None,
         }
         await websocket.accept()
+
+    def authenticate(self, websocket: WebSocket, did: str) -> None:
+        """Record the verified principal for this socket. Commands are only
+        dispatched after this is set (first-message auth in the endpoint)."""
+        client = self.clients.get(websocket)
+        if client is not None:
+            client["did"] = did
+
+    def is_authenticated(self, websocket: WebSocket) -> bool:
+        client = self.clients.get(websocket)
+        return bool(client and client.get("did"))
 
     def _claim_interfaces(
         self, websocket: WebSocket, interfaces: list[str]
@@ -64,6 +83,100 @@ class ConnectionManager:
                 self.interface_owners.pop(iface, None)
         client["interfaces"] = set()
 
+    def _detach_subscriber(self, websocket: WebSocket) -> None:
+        client = self.clients.get(websocket)
+        if not client:
+            return
+        session_id = client.get("subscribed_to")
+        client["subscribed_to"] = None
+        if not session_id:
+            return
+        owner_ws = self.sessions.get(session_id)
+        if owner_ws is not None:
+            owner_client = self.clients.get(owner_ws)
+            if owner_client:
+                owner_client["subscribers"].discard(websocket)
+
+    async def _end_session(self, client: Dict[str, Any], code: str, message: str) -> None:
+        """Unregister a finished capture and notify/detach its subscribers.
+        Idempotent: safe to call from both stream teardown and stop paths."""
+        session_id = client.get("session_id")
+        client["session_id"] = None
+        if session_id:
+            self.sessions.pop(session_id, None)
+        for subscriber in list(client.get("subscribers", set())):
+            sub_client = self.clients.get(subscriber)
+            if sub_client:
+                sub_client["subscribed_to"] = None
+            client["subscribers"].discard(subscriber)
+            await self.send_message_event(subscriber, "status", code, message)
+
+    async def subscribe(self, websocket: WebSocket, session_id: Optional[str]) -> None:
+        """Attach this socket as a read-only listener on a running capture.
+
+        Any authenticated principal on the device may listen; only the owning
+        socket can configure or stop the capture (control is not shareable).
+        """
+        client = self.clients.get(websocket)
+        if client is None:
+            return
+        owner_ws = self.sessions.get(session_id) if session_id else None
+        if owner_ws is None:
+            await self.send_message_event(
+                websocket, "error", "SESSION_NOT_FOUND",
+                f"No running capture session: {session_id}",
+            )
+            return
+        if owner_ws is websocket:
+            await self.send_message_event(
+                websocket, "error", "SESSION_IS_OWN",
+                "This socket owns that capture; it already receives its stream.",
+            )
+            return
+        self._detach_subscriber(websocket)
+        owner_client = self.clients[owner_ws]
+        owner_client["subscribers"].add(websocket)
+        client["subscribed_to"] = session_id
+        await self.send_event(
+            websocket, "status", "SUBSCRIBED",
+            {
+                "session_id": session_id,
+                "interfaces": sorted(owner_client.get("interfaces", set())),
+            },
+        )
+
+    async def unsubscribe(self, websocket: WebSocket) -> None:
+        session_id = (self.clients.get(websocket) or {}).get("subscribed_to")
+        self._detach_subscriber(websocket)
+        await self.send_event(
+            websocket, "status", "UNSUBSCRIBED", {"session_id": session_id}
+        )
+
+    async def send_session_list(self, websocket: WebSocket) -> None:
+        sessions = []
+        for session_id, owner_ws in self.sessions.items():
+            owner_client = self.clients.get(owner_ws, {})
+            sessions.append(
+                {
+                    "session_id": session_id,
+                    "owner": owner_client.get("did"),
+                    "interfaces": sorted(owner_client.get("interfaces", set())),
+                }
+            )
+        await self.send_event(websocket, "status", "SESSIONS", {"sessions": sessions})
+
+    async def _broadcast_chunk(
+        self, owner_ws: WebSocket, client: Dict[str, Any], chunk: bytes
+    ) -> None:
+        # Owner send failures propagate and end the capture (as before).
+        # A failing subscriber is dropped without disturbing the capture.
+        await owner_ws.send_bytes(chunk)
+        for subscriber in list(client.get("subscribers", set())):
+            try:
+                await subscriber.send_bytes(chunk)
+            except Exception:
+                self._detach_subscriber(subscriber)
+
     async def _stop_channel_tasks(self, client: Dict[str, Any]) -> None:
         channel_tasks = list(client.get("channel_tasks", {}).values())
         client["channel_tasks"] = {}
@@ -84,6 +197,7 @@ class ConnectionManager:
             self.clients[websocket]["configs"][iface] = validated.model_dump()
 
     async def disconnect(self, websocket: WebSocket) -> None:
+        self._detach_subscriber(websocket)
         try:
             await self.stop_streaming(websocket)
         except Exception as e:
@@ -270,7 +384,7 @@ class ConnectionManager:
                     chunk = await proc.stdout.read(4096)
                     if not chunk:
                         break
-                    await websocket.send_bytes(chunk)
+                    await self._broadcast_chunk(websocket, client, chunk)
                 await self.send_message_event(
                     websocket, "status", "CAPTURE_ENDED", "Capture ended."
                 )
@@ -287,6 +401,7 @@ class ConnectionManager:
                 await terminate_process_async(proc)
                 await self._stop_channel_tasks(client)
                 self._release_interfaces(websocket)
+                await self._end_session(client, "CAPTURE_ENDED", "Capture ended.")
                 if client.get("proc") is proc:
                     client["proc"] = None
                 if client.get("task") is asyncio.current_task():
@@ -308,11 +423,19 @@ class ConnectionManager:
                 )
                 client["channel_tasks"][iface] = task
 
-        await self.send_message_event(
+        session_id = f"cap_{secrets.token_hex(4)}"
+        client["session_id"] = session_id
+        self.sessions[session_id] = websocket
+
+        await self.send_event(
             websocket,
             "status",
             "CAPTURE_STARTED",
-            f"Started capture on {', '.join(interfaces)}",
+            {
+                "message": f"Started capture on {', '.join(interfaces)}",
+                "session_id": session_id,
+                "interfaces": sorted(interfaces),
+            },
         )
 
     async def stop_streaming(self, websocket: WebSocket, notify: bool = True) -> None:
@@ -338,6 +461,7 @@ class ConnectionManager:
 
         await self._stop_channel_tasks(client)
         self._release_interfaces(websocket)
+        await self._end_session(client, "CAPTURE_STOPPED", "Capture stopped.")
 
         client["task"] = None
         client["proc"] = None
