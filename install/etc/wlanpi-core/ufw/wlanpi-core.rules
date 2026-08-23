@@ -17,3 +17,8 @@ ports=31416/tcp
 title=wlanpi-mcp over HTTPS
 description=wlanpi-mcp HTTPS front-end (enable with wlanpi-core-tls enable mcp)
 ports=8767/tcp
+
+[wlanpi-core-tls-dev]
+title=wlanpi-core development instance over HTTPS
+description=wlanpi-core dev HTTPS front-end (enable with wlanpi-core-tls enable dev)
+ports=8443/tcp

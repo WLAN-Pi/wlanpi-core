@@ -6,8 +6,8 @@
 # application profiles, validates the nginx config, and reloads nginx.
 #
 #   wlanpi-core-tls apply            # reconcile nginx/UFW with the flag file
-#   wlanpi-core-tls enable  api|mcp  # set flag to 1, then apply
-#   wlanpi-core-tls disable api|mcp  # set flag to 0, then apply
+#   wlanpi-core-tls enable  api|mcp|dev  # set flag to 1, then apply
+#   wlanpi-core-tls disable api|mcp|dev  # set flag to 0, then apply
 #   wlanpi-core-tls status
 #
 # Paths are overridable through environment variables for testing.
@@ -24,12 +24,12 @@ UFW_APP_FILE="${WLANPI_TLS_UFW_APP_FILE:-/etc/ufw/applications.d/wlanpi-core}"
 # Set to 1 to skip nginx validation/reload and UFW (tests, chroot builds).
 NO_SYSTEM="${WLANPI_TLS_NO_SYSTEM:-0}"
 
-FRONTENDS="api mcp"
+FRONTENDS="api mcp dev"
 
-site_for()  { case "$1" in api) echo wlanpi_core_tls.conf ;; mcp) echo wlanpi_mcp_tls.conf ;; esac; }
-flag_for()  { case "$1" in api) echo WLANPI_CORE_TLS_API ;;  mcp) echo WLANPI_CORE_TLS_MCP ;;  esac; }
-ufw_for()   { case "$1" in api) echo wlanpi-core-tls ;;      mcp) echo wlanpi-mcp-tls ;;      esac; }
-port_for()  { case "$1" in api) echo 31416 ;;                mcp) echo 8767 ;;                esac; }
+site_for()  { case "$1" in api) echo wlanpi_core_tls.conf ;; mcp) echo wlanpi_mcp_tls.conf ;; dev) echo wlanpi_core_tls_dev.conf ;; esac; }
+flag_for()  { case "$1" in api) echo WLANPI_CORE_TLS_API ;;  mcp) echo WLANPI_CORE_TLS_MCP ;;  dev) echo WLANPI_CORE_TLS_DEV ;;  esac; }
+ufw_for()   { case "$1" in api) echo wlanpi-core-tls ;;      mcp) echo wlanpi-mcp-tls ;;      dev) echo wlanpi-core-tls-dev ;;  esac; }
+port_for()  { case "$1" in api) echo 31416 ;;                mcp) echo 8767 ;;                dev) echo 8443 ;;                esac; }
 
 usage() {
     sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
@@ -38,8 +38,8 @@ usage() {
 
 require_frontend() {
     case "${1:-}" in
-        api|mcp) ;;
-        *) echo "error: expected 'api' or 'mcp'" >&2; usage ;;
+        api|mcp|dev) ;;
+        *) echo "error: expected 'api', 'mcp' or 'dev'" >&2; usage ;;
     esac
 }
 

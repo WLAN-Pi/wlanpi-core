@@ -5,6 +5,7 @@
 /install/etc/wlanpi-core/tls.conf /etc/wlanpi-core
 /install/etc/wlanpi-core/nginx/wlanpi_core_tls.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/etc/wlanpi-core/nginx/wlanpi_mcp_tls.conf /etc/wlanpi-core/nginx/sites-enabled
+/install/etc/wlanpi-core/nginx/wlanpi_core_tls_dev.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/usr/bin/wlanpi-core-tls /usr/bin
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts

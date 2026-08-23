@@ -20,7 +20,8 @@ NGINX_DIR = REPO / "install/etc/wlanpi-core/nginx"
 HTTP_SITE = NGINX_DIR / "wlanpi_core.conf"
 API_TLS_SITE = NGINX_DIR / "wlanpi_core_tls.conf"
 MCP_TLS_SITE = NGINX_DIR / "wlanpi_mcp_tls.conf"
-TLS_SITES = [API_TLS_SITE, MCP_TLS_SITE]
+DEV_TLS_SITE = NGINX_DIR / "wlanpi_core_tls_dev.conf"
+TLS_SITES = [API_TLS_SITE, MCP_TLS_SITE, DEV_TLS_SITE]
 FLAG_FILE = REPO / "install/etc/wlanpi-core/tls.conf"
 HELPER = REPO / "install/usr/bin/wlanpi-core-tls"
 UFW_RULES = REPO / "install/etc/wlanpi-core/ufw/wlanpi-core.rules"
@@ -30,6 +31,7 @@ CERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
 KEY = "/etc/nginx/ssl/self-signed-wlanpi.key"
 API_TLS_PORT = 31416
 MCP_TLS_PORT = 8767
+DEV_TLS_PORT = 8443
 
 
 # --- Flags: off by default --------------------------------------------------
@@ -39,6 +41,7 @@ def test_tls_flags_default_off():
     text = FLAG_FILE.read_text()
     assert re.search(r"^WLANPI_CORE_TLS_API=0$", text, re.M)
     assert re.search(r"^WLANPI_CORE_TLS_MCP=0$", text, re.M)
+    assert re.search(r"^WLANPI_CORE_TLS_DEV=0$", text, re.M)
 
 
 def test_postinst_applies_flags_without_changing_defaults():
@@ -80,8 +83,12 @@ def test_tls_sites_use_postinst_certificate(site):
 
 @pytest.mark.parametrize(
     "site, port",
-    [(API_TLS_SITE, API_TLS_PORT), (MCP_TLS_SITE, MCP_TLS_PORT)],
-    ids=["api", "mcp"],
+    [
+        (API_TLS_SITE, API_TLS_PORT),
+        (MCP_TLS_SITE, MCP_TLS_PORT),
+        (DEV_TLS_SITE, DEV_TLS_PORT),
+    ],
+    ids=["api", "mcp", "dev"],
 )
 def test_tls_sites_listen_on_their_own_tls_ports(site, port):
     conf = site.read_text()
@@ -89,6 +96,7 @@ def test_tls_sites_listen_on_their_own_tls_ports(site, port):
     # Dual-stack window: the TLS site must not take over the plain listeners.
     assert "listen 31415" not in conf
     assert "listen 8766" not in conf
+    assert "listen 8000" not in conf
 
 
 @pytest.mark.parametrize("site", [HTTP_SITE, *TLS_SITES], ids=lambda p: p.name)
@@ -129,6 +137,20 @@ def test_api_tls_site_mirrors_http_site_proxy_block():
     )
 
 
+def test_dev_tls_site_mirrors_http_site_except_upstream():
+    """The dev front-end must behave exactly like production TLS, differing
+    only in where it proxies (the uvicorn dev server)."""
+
+    def masked(conf):
+        return [
+            "proxy_pass <upstream>;" if ln.startswith("proxy_pass") else ln
+            for ln in _location_block(conf)
+        ]
+
+    assert masked(DEV_TLS_SITE.read_text()) == masked(HTTP_SITE.read_text())
+    assert "proxy_pass http://127.0.0.1:8000;" in DEV_TLS_SITE.read_text()
+
+
 def test_mcp_tls_site_streams_to_loopback_mcp():
     conf = MCP_TLS_SITE.read_text()
     assert "proxy_pass http://127.0.0.1:8766;" in conf
@@ -145,6 +167,7 @@ def test_ufw_profiles_match_tls_listeners():
     rules = UFW_RULES.read_text()
     assert re.search(rf"\[wlanpi-core-tls\][^\[]*ports={API_TLS_PORT}/tcp", rules)
     assert re.search(rf"\[wlanpi-mcp-tls\][^\[]*ports={MCP_TLS_PORT}/tcp", rules)
+    assert re.search(rf"\[wlanpi-core-tls-dev\][^\[]*ports={DEV_TLS_PORT}/tcp", rules)
     # The MCP cleartext port must not be opened by core.
     assert "8766" not in rules
     version = (REPO / "install/etc/wlanpi-core/ufw/current-rules-version").read_text()
@@ -185,7 +208,8 @@ def test_helper_apply_with_defaults_links_nothing(tls_env):
     result = _run(env, "apply")
     assert result.returncode == 0, result.stderr
     assert list(enabled.iterdir()) == []
-    assert "api  flag=0" in result.stdout and "mcp  flag=0" in result.stdout
+    for name in ("api", "mcp", "dev"):
+        assert f"{name}  flag=0" in result.stdout
 
 
 def test_helper_enable_and_disable_round_trip(tls_env):
@@ -199,9 +223,13 @@ def test_helper_enable_and_disable_round_trip(tls_env):
     assert _run(env, "enable", "mcp").returncode == 0
     assert (enabled / "wlanpi_mcp_tls.conf").is_symlink()
 
+    assert _run(env, "enable", "dev").returncode == 0
+    assert (enabled / "wlanpi_core_tls_dev.conf").is_symlink()
+
     assert _run(env, "disable", "api").returncode == 0
     assert not (enabled / "wlanpi_core_tls.conf").exists()
     assert (enabled / "wlanpi_mcp_tls.conf").is_symlink()
+    assert (enabled / "wlanpi_core_tls_dev.conf").is_symlink()
     assert re.search(r"^WLANPI_CORE_TLS_API=0$", flag.read_text(), re.M)
 
     # The flag file stays the source of truth: apply reconciles stray links.

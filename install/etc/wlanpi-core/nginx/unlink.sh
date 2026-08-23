@@ -10,3 +10,4 @@ function unlink_if_existing() {
 unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
 unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core_tls.conf
 unlink_if_existing /etc/nginx/sites-enabled/wlanpi_mcp_tls.conf
+unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core_tls_dev.conf

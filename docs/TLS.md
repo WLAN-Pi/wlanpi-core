@@ -71,6 +71,39 @@ In a classroom, distribute each device's certificate with its credentials.
 Accepting any certificate on first connect (TOFU) is an acceptable fallback on
 a trusted network but leaves an active attacker able to present their own.
 
+## Testing against a development instance
+
+Development runs core directly under uvicorn, bypassing gunicorn and nginx:
+
+```bash
+sudo venv/bin/python -m wlanpi_core --debug --reload
+```
+
+That listens on `0.0.0.0:8000`, so the production TLS sites (which proxy to
+the gunicorn unix socket) never see it. A third, development-only front-end
+proxies TLS to the dev server instead, using the same cert and the same proxy
+block as production — so TLS clients, `X-Forwarded-Proto`, and the
+credential-dispatch behaviour can be exercised against live code:
+
+```bash
+sudo wlanpi-core-tls enable dev
+```
+
+```bash
+curl --cacert ./wlanpi.cert https://wlanpi.local:8443/api/v1/system/device/info -H "Authorization: Bearer $TOKEN"
+```
+
+| Front-end | Flag | Listener | Proxies to |
+|---|---|---|---|
+| Dev core | `WLANPI_CORE_TLS_DEV` | `https://<device>:8443` | `http://127.0.0.1:8000` |
+
+If the dev server runs with a different `--port`, change the `proxy_pass`
+target in `wlanpi_core_tls_dev.conf` to match. Leave this flag off on deployed
+devices; it is not part of any production configuration.
+
+Note the dev server itself still answers plain HTTP on `:8000` from the LAN —
+the TLS front-end adds an encrypted path, it does not remove the cleartext one.
+
 ## Transition plan for `:31415`
 
 The plain HTTP API listener is intentionally untouched in this phase so

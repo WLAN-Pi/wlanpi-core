@@ -30,6 +30,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core.conf
     unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core_tls.conf
     unlink_if_existing /etc/nginx/sites-enabled/wlanpi_mcp_tls.conf
+    unlink_if_existing /etc/nginx/sites-enabled/wlanpi_core_tls_dev.conf
 
     rm -f /etc/wlanpi-core/installed-rules-version
     rm -f /etc/ufw/wlanpi-core.rules
@@ -39,6 +40,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
         ufw delete allow wlanpi-webui
         ufw delete allow wlanpi-core-tls || true
         ufw delete allow wlanpi-mcp-tls || true
+        ufw delete allow wlanpi-core-tls-dev || true
     fi
 fi
 
