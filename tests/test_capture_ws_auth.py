@@ -7,6 +7,7 @@ to read-only; only the owning socket controls it.
 """
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -131,6 +132,13 @@ def _register_session(mgr, owner_ws, session_id, interfaces=("wlan0",)):
     client = mgr.clients[owner_ws]
     client["session_id"] = session_id
     client["interfaces"] = set(interfaces)
+    client["session_config"] = {
+        "interfaces": {
+            iface: {"channels": [{"freq": 2412, "width": 20}], "dwell_time": 250}
+            for iface in interfaces
+        },
+        "pcap_filter": "type mgt",
+    }
     mgr.sessions[session_id] = owner_ws
     return client
 
@@ -148,6 +156,16 @@ async def test_subscriber_receives_broadcast_and_stop_notification():
     await mgr.subscribe(listener, "cap_test")
     assert listener in client["subscribers"]
     assert mgr.clients[listener]["subscribed_to"] == "cap_test"
+
+    # The SUBSCRIBED event tells the listener the running config, so it is
+    # not blind to what it receives.
+    subscribed = [
+        json.loads(c.args[0])
+        for c in listener.send_text.await_args_list
+    ]
+    payload = next(e for e in subscribed if e["code"] == "SUBSCRIBED")
+    assert payload["data"]["config"]["pcap_filter"] == "type mgt"
+    assert "wlan0" in payload["data"]["config"]["interfaces"]
 
     await mgr._broadcast_chunk(owner, client, b"pcapng-bytes")
     owner.send_bytes.assert_awaited_once_with(b"pcapng-bytes")

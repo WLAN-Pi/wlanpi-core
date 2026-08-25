@@ -44,7 +44,7 @@ timeout / a token in the URL). After that:
 | `stop` | `{}` | owner only |
 | `subscribe` | `{"session_id": "cap_xxxx"}` | listen read-only to another socket's capture |
 | `unsubscribe` | `{}` | detach |
-| `list_sessions` | `{}` | enumerate running captures |
+| `list_sessions` | `{}` | enumerate running captures **with their running config** |
 
 Interface names must match `wlanpiN` (the monitor-mode interface), not `wlan0`.
 
@@ -82,6 +82,41 @@ itself must hold the socket open and expose a handle; do not expect core to
 keep an ownerless capture.
 
 ---
+
+## 2a. Deciding own vs subscribe, and reporting control
+
+Before capturing, MCP must decide whether to **own** a new capture or **join**
+an existing one, and it must tell its caller which it did.
+
+1. Send `list_sessions`. Each returned session carries `session_id`, `owner`
+   (the did), `interfaces`, and the full running `config` (per-interface
+   channels/width/dwell + `pcap_filter`).
+2. If a session already captures on the interface MCP wants:
+   - MCP **cannot** also own that interface — a `start` will fail with
+     `INTERFACE_IN_USE`. So MCP either subscribes to observe it, or reports the
+     conflict. Which one is a tool-design choice; make it explicit, don't retry
+     blindly.
+   - To observe: `subscribe` with that `session_id`. The `SUBSCRIBED` event
+     returns the same `config`, so MCP (and its caller) know exactly what is
+     being received — channels, width, dwell, filter — rather than guessing
+     from raw frames.
+3. If no session covers the interface: MCP owns it (`configure` + `start`) and
+   is in control.
+
+**Report the role back through the tool result.** Every capture tool response
+MUST state whether MCP is `owner` or `subscriber`, e.g.:
+
+```json
+{"role": "owner", "session_id": "cap_ab12", "config": { ... }, "aps": [ ... ]}
+{"role": "subscriber", "session_id": "cap_ab12", "owner": "webui-1",
+ "config": { ... }, "aps": [ ... ]}
+```
+
+The caller (the agent, or a harness driving MCP) then knows if MCP can
+stop/reconfigure the capture (owner) or is only listening (subscriber). The
+reference harness prints exactly this: an `OWNER` / `SUBSCRIBER` banner plus the
+config it learned. A subscriber is **never blind** — it always receives the
+owner's config in `SUBSCRIBED`.
 
 ## 3. How MCP should consume this (two viable shapes)
 

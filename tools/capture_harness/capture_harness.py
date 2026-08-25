@@ -442,6 +442,31 @@ async def _consume(ws, table: ScanTable, refresh: float, deadline: Optional[floa
             last_print = now
 
 
+def _print_config(config: Optional[dict]) -> None:
+    if not config:
+        print("  (running config unavailable)")
+        return
+    for iface, cfg in (config.get("interfaces") or {}).items():
+        chans = ",".join(
+            str(freq_to_channel(c["freq"]) or c["freq"])
+            for c in cfg.get("channels", [])
+        )
+        print(f"  {iface}: channels [{chans}] dwell {cfg.get('dwell_time')}ms")
+    if config.get("pcap_filter"):
+        print(f"  filter: {config['pcap_filter']}")
+
+
+async def _find_sessions(ws) -> list:
+    await ws.send(json.dumps({"command": "list_sessions"}))
+    while True:
+        msg = await asyncio.wait_for(ws.recv(), timeout=AUTH_TIMEOUT)
+        if isinstance(msg, bytes):
+            continue
+        event = json.loads(msg)
+        if event.get("code") == "SESSIONS":
+            return event.get("data", {}).get("sessions", [])
+
+
 async def run_owner(args) -> None:
     token = resolve_token(args)
     with open(args.config) as fh:
@@ -452,6 +477,20 @@ async def run_owner(args) -> None:
     async with websockets.connect(args.url, max_size=None) as ws:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
+
+        # Own-vs-subscribe pre-flight: if a capture is already running on an
+        # interface we want, tell the user they could subscribe instead.
+        wanted = set(interfaces.keys())
+        for sess in await _find_sessions(ws):
+            clash = wanted & set(sess.get("interfaces", []))
+            if clash:
+                print(
+                    f"[note] {sorted(clash)} already captured by session "
+                    f"{sess['session_id']} (owner did={sess.get('owner')}). "
+                    f"start will fail with INTERFACE_IN_USE; to observe it run:\n"
+                    f"    run --subscribe {sess['session_id']} --url {args.url}",
+                    file=sys.stderr,
+                )
 
         await ws.send(json.dumps({"command": "configure", "interfaces": interfaces}))
         await ws.send(
@@ -475,6 +514,7 @@ async def run_owner(args) -> None:
             elif event.get("event") == "error":
                 raise RuntimeError(f"start failed: {event.get('data')}")
         print("=" * 60)
+        print(f"  ROLE: OWNER (in control of this capture)")
         print(f"  CAPTURE SESSION: {session_id}")
         print(f"  subscribe from another instance:")
         print(f"    capture_harness.py run --subscribe {session_id} "
@@ -507,6 +547,23 @@ async def run_subscriber(args) -> None:
         await ws.send(
             json.dumps({"command": "subscribe", "session_id": args.subscribe})
         )
+        # Learn the running config before consuming, so we are not blind.
+        while True:
+            msg = await asyncio.wait_for(ws.recv(), timeout=AUTH_TIMEOUT)
+            if isinstance(msg, bytes):
+                continue
+            event = json.loads(msg)
+            if event.get("code") == "SUBSCRIBED":
+                data = event.get("data", {})
+                print("=" * 60)
+                print(f"  ROLE: SUBSCRIBER (read-only, not in control)")
+                print(f"  session {args.subscribe} owned by "
+                      f"did={data.get('owner')}")
+                _print_config(data.get("config"))
+                print("=" * 60)
+                break
+            if event.get("event") == "error":
+                raise RuntimeError(f"subscribe failed: {event.get('data')}")
         raw_fp = open(args.raw_out, "wb") if args.raw_out else None
         table = ScanTable()
         deadline = time.monotonic() + args.duration if args.duration else None
@@ -534,11 +591,12 @@ async def run_list(args) -> None:
                 sessions = event.get("data", {}).get("sessions", [])
                 if not sessions:
                     print("no running capture sessions")
-                for s in sessions:
+                for sess in sessions:
                     print(
-                        f"{s['session_id']}  owner={s.get('owner')}  "
-                        f"interfaces={','.join(s.get('interfaces', []))}"
+                        f"{sess['session_id']}  owner={sess.get('owner')}  "
+                        f"interfaces={','.join(sess.get('interfaces', []))}"
                     )
+                    _print_config(sess.get("config"))
                 return
 
 

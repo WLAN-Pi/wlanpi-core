@@ -76,14 +76,24 @@ The owner prints a ready-to-paste subscribe command. From another terminal
 ./capture_harness.py run --subscribe cap_ab12cd34 --duration 30
 ```
 
-The subscriber receives the identical binary stream but cannot control the
-capture. It stops receiving when the owner stops or disconnects.
+The subscriber prints a `SUBSCRIBER` banner and the owner's running config
+(channels, width, dwell, filter) learned from the `SUBSCRIBED` event — it is
+never blind to what it receives — then the identical binary stream. It cannot
+control the capture and stops receiving when the owner stops or disconnects.
+
+The owner prints an `OWNER` banner. If the interface you ask to capture is
+already owned by another session, the owner run warns you (with the
+`--subscribe` command to observe it instead) before `start` fails with
+`INTERFACE_IN_USE`.
 
 ### 4. List sessions
 
 ```bash
 ./capture_harness.py list
 ```
+
+Each session is printed with its running config (channels, dwell, filter), so
+you can see what an existing capture is doing before deciding to subscribe.
 
 ## Example scan output
 

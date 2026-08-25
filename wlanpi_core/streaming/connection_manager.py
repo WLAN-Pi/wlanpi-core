@@ -38,6 +38,7 @@ class ConnectionManager:
             "interfaces": set(),
             "did": None,
             "session_id": None,
+            "session_config": None,
             "subscribers": set(),
             "subscribed_to": None,
         }
@@ -102,6 +103,7 @@ class ConnectionManager:
         Idempotent: safe to call from both stream teardown and stop paths."""
         session_id = client.get("session_id")
         client["session_id"] = None
+        client["session_config"] = None
         if session_id:
             self.sessions.pop(session_id, None)
         for subscriber in list(client.get("subscribers", set())):
@@ -110,6 +112,18 @@ class ConnectionManager:
                 sub_client["subscribed_to"] = None
             client["subscribers"].discard(subscriber)
             await self.send_message_event(subscriber, "status", code, message)
+
+    def _session_descriptor(self, session_id: str, owner_ws: WebSocket) -> dict:
+        """Public description of a running capture: who owns it and the exact
+        config it is running (channels/width/dwell per interface + filter), so
+        a subscriber is never blind to what it is receiving."""
+        owner_client = self.clients.get(owner_ws, {})
+        return {
+            "session_id": session_id,
+            "owner": owner_client.get("did"),
+            "interfaces": sorted(owner_client.get("interfaces", set())),
+            "config": owner_client.get("session_config"),
+        }
 
     async def subscribe(self, websocket: WebSocket, session_id: Optional[str]) -> None:
         """Attach this socket as a read-only listener on a running capture.
@@ -139,10 +153,7 @@ class ConnectionManager:
         client["subscribed_to"] = session_id
         await self.send_event(
             websocket, "status", "SUBSCRIBED",
-            {
-                "session_id": session_id,
-                "interfaces": sorted(owner_client.get("interfaces", set())),
-            },
+            self._session_descriptor(session_id, owner_ws),
         )
 
     async def unsubscribe(self, websocket: WebSocket) -> None:
@@ -153,16 +164,10 @@ class ConnectionManager:
         )
 
     async def send_session_list(self, websocket: WebSocket) -> None:
-        sessions = []
-        for session_id, owner_ws in self.sessions.items():
-            owner_client = self.clients.get(owner_ws, {})
-            sessions.append(
-                {
-                    "session_id": session_id,
-                    "owner": owner_client.get("did"),
-                    "interfaces": sorted(owner_client.get("interfaces", set())),
-                }
-            )
+        sessions = [
+            self._session_descriptor(session_id, owner_ws)
+            for session_id, owner_ws in self.sessions.items()
+        ]
         await self.send_event(websocket, "status", "SESSIONS", {"sessions": sessions})
 
     async def _broadcast_chunk(
@@ -425,6 +430,14 @@ class ConnectionManager:
 
         session_id = f"cap_{secrets.token_hex(4)}"
         client["session_id"] = session_id
+        # Snapshot the exact running config so list_sessions / SUBSCRIBED can
+        # report it to subscribers (who otherwise only see raw frames).
+        client["session_config"] = {
+            "interfaces": {
+                iface: client["configs"].get(iface, {}) for iface in interfaces
+            },
+            "pcap_filter": pcap_filter,
+        }
         self.sessions[session_id] = websocket
 
         await self.send_event(
@@ -435,6 +448,7 @@ class ConnectionManager:
                 "message": f"Started capture on {', '.join(interfaces)}",
                 "session_id": session_id,
                 "interfaces": sorted(interfaces),
+                "config": client["session_config"],
             },
         )
 
