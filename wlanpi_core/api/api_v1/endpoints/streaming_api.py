@@ -214,6 +214,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
+    except RuntimeError as e:
+        # Starlette raises "WebSocket is not connected" when the peer closes
+        # mid-operation - a disconnect race, not a server fault. Log at debug
+        # so a genuine RuntimeError is still traceable without noise.
+        log.debug(f"WebSocket closed mid-operation: {e!r}")
+        await manager.disconnect(websocket)
     except Exception as e:
         log.error(f"Unhandled error in websocket endpoint: {e!r}")
         await manager.disconnect(websocket)

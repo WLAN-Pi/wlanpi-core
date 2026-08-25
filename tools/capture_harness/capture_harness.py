@@ -436,6 +436,11 @@ async def _consume(ws, table: ScanTable, refresh: float, deadline: Optional[floa
             if code not in ("CHANNEL_SET",):  # keep hop spam down
                 note = data.get("message") or data
                 print(f"[event] {code}: {note}", file=sys.stderr)
+            if code in ("CAPTURE_ENDED", "CAPTURE_STOPPED"):
+                # The capture is over (owner stopped, or dumpcap exited);
+                # stop consuming instead of idling on a dead session.
+                print("[capture ended] stopping.", file=sys.stderr)
+                return
         now = time.monotonic()
         if now - last_print >= refresh:
             print("\n" + table.render())
