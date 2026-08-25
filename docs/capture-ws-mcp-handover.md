@@ -157,9 +157,22 @@ Do **not** stream raw pcap to the LLM; summarize. Return small JSON.
 ### Shape B — MCP as a subscriber
 
 If another app (WebUI, a lab controller) owns a capture, MCP can `subscribe`
-with `data.session_id` from `list_sessions` and consume the same stream
-read-only. Use this for "observe the capture the instructor started". MCP still
-authenticates as itself; it does not need to be the owner.
+and consume the same stream read-only. MCP still authenticates as itself; it
+does not need to be the owner, and it does **not** need to know the owner's
+capture command or config. The only thing needed to attach is the
+`session_id`, which MCP discovers itself:
+
+- `list_sessions` returns every running capture with its `session_id`,
+  `interfaces`, `namespace`, and `config`. MCP picks the session on the
+  interface it cares about (one owner per interface, so the match is
+  unambiguous) and subscribes to that `session_id`.
+- The running `config` then arrives in the `SUBSCRIBED` event, so MCP learns
+  channels/width/dwell/filter after attaching — it is informed, but attaching
+  never depended on prior knowledge of the command.
+
+So a subscribe tool can take just an interface name (or nothing, defaulting to
+the only running capture) and resolve the session internally. The reference
+harness demonstrates this with `--subscribe-interface`.
 
 ---
 

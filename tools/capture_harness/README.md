@@ -69,8 +69,19 @@ pcapng for opening in Wireshark. Ctrl-C stops cleanly.
 
 ### 3. Subscribe (read-only, second instance)
 
-The owner prints a ready-to-paste subscribe command. From another terminal
+You do **not** need the owner's capture command or config to attach — only a
+session id, and you can discover that yourself. Two ways from another terminal
 (optionally a different token, to prove cross-principal read access):
+
+Discover by interface (no session id needed — the harness runs `list_sessions`
+and picks the capture on that interface; there is only one owner per interface):
+
+```bash
+./capture_harness.py run --subscribe-interface wlanpi0 --duration 30
+```
+
+Or, if you already have the id (the owner prints a ready-to-paste command as a
+convenience):
 
 ```bash
 ./capture_harness.py run --subscribe cap_ab12cd34 --duration 30

@@ -549,8 +549,31 @@ async def run_subscriber(args) -> None:
     async with websockets.connect(args.url, max_size=None) as ws:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
+
+        # A real-world subscriber rarely has the owner's session id handed to
+        # it. Discover it: list running captures and pick the one on the
+        # requested interface (only one owner per interface, so unambiguous).
+        session_id = args.subscribe
+        if not session_id:
+            sessions = await _find_sessions(ws)
+            matches = [
+                s
+                for s in sessions
+                if args.subscribe_interface in s.get("interfaces", [])
+            ]
+            if not matches:
+                raise RuntimeError(
+                    f"no running capture on {args.subscribe_interface}; "
+                    "run `list` to see what is available"
+                )
+            session_id = matches[0]["session_id"]
+            print(
+                f"[discover] {args.subscribe_interface} -> session {session_id}",
+                file=sys.stderr,
+            )
+
         await ws.send(
-            json.dumps({"command": "subscribe", "session_id": args.subscribe})
+            json.dumps({"command": "subscribe", "session_id": session_id})
         )
         # Learn the running config before consuming, so we are not blind.
         while True:
@@ -563,7 +586,7 @@ async def run_subscriber(args) -> None:
                 print("=" * 60)
                 print(f"  ROLE: SUBSCRIBER (read-only, not in control)")
                 ns = data.get("namespace") or "root"
-                print(f"  session {args.subscribe} owned by "
+                print(f"  session {session_id} owned by "
                       f"did={data.get('owner')} in namespace {ns}")
                 _print_config(data.get("config"))
                 print("=" * 60)
@@ -673,6 +696,11 @@ def main() -> None:
     g = pr.add_mutually_exclusive_group(required=True)
     g.add_argument("--config", help="config JSON to start a capture (owner)")
     g.add_argument("--subscribe", help="session id to listen to (read-only)")
+    g.add_argument(
+        "--subscribe-interface",
+        help="listen to whatever capture is running on this interface "
+        "(discovered via list_sessions; no session id needed)",
+    )
 
     pl = sub.add_parser("list", help="list running capture sessions")
     add_client_args(pl)
