@@ -293,3 +293,22 @@ def test_site_files_pass_nginx_config_test(tmp_path):
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+# --- WebSocket upgrade (capture WS over TLS) --------------------------------
+
+
+@pytest.mark.parametrize("site", [API_TLS_SITE, DEV_TLS_SITE], ids=["api", "dev"])
+def test_tls_sites_proxy_the_capture_websocket(site):
+    """The capture WebSocket needs an HTTP/1.1 Upgrade path through the TLS
+    front-end; a dedicated WS-only location uses a hardcoded Connection."""
+    conf = site.read_text()
+    assert "location /api/v1/streaming/ {" in conf
+    ws = conf.split("location /api/v1/streaming/ {", 1)[1].split("location /", 1)[0]
+    assert "proxy_http_version 1.1;" in ws
+    assert "proxy_set_header Upgrade $http_upgrade;" in ws
+    assert 'proxy_set_header Connection "upgrade";' in ws
+    assert "proxy_buffering off;" in ws
+    assert "proxy_read_timeout 1h;" in ws
+    # dedicated WS location: no $connection_upgrade map dependency
+    assert "$connection_upgrade" not in conf

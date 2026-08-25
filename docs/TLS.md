@@ -104,6 +104,15 @@ devices; it is not part of any production configuration.
 Note the dev server itself still answers plain HTTP on `:8000` from the LAN —
 the TLS front-end adds an encrypted path, it does not remove the cleartext one.
 
+## Packet-capture WebSocket over TLS
+
+The API and dev TLS front-ends proxy the capture WebSocket
+(`wss://<device>:31416/api/v1/streaming/capture`, or `:8443` for the dev
+front-end) with the HTTP/1.1 `Upgrade` headers and long, unbuffered streaming a
+WebSocket needs. It is a dedicated WS-only location, so the `Connection` header
+is the nginx-documented hardcoded `"upgrade"` (no `$connection_upgrade` map).
+The plain `:31415` site carries the same WebSocket support for `ws://`.
+
 ## Transition plan for `:31415`
 
 The plain HTTP API listener is intentionally untouched in this phase so
