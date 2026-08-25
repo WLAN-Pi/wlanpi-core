@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -43,37 +43,53 @@ def _connected_client(manager, websocket):
         "task": None,
         "channel_tasks": {},
         "interfaces": set(),
+        "did": None,
+        "session_id": None,
+        "subscribers": set(),
+        "subscribed_to": None,
+        "namespace": None,
     }
+
+
+def _root_status(*ifaces):
+    """network_config.status()-shaped dict with adapters in root."""
+    return {"root": {iface: {"type": "monitor"} for iface in ifaces}}
+
+
+def _mock_root_adapters(mocker, *ifaces):
+    """Keep start_streaming / frequency discovery off the real iw path (AGENTS #6)."""
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_root_status(*ifaces),
+    )
 
 
 @pytest.mark.asyncio
 async def test_supported_frequencies_uses_bounded_async_commands(mocker):
+    """Frequencies come from core adapter enumeration + per-phy iw channels,
+    never a root-only `iw dev` scrape (namespace-aware path)."""
     manager = ConnectionManager()
     websocket = object()
+    _mock_root_adapters(mocker, "wlanpi0")
+    mocker.patch(
+        "wlanpi_core.adapters.interface.get_interface_info",
+        return_value={"phy": "phy0"},
+    )
     run_command = mocker.patch.object(
         connection_manager,
         "run_command_async",
         new=AsyncMock(
-            side_effect=[
-                CommandResult("Interface wlanpi0\n", "", 0),
-                CommandResult("* 2412 MHz\n* 2437 MHz (disabled)\n", "", 0),
-            ]
+            return_value=CommandResult("* 2412 MHz\n* 2437 MHz (disabled)\n", "", 0),
         ),
     )
     send_event = mocker.patch.object(manager, "send_event", new=AsyncMock())
 
     await manager.send_supported_frequencies(websocket)
 
-    assert run_command.await_args_list == [
-        call(
-            [connection_manager.IW_FILE, "dev"],
-            timeout=connection_manager._IW_TIMEOUT_SEC,
-        ),
-        call(
-            [connection_manager.IW_FILE, "phy", "phy0", "channels"],
-            timeout=connection_manager._IW_TIMEOUT_SEC,
-        ),
-    ]
+    run_command.assert_awaited_once_with(
+        [connection_manager.IW_FILE, "phy", "phy0", "channels"],
+        timeout=connection_manager._IW_TIMEOUT_SEC,
+    )
     send_event.assert_awaited_once_with(
         websocket,
         "frequencies",
@@ -105,6 +121,7 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
     manager = ConnectionManager()
     websocket = object()
     _connected_client(manager, websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     process = CaptureProcess()
     create_process = mocker.patch.object(
         connection_manager.asyncio,
@@ -205,6 +222,7 @@ async def test_capture_interface_can_only_have_one_owner(mocker):
     second_websocket = object()
     _connected_client(manager, first_websocket)
     _connected_client(manager, second_websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     manager.configure(first_websocket, "wlanpi0", {})
     manager.configure(second_websocket, "wlanpi0", {})
     process = CaptureProcess()
@@ -240,6 +258,7 @@ async def test_shutdown_all_reaps_captures_and_discards_clients(mocker):
     manager = ConnectionManager()
     websocket = object()
     _connected_client(manager, websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     manager.configure(websocket, "wlanpi0", {})
     process = CaptureProcess()
     mocker.patch.object(
@@ -255,6 +274,7 @@ async def test_shutdown_all_reaps_captures_and_discards_clients(mocker):
     assert process.terminated is True
     assert manager.clients == {}
     assert manager.interface_owners == {}
+    assert manager.sessions == {}
 
 
 @pytest.mark.parametrize(
