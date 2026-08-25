@@ -25,10 +25,11 @@ Auth: the token is a wlanpi-core JWT. Get one on the device with
 Pass it with --token or the WLANPI_CAP_TOKEN environment variable. Tokens are
 NEVER placed in the URL (the server refuses that; query strings get logged).
 
-Transport note: connect straight to the dev/app server port (e.g.
-ws://wlanpi.local:8000/api/v1/streaming/capture). nginx TLS front-ends do not
-yet forward the WebSocket upgrade, so wss:// through nginx will not work until
-that lands.
+Transport note: the capture WebSocket works through nginx - plain
+ws://<host>:31415/api/v1/streaming/capture, or wss://<host>:31416/... via the
+P3 TLS front-end (trust the device cert; connect by wlanpi.local). For local
+development you can also hit the dev/app server port directly, e.g.
+ws://wlanpi.local:8000/api/v1/streaming/capture.
 
 Dissector limitations (documented on purpose; this is a test tool, not
 Wireshark): radiotap parsing reads the first present-word only (covers channel,

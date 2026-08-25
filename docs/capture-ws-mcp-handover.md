@@ -16,8 +16,8 @@ for core changes.
 A single WebSocket endpoint:
 
 ```
-ws://<host>:31415/api/v1/streaming/capture      (plain, current)
-wss://<host>:.../api/v1/streaming/capture       (TLS - see §6, not yet through nginx)
+ws://<host>:31415/api/v1/streaming/capture         (plain, through nginx)
+wss://<host>:31416/api/v1/streaming/capture        (TLS front-end, through nginx)
 ```
 
 It authenticates per-connection, runs one owned capture per socket, streams
@@ -221,13 +221,19 @@ tools use the same user JWT flow as the rest of MCP.
 
 ## 6. TLS / transport
 
-Today the capture WebSocket is reachable on the plain core port `:31415`
-(loopback for on-box MCP). The P3 nginx TLS front-ends terminate HTTPS for the
-REST API and MCP but **do not yet forward the WebSocket `Upgrade`/`Connection`
-headers**, so `wss://` through nginx is not available until that is added
-(tracked as capture-TLS follow-up). On-box MCP calling core over loopback does
-not need TLS; a remote MCP consumer does, and that is gated on the nginx
-WebSocket-proxy change. Do not design around `wss://` through nginx yet.
+The capture WebSocket is reachable two ways through nginx, both proxying the
+`Upgrade`/`Connection` headers with unbuffered, long-lived streaming:
+
+- **Plain** `ws://<host>:31415/api/v1/streaming/capture` — the default core
+  port; the right choice for **on-box MCP over loopback**, which needs no TLS.
+- **TLS** `wss://<host>:31416/api/v1/streaming/capture` — via the P3 TLS
+  front-end (feature-flagged, `wlanpi-core-tls enable api`); the right choice
+  for a **remote MCP consumer**. Clients must trust the device's self-signed
+  cert (connect by `wlanpi.local`, or distribute/TOFU the cert — the SAN does
+  not cover the LAN IP).
+
+So: on-box MCP uses loopback `ws://`; remote MCP uses `wss://` with cert trust.
+Both are live once the P6 and P3 branches are on the box.
 
 ---
 
