@@ -228,3 +228,97 @@ async def test_subscriber_disconnect_detaches_cleanly():
     await mgr.disconnect(listener)
     assert listener not in client["subscribers"]
     assert listener not in mgr.clients
+
+
+# --- Namespace awareness (#141 baseline: capture must run in the adapter's ns)
+
+
+def _status(**ns_ifaces):
+    """Build a network_config.status()-shaped dict: {ns_or_root: {iface: {...}}}."""
+    return {
+        ns: {iface: {"type": "monitor"} for iface in ifaces}
+        for ns, ifaces in ns_ifaces.items()
+    }
+
+
+@pytest.mark.asyncio
+async def test_resolve_namespace_finds_named_namespace(mocker):
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_status(root={}, wlan_ns=["wlanpi0"]),
+    )
+    ns, err = await mgr._resolve_namespace(["wlanpi0"])
+    assert err is None
+    assert ns == "wlan_ns"
+
+
+@pytest.mark.asyncio
+async def test_resolve_namespace_root_is_none(mocker):
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_status(root=["wlanpi0"]),
+    )
+    ns, err = await mgr._resolve_namespace(["wlanpi0"])
+    assert err is None and ns is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_namespace_missing_interface_errors(mocker):
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_status(root=["wlanpi9"]),
+    )
+    ns, err = await mgr._resolve_namespace(["wlanpi0"])
+    assert ns is None and "not found" in err
+
+
+@pytest.mark.asyncio
+async def test_resolve_namespace_split_across_namespaces_errors(mocker):
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_status(ns_a=["wlanpi0"], ns_b=["wlanpi1"]),
+    )
+    ns, err = await mgr._resolve_namespace(["wlanpi0", "wlanpi1"])
+    assert ns is None and "multiple namespaces" in err
+
+
+def test_ns_prefix_wraps_named_namespace_only():
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    assert ConnectionManager._ns_prefix(None) == []
+    assert ConnectionManager._ns_prefix("wlan_ns") == [
+        "ip", "netns", "exec", "wlan_ns",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_set_channel_runs_in_namespace(mocker):
+    from wlanpi_core.models.command_result import CommandResult
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    run = mocker.patch(
+        "wlanpi_core.streaming.connection_manager.run_command_async",
+        return_value=CommandResult("", "", 0),
+    )
+    assert await mgr._set_channel("wlanpi0", 2412, 20, "wlan_ns") is None
+    cmd = run.call_args.args[0]
+    assert cmd[:4] == ["ip", "netns", "exec", "wlan_ns"]
+    assert "set" in cmd and "freq" in cmd

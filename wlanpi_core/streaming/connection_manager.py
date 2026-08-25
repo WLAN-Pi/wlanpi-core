@@ -2,13 +2,16 @@ import asyncio
 import json
 import re
 import secrets
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.utils import network_config
 from wlanpi_core.utils.general import run_command_async, terminate_process_async
+from wlanpi_core.utils.validation import validate_namespace_name
+from wlanpi_core.wlan.scan import iter_adapters
 from wlanpi_core.streaming.models import (
     CaptureInterfaceConfig,
     CaptureStart,
@@ -39,6 +42,7 @@ class ConnectionManager:
             "did": None,
             "session_id": None,
             "session_config": None,
+            "namespace": None,
             "subscribers": set(),
             "subscribed_to": None,
         }
@@ -104,6 +108,7 @@ class ConnectionManager:
         session_id = client.get("session_id")
         client["session_id"] = None
         client["session_config"] = None
+        client["namespace"] = None
         if session_id:
             self.sessions.pop(session_id, None)
         for subscriber in list(client.get("subscribers", set())):
@@ -230,24 +235,32 @@ class ConnectionManager:
 
     async def send_supported_frequencies(self, websocket: WebSocket) -> None:
         try:
-            output = (
-                await run_command_async(
-                    [IW_FILE, "dev"],
-                    timeout=_IW_TIMEOUT_SEC,
-                )
-            ).stdout
-            interfaces = re.findall(r"Interface (wlanpi\d+)", output)
+            # Discover capture adapters across all namespaces via core's own
+            # enumeration, then query each phy inside its namespace, so a
+            # namespaced adapter is not invisible here.
+            from wlanpi_core.adapters.interface import get_interface_info
+
+            status = await asyncio.to_thread(network_config.status)
+            adapters = [
+                a for a in iter_adapters(status) if a["iface"].startswith("wlanpi")
+            ]
 
             freqs_by_iface = {}
-
-            for iface in interfaces:
+            for adapter in adapters:
+                iface = adapter["iface"]
+                namespace = adapter["namespace"]
                 try:
-                    index = int(re.search(r"wlanpi(\d+)", iface).group(1))
-                    phy = f"phy{index}"
-
+                    info = await asyncio.to_thread(
+                        get_interface_info, iface, namespace
+                    )
+                    phy = (info or {}).get("phy")
+                    if not phy:
+                        freqs_by_iface[iface] = []
+                        continue
                     chan_output = (
                         await run_command_async(
-                            [IW_FILE, "phy", phy, "channels"],
+                            self._ns_prefix(namespace)
+                            + [IW_FILE, "phy", phy, "channels"],
                             timeout=_IW_TIMEOUT_SEC,
                         )
                     ).stdout
@@ -275,6 +288,46 @@ class ConnectionManager:
                 "FREQ_FETCH_FAILED",
                 f"Failed to fetch supported frequencies: {e}",
             )
+
+    @staticmethod
+    def _ns_prefix(namespace: Optional[str]) -> list:
+        """Command prefix to run in a network namespace. Empty for root.
+
+        wlanpi-core runs as root, so `ip netns exec` needs no sudo. The whole
+        phy moves into a namespace together, so all vifs on it share one ns.
+        """
+        if not namespace:
+            return []
+        return ["ip", "netns", "exec", validate_namespace_name(namespace)]
+
+    async def _resolve_namespace(
+        self, interfaces: list[str]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Find the namespace the capture interfaces live in, via core's own
+        adapter enumeration (network_config.status) - never a bespoke iw call.
+
+        Returns (namespace, error). namespace is None for root. error is a
+        short reason string when the interfaces are missing or split across
+        namespaces (dumpcap cannot span netns).
+        """
+        status = await asyncio.to_thread(network_config.status)
+        adapters = iter_adapters(status)
+        by_name: Dict[str, list] = {}
+        for a in adapters:
+            by_name.setdefault(a["iface"], []).append(a)
+
+        namespaces = set()
+        for iface in interfaces:
+            records = by_name.get(iface)
+            if not records:
+                return None, f"interface not found on this device: {iface}"
+            namespaces.update(r["namespace"] for r in records)
+        if len(namespaces) > 1:
+            return None, (
+                "capture interfaces span multiple namespaces "
+                f"({sorted(str(n) for n in namespaces)}); one capture cannot"
+            )
+        return (namespaces.pop() if namespaces else None), None
 
     async def start_streaming(
         self,
@@ -342,6 +395,15 @@ class ConnectionManager:
             )
             return
 
+        namespace, ns_error = await self._resolve_namespace(interfaces)
+        if ns_error:
+            self._release_interfaces(websocket)
+            await self.send_message_event(
+                websocket, "error", "INTERFACE_NOT_AVAILABLE", ns_error
+            )
+            return
+        client["namespace"] = namespace
+
         for iface in interfaces:
             config = client["configs"].get(iface)
             if not config:
@@ -352,7 +414,7 @@ class ConnectionManager:
                 freq = first.get("freq")
                 width = first.get("width")
                 if freq and width:
-                    error = await self._set_channel(iface, freq, width)
+                    error = await self._set_channel(iface, freq, width, namespace)
                     if error:
                         await self.send_message_event(
                             websocket,
@@ -361,7 +423,7 @@ class ConnectionManager:
                             f"Could not set initial channel for {iface}: {error}",
                         )
 
-        args = [DUMPCAP_FILE]
+        args = self._ns_prefix(namespace) + [DUMPCAP_FILE]
         for iface in interfaces:
             args += ["-i", iface]
         if pcap_filter:
@@ -506,7 +568,9 @@ class ConnectionManager:
             width = ch.get("width")
 
             if freq and width:
-                error = await self._set_channel(iface, freq, width)
+                error = await self._set_channel(
+                    iface, freq, width, self.clients.get(websocket, {}).get("namespace")
+                )
                 if not error:
                     await self.send_message_event(
                         websocket,
@@ -546,7 +610,9 @@ class ConnectionManager:
                 websocket, "error", "CHANNEL_HOP_ERROR", f"{iface} hopping failed."
             )
 
-    async def _set_channel(self, iface: str, freq: int, width: int) -> Optional[str]:
+    async def _set_channel(
+        self, iface: str, freq: int, width: int, namespace: Optional[str] = None
+    ) -> Optional[str]:
         """Tune a capture interface. Returns None on success, else a short
         reason suitable for the CHANNEL_SET_FAILED event (e.g. iw's
         'Device or resource busy (-16)' when a managed vif on the same phy
@@ -558,7 +624,9 @@ class ConnectionManager:
         except ValueError as exc:
             return str(exc)
 
-        cmd = [IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)]
+        cmd = self._ns_prefix(namespace) + [
+            IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)
+        ]
 
         if width >= 40:
             center_frequency = self._center_frequency(freq, width)

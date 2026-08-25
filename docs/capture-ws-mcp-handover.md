@@ -81,6 +81,15 @@ outlives a request — and never a protocol session id used as an auth cookie
 itself must hold the socket open and expose a handle; do not expect core to
 keep an ownerless capture.
 
+
+- **Namespaces:** core moves capture adapters into network namespaces (the
+  whole phy moves together). The WebSocket resolves the adapter's namespace
+  from core's own enumeration (`network_config.status()` / `iter_adapters`) and
+  runs the channel set, frequency query, and `dumpcap` inside that namespace.
+  MCP does not pass a namespace — it names the interface (`wlanpiN`), and core
+  finds where it lives. If the named interfaces are missing or split across
+  namespaces, `start` fails with `INTERFACE_NOT_AVAILABLE`.
+
 ---
 
 ## 2a. Deciding own vs subscribe, and reporting control
@@ -134,7 +143,13 @@ Good tools to expose:
   `parse_beacon` + `ScanTable` is a drop-in reference for the dissection.
 - `capture_frames(interface, channels, duration_s, pcap_filter)` → decoded
   frame summaries or counts by type.
-- `list_capture_sources()` → wrap `get_supported_frequencies`.
+- `list_capture_sources()` → wrap `get_supported_frequencies` (returns the
+  channel list per capture adapter, namespace-aware). For adapter/namespace/mode
+  discovery generally, use the existing REST endpoint
+  `GET /api/v1/network/config/status` (per-namespace adapter layout) rather than
+  waiting on a capture-specific sources API - that is a planned convenience
+  enhancement (adds a capture-capability filter and a `busy` flag), not a
+  prerequisite.
 
 Do **not** stream raw pcap to the LLM; summarize. Return small JSON.
 
