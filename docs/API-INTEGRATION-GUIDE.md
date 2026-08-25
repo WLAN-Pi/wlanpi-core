@@ -365,51 +365,90 @@ Blinker runs until stopped (cable-finder LED pattern on Ethernet).
 
 **Endpoint:** `WS /api/v1/streaming/capture`
 
-### Workflow
+Live Wi-Fi capture: send JSON **text** commands, receive JSON **events** and
+binary **pcapng** frames. One authenticated connection owns a capture; other
+authenticated connections can subscribe to it read-only.
 
-1. Open WebSocket (no auth today — privileged operation).
-2. Send JSON commands as **text** frames.
-3. Receive JSON **events** and binary **pcapng** data.
+> Through nginx the URL is `wss://<host>/api/v1/streaming/capture` on the TLS
+> front-end, or `ws://<host>:31415/...` on the plain port. Tokens go in the
+> first message, **never** in the URL (query strings are logged; a `?token=`
+> connection is refused with close code 4401).
 
-### Commands
+### 11.1 Authenticate (first message, required)
+
+The first frame MUST authenticate within 10 seconds, or the socket closes with
+code **4401**:
 
 ```json
-{ "command": "get_supported_frequencies" }
+{ "command": "auth", "token": "<core JWT from Lesson 1>" }
+```
+
+Reply: `{"type":"event","event":"status","code":"AUTH_OK","data":{"did":"…"}}`.
+An invalid/expired token, a non-auth first message, or a timeout closes 4401.
+
+### 11.2 Own a capture
+
+```json
+{ "command": "configure",
+  "interfaces": { "wlanpi0": { "channels": [{"freq": 5180, "width": 20}],
+                               "dwell_time": 250 } } }
 ```
 
 ```json
-{
-  "command": "configure",
-  "interfaces": {
-    "wlanpi0": { "channels": [36, 40, 44], "dwell": 250 }
-  }
-}
+{ "command": "start", "interfaces": ["wlanpi0"], "pcap_filter": "" }
 ```
+
+`width` ∈ {20,40,80,160}; `dwell_time` 50–60000 ms. Interface names are the
+monitor VIFs (`wlanpiN`); core runs the capture in whatever namespace the
+adapter lives in. `start` replies `CAPTURE_STARTED` with a `session_id`
+(`cap_xxxx`), the `interfaces`, the `namespace`, and the running `config`.
+Then binary pcapng frames stream until `{ "command": "stop" }`, the socket
+closes, or the capture ends (`CAPTURE_ENDED`). Only the owning connection can
+`configure`/`stop`.
+
+### 11.3 Subscribe to someone else's capture (read-only)
+
+Discover running captures, then attach — you do **not** need the owner's
+command or `session_id` in advance:
 
 ```json
-{
-  "command": "start",
-  "interfaces": ["wlanpi0"],
-  "pcap_filter": ""
-}
+{ "command": "list_sessions" }
 ```
+
+Reply `SESSIONS` lists each capture with `session_id`, `owner`, `interfaces`,
+`namespace`, and `config`. Pick the one on the interface you want (one owner
+per interface) and:
 
 ```json
-{ "command": "stop" }
+{ "command": "subscribe", "session_id": "cap_ab12cd34" }
 ```
 
-### Event shape (simplified)
+`SUBSCRIBED` returns that session's `config` (so you know the channels/filter
+you are receiving), then the same binary pcapng stream arrives. A subscriber
+cannot control the capture; `{ "command": "unsubscribe" }` detaches. When the
+owner stops or disconnects, subscribers get `CAPTURE_STOPPED`/`CAPTURE_ENDED`.
+
+### 11.4 Other commands & events
+
+`{ "command": "get_supported_frequencies" }` → `SUPPORTED_FREQUENCIES` (channel
+list per capture adapter). Event shape:
 
 ```json
-{
-  "type": "event",
-  "category": "error",
-  "code": "UNKNOWN_COMMAND",
-  "message": "Unsupported command: foo"
-}
+{ "type": "event", "event": "status", "code": "CAPTURE_STARTED",
+  "data": { "session_id": "cap_ab12", "interfaces": ["wlanpi0"],
+            "namespace": null, "config": { … } } }
 ```
 
-**Planned:** REST session API with token-gated subscriber WebSocket — see `docs/P0-wifi-capture-api.md` (design only).
+Notable codes: `AUTH_OK`, `AUTH_FAILED`, `CAPTURE_STARTED`, `CHANNEL_SET` /
+`CHANNEL_SET_FAILED` (hop status; the failure message carries the `iw` reason —
+on single-radio devices the phy can be briefly busy while the managed interface
+scans), `SUBSCRIBED`, `SESSIONS`, `UNSUBSCRIBED`, `CAPTURE_STOPPED`,
+`CAPTURE_ENDED`, and errors `INTERFACE_IN_USE`, `INTERFACE_NOT_AVAILABLE`,
+`SESSION_NOT_FOUND`, `CONFIG_INVALID`, `UNKNOWN_COMMAND`.
+
+**Reference client:** `tools/capture_harness/` implements this whole flow
+(owner, subscriber-by-interface, and pcapng dissection). **MCP integration:**
+`docs/capture-ws-mcp-handover.md`.
 
 ---
 
