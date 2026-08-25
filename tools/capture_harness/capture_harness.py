@@ -557,8 +557,9 @@ async def run_subscriber(args) -> None:
                 data = event.get("data", {})
                 print("=" * 60)
                 print(f"  ROLE: SUBSCRIBER (read-only, not in control)")
+                ns = data.get("namespace") or "root"
                 print(f"  session {args.subscribe} owned by "
-                      f"did={data.get('owner')}")
+                      f"did={data.get('owner')} in namespace {ns}")
                 _print_config(data.get("config"))
                 print("=" * 60)
                 break
@@ -594,6 +595,7 @@ async def run_list(args) -> None:
                 for sess in sessions:
                     print(
                         f"{sess['session_id']}  owner={sess.get('owner')}  "
+                        f"ns={sess.get('namespace') or 'root'}  "
                         f"interfaces={','.join(sess.get('interfaces', []))}"
                     )
                     _print_config(sess.get("config"))

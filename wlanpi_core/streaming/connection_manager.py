@@ -127,6 +127,7 @@ class ConnectionManager:
             "session_id": session_id,
             "owner": owner_client.get("did"),
             "interfaces": sorted(owner_client.get("interfaces", set())),
+            "namespace": owner_client.get("namespace"),
             "config": owner_client.get("session_config"),
         }
 

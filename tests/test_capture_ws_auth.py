@@ -139,6 +139,7 @@ def _register_session(mgr, owner_ws, session_id, interfaces=("wlan0",)):
         },
         "pcap_filter": "type mgt",
     }
+    client["namespace"] = "wlan_ns"
     mgr.sessions[session_id] = owner_ws
     return client
 
@@ -166,6 +167,8 @@ async def test_subscriber_receives_broadcast_and_stop_notification():
     payload = next(e for e in subscribed if e["code"] == "SUBSCRIBED")
     assert payload["data"]["config"]["pcap_filter"] == "type mgt"
     assert "wlan0" in payload["data"]["config"]["interfaces"]
+    # The subscriber is told which namespace the capture runs in.
+    assert payload["data"]["namespace"] == "wlan_ns"
 
     await mgr._broadcast_chunk(owner, client, b"pcapng-bytes")
     owner.send_bytes.assert_awaited_once_with(b"pcapng-bytes")

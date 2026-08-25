@@ -98,7 +98,8 @@ Before capturing, MCP must decide whether to **own** a new capture or **join**
 an existing one, and it must tell its caller which it did.
 
 1. Send `list_sessions`. Each returned session carries `session_id`, `owner`
-   (the did), `interfaces`, and the full running `config` (per-interface
+   (the did), `interfaces`, `namespace` (which netns the capture runs in;
+   `null` for root), and the full running `config` (per-interface
    channels/width/dwell + `pcap_filter`).
 2. If a session already captures on the interface MCP wants:
    - MCP **cannot** also own that interface — a `start` will fail with
