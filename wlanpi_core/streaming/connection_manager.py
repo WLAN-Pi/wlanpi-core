@@ -417,6 +417,11 @@ class ConnectionManager:
                 if freq and width:
                     error = await self._set_channel(iface, freq, width, namespace)
                     if error:
+                        # Warn but continue: capture on whatever channel the
+                        # radio is currently on rather than aborting. This is
+                        # what keeps single-radio devices usable when the
+                        # managed vif briefly holds the phy (see the busy retry
+                        # in _set_channel). Do not turn this into a hard abort.
                         await self.send_message_event(
                             websocket,
                             "error",
@@ -560,6 +565,7 @@ class ConnectionManager:
                 log.warning("Capture shutdown failed for a client: %r", exc)
         self.clients.clear()
         self.interface_owners.clear()
+        self.sessions.clear()
 
     async def _hop_channels(
         self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int

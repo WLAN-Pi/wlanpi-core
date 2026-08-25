@@ -325,3 +325,27 @@ async def test_set_channel_runs_in_namespace(mocker):
     cmd = run.call_args.args[0]
     assert cmd[:4] == ["ip", "netns", "exec", "wlan_ns"]
     assert "set" in cmd and "freq" in cmd
+
+
+@pytest.mark.asyncio
+async def test_subscriber_stop_does_not_end_owner_session():
+    """A subscriber is read-only: sending `stop` acts only on its own (empty)
+    client and must not stop or unregister the owner's capture."""
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager.__new__(ConnectionManager)
+    mgr.__init__()
+    owner = await _connected(mgr, "owner-did")
+    listener = await _connected(mgr, "listener-did")
+    _register_session(mgr, owner, "cap_test")
+    await mgr.subscribe(listener, "cap_test")
+
+    await mgr.stop_streaming(listener)
+
+    # Owner's session survives untouched.
+    assert "cap_test" in mgr.sessions
+    assert mgr.sessions["cap_test"] is owner
+    assert mgr.clients[owner]["session_id"] == "cap_test"
+    # The subscriber was told its stop completed.
+    sent = [c.args[0] for c in listener.send_text.await_args_list]
+    assert any("CAPTURE_STOPPED" in payload for payload in sent)
