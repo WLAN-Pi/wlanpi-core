@@ -1,13 +1,17 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict
+import secrets
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.utils import network_config
 from wlanpi_core.utils.general import run_command_async, terminate_process_async
+from wlanpi_core.utils.validation import validate_namespace_name
+from wlanpi_core.wlan.scan import iter_adapters
 from wlanpi_core.streaming.models import (
     CaptureInterfaceConfig,
     CaptureStart,
@@ -24,6 +28,9 @@ class ConnectionManager:
     def __init__(self):
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
         self.interface_owners: Dict[str, WebSocket] = {}
+        # Running captures by session id -> owning WebSocket. Sessions exist
+        # so other authenticated principals can subscribe read-only (#141).
+        self.sessions: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
         self.clients[websocket] = {
@@ -32,8 +39,25 @@ class ConnectionManager:
             "task": None,
             "channel_tasks": {},
             "interfaces": set(),
+            "did": None,
+            "session_id": None,
+            "session_config": None,
+            "namespace": None,
+            "subscribers": set(),
+            "subscribed_to": None,
         }
         await websocket.accept()
+
+    def authenticate(self, websocket: WebSocket, did: str) -> None:
+        """Record the verified principal for this socket. Commands are only
+        dispatched after this is set (first-message auth in the endpoint)."""
+        client = self.clients.get(websocket)
+        if client is not None:
+            client["did"] = did
+
+    def is_authenticated(self, websocket: WebSocket) -> bool:
+        client = self.clients.get(websocket)
+        return bool(client and client.get("did"))
 
     def _claim_interfaces(
         self, websocket: WebSocket, interfaces: list[str]
@@ -64,6 +88,106 @@ class ConnectionManager:
                 self.interface_owners.pop(iface, None)
         client["interfaces"] = set()
 
+    def _detach_subscriber(self, websocket: WebSocket) -> None:
+        client = self.clients.get(websocket)
+        if not client:
+            return
+        session_id = client.get("subscribed_to")
+        client["subscribed_to"] = None
+        if not session_id:
+            return
+        owner_ws = self.sessions.get(session_id)
+        if owner_ws is not None:
+            owner_client = self.clients.get(owner_ws)
+            if owner_client:
+                owner_client["subscribers"].discard(websocket)
+
+    async def _end_session(self, client: Dict[str, Any], code: str, message: str) -> None:
+        """Unregister a finished capture and notify/detach its subscribers.
+        Idempotent: safe to call from both stream teardown and stop paths."""
+        session_id = client.get("session_id")
+        client["session_id"] = None
+        client["session_config"] = None
+        client["namespace"] = None
+        if session_id:
+            self.sessions.pop(session_id, None)
+        for subscriber in list(client.get("subscribers", set())):
+            sub_client = self.clients.get(subscriber)
+            if sub_client:
+                sub_client["subscribed_to"] = None
+            client["subscribers"].discard(subscriber)
+            await self.send_message_event(subscriber, "status", code, message)
+
+    def _session_descriptor(self, session_id: str, owner_ws: WebSocket) -> dict:
+        """Public description of a running capture: who owns it and the exact
+        config it is running (channels/width/dwell per interface + filter), so
+        a subscriber is never blind to what it is receiving."""
+        owner_client = self.clients.get(owner_ws, {})
+        return {
+            "session_id": session_id,
+            "owner": owner_client.get("did"),
+            "interfaces": sorted(owner_client.get("interfaces", set())),
+            "namespace": owner_client.get("namespace"),
+            "config": owner_client.get("session_config"),
+        }
+
+    async def subscribe(self, websocket: WebSocket, session_id: Optional[str]) -> None:
+        """Attach this socket as a read-only listener on a running capture.
+
+        Any authenticated principal on the device may listen; only the owning
+        socket can configure or stop the capture (control is not shareable).
+        """
+        client = self.clients.get(websocket)
+        if client is None:
+            return
+        owner_ws = self.sessions.get(session_id) if session_id else None
+        if owner_ws is None:
+            await self.send_message_event(
+                websocket, "error", "SESSION_NOT_FOUND",
+                f"No running capture session: {session_id}",
+            )
+            return
+        if owner_ws is websocket:
+            await self.send_message_event(
+                websocket, "error", "SESSION_IS_OWN",
+                "This socket owns that capture; it already receives its stream.",
+            )
+            return
+        self._detach_subscriber(websocket)
+        owner_client = self.clients[owner_ws]
+        owner_client["subscribers"].add(websocket)
+        client["subscribed_to"] = session_id
+        await self.send_event(
+            websocket, "status", "SUBSCRIBED",
+            self._session_descriptor(session_id, owner_ws),
+        )
+
+    async def unsubscribe(self, websocket: WebSocket) -> None:
+        session_id = (self.clients.get(websocket) or {}).get("subscribed_to")
+        self._detach_subscriber(websocket)
+        await self.send_event(
+            websocket, "status", "UNSUBSCRIBED", {"session_id": session_id}
+        )
+
+    async def send_session_list(self, websocket: WebSocket) -> None:
+        sessions = [
+            self._session_descriptor(session_id, owner_ws)
+            for session_id, owner_ws in self.sessions.items()
+        ]
+        await self.send_event(websocket, "status", "SESSIONS", {"sessions": sessions})
+
+    async def _broadcast_chunk(
+        self, owner_ws: WebSocket, client: Dict[str, Any], chunk: bytes
+    ) -> None:
+        # Owner send failures propagate and end the capture (as before).
+        # A failing subscriber is dropped without disturbing the capture.
+        await owner_ws.send_bytes(chunk)
+        for subscriber in list(client.get("subscribers", set())):
+            try:
+                await subscriber.send_bytes(chunk)
+            except Exception:
+                self._detach_subscriber(subscriber)
+
     async def _stop_channel_tasks(self, client: Dict[str, Any]) -> None:
         channel_tasks = list(client.get("channel_tasks", {}).values())
         client["channel_tasks"] = {}
@@ -84,6 +208,7 @@ class ConnectionManager:
             self.clients[websocket]["configs"][iface] = validated.model_dump()
 
     async def disconnect(self, websocket: WebSocket) -> None:
+        self._detach_subscriber(websocket)
         try:
             await self.stop_streaming(websocket)
         except Exception as e:
@@ -111,24 +236,32 @@ class ConnectionManager:
 
     async def send_supported_frequencies(self, websocket: WebSocket) -> None:
         try:
-            output = (
-                await run_command_async(
-                    [IW_FILE, "dev"],
-                    timeout=_IW_TIMEOUT_SEC,
-                )
-            ).stdout
-            interfaces = re.findall(r"Interface (wlanpi\d+)", output)
+            # Discover capture adapters across all namespaces via core's own
+            # enumeration, then query each phy inside its namespace, so a
+            # namespaced adapter is not invisible here.
+            from wlanpi_core.adapters.interface import get_interface_info
+
+            status = await asyncio.to_thread(network_config.status)
+            adapters = [
+                a for a in iter_adapters(status) if a["iface"].startswith("wlanpi")
+            ]
 
             freqs_by_iface = {}
-
-            for iface in interfaces:
+            for adapter in adapters:
+                iface = adapter["iface"]
+                namespace = adapter["namespace"]
                 try:
-                    index = int(re.search(r"wlanpi(\d+)", iface).group(1))
-                    phy = f"phy{index}"
-
+                    info = await asyncio.to_thread(
+                        get_interface_info, iface, namespace
+                    )
+                    phy = (info or {}).get("phy")
+                    if not phy:
+                        freqs_by_iface[iface] = []
+                        continue
                     chan_output = (
                         await run_command_async(
-                            [IW_FILE, "phy", phy, "channels"],
+                            self._ns_prefix(namespace)
+                            + [IW_FILE, "phy", phy, "channels"],
                             timeout=_IW_TIMEOUT_SEC,
                         )
                     ).stdout
@@ -156,6 +289,46 @@ class ConnectionManager:
                 "FREQ_FETCH_FAILED",
                 f"Failed to fetch supported frequencies: {e}",
             )
+
+    @staticmethod
+    def _ns_prefix(namespace: Optional[str]) -> list:
+        """Command prefix to run in a network namespace. Empty for root.
+
+        wlanpi-core runs as root, so `ip netns exec` needs no sudo. The whole
+        phy moves into a namespace together, so all vifs on it share one ns.
+        """
+        if not namespace:
+            return []
+        return ["ip", "netns", "exec", validate_namespace_name(namespace)]
+
+    async def _resolve_namespace(
+        self, interfaces: list[str]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Find the namespace the capture interfaces live in, via core's own
+        adapter enumeration (network_config.status) - never a bespoke iw call.
+
+        Returns (namespace, error). namespace is None for root. error is a
+        short reason string when the interfaces are missing or split across
+        namespaces (dumpcap cannot span netns).
+        """
+        status = await asyncio.to_thread(network_config.status)
+        adapters = iter_adapters(status)
+        by_name: Dict[str, list] = {}
+        for a in adapters:
+            by_name.setdefault(a["iface"], []).append(a)
+
+        namespaces = set()
+        for iface in interfaces:
+            records = by_name.get(iface)
+            if not records:
+                return None, f"interface not found on this device: {iface}"
+            namespaces.update(r["namespace"] for r in records)
+        if len(namespaces) > 1:
+            return None, (
+                "capture interfaces span multiple namespaces "
+                f"({sorted(str(n) for n in namespaces)}); one capture cannot"
+            )
+        return (namespaces.pop() if namespaces else None), None
 
     async def start_streaming(
         self,
@@ -223,6 +396,15 @@ class ConnectionManager:
             )
             return
 
+        namespace, ns_error = await self._resolve_namespace(interfaces)
+        if ns_error:
+            self._release_interfaces(websocket)
+            await self.send_message_event(
+                websocket, "error", "INTERFACE_NOT_AVAILABLE", ns_error
+            )
+            return
+        client["namespace"] = namespace
+
         for iface in interfaces:
             config = client["configs"].get(iface)
             if not config:
@@ -233,16 +415,21 @@ class ConnectionManager:
                 freq = first.get("freq")
                 width = first.get("width")
                 if freq and width:
-                    success = await self._set_channel(iface, freq, width)
-                    if not success:
+                    error = await self._set_channel(iface, freq, width, namespace)
+                    if error:
+                        # Warn but continue: capture on whatever channel the
+                        # radio is currently on rather than aborting. This is
+                        # what keeps single-radio devices usable when the
+                        # managed vif briefly holds the phy (see the busy retry
+                        # in _set_channel). Do not turn this into a hard abort.
                         await self.send_message_event(
                             websocket,
                             "error",
                             "CHANNEL_SET_FAILED",
-                            f"Could not set initial channel for {iface}",
+                            f"Could not set initial channel for {iface}: {error}",
                         )
 
-        args = [DUMPCAP_FILE]
+        args = self._ns_prefix(namespace) + [DUMPCAP_FILE]
         for iface in interfaces:
             args += ["-i", iface]
         if pcap_filter:
@@ -270,7 +457,7 @@ class ConnectionManager:
                     chunk = await proc.stdout.read(4096)
                     if not chunk:
                         break
-                    await websocket.send_bytes(chunk)
+                    await self._broadcast_chunk(websocket, client, chunk)
                 await self.send_message_event(
                     websocket, "status", "CAPTURE_ENDED", "Capture ended."
                 )
@@ -287,6 +474,7 @@ class ConnectionManager:
                 await terminate_process_async(proc)
                 await self._stop_channel_tasks(client)
                 self._release_interfaces(websocket)
+                await self._end_session(client, "CAPTURE_ENDED", "Capture ended.")
                 if client.get("proc") is proc:
                     client["proc"] = None
                 if client.get("task") is asyncio.current_task():
@@ -308,11 +496,28 @@ class ConnectionManager:
                 )
                 client["channel_tasks"][iface] = task
 
-        await self.send_message_event(
+        session_id = f"cap_{secrets.token_hex(4)}"
+        client["session_id"] = session_id
+        # Snapshot the exact running config so list_sessions / SUBSCRIBED can
+        # report it to subscribers (who otherwise only see raw frames).
+        client["session_config"] = {
+            "interfaces": {
+                iface: client["configs"].get(iface, {}) for iface in interfaces
+            },
+            "pcap_filter": pcap_filter,
+        }
+        self.sessions[session_id] = websocket
+
+        await self.send_event(
             websocket,
             "status",
             "CAPTURE_STARTED",
-            f"Started capture on {', '.join(interfaces)}",
+            {
+                "message": f"Started capture on {', '.join(interfaces)}",
+                "session_id": session_id,
+                "interfaces": sorted(interfaces),
+                "config": client["session_config"],
+            },
         )
 
     async def stop_streaming(self, websocket: WebSocket, notify: bool = True) -> None:
@@ -338,6 +543,7 @@ class ConnectionManager:
 
         await self._stop_channel_tasks(client)
         self._release_interfaces(websocket)
+        await self._end_session(client, "CAPTURE_STOPPED", "Capture stopped.")
 
         client["task"] = None
         client["proc"] = None
@@ -359,6 +565,7 @@ class ConnectionManager:
                 log.warning("Capture shutdown failed for a client: %r", exc)
         self.clients.clear()
         self.interface_owners.clear()
+        self.sessions.clear()
 
     async def _hop_channels(
         self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int
@@ -368,8 +575,10 @@ class ConnectionManager:
             width = ch.get("width")
 
             if freq and width:
-                success = await self._set_channel(iface, freq, width)
-                if success:
+                error = await self._set_channel(
+                    iface, freq, width, self.clients.get(websocket, {}).get("namespace")
+                )
+                if not error:
                     await self.send_message_event(
                         websocket,
                         "info",
@@ -381,7 +590,7 @@ class ConnectionManager:
                         websocket,
                         "error",
                         "CHANNEL_SET_FAILED",
-                        f"{iface}: failed to set {freq} MHz / {width} MHz",
+                        f"{iface}: failed to set {freq} MHz / {width} MHz ({error})",
                     )
 
         try:
@@ -408,31 +617,52 @@ class ConnectionManager:
                 websocket, "error", "CHANNEL_HOP_ERROR", f"{iface} hopping failed."
             )
 
-    async def _set_channel(self, iface: str, freq: int, width: int) -> bool:
+    async def _set_channel(
+        self, iface: str, freq: int, width: int, namespace: Optional[str] = None
+    ) -> Optional[str]:
+        """Tune a capture interface. Returns None on success, else a short
+        reason suitable for the CHANNEL_SET_FAILED event (e.g. iw's
+        'Device or resource busy (-16)' when a managed vif on the same phy
+        blocks retuning - common on single-radio devices)."""
         try:
             iface = validate_capture_interface(iface)
             freq = validate_capture_frequency(freq)
             width = validate_capture_width(width)
-        except ValueError:
-            return False
+        except ValueError as exc:
+            return str(exc)
 
-        cmd = [IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)]
+        cmd = self._ns_prefix(namespace) + [
+            IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)
+        ]
 
         if width >= 40:
             center_frequency = self._center_frequency(freq, width)
             if center_frequency < 0:
-                return False
+                return "no valid center frequency for this channel/width"
             cmd.append(str(center_frequency))
 
-        try:
-            result = await run_command_async(
-                cmd,
-                raise_on_fail=False,
-                timeout=_IW_TIMEOUT_SEC,
-            )
-            return result.success
-        except Exception:
-            return False
+        # A shared phy is briefly locked while another vif scans (e.g.
+        # wpa_supplicant's periodic scan on a disconnected managed vif), so
+        # EBUSY here is often transient: retry once before reporting.
+        detail = ""
+        for attempt in range(2):
+            try:
+                result = await run_command_async(
+                    cmd,
+                    raise_on_fail=False,
+                    timeout=_IW_TIMEOUT_SEC,
+                )
+            except Exception as exc:
+                return str(exc)
+            if result.success:
+                return None
+            lines = (result.stderr or result.stdout or "").strip().splitlines()
+            detail = lines[-1] if lines else f"iw exited {result.return_code}"
+            if attempt == 0 and "busy" in detail.lower():
+                await asyncio.sleep(0.3)
+                continue
+            break
+        return detail
 
     def _center_frequency(self, freq: int, channel_width: int) -> int:
         def compute_center(start: int, span: int) -> int:
