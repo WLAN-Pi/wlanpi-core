@@ -11,6 +11,21 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Token survival across reboots on an RTC-less device.
+    #   "boot_bound":       tokens die with the boot they were issued in.
+    #                       Strongest: no reliance on wall clock, ever.
+    #   "wall_clock_grace": tokens from a previous boot stay valid until
+    #                       wall-clock expiry (ACCESS_TOKEN_EXPIRE_DAYS, default
+    #                       7 days). Trusts the wall clock across reboots, which
+    #                       only SSH/sudo users can set — the same privilege that
+    #                       can mint tokens anyway. While the clock lags the
+    #                       token's issuance time (early boot, before NTP/fake-
+    #                       hwclock catch-up), such tokens are rejected retryably,
+    #                       not purged.
+    # Within a boot, both modes measure token age on CLOCK_BOOTTIME, so
+    # setting the clock can never extend or resurrect a token issued this boot.
+    TOKEN_LIFETIME_MODE: str = "wall_clock_grace"
+
     API_V1_STR: str = constants.API_V1_STR
 
     PROJECT_NAME: str = constants.PROJECT_NAME
