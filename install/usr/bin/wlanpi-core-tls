@@ -1,0 +1,155 @@
+#!/bin/bash
+# wlanpi-core-tls: feature-flagged TLS front-ends for the core API and wlanpi-mcp.
+#
+# Flags live in /etc/wlanpi-core/tls.conf (both off by default). This tool
+# links or unlinks the matching nginx sites, opens or closes the matching UFW
+# application profiles, validates the nginx config, and reloads nginx.
+#
+#   wlanpi-core-tls apply            # reconcile nginx/UFW with the flag file
+#   wlanpi-core-tls enable  api|mcp|dev  # set flag to 1, then apply
+#   wlanpi-core-tls disable api|mcp|dev  # set flag to 0, then apply
+#   wlanpi-core-tls status
+#
+# Paths are overridable through environment variables for testing.
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+FLAG_FILE="${WLANPI_TLS_FLAG_FILE:-/etc/wlanpi-core/tls.conf}"
+SITES_SRC="${WLANPI_TLS_SITES_SRC:-/etc/wlanpi-core/nginx/sites-enabled}"
+SITES_ENABLED="${WLANPI_TLS_SITES_ENABLED:-/etc/nginx/sites-enabled}"
+UFW_RULES_FILE="${WLANPI_TLS_UFW_RULES:-/etc/wlanpi-core/ufw/wlanpi-core.rules}"
+UFW_APP_FILE="${WLANPI_TLS_UFW_APP_FILE:-/etc/ufw/applications.d/wlanpi-core}"
+# Set to 1 to skip nginx validation/reload and UFW (tests, chroot builds).
+NO_SYSTEM="${WLANPI_TLS_NO_SYSTEM:-0}"
+
+FRONTENDS="api mcp dev"
+
+site_for()  { case "$1" in api) echo wlanpi_core_tls.conf ;; mcp) echo wlanpi_mcp_tls.conf ;; dev) echo wlanpi_core_tls_dev.conf ;; esac; }
+flag_for()  { case "$1" in api) echo WLANPI_CORE_TLS_API ;;  mcp) echo WLANPI_CORE_TLS_MCP ;;  dev) echo WLANPI_CORE_TLS_DEV ;;  esac; }
+ufw_for()   { case "$1" in api) echo wlanpi-core-tls ;;      mcp) echo wlanpi-mcp-tls ;;      dev) echo wlanpi-core-tls-dev ;;  esac; }
+port_for()  { case "$1" in api) echo 31416 ;;                mcp) echo 8767 ;;                dev) echo 8443 ;;                esac; }
+
+usage() {
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+}
+
+require_frontend() {
+    case "${1:-}" in
+        api|mcp|dev) ;;
+        *) echo "error: expected 'api', 'mcp' or 'dev'" >&2; usage ;;
+    esac
+}
+
+flag_value() {
+    # Print 0/1 for a front-end, defaulting to 0 when unset or malformed.
+    local var value
+    var="$(flag_for "$1")"
+    value="$( { [ -r "$FLAG_FILE" ] && grep -E "^${var}=" "$FLAG_FILE" | tail -n1 | cut -d= -f2- ; } || true)"
+    case "$value" in
+        1|true|yes|on) echo 1 ;;
+        *) echo 0 ;;
+    esac
+}
+
+set_flag() {
+    local var="$(flag_for "$1")" value="$2"
+    if [ ! -f "$FLAG_FILE" ]; then
+        mkdir -p "$(dirname "$FLAG_FILE")"
+        : > "$FLAG_FILE"
+    fi
+    if grep -qE "^${var}=" "$FLAG_FILE"; then
+        sed -i "s/^${var}=.*/${var}=${value}/" "$FLAG_FILE"
+    else
+        printf '%s=%s\n' "$var" "$value" >> "$FLAG_FILE"
+    fi
+}
+
+system_available() {
+    [ "$NO_SYSTEM" != "1" ] || return 1
+    command -v nginx >/dev/null 2>&1 || return 1
+    if command -v ischroot >/dev/null 2>&1 && ischroot; then
+        return 1
+    fi
+    return 0
+}
+
+ufw_sync() {
+    # Open or close the UFW application profile for a front-end. Best effort:
+    # UFW may be absent or inactive (development hosts, chroot builds).
+    local name="$1" want="$2" app
+    app="$(ufw_for "$name")"
+    system_available || return 0
+    command -v ufw >/dev/null 2>&1 || return 0
+    ufw status 2>/dev/null | grep -q "^Status: active" || return 0
+
+    if ! grep -qs "^\[${app}\]" "$UFW_APP_FILE" && [ -r "$UFW_RULES_FILE" ]; then
+        # Profile file predates the TLS profiles: refresh it from our rules.
+        cp "$UFW_RULES_FILE" "$UFW_APP_FILE"
+    fi
+    if [ "$want" = "1" ]; then
+        ufw allow "$app" >/dev/null 2>&1 || echo "warning: ufw allow ${app} failed" >&2
+    else
+        ufw delete allow "$app" >/dev/null 2>&1 || true
+    fi
+}
+
+apply() {
+    local name site src link want changed=0
+    for name in $FRONTENDS; do
+        site="$(site_for "$name")"
+        src="${SITES_SRC}/${site}"
+        link="${SITES_ENABLED}/${site}"
+        want="$(flag_value "$name")"
+        if [ "$want" = "1" ]; then
+            if [ ! -f "$src" ]; then
+                echo "error: ${src} missing; cannot enable ${name} TLS front-end" >&2
+                exit 1
+            fi
+            if [ ! -L "$link" ] || [ "$(readlink "$link")" != "$src" ]; then
+                mkdir -p "$SITES_ENABLED"
+                ln -sfn "$src" "$link"
+                changed=1
+            fi
+        elif [ -L "$link" ] || [ -e "$link" ]; then
+            rm -f "$link"
+            changed=1
+        fi
+        ufw_sync "$name" "$want"
+    done
+
+    if system_available; then
+        if ! nginx -t >/dev/null 2>&1; then
+            echo "error: nginx configuration test failed; not reloading:" >&2
+            nginx -t >&2 || true
+            exit 1
+        fi
+        if [ "$changed" = "1" ]; then
+            systemctl reload nginx.service 2>/dev/null \
+                || systemctl restart nginx.service 2>/dev/null \
+                || echo "warning: could not reload nginx" >&2
+        fi
+    fi
+    status
+}
+
+status() {
+    local name site link state port
+    for name in $FRONTENDS; do
+        site="$(site_for "$name")"
+        link="${SITES_ENABLED}/${site}"
+        port="$(port_for "$name")"
+        if [ -L "$link" ]; then state="enabled (https://<device>:${port})"; else state="disabled"; fi
+        printf '%-4s flag=%s  nginx site %s\n' "$name" "$(flag_value "$name")" "$state"
+    done
+}
+
+case "${1:-}" in
+    apply)   apply ;;
+    enable)  require_frontend "${2:-}"; set_flag "$2" 1; apply ;;
+    disable) require_frontend "${2:-}"; set_flag "$2" 0; apply ;;
+    status)  status ;;
+    *)       usage ;;
+esac

@@ -168,6 +168,18 @@ if [ -f /usr/bin/lhapitest ]; then
     chmod 755 /usr/bin/lhapitest
 fi
 
+# Feature-flagged TLS front-ends (off by default in /etc/wlanpi-core/tls.conf).
+# Reconcile nginx site links with the flags; with both flags off this links
+# nothing and is a no-op beyond validating the nginx config.
+if [ -f /usr/bin/wlanpi-core-tls ]; then
+    chmod 755 /usr/bin/wlanpi-core-tls
+    if ischroot; then
+        WLANPI_TLS_NO_SYSTEM=1 /usr/bin/wlanpi-core-tls apply >/dev/null 2>&1 || true
+    elif which nginx >/dev/null 2>&1; then
+        /usr/bin/wlanpi-core-tls apply || echo "Warning: TLS front-end apply failed" >&2
+    fi
+fi
+
 if ! ischroot; then
     if [ -f /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh ]; then
         /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
