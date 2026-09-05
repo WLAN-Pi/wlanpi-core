@@ -22,21 +22,25 @@ async def verify_auth_wrapper(
     credentials: Optional[HTTPAuthorizationCredentials] = DEFAULT_SECURITY,
 ):
     """
-    Use HMAC for internal requests, JWT for external requests, OTG for token bootstrap
+    Select the auth scheme from the credential presented, never from the
+    request's source address (#139). Bearer takes precedence when both are
+    present; the HMAC path applies only when signature material is present
+    (and remains localhost-only inside verify_hmac, since the shared secret
+    is on-box trust). A valid Bearer must never be rejected for arriving
+    from localhost.
     """
 
-    # TODO(#139): HMAC is a transitional compatibility path. Move every client to
-    # Bearer authentication, dispatch on presented credentials instead of source
-    # address, and then remove the shared HMAC secret and this branch.
+    # TODO: HMAC is a transitional compatibility path. Once every internal
+    # client presents Bearer, remove the shared HMAC secret and this branch.
 
-    if is_otg_request(request):
-        pass
-    elif is_localhost_request(request):
-        return await verify_hmac(request)
-    else:
-        if not credentials:
-            raise HTTPException(status_code=401, detail="Bearer token required")
+    if credentials:
         return await verify_jwt_token(request, credentials)
+    if request.headers.get("X-Request-Signature"):
+        return await verify_hmac(request)
+    raise HTTPException(
+        status_code=401,
+        detail="Authentication required: Bearer token or request signature",
+    )
 
 
 async def verify_jwt_token(
@@ -141,13 +145,4 @@ def is_localhost_request(request: Request) -> bool:
 
     except Exception:
         log.exception("Error in is_localhost_request")
-        return False
-
-
-def is_otg_request(request: Request) -> bool:
-    """Check if request comes from OTG interface"""
-    try:
-        return False
-    except Exception:
-        log.exception("Error in is_otg_request")
         return False
