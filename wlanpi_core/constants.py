@@ -22,6 +22,7 @@ IP_FILE: str = "/usr/sbin/ip"
 UFW_FILE: str = "/usr/sbin/ufw"
 ETHTOOL_FILE: str = "/sbin/ethtool"
 DUMPCAP_FILE: str = "/usr/bin/dumpcap"
+LLDPCTL_FILE: str = "/usr/sbin/lldpctl"
 
 # Mode changer scripts
 MODE_FILE: str = "/etc/wlanpi-state"
@@ -70,8 +71,6 @@ CREATE_MONITOR_PAIRS_UNINIT = True
 #### Paths below here are relative to script dir or /tmp fixed paths ###
 
 # Networkinfo data file names
-LLDPNEIGH_FILE: str = "/tmp/lldpneigh.txt"
-CDPNEIGH_FILE: str = "/tmp/cdpneigh.txt"
 IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh"
 REACHABILITY_FILE: str = "/opt/wlanpi-common/networkinfo/reachability.sh"
 REACHABILITY_MAX_CUSTOM_TARGETS: int = 10
