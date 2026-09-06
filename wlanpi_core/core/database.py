@@ -153,7 +153,7 @@ class DatabaseManager:
                     str(e),
                 )
                 if attempt < max_retries:
-                    self.log.info("Retrying in %d seconds...", retry_delay)
+                    log.info("Retrying in %d seconds...", retry_delay)
                     await asyncio.sleep(retry_delay)
                     retry_delay = min(retry_delay * 2, 5)
 

@@ -224,6 +224,16 @@ class ApplicationHealthManager:
                         self.log.error(f"Failed to recover token manager: {e}")
 
 
+class CriticalInitializationError(RuntimeError):
+    """Raised when a critical component fails to initialize.
+
+    Critical init failures must abort the ASGI lifespan ("fully initialized or
+    it doesn't start") so gunicorn/uvicorn report a failed startup and systemd
+    can detect it and apply its restart policy, rather than the service coming
+    up half-initialized and serving broken auth-protected routes.
+    """
+
+
 class InitializationManager:
     """
     Manager for application initialization with retry mechanisms
@@ -232,6 +242,10 @@ class InitializationManager:
     def __init__(self, app):
         self.app = app
         self.max_retries = 3
+        # Base delay (seconds) for the security-init retry backoff. Without this
+        # attribute the retry path raised AttributeError before it could retry,
+        # defeating the whole retry loop on the very first failure.
+        self.initial_retry_delay = 2.0
         self.log = get_logger(__name__)
         self.initialized = False
 
@@ -431,10 +445,18 @@ class InitializationManager:
             self.log.error(f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)", exc_info=True)
 
     async def initialize_components(self):
-        """Initialize all application components with proper sequencing and retry"""
+        """Initialize all application components with proper sequencing and retry.
+
+        Critical components (system readiness, security, database) must succeed
+        or this raises CriticalInitializationError to fail the ASGI lifespan.
+        Non-critical components (token manager) degrade to limited functionality
+        without aborting startup.
+        """
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
-            return False
+            raise CriticalInitializationError(
+                "System not ready for initialization"
+            )
 
         # Initialize network namespaces (non-blocking - failures don't stop core)
         await self._initialize_network_namespaces()
@@ -442,23 +464,26 @@ class InitializationManager:
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
             self.log.error("Security initialization failed - cannot proceed")
-            return False
+            raise CriticalInitializationError(
+                "Security manager initialization failed"
+            )
 
         database_initialized = await self._initialize_database()
         if not database_initialized:
             self.log.error(
                 "Database initialization failed - cannot proceed with token management"
             )
-            self.initialized = True
-            return True
+            raise CriticalInitializationError(
+                "Database initialization failed"
+            )
 
         token_initialized = await self._initialize_token_manager()
         if not token_initialized:
+            # Token manager is not critical: the service can start with reduced
+            # functionality. Do not abort the lifespan for this.
             self.log.warning(
                 "Token manager initialization failed - some functionality will be limited"
             )
-            self.initialized = True
-            return True
 
         self.initialized = True
         self.log.info("All components initialized ...")
@@ -655,15 +680,15 @@ def create_app(debug: bool = False):
         app.state.initialization_manager = InitializationManager(app)
         app.state.health_manager = ApplicationHealthManager(app)
 
-        initialization_success = (
-            await app.state.initialization_manager.initialize_components()
-        )
+        # A critical-init failure raises CriticalInitializationError, which is
+        # allowed to propagate out of the startup handler so the ASGI lifespan
+        # fails. gunicorn/uvicorn then report a failed startup and systemd's
+        # restart policy takes over, rather than the service coming up
+        # half-initialized and serving broken auth-protected routes.
+        await app.state.initialization_manager.initialize_components()
 
-        if initialization_success:
-            log.info("Application successfully initialized")
-            await app.state.health_manager.start_health_checks()
-        else:
-            log.error("Application initialization failed")
+        log.info("Application successfully initialized")
+        await app.state.health_manager.start_health_checks()
 
     @app.on_event("shutdown")
     async def shutdown():

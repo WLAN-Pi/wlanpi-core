@@ -10,3 +10,4 @@
 /install/etc/wlanpi-core/ufw/current-rules-version /etc/wlanpi-core/ufw
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
 /install/usr/bin/lhapitest /usr/bin
+/install/usr/bin/wlanpi-core-preflight /usr/bin

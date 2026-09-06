@@ -1,4 +1,4 @@
-# wlanpi-webui.socket
+# wlanpi-core.socket
 
 [Unit]
 Description=wlanpi-core gunicorn socket
