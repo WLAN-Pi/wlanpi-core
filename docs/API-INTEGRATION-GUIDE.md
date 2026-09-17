@@ -14,7 +14,7 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 
 | Concept | Detail |
 |---------|--------|
-| Base URL | `http://<wlanpi-host>:8000/api/v1` (adjust port if proxied) |
+| Base URL | Production: `https://<wlanpi-host>:31415/api/v1` · Dev loopback: `http://127.0.0.1:8000/api/v1` |
 | Auth | Bearer JWT for remote clients; HMAC for localhost services |
 | JSON | Many fields are **camelCase** on the wire (`selectedAdapter`, `downloadSpeed`) |
 | Device mode | `GET /system/device/info` → `mode` (`classic`, `hotspot`, …) |
@@ -30,6 +30,41 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 | Date/time | [P0-system-datetime-api.md](./P0-system-datetime-api.md) |
 | Reg domain | [P0-system-reg-domain-api.md](./P0-system-reg-domain-api.md) |
 | Deprecated routes | [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md) |
+
+---
+
+## TLS and certificate trust
+
+The production API is HTTPS-only on port 31415 via nginx. There is no cleartext
+fallback. Direct development runs on `http://127.0.0.1:8000` (loopback only)
+and is not a substitute for the packaged API.
+
+**Self-signed certificate.** The device certificate at
+`/etc/nginx/ssl/self-signed-wlanpi.cert` is its own CA. Every client must pin
+this file; it is both the leaf certificate and the trust anchor.
+
+On each connection the client checks three things: (1) the presented certificate
+matches the pinned file, (2) the connection target appears in the SANs
+(`localhost`, `wlanpi.local`, `127.0.0.1`, `198.18.42.1`), and (3) the current
+date is inside the validity window. Any failure kills the connection before API
+data flows.
+
+**Per-client setup:**
+
+| Client | Configuration |
+|--------|---------------|
+| Python Requests | `verify="/etc/nginx/ssl/self-signed-wlanpi.cert"` |
+| curl | `--cacert /etc/nginx/ssl/self-signed-wlanpi.cert` |
+| HTTPX | explicit `ssl_context` or `SSL_CERT_FILE` environment variable |
+| Firefox on device | already imported by `wlanpi-firefox-setup` — no action needed |
+
+Never use `verify=False`, `curl -k`, or an automatic HTTP fallback in
+production.
+
+**Remote clients** must import the certificate once before connecting. A
+hostname or IP outside the four SANs produces a hostname mismatch error. A
+client that has not imported the certificate receives an untrusted error and
+cannot proceed without bypassing verification — which authenticates nothing.
 
 ---
 
@@ -387,6 +422,11 @@ Blinker runs until stopped (cable-finder LED pattern on Ethernet).
 
 ## Lesson 11 — Packet capture WebSocket
 
+**Status:** this route currently returns 404 on the production nginx listener.
+nginx does not forward WebSocket upgrade headers, so the connection never
+reaches the application. PR 165 will restore it with authenticated forwarding.
+Do not build production integrations against this endpoint until that PR ships.
+
 **Endpoint:** `WS /api/v1/streaming/capture`
 
 ### Workflow
@@ -452,7 +492,10 @@ Check status before start; stop before starting again.
 ## MCP / AI tool authoring notes
 
 1. **Load schema:** fetch `/api/v1/openapi.json` or use committed `docs/openapi.json` from `scripts/export_openapi.py`.
-2. **Always authenticate first** — tool: `auth_token_issue` → store bearer for subsequent tools.
+2. **Configure TLS** — set `WLANPI_CORE_URL=https://localhost:31415` and
+   `WLANPI_CORE_CA=/etc/nginx/ssl/self-signed-wlanpi.cert` before connecting.
+   Pass the CA file explicitly to the HTTP client; never disable verification.
+3. **Always authenticate first** — tool: `auth_token_issue` → store bearer for subsequent tools.
 3. **Never call deprecated paths** — use [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md).
 4. **Mode-gated tools** — read `device_info` before hotspot tools; return user-facing message on 409.
 5. **Scan tool** — handle four outcomes: networks, needsSelection, `NO_SCAN_ADAPTER`, `SCAN_IN_PROGRESS` (see Lesson 4).
