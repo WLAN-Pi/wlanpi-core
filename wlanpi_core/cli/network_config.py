@@ -591,7 +591,8 @@ class NetworkConfigCLI:
                             self.print_info(f"Using existing value: '{existing_value}'")
                         return existing_value
                     elif default_value is not None:
-                        self.print_info(f"Using default value: '{default_value}'")
+                        if not secret:
+                            self.print_info(f"Using default value: '{default_value}'")
                         return default_value
                     elif required:
                         raise ValidationError(
