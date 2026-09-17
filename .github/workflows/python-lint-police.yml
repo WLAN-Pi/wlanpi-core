@@ -31,6 +31,16 @@ jobs:
       with:
         python-version: "3.13"
 
+    - name: Install system build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes \
+          build-essential \
+          libdbus-1-dev \
+          libdbus-glib-1-dev \
+          libglib2.0-dev \
+          pkg-config
+
     - name: Install depends
       run: |
         python -m ensurepip --upgrade
