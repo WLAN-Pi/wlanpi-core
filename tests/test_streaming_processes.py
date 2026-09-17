@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -43,37 +43,62 @@ def _connected_client(manager, websocket):
         "task": None,
         "channel_tasks": {},
         "interfaces": set(),
+        "did": None,
+        "session_id": None,
+        "subscribers": set(),
+        "subscribed_to": None,
+        "namespace": None,
+        "session_config": None,
+        "session_end": None,
+        "pcapng_buffer": bytearray(),
+        "pcapng_header": bytearray(),
+        "pcapng_endian": None,
+        "pcapng_header_complete": False,
+        "subscription_queue": None,
+        "subscription_task": None,
+        "subscription_closing": False,
     }
+
+
+def _root_status(*ifaces):
+    """network_config.status()-shaped dict with adapters in root."""
+    return {"root": {iface: {"type": "monitor"} for iface in ifaces}}
+
+
+def _mock_root_adapters(mocker, *ifaces):
+    """Keep start_streaming / frequency discovery off the real iw path (AGENTS #6)."""
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value=_root_status(*ifaces),
+    )
 
 
 @pytest.mark.asyncio
 async def test_supported_frequencies_uses_bounded_async_commands(mocker):
+    """Frequencies come from core adapter enumeration + per-phy iw channels,
+    never a root-only `iw dev` scrape (namespace-aware path)."""
     manager = ConnectionManager()
     websocket = object()
+    _mock_root_adapters(mocker, "wlanpi0")
+    mocker.patch(
+        "wlanpi_core.adapters.interface.get_interface_info",
+        return_value={"phy": "phy0"},
+    )
     run_command = mocker.patch.object(
         connection_manager,
         "run_command_async",
         new=AsyncMock(
-            side_effect=[
-                CommandResult("Interface wlanpi0\n", "", 0),
-                CommandResult("* 2412 MHz\n* 2437 MHz (disabled)\n", "", 0),
-            ]
+            return_value=CommandResult("* 2412 MHz\n* 2437 MHz (disabled)\n", "", 0),
         ),
     )
     send_event = mocker.patch.object(manager, "send_event", new=AsyncMock())
 
     await manager.send_supported_frequencies(websocket)
 
-    assert run_command.await_args_list == [
-        call(
-            [connection_manager.IW_FILE, "dev"],
-            timeout=connection_manager._IW_TIMEOUT_SEC,
-        ),
-        call(
-            [connection_manager.IW_FILE, "phy", "phy0", "channels"],
-            timeout=connection_manager._IW_TIMEOUT_SEC,
-        ),
-    ]
+    run_command.assert_awaited_once_with(
+        [connection_manager.IW_FILE, "phy", "phy0", "channels"],
+        timeout=connection_manager._IW_TIMEOUT_SEC,
+    )
     send_event.assert_awaited_once_with(
         websocket,
         "frequencies",
@@ -91,7 +116,7 @@ async def test_set_channel_uses_bounded_async_command(mocker):
         new=AsyncMock(return_value=CommandResult("", "", 0)),
     )
 
-    assert await manager._set_channel("wlanpi0", 5180, 20) is True
+    assert await manager._set_channel("wlanpi0", 5180, 20) is None
 
     run_command.assert_awaited_once_with(
         [connection_manager.IW_FILE, "dev", "wlanpi0", "set", "freq", "5180", "20"],
@@ -105,6 +130,7 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
     manager = ConnectionManager()
     websocket = object()
     _connected_client(manager, websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     process = CaptureProcess()
     create_process = mocker.patch.object(
         connection_manager.asyncio,
@@ -112,9 +138,16 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         new=AsyncMock(return_value=process),
     )
     mocker.patch.object(manager, "send_message_event", new=AsyncMock())
+    send_event = mocker.patch.object(manager, "send_event", new=AsyncMock())
     manager.configure(websocket, "wlanpi0", {})
 
     await manager.start_streaming(websocket, ["wlanpi0"], "")
+
+    listener = object()
+    _connected_client(manager, listener)
+    session_id = manager.clients[websocket]["session_id"]
+    manager.clients[websocket]["subscribers"].add(listener)
+    manager.clients[listener]["subscribed_to"] = session_id
 
     create_process.assert_awaited_once_with(
         connection_manager.DUMPCAP_FILE,
@@ -128,6 +161,7 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         stderr=asyncio.subprocess.DEVNULL,
         start_new_session=True,
     )
+    assert send_event.await_args.args[3]["namespace"] is None
 
     await manager.stop_streaming(websocket)
 
@@ -135,6 +169,12 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
     assert process.returncode == -15
     assert manager.clients[websocket]["proc"] is None
     assert manager.clients[websocket]["task"] is None
+    send_event.assert_any_await(
+        listener,
+        "status",
+        "CAPTURE_STOPPED",
+        {"message": "Capture stopped.", "session_id": session_id},
+    )
 
 
 @pytest.mark.asyncio
@@ -205,6 +245,7 @@ async def test_capture_interface_can_only_have_one_owner(mocker):
     second_websocket = object()
     _connected_client(manager, first_websocket)
     _connected_client(manager, second_websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     manager.configure(first_websocket, "wlanpi0", {})
     manager.configure(second_websocket, "wlanpi0", {})
     process = CaptureProcess()
@@ -240,6 +281,7 @@ async def test_shutdown_all_reaps_captures_and_discards_clients(mocker):
     manager = ConnectionManager()
     websocket = object()
     _connected_client(manager, websocket)
+    _mock_root_adapters(mocker, "wlanpi0")
     manager.configure(websocket, "wlanpi0", {})
     process = CaptureProcess()
     mocker.patch.object(
@@ -255,6 +297,7 @@ async def test_shutdown_all_reaps_captures_and_discards_clients(mocker):
     assert process.terminated is True
     assert manager.clients == {}
     assert manager.interface_owners == {}
+    assert manager.sessions == {}
 
 
 @pytest.mark.parametrize(
@@ -306,6 +349,34 @@ async def test_capture_rejects_invalid_start_before_process(mocker):
 
 
 @pytest.mark.asyncio
+async def test_set_channel_retries_once_when_phy_is_busy(mocker):
+    """A scan on a shared phy makes iw fail with EBUSY transiently; one
+    retry absorbs the common collision."""
+    manager = ConnectionManager()
+    busy = CommandResult("", "command failed: Device or resource busy (-16)", 240)
+    ok = CommandResult("", "", 0)
+    run = mocker.patch(
+        "wlanpi_core.streaming.connection_manager.run_command_async",
+        side_effect=[busy, ok],
+    )
+
+    assert await manager._set_channel("wlanpi0", 2412, 20) is None
+    assert run.call_count == 2
+
+
+async def test_set_channel_does_not_retry_non_busy_failures(mocker):
+    manager = ConnectionManager()
+    failed = CommandResult("", "command failed: Operation not supported (-95)", 240)
+    run = mocker.patch(
+        "wlanpi_core.streaming.connection_manager.run_command_async",
+        return_value=failed,
+    )
+
+    error = await manager._set_channel("wlanpi0", 2412, 20)
+    assert error is not None and "not supported" in error
+    assert run.call_count == 1
+
+
 async def test_set_channel_rejects_invalid_center_before_command(mocker):
     manager = ConnectionManager()
     run_command = mocker.patch.object(
@@ -314,5 +385,5 @@ async def test_set_channel_rejects_invalid_center_before_command(mocker):
         new=AsyncMock(),
     )
 
-    assert await manager._set_channel("wlanpi0", 5000, 160) is False
+    assert await manager._set_channel("wlanpi0", 5000, 160) is not None
     run_command.assert_not_awaited()

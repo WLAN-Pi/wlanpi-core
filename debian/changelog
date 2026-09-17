@@ -1,3 +1,14 @@
+wlanpi-core (2.1.13-1) unstable; urgency=medium
+
+  * Require first-message JWT authentication for packet-capture WebSockets
+  * Add owned capture sessions with read-only subscribers
+  * Replay pcapng headers for late subscribers and isolate stalled clients
+  * Proxy capture WebSockets through the TLS-only nginx listener
+  * Support capture adapters in network namespaces and report iw failures
+  * Source LLDP/CDP neighbours from lldpd via lldpctl (previously unrecorded)
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 10:06:58 -0400
+
 wlanpi-core (2.1.12-1) unstable; urgency=medium
 
   * Fail the ASGI lifespan on critical init failure (system readiness,
