@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import ipaddress
 import urllib
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -25,7 +25,7 @@ class AuthClockNotSetError(Exception):
 async def verify_auth_wrapper(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = DEFAULT_SECURITY,
-):
+) -> Any:
     """Select authentication from the credential presented."""
 
     # TODO(#139): HMAC is a transitional compatibility path. Move every client to
@@ -49,7 +49,7 @@ async def verify_auth_wrapper(
 async def verify_jwt_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials = DEFAULT_SECURITY,
-):
+) -> Any:
     if not credentials:
         log.error("Authentication failed: No bearer token provided")
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -63,7 +63,7 @@ async def verify_jwt_token(
     return validation_result
 
 
-async def verify_hmac(request: Request):
+async def verify_hmac(request: Request) -> Any:
     """Verify HMAC signature for internal requests"""
     if not is_localhost_request(request):
         raise HTTPException(

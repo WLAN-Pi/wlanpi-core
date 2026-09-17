@@ -8,7 +8,7 @@ import re
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -38,7 +38,7 @@ class ScanInProgressError(Exception):
 
 
 @contextmanager
-def _claim_scan(iface: str, namespace: Optional[str] = None):
+def _claim_scan(iface: str, namespace: Optional[str] = None) -> Iterator[None]:
     """Claim a scan target without retaining an unbounded lock cache."""
     key = (namespace, iface)
     with _active_scans_lock:
@@ -109,7 +109,7 @@ def parse_wpa_scan_results(
         except ValueError:
             continue
 
-        entry = {
+        entry: dict[str, Any] = {
             "ssid": ssid,
             "bssid": bssid.lower(),
             "signal": signal,
@@ -176,7 +176,7 @@ def _parse_channel_width(block: str) -> Optional[int]:
     return None
 
 
-def _parse_bss_load(block: str) -> Optional[dict[str, int]]:
+def _parse_bss_load(block: str) -> Optional[dict[str, Optional[int]]]:
     stations = None
     utilization = None
     for line in block.splitlines():

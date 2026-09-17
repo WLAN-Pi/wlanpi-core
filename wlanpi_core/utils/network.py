@@ -25,7 +25,7 @@ def get_default_gateways() -> dict[str, str]:
 def trace_route(target: str) -> dict[str, Any]:
     # Execute 'ip route show' command which lists all network routes
     output = run_command(["jc", "traceroute", target]).output_from_json()
-    return output
+    return output if isinstance(output, dict) else {}
 
 
 def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str, Any]]:
@@ -33,14 +33,14 @@ def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str
     if interface is not None and interface.strip() != "":
         cmd.append(interface.strip())
     result = run_command(cmd).output_from_json()
-    return result
+    return result if isinstance(result, list) else []
 
 
 def get_interface_addresses(
     interface: Optional[str] = None,
 ) -> dict[str, dict[str, str]]:
     res = get_interface_address_data(interface=interface)
-    out_obj = {}
+    out_obj: dict[str, dict[str, Any]] = {}
     for item in res:
         if item["ifname"] not in out_obj:
             out_obj[item["ifname"]] = {"inet": [], "inet6": []}

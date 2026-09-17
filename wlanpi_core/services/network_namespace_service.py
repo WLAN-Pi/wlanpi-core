@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from wlanpi_core.adapters import discovery, interface, phy
 from wlanpi_core.connection.monitor import (
@@ -44,10 +44,10 @@ from wlanpi_core.wpa import supplicant as wpa_supplicant
 class NetworkNamespaceService:
     def __init__(
         self,
-        config_dir=DEFAULT_CONFIG_DIR,
-        ctrl_interface=DEFAULT_CTRL_INTERFACE,
-        dhcp_dir=DEFAULT_DHCP_DIR,
-    ):
+        config_dir: str = DEFAULT_CONFIG_DIR,
+        ctrl_interface: str = DEFAULT_CTRL_INTERFACE,
+        dhcp_dir: str = DEFAULT_DHCP_DIR,
+    ) -> None:
         self.config_dir = Path(config_dir)
         self.ctrl_interface = ctrl_interface
         self.dhcp_dir = Path(dhcp_dir)
@@ -218,11 +218,11 @@ class NetworkNamespaceService:
 
         return True, ""
 
-    def set_global_settings(self, settings: dict):
+    def set_global_settings(self, settings: dict[str, Any]) -> None:
         self.log.info("Updating global settings: %s", settings)
         self.global_settings.update(settings)
 
-    def parse_wpa_log(self, iface: str, timeout: int = 30):
+    def parse_wpa_log(self, iface: str, timeout: int = 30) -> None:
         """
         Parse wpa_supplicant log file.
 
@@ -231,7 +231,7 @@ class NetworkNamespaceService:
         """
         wpa_supplicant.parse_wpa_log(iface, timeout=timeout)
 
-    def get_interfaces(self):
+    def get_interfaces(self) -> list[Any]:
         """Get list of wireless interfaces using the adapter discovery module."""
         return discovery.list_interfaces()
 
@@ -241,7 +241,7 @@ class NetworkNamespaceService:
         iface: str,
         namespace: Optional[str],
         timeout: int = 15,
-    ):
+    ) -> None:
         """
         Start background connection monitor using the connection.monitor module.
 
@@ -250,7 +250,7 @@ class NetworkNamespaceService:
         """
         ConnectionMonitor.start_monitor(cfg, iface, namespace, timeout=timeout)
 
-    def stop_connection_monitor(self, namespace: Optional[str], iface: str):
+    def stop_connection_monitor(self, namespace: Optional[str], iface: str) -> None:
         """
         Stop a connection monitor for a specific interface/namespace.
 
@@ -258,7 +258,7 @@ class NetworkNamespaceService:
         """
         stop_connection_monitor(namespace, iface)
 
-    def stop_all_connection_monitors(self):
+    def stop_all_connection_monitors(self) -> None:
         """
         Stop all active connection monitors. Useful for shutdown or cleanup.
 
@@ -399,8 +399,8 @@ class NetworkNamespaceService:
         # For security configs, connection is happening asynchronously
         if mode_value != "monitor" and not cfg.security:
             status = self.get_status(iface, namespace)
-            wpa: dict = status.get("wpa_status", {})
-            scan: dict = status.get("connected_scan", {})
+            wpa: dict[str, Any] = status.get("wpa_status", {})
+            scan: dict[str, Any] = status.get("connected_scan", {})
 
             if (
                 hasattr(cfg, "security")
@@ -441,7 +441,7 @@ class NetworkNamespaceService:
             input=cfg.__str__(),
         )
 
-    def deactivate_config(self, cfg: Union[NamespaceConfig, RootConfig]):
+    def deactivate_config(self, cfg: Union[NamespaceConfig, RootConfig]) -> None:
         iface = cfg.iface_display_name or cfg.interface
         namespace = (
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
@@ -469,7 +469,7 @@ class NetworkNamespaceService:
 
         self.revert_to_root(cfg)
 
-    def remove_network(self, iface: str, namespace: Optional[str]):
+    def remove_network(self, iface: str, namespace: Optional[str]) -> None:
         namespace_display = namespace if namespace else "root"
         self.log.info("Removing network %s from namespace %s", iface, namespace_display)
 
@@ -501,7 +501,7 @@ class NetworkNamespaceService:
         self,
         cfg: Union[NamespaceConfig, RootConfig, None] = None,
         delete_namespace: bool = True,
-    ):
+    ) -> None:
         # If no cfg provided: scan all namespaces and move all interfaces/PHYs back to root
         if cfg is None:
             try:
@@ -744,7 +744,7 @@ class NetworkNamespaceService:
             except Exception as e:
                 self.log.warning(f"Could not check namespace list before deletion: {e}")
 
-    def start_app_in_namespace(self, namespace: Optional[str], app_id):
+    def start_app_in_namespace(self, namespace: Optional[str], app_id: str) -> None:
         """
         Start an application in a namespace or root namespace.
 
@@ -752,7 +752,7 @@ class NetworkNamespaceService:
         """
         apps.start_app_in_namespace(namespace, app_id, pid_dir=self.pid_dir)
 
-    def stop_app_in_namespace(self, namespace: Optional[str]):
+    def stop_app_in_namespace(self, namespace: Optional[str]) -> None:
         """
         Stop an application running in a namespace or root namespace.
 
@@ -760,7 +760,7 @@ class NetworkNamespaceService:
         """
         apps.stop_app_in_namespace(namespace, pid_dir=self.pid_dir)
 
-    def get_status(self, iface: str, namespace: Optional[str]) -> dict:
+    def get_status(self, iface: str, namespace: Optional[str]) -> dict[str, Any]:
         """
         Get network status for an interface.
 
@@ -768,7 +768,7 @@ class NetworkNamespaceService:
         """
         return wpa_status.get_wpa_status(iface, namespace)
 
-    def _prepare_root(self, cfg: RootConfig):
+    def _prepare_root(self, cfg: RootConfig) -> Optional[bool]:
         """
         Prepare root namespace for network configuration using the new modules.
 
@@ -835,11 +835,11 @@ class NetworkNamespaceService:
             self.log.error(f"Root setup failed for {iface}: {e}")
             raise
 
-    def _prepare_namespace(self, cfg: NamespaceConfig):
+    def _prepare_namespace(self, cfg: NamespaceConfig) -> Optional[bool]:
         namespace = cfg.namespace
         iface = cfg.interface
         if not namespace:
-            return
+            return None
 
         try:
             # Ensure namespace exists using namespace module
@@ -907,7 +907,7 @@ class NetworkNamespaceService:
             self.log.error("Namespace setup failed for %s: %s", iface, e)
             raise
 
-    def _run(self, cmd, no_output=False):
+    def _run(self, cmd: list[str], no_output: bool = False) -> Any:
         self.log.info(f"Running: {' '.join(cmd)}")
         try:
             output = run_command(cmd)
@@ -917,13 +917,15 @@ class NetworkNamespaceService:
             self.log.info(f"stderr: {output.stderr}")
             self.log.info(f"return_code: {output.return_code}")
             if output.return_code != 0:
-                raise RunCommandError(output.stderr.decode(), output.return_code)
+                raise RunCommandError(output.stderr, output.return_code)
             return output
         except Exception as e:
             self.log.error(f"Command failed: {' '.join(cmd)}\nError: {e}")
             raise
 
-    def _ns_exec(self, cmd, namespace: Optional[str], no_output=False):
+    def _ns_exec(
+        self, cmd: list[str], namespace: Optional[str], no_output: bool = False
+    ) -> Any:
         """
         Execute a command in a namespace or root namespace.
 
@@ -946,11 +948,11 @@ class NetworkNamespaceService:
             )
             raise
 
-    def _safe_unlink(self, path: Path):
+    def _safe_unlink(self, path: Path) -> None:
         if path.exists():
             path.unlink()
 
-    def _log_event(self, event: str, timestamp: str = None):
+    def _log_event(self, event: str, timestamp: Optional[str] = None) -> None:
         """
         Log a network event to the event log.
 
@@ -964,7 +966,7 @@ class NetworkNamespaceService:
             timestamp = datetime.now().isoformat()
         self.event_log.append(NetworkEvent(event=event, time=timestamp))
 
-    def kill_all_supplicants(self):
+    def kill_all_supplicants(self) -> None:
         """
         Stop any running wpa_supplicant processes across namespaces.
 

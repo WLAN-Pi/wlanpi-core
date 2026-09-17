@@ -7,7 +7,7 @@ including global headers and network blocks.
 
 import logging
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
@@ -149,7 +149,7 @@ def generate_network_block(
 def write_wpa_config(
     cfg: Union[NamespaceConfig, RootConfig],
     config_dir: Path,
-    global_settings: dict,
+    global_settings: dict[str, Any],
 ) -> None:
     """
     Write wpa_supplicant configuration file(s) for an interface.

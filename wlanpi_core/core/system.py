@@ -1,6 +1,7 @@
 import subprocess
 import time
 from threading import Thread
+from typing import Any, Optional
 
 from wlanpi_core.constants import ETHTOOL_FILE, IP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
@@ -10,12 +11,17 @@ _SYSTEM_COMMAND_TIMEOUT_SEC = 10
 
 
 class SystemManager:
-    def __init__(self, iface_name: str = "wlanpi", exclusions: list[str] = []):
+    def __init__(self, iface_name: str = "wlanpi", exclusions: list[str] = []) -> None:
         self.iface_name = iface_name
         self.exclusions = exclusions
         self.sync_monitor_interfaces()
 
-    def _run(self, cmd, capture_output=False, suppress_output=False):
+    def _run(
+        self,
+        cmd: list[str],
+        capture_output: bool = False,
+        suppress_output: bool = False,
+    ) -> Optional[Any]:
         try:
             if capture_output:
                 return (
@@ -42,13 +48,13 @@ class SystemManager:
                 log.warning("System command timed out")
             return None if capture_output else False
 
-    def _iface_up(self, name):
+    def _iface_up(self, name: str) -> Optional[Any]:
         return self._run([IP_FILE, "link", "set", name, "up"])
 
-    def _iface_down(self, name):
+    def _iface_down(self, name: str) -> Optional[Any]:
         return self._run([IP_FILE, "link", "set", name, "down"])
 
-    def _get_driver(self, name):
+    def _get_driver(self, name: str) -> Optional[str]:
         output = self._run([ETHTOOL_FILE, "-i", name], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -56,7 +62,7 @@ class SystemManager:
                     return line.split(":")[1].strip()
         return None
 
-    def _get_wiphy_index(self, name):
+    def _get_wiphy_index(self, name: str) -> Optional[str]:
         output = self._run([IW_FILE, "dev", name, "info"], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -64,10 +70,10 @@ class SystemManager:
                     return "".join(filter(str.isdigit, line))
         return None
 
-    def _get_interfaces_by_type(self):
+    def _get_interfaces_by_type(self) -> dict[str, str]:
         output = self._run([IW_FILE, "dev"], capture_output=True)
-        interfaces = {}
-        current_iface = None
+        interfaces: dict[str, str] = {}
+        current_iface: Optional[str] = None
         if not output:
             return interfaces
 
@@ -82,7 +88,7 @@ class SystemManager:
 
         return interfaces
 
-    def _create_monitor(self, name, index):
+    def _create_monitor(self, name: str, index: str) -> Optional[str]:
         mon = f"{self.iface_name}{index}"
         self._run(
             [
@@ -104,18 +110,20 @@ class SystemManager:
             log.error(f"Failed to create monitor interface {mon}")
             return None
 
-    def sync_monitor_interfaces(self):
+    def sync_monitor_interfaces(self) -> None:
         interfaces = self._get_interfaces_by_type()
-        managed = {
-            name: self._get_wiphy_index(name)
-            for name, typ in interfaces.items()
-            if typ == "managed"
-        }
-        monitor = {
-            name: self._get_wiphy_index(name)
-            for name, typ in interfaces.items()
-            if typ == "monitor"
-        }
+        managed: dict[str, str] = {}
+        for name, typ in interfaces.items():
+            if typ == "managed":
+                index = self._get_wiphy_index(name)
+                if index is not None:
+                    managed[name] = index
+        monitor: dict[str, str] = {}
+        for name, typ in interfaces.items():
+            if typ == "monitor":
+                index = self._get_wiphy_index(name)
+                if index is not None:
+                    monitor[name] = index
 
         # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
@@ -138,7 +146,7 @@ class SystemManager:
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
 
-                    def background_scan_with_timeout():
+                    def background_scan_with_timeout() -> None:
                         time.sleep(1)
                         try:
                             subprocess.run(

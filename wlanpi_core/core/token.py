@@ -57,7 +57,7 @@ class TokenValidationResult:
     """Result of token validation containing validation status and metadata"""
 
     is_valid: bool
-    payload: Optional[dict] = None
+    payload: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     token: Optional[str] = None
     device_id: Optional[str] = None
@@ -112,7 +112,7 @@ class TokenValidationResult:
             return f"Valid token for device {self.device_id} (expires {self.exp})"
         return f"Invalid token: {self.error}"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses"""
         return {
             "valid": self.is_valid,
@@ -124,7 +124,7 @@ class TokenValidationResult:
 
 
 class TokenManager:
-    def __init__(self, app_state):
+    def __init__(self, app_state: Any) -> None:
         """
         Initialize TokenManager with application state
 
@@ -578,7 +578,7 @@ class TokenManager:
         result = await session.execute(query)
         return result.scalar_one()
 
-    async def verify_db_state(self) -> dict:
+    async def verify_db_state(self) -> dict[str, Any]:
         """
         Verify the current state of tokens in the database.
 

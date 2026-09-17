@@ -70,6 +70,8 @@ Reuse first, write second:
 - Smallest diff that fixes the issue. No speculative abstraction, no config for
   a value that never changes, no helper with one caller.
 - Delete over add; boring over clever.
+- No walrus operator (`:=`). Rewrite the assignment into a plain statement;
+  readability beats the one-liner.
 - Mark deliberate simplifications that cut a real corner (a global lock, an
   O(n²) scan, a naive heuristic) with a `# shortcut:` comment naming the
   ceiling and the upgrade path.

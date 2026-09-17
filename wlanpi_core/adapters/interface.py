@@ -6,7 +6,7 @@ separate from namespace concerns.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -125,7 +125,7 @@ def delete_interface(interface_name: str, namespace: Optional[str] = None) -> bo
 
 def get_interface_info(
     interface_name: str, namespace: Optional[str] = None
-) -> Optional[dict]:
+) -> Optional[dict[str, Any]]:
     """
     Get information about a network interface.
 

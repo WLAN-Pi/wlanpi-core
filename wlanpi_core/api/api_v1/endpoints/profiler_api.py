@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, Response
 
 import wlanpi_core.profiler.cli as cli
@@ -19,7 +21,7 @@ log = get_logger(__name__)
     response_model=schemas.Status,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def profiler_status():
+async def profiler_status() -> Any:
     """
     Returns status of profiler
     """
@@ -41,7 +43,7 @@ async def profiler_status():
     response_model=schemas.Start,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def start_profiler(args: models.Start):
+async def start_profiler(args: models.Start) -> Any:
     """
     Starts profiler with provided arguments
     """
@@ -64,7 +66,7 @@ async def start_profiler(args: models.Start):
     response_model=schemas.Stop,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def stop_profiler():
+async def stop_profiler() -> Any:
     """
     Stops  profiler
     """

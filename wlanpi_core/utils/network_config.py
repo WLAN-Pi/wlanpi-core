@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
 from wlanpi_core.models.network_config_errors import (
@@ -70,9 +71,9 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
     )
 
 
-def parse_iw_dev_output(output: str) -> dict:
+def parse_iw_dev_output(output: str) -> dict[str, Any]:
     """Parse iw dev output into dict"""
-    interfaces = {}
+    interfaces: dict[str, Any] = {}
     current_iface = None
     skip_table_block = False
 
@@ -163,13 +164,13 @@ def list_configs() -> dict[str, bool]:
     return configs
 
 
-def status():
+def status() -> dict[str, Any]:
     namespaces_output = run_command(["sudo", "ip", "netns", "list"])
     namespaces = []
     for line in namespaces_output.stdout.splitlines():
         namespaces.append(line.split(" ")[0])
 
-    final_status = {}
+    final_status: dict[str, Any] = {}
 
     root_info = run_command(["sudo", "iw", "dev"])
     root_status = parse_iw_dev_output(root_info.stdout)

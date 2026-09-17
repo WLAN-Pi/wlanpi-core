@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class _OwnedAppProcess:
-    process: subprocess.Popen
+    process: subprocess.Popen[Any]
     namespace: Optional[str]
     app_id: str
 
@@ -274,7 +274,7 @@ def start_app_in_namespace(
     return True
 
 
-def _verify_app_in_namespace(pid: int, namespace: str, app_command: str):
+def _verify_app_in_namespace(pid: int, namespace: str, app_command: str) -> None:
     """
     Verify that an app process is visible in a namespace.
 
@@ -490,7 +490,6 @@ def _stop_app_in_namespace_safe(
                     cmdline_result = run_command(
                         ["cat", f"/proc/{ns_pid}/cmdline"],
                         raise_on_fail=False,
-                        no_output=True,
                     )
                     if cmdline_result.return_code == 0:
                         cmdline = cmdline_result.stdout.replace("\0", " ")

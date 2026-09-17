@@ -6,7 +6,7 @@ on the system.
 """
 
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -51,7 +51,7 @@ def list_interfaces() -> List[str]:
         raise
 
 
-def get_interface_by_name(interface_name: str) -> Optional[dict]:
+def get_interface_by_name(interface_name: str) -> Optional[dict[str, Any]]:
     """
     Get information about a specific interface by name.
 

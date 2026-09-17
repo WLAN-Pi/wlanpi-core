@@ -1,6 +1,6 @@
 import asyncio
 from asyncio.subprocess import Process
-from typing import Optional
+from typing import Any, Optional
 
 import wlanpi_core.profiler.models as models
 from wlanpi_core.core.logging import get_logger
@@ -11,7 +11,7 @@ profiler_process: Optional[Process] = None
 _profiler_lock = asyncio.Lock()
 
 
-async def start_profiler(args: models.Start):
+async def start_profiler(args: models.Start) -> Any:
     global profiler_process
 
     cmd = ["profiler"]
@@ -61,7 +61,7 @@ async def start_profiler(args: models.Start):
             return False
 
 
-async def stop_profiler():
+async def stop_profiler() -> Any:
     global profiler_process
 
     async with _profiler_lock:

@@ -8,7 +8,7 @@ handling DHCP, default routes, and app startup when connections complete.
 import logging
 import threading
 import time
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from wlanpi_core.schemas.network.network import NamespaceConfig, RootConfig
 from wlanpi_core.utils.network_management import (
@@ -55,7 +55,7 @@ class ConnectionMonitor:
         namespace_display = namespace if namespace else "root"
         monitor_key = f"{namespace_display}:{iface}"
 
-        def monitor_loop():
+        def monitor_loop() -> None:
             try:
                 _monitor_body()
             finally:
@@ -66,7 +66,7 @@ class ConnectionMonitor:
                     _connection_monitors.pop(monitor_key, None)
                     _monitor_stop_flags.pop(monitor_key, None)
 
-        def _monitor_body():
+        def _monitor_body() -> None:
             log.info(
                 f"[ConnectionMonitor] Starting connection monitor for {iface} in {namespace_display} "
                 f"(timeout={timeout}s)"
@@ -99,7 +99,7 @@ class ConnectionMonitor:
 
                 try:
                     status = get_wpa_status(iface, namespace)
-                    wpa: dict = status.get("wpa_status", {})
+                    wpa: dict[str, Any] = status.get("wpa_status", {})
                     wpa_state = (wpa.get("wpa_state") or "").upper()
                     poll_count += 1
 

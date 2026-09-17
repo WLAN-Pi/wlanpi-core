@@ -4,7 +4,9 @@
 import asyncio
 import grp
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any, AsyncIterator, Optional
 
 # third party imports
 from fastapi import FastAPI, Request
@@ -49,9 +51,7 @@ from wlanpi_core.utils.network_config import (
 from wlanpi_core.views.api import router as views_router
 
 
-async def auth_clock_not_set_handler(
-    request: Request, exc: AuthClockNotSetError
-) -> JSONResponse:
+async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=503,
         content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
@@ -63,19 +63,19 @@ class ApplicationHealthManager:
     Manager for monitoring and recovering application health
     """
 
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         self.app = app
         self.log = get_logger(__name__)
         self.health_check_interval = 300
-        self._health_check_task = None
+        self._health_check_task: Optional[asyncio.Task[Any]] = None
         self._lock = asyncio.Lock()
 
-    async def start_health_checks(self):
+    async def start_health_checks(self) -> None:
         """Start the health check loop"""
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         self.log.debug("Application health monitoring started")
 
-    async def stop_health_checks(self):
+    async def stop_health_checks(self) -> None:
         """Stop the health check loop"""
         if self._health_check_task and not self._health_check_task.done():
             self._health_check_task.cancel()
@@ -85,7 +85,7 @@ class ApplicationHealthManager:
                 pass
         self.log.debug("Application health monitoring stopped")
 
-    async def _health_check_loop(self):
+    async def _health_check_loop(self) -> None:
         """Periodically check application health and recover if needed"""
         while True:
             try:
@@ -96,7 +96,7 @@ class ApplicationHealthManager:
             except Exception as e:
                 self.log.error(f"Health check failed: {e}")
 
-    async def _check_application_health(self):
+    async def _check_application_health(self) -> None:
         """Check health of all application components"""
         async with self._lock:
             if (
@@ -205,13 +205,14 @@ class InitializationManager:
     Manager for application initialization with retry mechanisms
     """
 
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         self.app = app
         self.max_retries = 3
+        self.initial_retry_delay = 1.0
         self.log = get_logger(__name__)
         self.initialized = False
 
-    async def check_system_readiness(self):
+    async def check_system_readiness(self) -> bool:
         """Check if the system is ready for application initialization"""
         try:
             wlanpi_gid = grp.getgrnam("wlanpi").gr_gid
@@ -331,7 +332,7 @@ class InitializationManager:
             )
             return False
 
-    async def _initialize_network_namespaces(self):
+    async def _initialize_network_namespaces(self) -> None:
         """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
         # Only proceed if in classic mode
         if not self._is_classic_mode():
@@ -455,7 +456,7 @@ class InitializationManager:
                 exc_info=True,
             )
 
-    async def initialize_components(self):
+    async def initialize_components(self) -> bool:
         """Initialize all application components with proper sequencing and retry"""
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
@@ -489,7 +490,7 @@ class InitializationManager:
         self.log.info("All components initialized ...")
         return True
 
-    async def _initialize_security_manager(self):
+    async def _initialize_security_manager(self) -> bool:
         """Initialize the security manager with retry"""
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -516,7 +517,7 @@ class InitializationManager:
                 return False
         return False
 
-    async def _initialize_database(self):
+    async def _initialize_database(self) -> bool:
         """Initialize the database manager with retry"""
         try:
             self.app.state.db_manager = DatabaseManager()
@@ -531,7 +532,7 @@ class InitializationManager:
             self.log.error(f"Unexpected error creating database manager: {e}")
             return False
 
-    async def _initialize_token_manager(self):
+    async def _initialize_token_manager(self) -> bool:
         """Initialize the token manager"""
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
@@ -545,7 +546,7 @@ class InitializationManager:
 
     async def _initialize_system_manager(
         self, iface_name: str, exclusions: list[str] = []
-    ):
+    ) -> bool:
         """Initialize the system manager"""
         try:
             self.app.state.system_manager = SystemManager(
@@ -558,12 +559,47 @@ class InitializationManager:
             return False
 
 
-def create_app(debug: bool = False):
+def create_app(debug: bool = False) -> FastAPI:
     configure_logging(debug_mode=debug)
     log = get_logger(__name__)
 
     if debug:
         log.debug("Starting application in DEBUG mode")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        log.info("Starting application initialization")
+        app.state.initialization_manager = InitializationManager(app)
+        app.state.health_manager = ApplicationHealthManager(app)
+
+        initialization_success = (
+            await app.state.initialization_manager.initialize_components()
+        )
+
+        if initialization_success:
+            log.info("Application successfully initialized")
+            await app.state.health_manager.start_health_checks()
+        else:
+            log.error("Application initialization failed")
+
+        yield
+
+        log.info("Application shutting down")
+        if hasattr(app.state, "health_manager"):
+            await app.state.health_manager.stop_health_checks()
+
+        from wlanpi_core.api.api_v1.endpoints.streaming_api import (
+            manager as capture_manager,
+        )
+
+        await capture_manager.shutdown_all()
+
+        if hasattr(app.state, "db_manager"):
+            try:
+                await app.state.db_manager.cleanup()
+                log.info("Database connections cleaned up")
+            except Exception as e:
+                log.error(f"Error cleaning up database connections: {e}")
 
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -575,9 +611,10 @@ def create_app(debug: bool = False):
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         openapi_tags=settings.TAGS_METADATA,
         debug=debug,
+        lifespan=lifespan,
     )
 
-    def custom_openapi():
+    def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
         schema = get_openapi(
@@ -633,10 +670,12 @@ def create_app(debug: bool = False):
         app.openapi_schema = schema
         return app.openapi_schema
 
-    app.openapi = custom_openapi
+    app.openapi = custom_openapi  # type: ignore[method-assign]
 
     @app.exception_handler(DatabaseError)
-    async def database_error_handler(request: Request, exc: DatabaseError):
+    async def database_error_handler(
+        request: Request, exc: DatabaseError
+    ) -> JSONResponse:
         log.error(f"Database error: {exc}", exc_info=True)
         return JSONResponse(
             status_code=503, content={"detail": "Service temporarily unavailable"}
@@ -645,7 +684,9 @@ def create_app(debug: bool = False):
     app.add_exception_handler(AuthClockNotSetError, auth_clock_not_set_handler)
 
     @app.exception_handler(SecurityInitError)
-    async def security_error_handler(request: Request, exc: SecurityInitError):
+    async def security_error_handler(
+        request: Request, exc: SecurityInitError
+    ) -> JSONResponse:
         log.error(f"Security initialization error: {exc}", exc_info=True)
         return JSONResponse(
             status_code=503, content={"detail": "Security system unavailable"}
@@ -654,7 +695,9 @@ def create_app(debug: bool = False):
     # setup slowapi
     limiter = Limiter(key_func=get_remote_address, default_limits=["90/minute"])
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(
+        RateLimitExceeded, _rate_limit_exceeded_handler  # type: ignore[arg-type]
+    )
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ActivityMiddleware)
 
@@ -665,7 +708,7 @@ def create_app(debug: bool = False):
             endpoints.append(
                 {
                     "path": route.path,
-                    "methods": "".join(list(route.methods)),
+                    "methods": "".join(list(route.methods or [])),
                     "description": route.description.split("\n")[0],
                 }
             )
@@ -674,43 +717,8 @@ def create_app(debug: bool = False):
 
     app.mount(
         "/static",
-        StaticFiles(directory=settings.Config.base_dir / "static"),
+        StaticFiles(directory=settings.base_dir / "static"),
         name="static",
     )
-
-    @app.on_event("startup")
-    async def startup():
-        log.info("Starting application initialization")
-        app.state.initialization_manager = InitializationManager(app)
-        app.state.health_manager = ApplicationHealthManager(app)
-
-        initialization_success = (
-            await app.state.initialization_manager.initialize_components()
-        )
-
-        if initialization_success:
-            log.info("Application successfully initialized")
-            await app.state.health_manager.start_health_checks()
-        else:
-            log.error("Application initialization failed")
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        log.info("Application shutting down")
-        if hasattr(app.state, "health_manager"):
-            await app.state.health_manager.stop_health_checks()
-
-        from wlanpi_core.api.api_v1.endpoints.streaming_api import (
-            manager as capture_manager,
-        )
-
-        await capture_manager.shutdown_all()
-
-        if hasattr(app.state, "db_manager"):
-            try:
-                await app.state.db_manager.cleanup()
-                log.info("Database connections cleaned up")
-            except Exception as e:
-                log.error(f"Error cleaning up database connections: {e}")
 
     return app

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +71,7 @@ class TokenRepository(BaseRepository):
             )
 
         result = await self._session.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
 
 class DeviceRepository(BaseRepository):
@@ -102,7 +102,7 @@ class DeviceRepository(BaseRepository):
 
         return device
 
-    async def get_device_stats(self, device_id: str) -> Optional[Dict]:
+    async def get_device_stats(self, device_id: str) -> Optional[Dict[str, Any]]:
         query = (
             select(APIDeviceStats)
             .join(APIDevice)
@@ -120,8 +120,8 @@ class DeviceRepository(BaseRepository):
             .where(Token.device_id == device_id, Token.revoked == False)
             .order_by(Token.created_at.desc())
         )
-        result = await self._session.execute(token_query)
-        token = result.scalar_one_or_none()
+        token_result = await self._session.execute(token_query)
+        token = token_result.scalar_one_or_none()
 
         return {
             "token_created": token.created_at if token else None,
@@ -135,7 +135,7 @@ class DeviceRepository(BaseRepository):
 
     async def update_device_stats(
         self, device_id: str, increment_requests: int = 1, increment_errors: int = 0
-    ):
+    ) -> APIDeviceStats:
         """
         Update device statistics
 
@@ -157,7 +157,7 @@ class DeviceRepository(BaseRepository):
                 error_count=increment_errors,
                 last_activity=datetime.now(timezone.utc),
             )
-            self.add(stats)
+            await self.add(stats)
         else:
             stats.request_count += increment_requests
             stats.error_count += increment_errors
@@ -234,10 +234,14 @@ class ActivityRepository(BaseRepository):
         query = query.limit(limit)
 
         result = await self._session.execute(query)
-        return result.scalars().all()
+        return [
+            row
+            for row in result.scalars().all()
+            if isinstance(row, (APIDeviceActivity, APIDeviceActivityRecent))
+        ]
 
     async def bulk_create_activities(
-        self, activities: List[Dict], activity_type: str = "recent"
+        self, activities: List[Dict[str, Any]], activity_type: str = "recent"
     ) -> List[Union[APIDeviceActivity, APIDeviceActivityRecent]]:
         """
         Bulk create activity records
@@ -332,7 +336,7 @@ class StatsRepository(BaseRepository):
         await self._session.flush()
         return stats
 
-    async def get_device_stats(self, device_id: str) -> Optional[Dict]:
+    async def get_device_stats(self, device_id: str) -> Optional[Dict[str, Any]]:
         query = select(APIDeviceStats).where(APIDeviceStats.device_id == device_id)
         result = await self._session.execute(query)
         stats = result.scalar_one_or_none()
@@ -356,7 +360,7 @@ class StatsRepository(BaseRepository):
             "last_activity": stats.last_activity,
         }
 
-    async def get_active_devices(self) -> List[Dict]:
+    async def get_active_devices(self) -> List[Dict[str, Any]]:
         """
         Get statistics for all active devices
 

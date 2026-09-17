@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from wlanpi_core.constants import DEFAULT_INTERFACE_FILE, DEFAULT_VLAN_INTERFACE_FILE
 from wlanpi_core.models.validation_error import ValidationError
@@ -34,17 +34,17 @@ class VLANFile:
         self,
         interface_file: str = DEFAULT_INTERFACE_FILE,
         vlan_interface_file: str = DEFAULT_VLAN_INTERFACE_FILE,
-    ):
-        self.vlans = []
+    ) -> None:
+        self.vlans: list[Any] = []
         self.interface_file = interface_file
         self.vlan_interface_file = vlan_interface_file
 
         self.reload_vlans_file()
 
     @classmethod
-    def get_interface_stanzas(cls, filelike):
+    def get_interface_stanzas(cls, filelike: Any) -> Any:
         """Gets the interface stanzas from a interfaces-like file"""
-        tmp = []
+        tmp: list[str] = []
         line_count = 0
         for line in filelike:
             line_count += 1
@@ -62,7 +62,7 @@ class VLANFile:
         if tmp:
             yield tmp
 
-    def read_interfaces_file(self, filepath: Optional[str] = None):
+    def read_interfaces_file(self, filepath: Optional[str] = None) -> list[list[str]]:
         """
         Reads the interfaces file and returns a list of interface stanzas.
         """
@@ -71,14 +71,14 @@ class VLANFile:
         with open(filepath) as f:
             return [i for i in list(self.get_interface_stanzas(f)) if i]
 
-    def get_vlans(self, interface: Optional[str] = None) -> list:
+    def get_vlans(self, interface: Optional[str] = None) -> list[Any]:
         """
         Returns all VLANS configured in the configured interface file as objects
         """
         raw_if_data = self.read_interfaces_file(self.vlan_interface_file)
 
         # Create default objects
-        vlans_devices: dict[str, dict[str, any]] = defaultdict(
+        vlans_devices: dict[str, dict[str, Any]] = defaultdict(
             lambda: defaultdict(
                 lambda: {
                     "addresses": [],
@@ -155,7 +155,7 @@ class VLANFile:
             # pp([*address_config.model_fields.keys(), *address_config.model_extra.keys()])
             for key in [
                 *address_config.model_fields.keys(),
-                *address_config.model_extra.keys(),
+                *(address_config.model_extra or {}).keys(),
             ]:
                 # Skip null keys, as well as keys that are used for the data but not actually valid interface config
                 if (
@@ -178,12 +178,14 @@ class VLANFile:
             ).stdout.split("\n")
             if "eth" in x
         ]
-        ethernet_interfaces = set([i.split(".")[0] for i in ethernet_interfaces if i])
-        return interface in ethernet_interfaces
+        ethernet_interface_names = set(
+            [i.split(".")[0] for i in ethernet_interfaces if i]
+        )
+        return interface in ethernet_interface_names
 
     async def create_update_vlan(
         self, configuration: Vlan, require_existing_interface: bool = True
-    ):
+    ) -> dict[str, Any]:
         """
         Creates or updates a VLAN definition for a given interface.
         """
@@ -229,8 +231,8 @@ class VLANFile:
         return {"success": True, "result": self.vlans, "errors": {}}
 
     async def remove_vlan(
-        self, interface: str, vlan_tag: Union[str, int], allow_missing=False
-    ):
+        self, interface: str, vlan_tag: Union[str, int], allow_missing: bool = False
+    ) -> dict[str, Any]:
         """
         Removes a VLAN definition for a given interface.
         """
@@ -254,7 +256,7 @@ class VLANFile:
         self.persist_vlans()
         return {"success": True, "result": self.vlans, "errors": {}}
 
-    def persist_vlans(self):
+    def persist_vlans(self) -> None:
         output_string = "\n".join(
             map(
                 lambda f: self.generate_if_config_from_object(Vlan.model_validate(f)),

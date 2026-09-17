@@ -6,6 +6,7 @@ signing key rotation, and authentication-related debug operations.
 """
 
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -43,7 +44,7 @@ def _require_device_id(token_request: TokenRequest) -> str:
     },
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def generate_token(request: Request, token_request: TokenRequest):
+async def generate_token(request: Request, token_request: TokenRequest) -> Any:
     """
     Issue a JWT for remote clients.
 
@@ -83,7 +84,7 @@ async def generate_token(request: Request, token_request: TokenRequest):
     },
     dependencies=[Depends(verify_jwt_token)],
 )
-async def revoke_token(request: Request, token_request: TokenRequest):
+async def revoke_token(request: Request, token_request: TokenRequest) -> Any:
     """
     Revoke the bearer token sent in the `Authorization` header.
 
@@ -113,7 +114,7 @@ async def revoke_token(request: Request, token_request: TokenRequest):
 @router.post(
     "/signing_key", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
-async def new_signing_key(request: Request):
+async def new_signing_key(request: Request) -> Any:
     """Create new signing key and invalidate old one"""
     try:
         key_id, key_str = await request.app.state.token_manager.rotate_key()
@@ -133,7 +134,7 @@ async def new_signing_key(request: Request):
 @router.get(
     "/signing_keys", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
-async def list_all_signing_keys(request: Request):
+async def list_all_signing_keys(request: Request) -> Any:
     """List all signing keys"""
     try:
         keys = await request.app.state.token_manager.get_active_keys()
@@ -146,6 +147,6 @@ async def list_all_signing_keys(request: Request):
 @router.get(
     "/debug/db-state", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
-async def check_db_state(request: Request):
+async def check_db_state(request: Request) -> Any:
     """Check current database state"""
     return await request.app.state.token_manager.verify_db_state()

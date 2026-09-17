@@ -6,7 +6,7 @@ Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guid
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Any, Union
 
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
@@ -148,28 +148,28 @@ OPENAPI_TAGS: list[dict[str, str]] = [
 ]
 
 # Shared OpenAPI response entries for route decorators: responses={**RESPONSES.auth, ...}
-RESPONSES_AUTH = {
+RESPONSES_AUTH: dict[int | str, dict[str, Any]] = {
     401: {
         "model": MessageResponse,
         "description": "Missing or invalid Bearer token / HMAC signature",
     },
 }
 
-RESPONSES_MODE_CONFLICT = {
+RESPONSES_MODE_CONFLICT: dict[int | str, dict[str, Any]] = {
     409: {
         "model": MessageResponse,
         "description": "Device mode precondition not met (e.g. not in hotspot mode)",
     },
 }
 
-RESPONSES_GONE = {
+RESPONSES_GONE: dict[int | str, dict[str, Any]] = {
     410: {
         "model": DeprecatedEndpointResponse,
         "description": "Endpoint removed — use the `replacement` path in the body",
     },
 }
 
-RESPONSES_SCAN = {
+RESPONSES_SCAN: dict[int | str, dict[str, Any]] = {
     409: {
         "model": Union[ScanNeedsSelectionResponse, ScanInProgressResponse],
         "description": (
@@ -184,7 +184,7 @@ RESPONSES_SCAN = {
     },
 }
 
-RESPONSES_API_ERROR = {
+RESPONSES_API_ERROR: dict[int | str, dict[str, Any]] = {
     400: {
         "model": ApiErrorResponse,
         "description": "Invalid request (e.g. bad query parameters)",
@@ -195,7 +195,7 @@ RESPONSES_API_ERROR = {
     },
 }
 
-RESPONSES_SERVICE_UNAVAILABLE = {
+RESPONSES_SERVICE_UNAVAILABLE: dict[int | str, dict[str, Any]] = {
     503: {
         "model": MessageResponse,
         "description": "Underlying command or hardware unavailable",

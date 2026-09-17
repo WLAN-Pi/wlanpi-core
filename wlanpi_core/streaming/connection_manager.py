@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import WebSocket
 
@@ -21,7 +21,7 @@ _IW_TIMEOUT_SEC = 5
 
 
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
         self.interface_owners: Dict[str, WebSocket] = {}
 
@@ -39,12 +39,12 @@ class ConnectionManager:
         self, websocket: WebSocket, interfaces: list[str]
     ) -> list[str]:
         """Atomically claim capture interfaces for one WebSocket client."""
-        conflicts = sorted(
-            iface
-            for iface in interfaces
-            if (owner := self.interface_owners.get(iface)) is not None
-            and owner is not websocket
-        )
+        conflicts = []
+        for iface in interfaces:
+            owner = self.interface_owners.get(iface)
+            if owner is not None and owner is not websocket:
+                conflicts.append(iface)
+        conflicts = sorted(conflicts)
         if conflicts:
             return conflicts
 
@@ -77,7 +77,7 @@ class ConnectionManager:
             except Exception as exc:
                 log.debug("Channel hopping task shutdown failed: %s", exc)
 
-    def configure(self, websocket: WebSocket, iface: str, config: dict) -> None:
+    def configure(self, websocket: WebSocket, iface: str, config: Any) -> None:
         if websocket in self.clients:
             iface = validate_capture_interface(iface)
             validated = CaptureInterfaceConfig.model_validate(config)
@@ -91,7 +91,7 @@ class ConnectionManager:
         self.clients.pop(websocket, None)
 
     async def send_event(
-        self, websocket: WebSocket, event_type: str, code: str, data: dict
+        self, websocket: WebSocket, event_type: str, code: str, data: dict[str, Any]
     ) -> None:
         try:
             await websocket.send_text(
@@ -119,11 +119,14 @@ class ConnectionManager:
             ).stdout
             interfaces = re.findall(r"Interface (wlanpi\d+)", output)
 
-            freqs_by_iface = {}
+            freqs_by_iface: dict[str, list[int]] = {}
 
             for iface in interfaces:
                 try:
-                    index = int(re.search(r"wlanpi(\d+)", iface).group(1))
+                    match = re.search(r"wlanpi(\d+)", iface)
+                    if match is None:
+                        continue
+                    index = int(match.group(1))
                     phy = f"phy{index}"
 
                     chan_output = (
@@ -161,7 +164,7 @@ class ConnectionManager:
         self,
         websocket: WebSocket,
         interfaces: list[str],
-        pcap_filter: str,
+        pcap_filter: Optional[str],
     ) -> None:
         client = self.clients.get(websocket)
         if not client:
@@ -176,7 +179,7 @@ class ConnectionManager:
         try:
             start = CaptureStart(
                 interfaces=interfaces,
-                pcap_filter=pcap_filter,
+                pcap_filter=pcap_filter or "",
             )
         except ValueError:
             await self.send_message_event(
@@ -266,6 +269,11 @@ class ConnectionManager:
 
         async def stream() -> None:
             try:
+                if proc.stdout is None:
+                    await self.send_message_event(
+                        websocket, "status", "CAPTURE_ENDED", "Capture ended."
+                    )
+                    return
                 while True:
                     chunk = await proc.stdout.read(4096)
                     if not chunk:
@@ -361,9 +369,9 @@ class ConnectionManager:
         self.interface_owners.clear()
 
     async def _hop_channels(
-        self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int
+        self, websocket: WebSocket, iface: str, channels: list[Any], dwell_time_ms: int
     ) -> None:
-        async def apply_channel(ch: dict) -> None:
+        async def apply_channel(ch: dict[str, Any]) -> None:
             freq = ch.get("freq")
             width = ch.get("width")
 

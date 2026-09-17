@@ -18,6 +18,7 @@ import argparse
 import os
 import platform
 import sys
+from typing import Any
 
 # third party imports
 import uvicorn
@@ -26,7 +27,7 @@ import uvicorn
 from .__version__ import __version__
 
 
-def port(port) -> int:
+def port(port: Any) -> int:
     """Check if the provided port is valid"""
     try:
         # make sure port is an int
@@ -116,7 +117,7 @@ def init() -> None:
         )
 
     if __name__ == "__main__":
-        sys.exit(main())
+        main()
 
 
 init()

@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from dbus import Interface, SystemBus
@@ -88,7 +88,7 @@ def _reset_systemd_client() -> None:
         _systemd_client = None
 
 
-def _get_systemd_client() -> tuple[object, object]:
+def _get_systemd_client() -> tuple[Any, Any]:
     """Create the systemd D-Bus proxies lazily, never during app import."""
     global _systemd_client
     with _systemd_lock:
@@ -224,7 +224,7 @@ def get_hostname() -> str:
     return hostname
 
 
-def get_platform():
+def get_platform() -> str:
     """
     Method to determine which platform we're running on.
     Uses output of "cat /proc/cpuinfo"
@@ -265,7 +265,7 @@ def get_platform():
     return platform
 
 
-def get_model():
+def get_model() -> str:
     """
     Method to determine which model the device is
     Uses output of "wlanpi-model -b"
@@ -312,16 +312,16 @@ def _read_cpu_temperature() -> str:
         raw_temperature = Path("/sys/class/thermal/thermal_zone0/temp").read_text(
             encoding="utf-8"
         )
-        temperature = int(raw_temperature.strip())
+        temperature: float = int(raw_temperature.strip())
     except (OSError, ValueError):
         return "unknown"
 
     if temperature > 1000:
-        temperature /= 1000
+        temperature = temperature / 1000
     return f"{round(temperature, 1)}C"
 
 
-def get_stats():
+def get_stats() -> dict[str, str]:
     # figure out our IP
     IP = ""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -340,6 +340,8 @@ def get_stats():
     cmd = "mpstat 1 1 -o JSON"
     try:
         CPU_JSON = run_command(cmd).grep_stdout_for_string("idle")
+        if isinstance(CPU_JSON, list):
+            CPU_JSON = "\n".join(CPU_JSON)
         CPU_IDLE = json.loads(CPU_JSON)["idle"]
         CPU = "{0:.2f}%".format(100 - CPU_IDLE)
         if CPU_IDLE == 100:
@@ -386,7 +388,7 @@ def get_stats():
     return results
 
 
-def is_allowed_service(service: str):
+def is_allowed_service(service: str) -> bool:
     """Check if service is in allowed services list"""
     service_name = service.replace(".service", "")
     is_allowed = service_name in allowed_services
@@ -403,7 +405,7 @@ def is_allowed_service(service: str):
     return is_allowed
 
 
-def check_service_status(service: str):
+def check_service_status(service: str) -> bool:
     """
     Queries systemd through dbus to see if the service is running
 
@@ -453,11 +455,11 @@ def check_service_status(service: str):
     return service_running
 
 
-async def get_systemd_service_status(name: str):
+async def get_systemd_service_status(name: str) -> dict[str, Any]:
     """
     Queries systemd via dbus to get the current status of an allowed service.
     """
-    status = ""
+    status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
         status = await asyncio.to_thread(check_service_status, name)
@@ -468,7 +470,7 @@ async def get_systemd_service_status(name: str):
     )
 
 
-def stop_service(service: str):
+def stop_service(service: str) -> bool:
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -489,11 +491,11 @@ def stop_service(service: str):
     return False
 
 
-async def stop_systemd_service(name: str):
+async def stop_systemd_service(name: str) -> dict[str, Any]:
     """
     Queries systemd via dbus to get the current status of an allowed service.
     """
-    status = ""
+    status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
         status = await asyncio.to_thread(stop_service, name)
@@ -504,7 +506,7 @@ async def stop_systemd_service(name: str):
     )
 
 
-def start_service(service: str):
+def start_service(service: str) -> bool:
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -525,8 +527,8 @@ def start_service(service: str):
     return True
 
 
-async def start_systemd_service(name: str):
-    status = ""
+async def start_systemd_service(name: str) -> dict[str, Any]:
+    status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
         status = await asyncio.to_thread(start_service, name)
@@ -537,7 +539,7 @@ async def start_systemd_service(name: str):
     )
 
 
-def restart_service(service: str):
+def restart_service(service: str) -> bool:
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -557,7 +559,7 @@ def restart_service(service: str):
         return check_service_status(service)
 
 
-async def restart_systemd_service(name: str):
+async def restart_systemd_service(name: str) -> dict[str, Any]:
     name = name.strip().lower()
     if is_allowed_service(name):
         active = await asyncio.to_thread(restart_service, name)
@@ -603,7 +605,7 @@ def _resolve_timezone() -> str:
     return "UTC"
 
 
-def get_datetime():
+def get_datetime() -> dict[str, Optional[str]]:
     """
     Return local date/time as ISO 8601 for API clients.
 
@@ -653,7 +655,7 @@ def get_datetime():
     return result
 
 
-def get_timezone():
+def get_timezone() -> dict[str, str]:
     try:
         timezone = run_command(
             ["timedatectl", "show", "-p", "Timezone", "--value"], raise_on_fail=True
@@ -678,12 +680,12 @@ def _timezone_names() -> tuple[str, ...]:
         raise ValidationError("Unable to list timezones", status_code=503)
 
 
-def list_timezones():
+def list_timezones() -> dict[str, list[str]]:
     """Return a fresh response around the process-cached timezone names."""
     return {"timezones": list(_timezone_names())}
 
 
-def set_timezone(timezone: str):
+def set_timezone(timezone: str) -> dict[str, str]:
     timezone = timezone.strip()
     if not timezone:
         raise ValidationError("timezone is required", status_code=400)
@@ -699,7 +701,7 @@ def set_timezone(timezone: str):
     return get_timezone()
 
 
-def get_reg_domain():
+def get_reg_domain() -> dict[str, Any]:
     """
     Return current Wi-Fi regulatory domain country code.
 
@@ -756,14 +758,14 @@ def get_reg_domain():
             )
 
     country = _parse_reg_country(raw)
-    result = {"country": country, "raw": raw, "source": source}
+    reg_result = {"country": country, "raw": raw, "source": source}
     log.debug("get_reg_domain: parsed country=%r source=%r", country, source)
     if country == "unknown":
         log.warning("get_reg_domain: could not parse country from raw=%r", raw)
-    return result
+    return reg_result
 
 
-def set_reg_domain(country: str):
+def set_reg_domain(country: str) -> dict[str, Any]:
     country = country.strip().upper()
     if len(country) != 2 or not country.isalpha():
         raise ValidationError("country must be a 2-letter code", status_code=400)
@@ -781,7 +783,7 @@ def set_reg_domain(country: str):
     return get_reg_domain()
 
 
-def list_reg_domains():
+def list_reg_domains() -> dict[str, Any]:
     countries = reg_domain_country_entries()
     log.debug("list_reg_domains: returning %d countries", len(countries))
     return {"countries": countries}
@@ -815,7 +817,7 @@ def _parse_reg_country(raw: str) -> str:
     return "unknown"
 
 
-def enable_timezone_auto():
+def enable_timezone_auto() -> dict[str, Any]:
     """Enable NTP time synchronization via timedatectl."""
     run_command(["timedatectl", "set-ntp", "true"], raise_on_fail=True)
     ntp = run_command(
@@ -826,7 +828,7 @@ def enable_timezone_auto():
     return {"ntp": ntp.lower() in ("yes", "1", "true"), "timezone": timezone}
 
 
-def reboot_system():
+def reboot_system() -> dict[str, str]:
     """Initiate an immediate system reboot."""
     run_command(
         ["/usr/bin/systemctl", "reboot", "--no-block"],
@@ -836,7 +838,7 @@ def reboot_system():
     return {"status": "rebooting"}
 
 
-def shutdown_system():
+def shutdown_system() -> dict[str, str]:
     """Initiate an immediate system shutdown."""
     run_command(
         ["/usr/bin/systemctl", "poweroff", "--no-block"],
@@ -846,7 +848,7 @@ def shutdown_system():
     return {"status": "shutting_down"}
 
 
-def get_battery():
+def get_battery() -> dict[str, Any]:
     supply_root = Path("/sys/class/power_supply")
     if not supply_root.exists():
         return {"present": False}

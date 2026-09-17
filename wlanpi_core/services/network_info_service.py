@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+from typing import Any, Optional
 
 from wlanpi_core.constants import (
     CDPNEIGH_FILE,
@@ -21,6 +22,12 @@ from wlanpi_core.utils.general import run_command
 log = get_logger(__name__)
 
 _NEIGHBOUR_FILE_MAX_BYTES = 64 * 1024
+
+
+def _first_group(pattern: str, text: str) -> str:
+    """First capture group from a regex match, or empty string."""
+    match = re.search(pattern, text)
+    return match.group(1) if match else ""
 
 
 def _read_neighbour_file(path: str) -> list[str] | None:
@@ -60,8 +67,8 @@ def _read_neighbour_file(path: str) -> list[str] | None:
     return content.decode("utf-8", errors="replace").splitlines()
 
 
-def _show_neighbour(path: str, protocol: str) -> dict:
-    response = {"info": []}
+def _show_neighbour(path: str, protocol: str) -> dict[str, Any]:
+    response: dict[str, Any] = {"info": []}
     try:
         lines = _read_neighbour_file(path)
     except OSError as exc:
@@ -77,11 +84,11 @@ def _show_neighbour(path: str, protocol: str) -> dict:
     return response
 
 
-def _section_debug_label(section: str, value) -> dict:
+def _section_debug_label(section: str, value: Any) -> dict[str, Any]:
     """Compact shape summary for debug logs (helps UI parsing issues)."""
     if not isinstance(value, dict):
         return {"type": type(value).__name__, "value": repr(value)[:200]}
-    label = {"keys": list(value.keys())}
+    label: dict[str, Any] = {"keys": list(value.keys())}
     if "error" in value:
         label["error"] = value["error"]
     if "info" in value and isinstance(value["info"], list):
@@ -98,9 +105,9 @@ def _section_debug_label(section: str, value) -> dict:
     return label
 
 
-def show_info():
+def show_info() -> dict[str, Any]:
     log.debug("show_info: building network info aggregate")
-    output = {}
+    output: dict[str, Any] = {}
 
     output["interfaces"] = show_interfaces()
     log.debug(
@@ -147,7 +154,7 @@ def show_info():
     return output
 
 
-def show_interfaces():
+def show_interfaces() -> dict[str, Any]:
     """
     Return the list of network interfaces with IP address (if available)
     """
@@ -155,7 +162,7 @@ def show_interfaces():
     ifconfig_file = IFCONFIG_FILE
     iw_file = IW_FILE
 
-    interfaces = {}
+    interfaces: dict[str, Any] = {}
 
     try:
         ifconfig_info = run_command([ifconfig_file, "-a"], raise_on_fail=True).stdout
@@ -214,7 +221,7 @@ def show_interfaces():
     return interfaces
 
 
-def channel_lookup(freq_mhz):
+def channel_lookup(freq_mhz: int) -> Optional[int]:
     """
     Converts frequency (MHz) to channel number
     """
@@ -230,22 +237,21 @@ def channel_lookup(freq_mhz):
     return None
 
 
-def show_wlan_interfaces():
+def show_wlan_interfaces() -> dict[str, Any]:
     """
     Create pages to summarise WLAN interface info
     """
 
-    interfaces = []
-    output = {}
+    interfaces: list[Any] = []
+    output: dict[str, Any] = {}
 
     try:
         iw_dev_output = run_command([IW_FILE, "dev"]).stdout
-        interfaces = [
-            fields[1]
-            for line in iw_dev_output.splitlines()
-            if len(fields := line.strip().split()) >= 2
-            and fields[0].lower() == "interface"
-        ]
+        interfaces = []
+        for line in iw_dev_output.splitlines():
+            fields = line.strip().split()
+            if len(fields) >= 2 and fields[0].lower() == "interface":
+                interfaces.append(fields[1])
     except Exception:
         log.debug("Unable to enumerate WLAN interfaces", exc_info=True)
 
@@ -255,7 +261,7 @@ def show_wlan_interfaces():
         # Driver
         try:
             ethtool_output = run_command([ETHTOOL_FILE, "-i", interface]).stdout.strip()
-            driver = re.search(r".*driver:\s+(.*)", ethtool_output).group(1)
+            driver = _first_group(r".*driver:\s+(.*)", ethtool_output)
             output[interface]["driver"] = driver
         except Exception:
             pass
@@ -266,10 +272,7 @@ def show_wlan_interfaces():
             # Addr
             try:
                 addr = (
-                    re.search(r".*addr\s+(.*)", iw_output)
-                    .group(1)
-                    .replace(":", "")
-                    .upper()
+                    _first_group(r".*addr\s+(.*)", iw_output).replace(":", "").upper()
                 )
                 output[interface]["addr"] = addr
             except Exception:
@@ -277,7 +280,7 @@ def show_wlan_interfaces():
 
             # Mode
             try:
-                mode = re.search(r".*type\s+(.*)", iw_output).group(1)
+                mode = _first_group(r".*type\s+(.*)", iw_output)
                 output[interface]["mode"] = (
                     mode.capitalize() if not mode.isupper() else mode
                 )
@@ -286,14 +289,14 @@ def show_wlan_interfaces():
 
             # SSID
             try:
-                ssid = re.search(r".*ssid\s+(.*)", iw_output).group(1)
+                ssid = _first_group(r".*ssid\s+(.*)", iw_output)
                 output[interface]["ssid"] = ssid
             except Exception:
                 pass
 
             # Frequency
             try:
-                freq = int(re.search(r".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
+                freq = int(_first_group(r".*\(([0-9]+)\s+MHz\).*", iw_output))
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
@@ -306,13 +309,13 @@ def show_wlan_interfaces():
     return output
 
 
-def show_eth0_ipconfig():
+def show_eth0_ipconfig() -> dict[str, Any]:
     """
     Return IP configuration of eth0 including IP, default gateway, DNS servers
     """
     ipconfig_file = IPCONFIG_FILE
 
-    eth0_ipconfig_info = {}
+    eth0_ipconfig_info: dict[str, Any] = {"info": []}
 
     try:
         ipconfig_info = run_command([ipconfig_file]).stdout.strip().split("\n")
@@ -340,12 +343,12 @@ def show_eth0_ipconfig():
     return eth0_ipconfig_info
 
 
-def show_vlan():
+def show_vlan() -> dict[str, Any]:
     """
     Display untagged VLAN number on eth0
     Todo: Add tagged VLAN info
     """
-    vlan_info = {"info": []}
+    vlan_info: dict[str, Any] = {"info": []}
 
     for neighbour_file in (LLDPNEIGH_FILE, CDPNEIGH_FILE):
         try:
@@ -364,26 +367,26 @@ def show_vlan():
     return vlan_info
 
 
-def show_lldp_neighbour():
+def show_lldp_neighbour() -> dict[str, Any]:
     """
     Display LLDP neighbour on eth0
     """
     return _show_neighbour(LLDPNEIGH_FILE, "LLDP")
 
 
-def show_cdp_neighbour():
+def show_cdp_neighbour() -> dict[str, Any]:
     """
     Display CDP neighbour on eth0
     """
     return _show_neighbour(CDPNEIGH_FILE, "CDP")
 
 
-def show_publicip(ip_version=4):
+def show_publicip(ip_version: int = 4) -> dict[str, Any]:
     """
     Shows public IP address and related details, works with any interface with internet connectivity
     """
 
-    publicip_info = {"info": []}
+    publicip_info: dict[str, Any] = {"info": []}
     cmd = PUBLICIP6_CMD if ip_version == 6 else PUBLICIP_CMD
 
     try:
