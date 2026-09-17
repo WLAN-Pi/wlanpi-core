@@ -4,6 +4,7 @@
 /install/etc/wlanpi-core/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/scripts/wlanpi-generate-certs.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh /etc/wlanpi-core/ufw
 /install/etc/wlanpi-core/ufw/wlanpi-core.rules /etc/wlanpi-core/ufw
 /install/lib/systemd/system/wlanpi-core-ufw-first-boot.service /lib/systemd/system

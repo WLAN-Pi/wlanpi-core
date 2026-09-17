@@ -8,6 +8,16 @@ wlanpi-core (2.1.16-1) unstable; urgency=medium
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:26:12 -0400
 
+wlanpi-core (2.1.16-1) unstable; urgency=medium
+
+  * Self-signed TLS certs cover the renamed .local hostname
+    (wlanpi-<mac-suffix>.local) and regenerate when an existing cert predates
+    it (fixes hostname mismatch warnings for nginx, WebUI, Grafana, Cockpit).
+    Cert generation is extracted into a shared script used by postinst and the
+    first-boot UFW setup. (#175)
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:55:00 -0400
+
 wlanpi-core (2.1.15-1) unstable; urgency=medium
 
   * Generate self-signed TLS certs on first real boot (fixes nginx on
