@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.validation import validate_interface_name
 
 
 def get_default_gateways() -> dict[str, str]:
@@ -22,16 +23,10 @@ def get_default_gateways() -> dict[str, str]:
     return gateways
 
 
-def trace_route(target: str) -> dict[str, Any]:
-    # Execute 'ip route show' command which lists all network routes
-    output = run_command(["jc", "traceroute", target]).output_from_json()
-    return output if isinstance(output, dict) else {}
-
-
 def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str, Any]]:
     cmd: list[str] = "ip -j addr show".split(" ")
     if interface is not None and interface.strip() != "":
-        cmd.append(interface.strip())
+        cmd.append(validate_interface_name(interface.strip()))
     result = run_command(cmd).output_from_json()
     return result if isinstance(result, list) else []
 

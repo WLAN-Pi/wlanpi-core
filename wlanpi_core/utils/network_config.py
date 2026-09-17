@@ -203,16 +203,19 @@ def status() -> dict[str, Any]:
 def get_config(cfg_id: str) -> NetConfig:
     """Get a specific configuration by cfg_id."""
     path = _config_path(cfg_id)
+    # codeql[py/path-injection] path built by _config_path from validate_config_id
     if not path.exists():
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info(f"Default configuration file not found. Creating default config.")
             default_config = get_default_config("default")
+            # codeql[py/path-injection] path built by _config_path from validate_config_id
             path.write_text(default_config.model_dump_json(indent=4))
             return default_config
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
     try:
+        # codeql[py/path-injection] path built by _config_path from validate_config_id
         file_content = path.read_text().strip()
         if not file_content:
             log.error(f"Configuration file {cfg_id}.json is empty.")
@@ -314,8 +317,10 @@ def _rollback_activated_configs(
 def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
     path = _config_path(config.id)
+    # codeql[py/path-injection] path built by _config_path from validate_config_id
     if path.exists():
         raise FileExistsError(f"Configuration {config.id} already exists.")
+    # codeql[py/path-injection] path built by _config_path from validate_config_id
     path.write_text(config.model_dump_json(indent=4))
     return True
 
@@ -333,6 +338,7 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
             setattr(cfg, field, value)
 
     # Write updated config back to file
+    # codeql[py/path-injection] path built by _config_path from validate_config_id
     path.write_text(cfg.model_dump_json(indent=4))
 
     return cfg
@@ -344,6 +350,7 @@ def delete_config(cfg_id: str, force: bool = False) -> bool:
 
     if is_active(cfg_id) and not force:
         raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+    # codeql[py/path-injection] path built by _config_path from validate_config_id
     path.unlink()
     return True
 
