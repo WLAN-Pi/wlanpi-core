@@ -25,6 +25,8 @@ fail() {
 # Create the tree if missing (mkdir -p is idempotent). SecurityManager also
 # does this in-process, but doing it here lets the probe below be meaningful on
 # a truly fresh boot.
+# shellcheck disable=SC2174  # only the leaf needs 0700; SecurityManager
+# self-heals leaf ownership/mode (root:wlanpi 0710) at startup anyway.
 mkdir -p -m 0700 "$STATE_DIR" 2>/dev/null || fail "cannot create state directory $STATE_DIR"
 
 [ -d "$STATE_DIR" ] || fail "state directory $STATE_DIR does not exist"

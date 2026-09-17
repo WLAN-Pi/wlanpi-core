@@ -479,9 +479,7 @@ class InitializationManager:
         """
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
-            raise CriticalInitializationError(
-                "System not ready for initialization"
-            )
+            raise CriticalInitializationError("System not ready for initialization")
 
         # Initialize network namespaces (non-blocking - failures don't stop core)
         await self._initialize_network_namespaces()
@@ -489,18 +487,14 @@ class InitializationManager:
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
             self.log.error("Security initialization failed - cannot proceed")
-            raise CriticalInitializationError(
-                "Security manager initialization failed"
-            )
+            raise CriticalInitializationError("Security manager initialization failed")
 
         database_initialized = await self._initialize_database()
         if not database_initialized:
             self.log.error(
                 "Database initialization failed - cannot proceed with token management"
             )
-            raise CriticalInitializationError(
-                "Database initialization failed"
-            )
+            raise CriticalInitializationError("Database initialization failed")
 
         token_initialized = await self._initialize_token_manager()
         if not token_initialized:
