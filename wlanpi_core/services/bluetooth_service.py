@@ -2,6 +2,7 @@ import asyncio
 import re
 import threading
 import time
+from typing import Any, Optional
 
 from wlanpi_core.constants import BT_ADAPTER
 from wlanpi_core.core.logging import get_logger
@@ -33,18 +34,23 @@ class BluetoothUnpairError(BluetoothPairingError):
     """Raised when existing pairings cannot be removed before the deadline."""
 
 
-def bluetooth_present():
+def _grep_text(result: Any, pattern: str) -> str:
+    """First non-empty line of a grep result as text."""
+    filtered = result.grep_stdout_for_string(pattern)
+    if isinstance(filtered, list):
+        return filtered[0].strip() if filtered else ""
+    return filtered.strip()
+
+
+def bluetooth_present() -> bool:
     """
     We want to use hciconfig here as it works OK when no devices are present
     """
     cmd = f"hciconfig"
-    filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
-        BT_ADAPTER,
-    )
-    return filtered.strip() if filtered else ""
+    return bool(_grep_text(run_command(cmd=cmd, raise_on_fail=True), BT_ADAPTER))
 
 
-def bluetooth_name():
+def bluetooth_name() -> str:
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Name", split=True
@@ -52,7 +58,7 @@ def bluetooth_name():
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
-def bluetooth_alias():
+def bluetooth_alias() -> str:
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Alias", split=True
@@ -60,7 +66,7 @@ def bluetooth_alias():
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
-def bluetooth_address():
+def bluetooth_address() -> str:
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Address", split=True
@@ -68,7 +74,7 @@ def bluetooth_address():
     return filtered[0].strip().split(" ")[1] if filtered else ""
 
 
-def bluetooth_power():
+def bluetooth_power() -> str:
     """
     We want to use hciconfig here as it works OK when no devices are present
     """
@@ -79,7 +85,7 @@ def bluetooth_power():
     return filtered[0].strip() if filtered else ""
 
 
-def bluetooth_set_power(power):
+def bluetooth_set_power(power: bool) -> bool:
     bluetooth_is_on = bluetooth_power()
 
     if power:
@@ -102,7 +108,7 @@ def bluetooth_set_power(power):
         return False
 
 
-def bluetooth_paired_devices():
+def bluetooth_paired_devices() -> Optional[dict[str, str]]:
     """
     Returns a dictionary of paired devices, indexed by MAC address
     """
@@ -114,8 +120,8 @@ def bluetooth_paired_devices():
     return paired or None
 
 
-def bluetooth_status():
-    status = {}
+def bluetooth_status() -> Any:
+    status: dict[str, Any] = {}
 
     if not bluetooth_present():
         return False
@@ -163,7 +169,7 @@ async def _bluetooth_present_async() -> bool:
         raise_on_fail=True,
         timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
     )
-    return bool(result.grep_stdout_for_string(BT_ADAPTER).strip())
+    return bool(_grep_text(result, BT_ADAPTER))
 
 
 async def _bluetooth_powered_async() -> bool:
@@ -172,7 +178,7 @@ async def _bluetooth_powered_async() -> bool:
         raise_on_fail=True,
         timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
     )
-    return bool(result.grep_stdout_for_pattern(r"^\s+UP", split=False).strip())
+    return bool(_grep_text(result, r"^\s+UP"))
 
 
 async def _ensure_bluetooth_powered() -> None:
@@ -270,7 +276,7 @@ async def _pairing_mode_active() -> bool:
     )
 
 
-async def bluetooth_pair():
+async def bluetooth_pair() -> dict[str, Any]:
     """
     Enter discoverable pairing mode via ``bt-timedpair``.
 

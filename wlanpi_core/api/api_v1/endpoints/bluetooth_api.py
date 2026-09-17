@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
@@ -16,7 +17,7 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
-def _set_power_if_present(state: bool):
+def _set_power_if_present(state: bool) -> Any:
     """Run the complete synchronous Bluetooth power transaction in one worker."""
     if not bluetooth_service.bluetooth_present():
         return None
@@ -28,7 +29,7 @@ def _set_power_if_present(state: bool):
     response_model=bluetooth.BluetoothStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def btstatus():
+async def btstatus() -> Any:
     """
     Returns the bluetooth status
     """
@@ -51,7 +52,7 @@ async def btstatus():
     response_model=bluetooth.PowerState,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def bt_power(action: str):
+async def bt_power(action: str) -> Any:
     """
     Turns on bluetooth
 
@@ -100,7 +101,7 @@ async def bt_power(action: str):
     },
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def bt_pair():
+async def bt_pair() -> Any:
     """Enter Bluetooth discoverable pairing mode (starts bt-timedpair)."""
     try:
         return await bluetooth_service.bluetooth_pair()

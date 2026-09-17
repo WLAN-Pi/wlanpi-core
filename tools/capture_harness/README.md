@@ -19,7 +19,7 @@ Python 3.9+. The pcapng / radiotap / 802.11 dissection is built in — no scapy.
 The WebSocket authenticates with a wlanpi-core JWT. On the device:
 
 ```bash
-sudo getjwt harness -p 8000 --no-color
+sudo getjwt harness --no-color
 ```
 
 Copy the `access_token` value and either pass it with `--token` or export it:
@@ -30,18 +30,22 @@ export WLANPI_CAP_TOKEN='eyJ...'
 
 ## Connect target
 
-Point `--url` at the core server's HTTP port directly, e.g. the dev server:
+Production uses the TLS-only nginx listener:
+
+```bash
+./capture_harness.py list \
+    --url wss://localhost:31415/api/v1/streaming/capture \
+    --ca-cert /etc/nginx/ssl/self-signed-wlanpi.cert
+```
+
+For local development, point `--url` at the app server directly:
 
 ```bash
 sudo venv/bin/python -m wlanpi_core --debug --reload   # listens on :8000
 ```
 
-Default `--url` is `ws://localhost:8000/api/v1/streaming/capture`. For another
-host use `ws://wlanpi.local:8000/api/v1/streaming/capture`.
-
-> nginx TLS front-ends do not forward the WebSocket upgrade yet, so `wss://`
-> through nginx (`:31416` / `:8443`) will not work until that lands. Connect to
-> the app/dev HTTP port for now.
+Default `--url` is `ws://localhost:8000/api/v1/streaming/capture`. The
+development server is loopback-only; use the production `wss://` URL remotely.
 
 ## Modes
 

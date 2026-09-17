@@ -1,4 +1,5 @@
 """Active TCP/UDP socket listings via ss."""
+
 from __future__ import annotations
 
 import logging
@@ -14,7 +15,13 @@ def _parse_ss_line(line: str, protocol: str) -> Optional[dict[str, Any]]:
     parts = line.split()
     if len(parts) < 5:
         return None
-    state, recv_q, send_q, local, peer = parts[0], parts[1], parts[2], parts[3], parts[4]
+    state, recv_q, send_q, local, peer = (
+        parts[0],
+        parts[1],
+        parts[2],
+        parts[3],
+        parts[4],
+    )
     return {
         "protocol": protocol,
         "state": state,

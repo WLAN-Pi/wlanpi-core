@@ -15,6 +15,8 @@ if ! isValidSymlink $WLANPI_CORE; then
     ln -s /etc/wlanpi-core/nginx/sites-enabled/wlanpi_core.conf $WLANPI_CORE
 fi
 
-echo "Restarting nginx..."
+echo "Validating nginx configuration..."
+nginx -t
 
-systemctl restart nginx.service
+echo "Reloading nginx..."
+systemctl reload nginx.service

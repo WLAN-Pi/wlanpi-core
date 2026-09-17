@@ -48,6 +48,15 @@ def _connected_client(manager, websocket):
         "subscribers": set(),
         "subscribed_to": None,
         "namespace": None,
+        "session_config": None,
+        "session_end": None,
+        "pcapng_buffer": bytearray(),
+        "pcapng_header": bytearray(),
+        "pcapng_endian": None,
+        "pcapng_header_complete": False,
+        "subscription_queue": None,
+        "subscription_task": None,
+        "subscription_closing": False,
     }
 
 
@@ -129,9 +138,16 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         new=AsyncMock(return_value=process),
     )
     mocker.patch.object(manager, "send_message_event", new=AsyncMock())
+    send_event = mocker.patch.object(manager, "send_event", new=AsyncMock())
     manager.configure(websocket, "wlanpi0", {})
 
     await manager.start_streaming(websocket, ["wlanpi0"], "")
+
+    listener = object()
+    _connected_client(manager, listener)
+    session_id = manager.clients[websocket]["session_id"]
+    manager.clients[websocket]["subscribers"].add(listener)
+    manager.clients[listener]["subscribed_to"] = session_id
 
     create_process.assert_awaited_once_with(
         connection_manager.DUMPCAP_FILE,
@@ -145,6 +161,7 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         stderr=asyncio.subprocess.DEVNULL,
         start_new_session=True,
     )
+    assert send_event.await_args.args[3]["namespace"] is None
 
     await manager.stop_streaming(websocket)
 
@@ -152,6 +169,12 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
     assert process.returncode == -15
     assert manager.clients[websocket]["proc"] is None
     assert manager.clients[websocket]["task"] is None
+    send_event.assert_any_await(
+        listener,
+        "status",
+        "CAPTURE_STOPPED",
+        {"message": "Capture stopped.", "session_id": session_id},
+    )
 
 
 @pytest.mark.asyncio

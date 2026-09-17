@@ -3,9 +3,9 @@ from typing import Optional, Union
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
 from ..models.network.vlan.vlan_file import VLANFile
-from ..schemas.network.network import IPInterfaceAddress
-from ..schemas.network.types import CustomIPInterfaceFilter
 from ..models.validation_error import ValidationError
+from ..schemas.network.network import IPInterface, IPInterfaceAddress
+from ..schemas.network.types import CustomIPInterfaceFilter
 from ..utils.validation import validate_interface_name, validate_vlan_id
 
 
@@ -29,7 +29,7 @@ def _validated_vlan_id(vlan_id: Union[str, int]) -> int:
 async def get_vlans(
     interface: Optional[str] = None,
     custom_filter: Optional[CustomIPInterfaceFilter] = None,
-):
+) -> dict[str, list[IPInterface]]:
     """
     Returns all VLANS configured in /etc/network/interfaces.d/vlans as objects
     """
@@ -48,7 +48,7 @@ async def get_vlans(
 
 async def create_vlan(
     interface: str, vlan_id: Union[str, int], addresses: list[IPInterfaceAddress]
-):
+) -> None:
     """
     Creates or updates a VLAN definition for a given interface.
     """
@@ -62,7 +62,9 @@ async def create_vlan(
     )
 
 
-async def remove_vlan(interface: str, vlan_id: Union[str, int], allow_missing=False):
+async def remove_vlan(
+    interface: str, vlan_id: Union[str, int], allow_missing: bool = False
+) -> None:
     """
     Removes a VLAN definition for a given interface.
     """
@@ -75,10 +77,10 @@ async def remove_vlan(interface: str, vlan_id: Union[str, int], allow_missing=Fa
 
 
 async def get_interfaces(
-    interface: str,
-    allow_missing=False,
+    interface: Optional[str],
+    allow_missing: bool = False,
     custom_filter: Optional[CustomIPInterfaceFilter] = None,
-):
+) -> dict[str, list[IPInterface]]:
     """
     Returns definitions for all network interfaces known by the `ip` command.
     """

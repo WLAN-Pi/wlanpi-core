@@ -202,8 +202,4 @@ def test_api_revert_wlan_namespace_delegates_to_service(client, mocker):
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    revert.assert_called_once_with(
-        iface="wlan0",
-        namespace="scan_ns",
-        delete_namespace=True,
-    )
+    revert.assert_called_once_with(None, True)

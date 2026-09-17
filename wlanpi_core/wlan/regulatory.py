@@ -1,4 +1,5 @@
 """Wi-Fi regulatory domain queries."""
+
 from __future__ import annotations
 
 from typing import Any

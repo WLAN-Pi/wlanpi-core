@@ -8,6 +8,7 @@ to read-only; only the owning socket controls it.
 
 import asyncio
 import json
+import struct
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,6 +21,26 @@ from wlanpi_core.api.api_v1.endpoints.streaming_api import WS_AUTH_CLOSE_CODE, m
 from wlanpi_core.asgi import app
 
 WS_PATH = "/api/v1/streaming/capture"
+
+
+def _pcapng_block(block_type, body=b""):
+    body += b"\x00" * (-len(body) % 4)
+    total_length = len(body) + 12
+    return (
+        struct.pack("<II", block_type, total_length)
+        + body
+        + struct.pack("<I", total_length)
+    )
+
+
+PCAPNG_HEADER = _pcapng_block(
+    0x0A0D0D0A, struct.pack("<IHHq", 0x1A2B3C4D, 1, 0, -1)
+) + _pcapng_block(1, struct.pack("<HHI", 127, 0, 65535))
+
+
+def _pcapng_packet(payload=b"packet"):
+    body = struct.pack("<IIIII", 0, 0, 0, len(payload), len(payload)) + payload
+    return _pcapng_block(6, body)
 
 
 def _stub_token_manager(valid=True, did="tester"):
@@ -75,6 +96,23 @@ def test_missing_token_field_is_refused():
             _assert_closed(websocket)
 
 
+def test_binary_first_message_is_refused():
+    with TestClient(app) as client:
+        with client.websocket_connect(WS_PATH) as websocket:
+            websocket.send_bytes(b"not-json")
+            assert websocket.receive_json()["code"] == "AUTH_REQUIRED"
+            _assert_closed(websocket)
+
+
+def test_token_without_device_identity_is_refused():
+    with TestClient(app) as client:
+        app.state.token_manager = _stub_token_manager(did=None)
+        with client.websocket_connect(WS_PATH) as websocket:
+            websocket.send_json({"command": "auth", "token": "e.y.J"})
+            assert websocket.receive_json()["code"] == "AUTH_FAILED"
+            _assert_closed(websocket)
+
+
 def test_auth_timeout_closes_socket(monkeypatch):
     monkeypatch.setattr(streaming_api, "AUTH_TIMEOUT_SECONDS", 0.2)
     with TestClient(app) as client:
@@ -102,6 +140,9 @@ def test_valid_token_authenticates_and_protocol_continues():
 
             websocket.send_json({"command": "subscribe", "session_id": "cap_none"})
             assert websocket.receive_json()["code"] == "SESSION_NOT_FOUND"
+
+            websocket.send_json({"command": "subscribe", "session_id": []})
+            assert websocket.receive_json()["code"] == "SESSION_NOT_FOUND"
     assert manager.clients == {}
 
 
@@ -113,12 +154,25 @@ class _MockWS:
 
     def __init__(self):
         self.accept = AsyncMock()
+        self.close = AsyncMock()
         self.send_bytes = AsyncMock()
         self.send_text = AsyncMock()
 
 
 def _mock_ws():
     return _MockWS()
+
+
+def _signal_events(websocket, *codes):
+    events = {code: asyncio.Event() for code in codes}
+
+    async def send_text(payload):
+        code = json.loads(payload).get("code")
+        if code in events:
+            events[code].set()
+
+    websocket.send_text.side_effect = send_text
+    return events
 
 
 async def _connected(mgr, did):
@@ -153,28 +207,46 @@ async def test_subscriber_receives_broadcast_and_stop_notification():
     owner = await _connected(mgr, "owner-did")
     listener = await _connected(mgr, "listener-did")
     client = _register_session(mgr, owner, "cap_test")
+    received = []
+    all_blocks = asyncio.Event()
+    events = _signal_events(listener, "SUBSCRIBED", "CAPTURE_STOPPED")
+
+    async def receive_block(block):
+        received.append(block)
+        if len(received) == 3:
+            all_blocks.set()
+
+    listener.send_bytes.side_effect = receive_block
 
     await mgr.subscribe(listener, "cap_test")
+    subscription_task = mgr.clients[listener]["subscription_task"]
+    await asyncio.wait_for(events["SUBSCRIBED"].wait(), timeout=1)
     assert listener in client["subscribers"]
     assert mgr.clients[listener]["subscribed_to"] == "cap_test"
 
     # The SUBSCRIBED event tells the listener the running config, so it is
     # not blind to what it receives.
-    subscribed = [
-        json.loads(c.args[0])
-        for c in listener.send_text.await_args_list
-    ]
+    subscribed = [json.loads(c.args[0]) for c in listener.send_text.await_args_list]
     payload = next(e for e in subscribed if e["code"] == "SUBSCRIBED")
     assert payload["data"]["config"]["pcap_filter"] == "type mgt"
     assert "wlan0" in payload["data"]["config"]["interfaces"]
     # The subscriber is told which namespace the capture runs in.
     assert payload["data"]["namespace"] == "wlan_ns"
 
-    await mgr._broadcast_chunk(owner, client, b"pcapng-bytes")
-    owner.send_bytes.assert_awaited_once_with(b"pcapng-bytes")
-    listener.send_bytes.assert_awaited_once_with(b"pcapng-bytes")
+    packet = _pcapng_packet()
+    stream = PCAPNG_HEADER + packet
+    await mgr._broadcast_chunk(owner, client, stream)
+    await asyncio.wait_for(all_blocks.wait(), timeout=1)
+    owner.send_bytes.assert_awaited_once_with(stream)
+    assert received == [
+        PCAPNG_HEADER[:28],
+        PCAPNG_HEADER[28:],
+        packet,
+    ]
 
     await mgr._end_session(client, "CAPTURE_STOPPED", "Capture stopped.")
+    await asyncio.wait_for(events["CAPTURE_STOPPED"].wait(), timeout=1)
+    await subscription_task
     assert mgr.sessions == {}
     assert client["subscribers"] == set()
     assert mgr.clients[listener]["subscribed_to"] is None
@@ -194,13 +266,75 @@ async def test_failing_subscriber_is_dropped_without_ending_capture():
     client = _register_session(mgr, owner, "cap_test")
 
     await mgr.subscribe(dead, "cap_test")
+    subscription_task = mgr.clients[dead]["subscription_task"]
     dead.send_bytes.side_effect = RuntimeError("gone")
 
-    await mgr._broadcast_chunk(owner, client, b"chunk")
+    await mgr._broadcast_chunk(owner, client, PCAPNG_HEADER)
+    await subscription_task
     assert dead not in client["subscribers"]
     assert mgr.clients[dead]["subscribed_to"] is None
     # Owner stream unaffected.
     owner.send_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_late_subscriber_gets_header_then_complete_packet_blocks():
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager()
+    owner = await _connected(mgr, "owner-did")
+    listener = await _connected(mgr, "listener-did")
+    client = _register_session(mgr, owner, "cap_test")
+    first_packet = _pcapng_packet(b"first")
+    received = []
+    all_blocks = asyncio.Event()
+
+    async def receive_block(block):
+        received.append(block)
+        if len(received) == 2:
+            all_blocks.set()
+
+    listener.send_bytes.side_effect = receive_block
+
+    await mgr._broadcast_chunk(owner, client, PCAPNG_HEADER + first_packet)
+    await mgr.subscribe(listener, "cap_test")
+    subscription_task = mgr.clients[listener]["subscription_task"]
+
+    second_packet = _pcapng_packet(b"second")
+    split = len(second_packet) // 2
+    await mgr._broadcast_chunk(owner, client, second_packet[:split])
+    await mgr._broadcast_chunk(owner, client, second_packet[split:])
+    await asyncio.wait_for(all_blocks.wait(), timeout=1)
+
+    assert received == [PCAPNG_HEADER, second_packet]
+    await mgr._end_session(client, "CAPTURE_ENDED", "Capture ended.")
+    await subscription_task
+
+
+@pytest.mark.asyncio
+async def test_slow_subscriber_is_dropped_without_blocking_owner(monkeypatch):
+    from wlanpi_core.streaming import connection_manager
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    monkeypatch.setattr(connection_manager, "_SUBSCRIBER_QUEUE_BLOCKS", 2)
+    mgr = ConnectionManager()
+    owner = await _connected(mgr, "owner-did")
+    slow = await _connected(mgr, "slow-did")
+    client = _register_session(mgr, owner, "cap_test")
+    await mgr.subscribe(slow, "cap_test")
+    subscription_task = mgr.clients[slow]["subscription_task"]
+
+    stream = PCAPNG_HEADER + _pcapng_packet()
+    await mgr._broadcast_chunk(owner, client, stream)
+    await subscription_task
+
+    assert slow not in client["subscribers"]
+    assert mgr.clients[slow]["subscribed_to"] is None
+    owner.send_bytes.assert_awaited_once_with(stream)
+    slow.close.assert_awaited_once_with(
+        code=connection_manager._SLOW_SUBSCRIBER_CLOSE_CODE,
+        reason="Capture subscriber cannot keep up.",
+    )
 
 
 @pytest.mark.asyncio
@@ -218,6 +352,24 @@ async def test_owner_cannot_subscribe_to_own_session():
 
 
 @pytest.mark.asyncio
+async def test_capture_owner_cannot_subscribe_to_another_session():
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager()
+    first_owner = await _connected(mgr, "first-owner")
+    second_owner = await _connected(mgr, "second-owner")
+    first_client = _register_session(mgr, first_owner, "cap_first")
+    second_client = _register_session(mgr, second_owner, "cap_second")
+
+    await mgr.subscribe(first_owner, "cap_second")
+
+    assert first_owner not in second_client["subscribers"]
+    assert first_client["subscribed_to"] is None
+    sent = [call.args[0] for call in first_owner.send_text.await_args_list]
+    assert any("SESSION_IS_OWN" in payload for payload in sent)
+
+
+@pytest.mark.asyncio
 async def test_subscriber_disconnect_detaches_cleanly():
     from wlanpi_core.streaming.connection_manager import ConnectionManager
 
@@ -231,6 +383,56 @@ async def test_subscriber_disconnect_detaches_cleanly():
     await mgr.disconnect(listener)
     assert listener not in client["subscribers"]
     assert listener not in mgr.clients
+
+
+@pytest.mark.asyncio
+async def test_old_session_end_does_not_clear_new_subscription():
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager()
+    old_owner = await _connected(mgr, "old-owner")
+    new_owner = await _connected(mgr, "new-owner")
+    listener = await _connected(mgr, "listener")
+    old_client = _register_session(mgr, old_owner, "cap_old")
+    new_client = _register_session(mgr, new_owner, "cap_new")
+    subscribed = []
+    first_subscription = asyncio.Event()
+    second_subscription = asyncio.Event()
+    binary_send_started = asyncio.Event()
+
+    async def record_event(payload):
+        code = json.loads(payload).get("code")
+        if code == "SUBSCRIBED":
+            subscribed.append(code)
+            if len(subscribed) == 1:
+                first_subscription.set()
+            else:
+                second_subscription.set()
+
+    async def block_binary(_):
+        binary_send_started.set()
+        await asyncio.Event().wait()
+
+    listener.send_text.side_effect = record_event
+    listener.send_bytes.side_effect = block_binary
+    await mgr.subscribe(listener, "cap_old")
+    await asyncio.wait_for(first_subscription.wait(), timeout=1)
+    await mgr._broadcast_chunk(old_owner, old_client, PCAPNG_HEADER)
+    await asyncio.wait_for(binary_send_started.wait(), timeout=1)
+
+    await mgr._end_session(old_client, "CAPTURE_ENDED", "Capture ended.")
+    await mgr.subscribe(listener, "cap_new")
+    new_subscription_task = mgr.clients[listener]["subscription_task"]
+    await asyncio.wait_for(second_subscription.wait(), timeout=1)
+
+    assert mgr.clients[listener]["subscribed_to"] == "cap_new"
+    assert listener in new_client["subscribers"]
+    sent_codes = [
+        json.loads(call.args[0])["code"] for call in listener.send_text.await_args_list
+    ]
+    assert sent_codes == ["SUBSCRIBED", "SUBSCRIBED"]
+    await mgr._end_session(new_client, "CAPTURE_ENDED", "Capture ended.")
+    await new_subscription_task
 
 
 # --- Namespace awareness (#141 baseline: capture must run in the adapter's ns)
@@ -306,7 +508,10 @@ def test_ns_prefix_wraps_named_namespace_only():
 
     assert ConnectionManager._ns_prefix(None) == []
     assert ConnectionManager._ns_prefix("wlan_ns") == [
-        "ip", "netns", "exec", "wlan_ns",
+        "ip",
+        "netns",
+        "exec",
+        "wlan_ns",
     ]
 
 
@@ -328,9 +533,7 @@ async def test_set_channel_runs_in_namespace(mocker):
 
 
 @pytest.mark.asyncio
-async def test_subscriber_stop_does_not_end_owner_session():
-    """A subscriber is read-only: sending `stop` acts only on its own (empty)
-    client and must not stop or unregister the owner's capture."""
+async def test_subscriber_stop_is_rejected_without_ending_owner_session():
     from wlanpi_core.streaming.connection_manager import ConnectionManager
 
     mgr = ConnectionManager.__new__(ConnectionManager)
@@ -338,7 +541,9 @@ async def test_subscriber_stop_does_not_end_owner_session():
     owner = await _connected(mgr, "owner-did")
     listener = await _connected(mgr, "listener-did")
     _register_session(mgr, owner, "cap_test")
+    events = _signal_events(listener, "SUBSCRIBED")
     await mgr.subscribe(listener, "cap_test")
+    await asyncio.wait_for(events["SUBSCRIBED"].wait(), timeout=1)
 
     await mgr.stop_streaming(listener)
 
@@ -346,6 +551,35 @@ async def test_subscriber_stop_does_not_end_owner_session():
     assert "cap_test" in mgr.sessions
     assert mgr.sessions["cap_test"] is owner
     assert mgr.clients[owner]["session_id"] == "cap_test"
-    # The subscriber was told its stop completed.
+    assert mgr.clients[listener]["subscribed_to"] == "cap_test"
     sent = [c.args[0] for c in listener.send_text.await_args_list]
-    assert any("CAPTURE_STOPPED" in payload for payload in sent)
+    assert any("SUBSCRIBER_READ_ONLY" in payload for payload in sent)
+    await mgr.disconnect(listener)
+    await mgr._end_session(mgr.clients[owner], "CAPTURE_ENDED", "Capture ended.")
+
+
+@pytest.mark.asyncio
+async def test_subscriber_cannot_start_another_capture(mocker):
+    from wlanpi_core.streaming import connection_manager
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    mgr = ConnectionManager()
+    owner = await _connected(mgr, "owner-did")
+    listener = await _connected(mgr, "listener-did")
+    _register_session(mgr, owner, "cap_test")
+    events = _signal_events(listener, "SUBSCRIBED")
+    await mgr.subscribe(listener, "cap_test")
+    await asyncio.wait_for(events["SUBSCRIBED"].wait(), timeout=1)
+    create_process = mocker.patch.object(
+        connection_manager.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(),
+    )
+
+    await mgr.start_streaming(listener, ["wlanpi1"], "")
+
+    create_process.assert_not_awaited()
+    sent = [call.args[0] for call in listener.send_text.await_args_list]
+    assert any("SUBSCRIBER_READ_ONLY" in payload for payload in sent)
+    await mgr.disconnect(listener)
+    await mgr._end_session(mgr.clients[owner], "CAPTURE_ENDED", "Capture ended.")

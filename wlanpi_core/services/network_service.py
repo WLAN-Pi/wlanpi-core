@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable, Dict, Optional
 
 import dbus
 from dbus import Interface
@@ -31,12 +31,12 @@ class AsyncDBusManager:
     Uses polling instead of signals for state changes
     """
 
-    def __init__(self):
-        self._bus = None
+    def __init__(self) -> None:
+        self._bus: Any = None
         self._bus_lock = threading.Lock()
 
     @property
-    def bus(self):
+    def bus(self) -> Any:
         """Open the system bus only when a D-Bus operation is requested."""
         if self._bus is None:
             with self._bus_lock:
@@ -91,7 +91,7 @@ class AsyncDBusManager:
         object_path: str,
         interface_name: str,
         property_name: str,
-    ):
+    ) -> Any:
         """
         Get a property from a DBus object without using signals
 
@@ -115,8 +115,8 @@ class AsyncDBusManager:
         object_path: str,
         interface_name: str,
         method_name: str,
-        *args,
-    ):
+        *args: Any,
+    ) -> Any:
         """
         Call a method on a DBus object
 
@@ -142,6 +142,18 @@ DBUS_MANAGER = AsyncDBusManager()
 
 API_TIMEOUT = 20
 
+# Module-level state written by setup_DBus_Supplicant_Access() and friends.
+# Kept as plain globals to preserve the legacy callback behaviour.
+bus: Any = None
+if_obj: Any = None
+iface: Any = None
+wpas: Any = None
+scan: list[Any] = []
+currentInterface: Optional[str] = None
+connectionEvents: list[Any] = []
+supplicantState: list[Any] = []
+selectedNetworkSSID: list[Any] = []
+
 # Define a global debug level variable
 DEBUG_LEVEL = 1
 # Debug Level 0: No messages are printed.
@@ -150,7 +162,7 @@ DEBUG_LEVEL = 1
 # Debug Level 3: All messages (levels 1, 2, and 3) are printed.
 
 
-def set_debug_level(level):
+def set_debug_level(level: int) -> None:
     """
     Sets the global debug level.
 
@@ -160,7 +172,7 @@ def set_debug_level(level):
     DEBUG_LEVEL = level
 
 
-def debug_print(message, level):
+def debug_print(message: Any, level: int) -> None:
     """
     Prints a message to the console based on the global debug level.
 
@@ -177,14 +189,14 @@ allowed_scan_types = [
 ]
 
 
-def is_allowed_scan_type(scan: str):
+def is_allowed_scan_type(scan: str) -> bool:
     for allowed_scan_type in allowed_scan_types:
         if scan == allowed_scan_type:
             return True
     return False
 
 
-def is_allowed_interface(interface: str, wpas_obj):
+def is_allowed_interface(interface: str, wpas_obj: Any) -> bool:
     available_interfaces = fetch_interfaces(wpas_obj)
     for allowed_interface in available_interfaces:
         if interface == allowed_interface:
@@ -192,7 +204,7 @@ def is_allowed_interface(interface: str, wpas_obj):
     return False
 
 
-def byte_array_to_string(s):
+def byte_array_to_string(s: Any) -> str:
     r = ""
     for c in s:
         if c >= 32 and c < 127:
@@ -203,7 +215,7 @@ def byte_array_to_string(s):
     return r
 
 
-def renew_dhcp(interface):
+def renew_dhcp(interface: str) -> None:
     """
     Uses dhclient to release and request a new DHCP lease
     """
@@ -219,7 +231,7 @@ def renew_dhcp(interface):
         )
 
 
-def get_ip_address(interface):
+def get_ip_address(interface: str) -> Optional[str]:
     """
     Extract the IP Address from the linux ip add show <if> command
     """
@@ -233,9 +245,10 @@ def get_ip_address(interface):
             f"Failed to get IP address. Code:{err.return_code}, Error: {err.error_msg}",
             1,
         )
+        return None
 
 
-def getBss(bss):
+def getBss(bss: str) -> Optional[Dict[str, Any]]:
     """
     Queries DBUS_BSS_INTERFACE through dbus for a BSS Path
 
@@ -315,7 +328,7 @@ def getBss(bss):
         raise ValidationError(f"{error}", status_code=400)
 
 
-def pretty_print_BSS(BSSPath):
+def pretty_print_BSS(BSSPath: str) -> str:
     BSSDetails = getBss(BSSPath)
     if BSSDetails:
         ssid = BSSDetails["ssid"] if BSSDetails["ssid"] else "<hidden>"
@@ -331,7 +344,7 @@ def pretty_print_BSS(BSSPath):
         return f"BSS Path {BSSPath} could not be resolved"
 
 
-def fetch_interfaces(wpas_obj):
+def fetch_interfaces(wpas_obj: Any) -> list[Dict[str, Any]]:
     available_interfaces = []
     ifaces = wpas_obj.Get(
         WPAS_DBUS_INTERFACE, "Interfaces", dbus_interface=dbus.PROPERTIES_IFACE
@@ -351,9 +364,9 @@ def fetch_interfaces(wpas_obj):
     return available_interfaces
 
 
-def fetch_currentBSS(interface):
+def fetch_currentBSS(interface: str) -> Any:
     # Refresh the path to the adapter and read back the current BSSID
-    bssid = ""
+    bssid: Any = ""
 
     try:
         path = wpas.GetInterface(interface)
@@ -391,10 +404,10 @@ Call back functions
 """
 
 
-def scanDone(success):
+def scanDone(success: bool) -> None:
     debug_print(f"Scan done: success={success}", 1)
     global scan
-    local_scan = []
+    local_scan: list[Any] = []
     res = if_obj.Get(
         WPAS_DBUS_INTERFACES_INTERFACE, "BSSs", dbus_interface=dbus.PROPERTIES_IFACE
     )
@@ -409,13 +422,13 @@ def scanDone(success):
     debug_print(scan, 3)
 
 
-def networkSelected(network):
+def networkSelected(network: Any) -> None:
     # returns the current selected network path
     debug_print(f"Network Selected (Signal) : {network}", 1)
     selectedNetworkSSID.append(network)
 
 
-def propertiesChanged(properties):
+def propertiesChanged(properties: Any) -> None:
     debug_print(f"PropertiesChanged: {properties}", 2)
     if properties.get("State") is not None:
         state = properties["State"]
@@ -505,7 +518,7 @@ def propertiesChanged(properties):
             supplicantState.append(f"authentication fail {authStatus}")
 
 
-def setup_DBus_Supplicant_Access(interface):
+def setup_DBus_Supplicant_Access(interface: str) -> None:
     global bus
     global if_obj
     global iface
@@ -542,7 +555,9 @@ These are the functions used to deliver the API
 """
 
 
-async def get_systemd_network_interfaces(timeout: network.APIConfig):
+async def get_systemd_network_interfaces(
+    timeout: network.APIConfig,
+) -> Dict[str, Any]:
     """
     Queries systemd via dbus to get a list of the available interfaces.
     """
@@ -557,7 +572,7 @@ async def get_systemd_network_interfaces(timeout: network.APIConfig):
 
 async def get_async_systemd_network_scan(
     type: str, interface: network.Interface, timeout: network.APIConfig
-):
+) -> Dict[str, Any]:
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
@@ -565,7 +580,7 @@ async def get_async_systemd_network_scan(
     type = type.strip().lower()
     if is_allowed_scan_type(type):
         try:
-            setup_DBus_Supplicant_Access(interface)
+            setup_DBus_Supplicant_Access(interface.interface)
 
             global scan
             scan = []
@@ -574,7 +589,7 @@ async def get_async_systemd_network_scan(
             iface.Scan(scanConfig)
 
             scan_successful = await DBUS_MANAGER.poll_until_condition(
-                lambda: collect_scan_results(), timeout=timeout
+                lambda: collect_scan_results(), timeout=timeout.timeout
             )
 
             if not scan_successful:
@@ -589,7 +604,7 @@ async def get_async_systemd_network_scan(
     raise ValidationError(f"{type} is not a valid scan type", status_code=400)
 
 
-def collect_scan_results():
+def collect_scan_results() -> bool:
     """
     Poll for scan results and collect them
     Returns True when scan results are found
@@ -624,7 +639,7 @@ async def set_systemd_network_addNetwork(
     netConfig: network.NetConfig,
     removeAllFirst: bool,
     timeout: network.APIConfig,
-):
+) -> Dict[str, Any]:
     """
     Uses wpa_supplicant to connect to a WLAN network.
     """
@@ -638,7 +653,7 @@ async def set_systemd_network_addNetwork(
     API_TIMEOUT = timeout
 
     debug_print("Setting up supplicant access", 3)
-    setup_DBus_Supplicant_Access(interface)
+    setup_DBus_Supplicant_Access(interface.interface)
 
     selectErr = None
     status = "uninitialised"
@@ -676,7 +691,7 @@ async def set_systemd_network_addNetwork(
 
             if selectErr == None:
                 # Poll for connection completion instead of waiting for signals
-                connected = await monitor_connection_state(API_TIMEOUT)
+                connected = await monitor_connection_state(API_TIMEOUT.timeout)
 
                 if connected:
                     # Check the current BSSID post connection
@@ -713,11 +728,11 @@ async def set_systemd_network_addNetwork(
         "status": status,
         "response": response,
         "connectedNet": bssid,
-        "input": netConfig.ssid,
+        "input": netConfig.id,
     }
 
 
-async def monitor_connection_state(timeout):
+async def monitor_connection_state(timeout: int) -> bool:
     """
     Monitor connection state by polling
     """
@@ -766,13 +781,13 @@ async def monitor_connection_state(timeout):
 
 async def get_systemd_network_currentNetwork_details(
     interface: network.Interface, timeout: network.APIConfig
-):
+) -> Optional[Dict[str, Any]]:
     """
     Queries systemd via dbus to get a scan of the available networks.
     """
     try:
-        res = ""
-        setup_DBus_Supplicant_Access(interface)
+        res: Any = ""
+        setup_DBus_Supplicant_Access(interface.interface)
         await asyncio.sleep(1)
 
         # res = fetch_currentBSS(interface)
@@ -789,6 +804,7 @@ async def get_systemd_network_currentNetwork_details(
             return {"connectedStatus": False, "connectedNet": None}
     except DBusException:
         debug_print("DBUS Error State: {de}", 0)
+        return None
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400)
 

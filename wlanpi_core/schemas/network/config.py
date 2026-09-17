@@ -1,5 +1,5 @@
 import typing
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Extra, Field, field_validator
 
@@ -12,7 +12,7 @@ class NetworkAddress(BaseModel):
     )
 
     @field_validator("family")
-    def validate_family(cls, v):
+    def validate_family(cls, v: str) -> str:
         if v:
             v = v.lower()
 
@@ -24,7 +24,7 @@ class NetworkAddress(BaseModel):
 # class InetNetworkAddress(NetworkAddress):
 class InetNetworkAddress(NetworkAddress, extra=Extra.allow):
     family: str = "inet"
-    address_type: typing.Literal["loopback", "static", "manual", "dhcp"]
+    address_type: str
 
     # @field_validator('address_type')
     # def validate_address_type(cls, v):
@@ -40,7 +40,7 @@ class InetLoopbackNetworkAddress(InetNetworkAddress):
     address_type: str = "loopback"
 
     @field_validator("address_type")
-    def validate_own_address_type(cls, v):
+    def validate_own_address_type(cls, v: str) -> str:
         correct_address_type = "loopback"
         assert (
             v.lower() == correct_address_type
@@ -57,10 +57,10 @@ class InetStaticNetworkAddress(InetNetworkAddress):
     hwaddress: Optional[str] = Field(examples=["12:34:56:78:9A:BC"], default=None)
     mtu: Optional[int] = Field(examples=[1500], default=None)
     scope: Optional[str] = Field(examples=["global"], default=None)
-    # dns: str = Field(example="192.168.1.1")
+    # dns: str = Field(json_schema_extra={"example": "192.168.1.1"})
 
     @field_validator("address_type")
-    def validate_own_address_type(cls, v):
+    def validate_own_address_type(cls, v: str) -> str:
         correct_address_type = "static"
         assert (
             v.lower() == correct_address_type
@@ -68,7 +68,7 @@ class InetStaticNetworkAddress(InetNetworkAddress):
         return v
 
     @field_validator("scope")
-    def validate_scope(cls, v):
+    def validate_scope(cls, v: Optional[str]) -> Optional[str]:
         if v:
             v = v.lower()
         assert v in (
@@ -85,7 +85,7 @@ class InetManualNetworkAddress(InetNetworkAddress):
     mtu: Optional[int] = Field(examples=["1500"], default=None)
 
     @field_validator("address_type")
-    def validate_own_address_type(cls, v):
+    def validate_own_address_type(cls, v: str) -> str:
         correct_address_type = "manual"
         assert (
             v.lower() == correct_address_type
@@ -103,7 +103,7 @@ class InetDhcpNetworkAddress(InetNetworkAddress):
     hwaddress: Optional[str] = Field(examples=["12:34:56:78:9A:BC"], default=None)
 
     @field_validator("address_type")
-    def validate_own_address_type(cls, v):
+    def validate_own_address_type(cls, v: str) -> str:
         correct_address_type = "dhcp"
         assert (
             v.lower() == correct_address_type
@@ -130,7 +130,7 @@ class Vlan(BaseModel):
 class NetworkConfigResponse(BaseModel):
     success: bool = True
     result: typing.Any = Field(default=None)
-    errors: typing.Optional[dict] = None
+    errors: typing.Optional[dict[str, Any]] = None
 
 
 NETWORK_ADDRESS_TYPES = {

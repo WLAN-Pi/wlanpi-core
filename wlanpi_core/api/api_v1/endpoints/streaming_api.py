@@ -1,8 +1,9 @@
 """
 WebSocket streaming endpoints.
 
-See docs/API-INTEGRATION-GUIDE.md §7 for the capture command protocol.
+See docs/API-INTEGRATION-GUIDE.md §11 for the capture command protocol.
 """
+
 import asyncio
 import json
 
@@ -29,7 +30,6 @@ async def _reject(websocket: WebSocket, code: str, message: str) -> None:
         await websocket.close(code=WS_AUTH_CLOSE_CODE)
     except RuntimeError:
         pass
-    await manager.disconnect(websocket)
 
 
 async def _authenticate(websocket: WebSocket) -> bool:
@@ -45,7 +45,7 @@ async def _authenticate(websocket: WebSocket) -> bool:
             websocket,
             "AUTH_TOKEN_IN_URL",
             "Tokens are not accepted in the URL (it is logged); "
-            "send {\"command\": \"auth\", \"token\": ...} as the first message.",
+            'send {"command": "auth", "token": ...} as the first message.',
         )
         return False
 
@@ -55,19 +55,19 @@ async def _authenticate(websocket: WebSocket) -> bool:
         )
         data = json.loads(raw)
     except asyncio.TimeoutError:
-        await _reject(
-            websocket, "AUTH_TIMEOUT", "No auth message received in time."
-        )
+        await _reject(websocket, "AUTH_TIMEOUT", "No auth message received in time.")
         return False
-    except json.JSONDecodeError:
-        await _reject(websocket, "AUTH_REQUIRED", "First message must be valid JSON auth.")
+    except (json.JSONDecodeError, KeyError, TypeError):
+        await _reject(
+            websocket, "AUTH_REQUIRED", "First message must be valid JSON auth."
+        )
         return False
 
     if not isinstance(data, dict) or data.get("command") != "auth":
         await _reject(
             websocket,
             "AUTH_REQUIRED",
-            "Authenticate first: {\"command\": \"auth\", \"token\": ...}.",
+            'Authenticate first: {"command": "auth", "token": ...}.',
         )
         return False
 
@@ -88,6 +88,9 @@ async def _authenticate(websocket: WebSocket) -> bool:
         return False
 
     did = result.device_id or (result.payload or {}).get("did")
+    if not isinstance(did, str) or not did:
+        await _reject(websocket, "AUTH_FAILED", "Token carries no device identity.")
+        return False
     manager.authenticate(websocket, did)
     await manager.send_event(websocket, "status", "AUTH_OK", {"did": did})
     return True
@@ -213,13 +216,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
 
     except WebSocketDisconnect:
-        await manager.disconnect(websocket)
+        pass
     except RuntimeError as e:
         # Starlette raises "WebSocket is not connected" when the peer closes
         # mid-operation - a disconnect race, not a server fault. Log at debug
         # so a genuine RuntimeError is still traceable without noise.
         log.debug(f"WebSocket closed mid-operation: {e!r}")
-        await manager.disconnect(websocket)
     except Exception as e:
         log.error(f"Unhandled error in websocket endpoint: {e!r}")
+    finally:
         await manager.disconnect(websocket)

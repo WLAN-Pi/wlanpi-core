@@ -5,7 +5,7 @@ import pathlib
 import sys
 import tempfile
 import traceback
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 LOG_LEVELS = {
     "DEBUG": 10,
@@ -16,7 +16,7 @@ LOG_LEVELS = {
 }
 
 
-def create_contextual_log_record():
+def create_contextual_log_record() -> type:
     """
     Create ContextualLogRecord class dynamically to avoid circular import
     """
@@ -26,7 +26,7 @@ def create_contextual_log_record():
         Custom LogRecord that captures additional context information
         """
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
 
             if not self.exc_info and sys.exc_info()[0] is not None:
@@ -81,7 +81,7 @@ class ContextFilter(logging.Filter):
     A logging filter that ensures contextual information is added to log records
     """
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "source_file"):
             record.source_file = "Unknown"
         if not hasattr(record, "line_number"):
@@ -138,15 +138,20 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             exc_type, exc_value, _ = record.exc_info
             message["exc_info"] = self.formatException(record.exc_info)
-            if not hasattr(record, "extra_fields"):
-                record.extra_fields = {}
-            if "error" not in record.extra_fields:
-                record.extra_fields["error"] = str(exc_value)
-            if "error_type" not in record.extra_fields:
-                record.extra_fields["error_type"] = exc_type.__name__
+            extra_fields = getattr(record, "extra_fields", None)
+            if extra_fields is None:
+                extra_fields = {}
+                record.extra_fields = extra_fields
+            if "error" not in extra_fields:
+                extra_fields["error"] = str(exc_value)
+            if "error_type" not in extra_fields:
+                extra_fields["error_type"] = (
+                    exc_type.__name__ if exc_type else "Unknown"
+                )
 
-        if hasattr(record, "extra_fields"):
-            message.update(record.extra_fields)
+        extra_fields = getattr(record, "extra_fields", None)
+        if extra_fields:
+            message.update(extra_fields)
 
         return json.dumps(message)
 
@@ -158,7 +163,7 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{name}")
 
 
-def configure_logging(debug_mode: bool = False):
+def configure_logging(debug_mode: bool = False) -> None:
     """
     Configure logging with console and file handlers
 
@@ -172,6 +177,8 @@ def configure_logging(debug_mode: bool = False):
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
 
     context_filter = ContextFilter()
     console_stream_handler = logging.StreamHandler()
@@ -179,8 +186,8 @@ def configure_logging(debug_mode: bool = False):
     try:
         debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
         debug_log_dir.mkdir(parents=True, exist_ok=True)
-        app_log_path = "/var/log/wlanpi_core/app.log"
-        debug_log_path = "/var/log/wlanpi_core/debug/debug.log"
+        app_log_path: Any = "/var/log/wlanpi_core/app.log"
+        debug_log_path: Any = "/var/log/wlanpi_core/debug/debug.log"
         app_file_handler = logging.FileHandler(app_log_path)
         debug_file_handler = logging.FileHandler(debug_log_path)
     except PermissionError:

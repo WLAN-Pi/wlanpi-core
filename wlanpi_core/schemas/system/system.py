@@ -9,33 +9,33 @@ class ServiceStatus(BaseModel):
 
 
 class ServiceRunning(BaseModel):
-    name: str = Field(example="wlanpi-fpms")
-    active: bool = Field(example=True)
+    name: str = Field(json_schema_extra={"example": "wlanpi-fpms"})
+    active: bool = Field(json_schema_extra={"example": True})
 
 
 class DeviceSerial(BaseModel):
-    serial: str = Field(example="133700330070513050022035384b")
+    serial: str = Field(json_schema_extra={"example": "133700330070513050022035384b"})
 
 
 class DeviceModel(BaseModel):
-    model: str = Field(example="R4")
+    model: str = Field(json_schema_extra={"example": "R4"})
 
 
 class DeviceInfo(BaseModel):
-    model: str = Field(example="R4")
-    name: str = Field(example="wlanpi-bc2")
-    hostname: str = Field(example="wlanpi-bc2.local")
-    software_version: str = Field(example="3.2.0")
-    mode: str = Field(example="classic")
+    model: str = Field(json_schema_extra={"example": "R4"})
+    name: str = Field(json_schema_extra={"example": "wlanpi-bc2"})
+    hostname: str = Field(json_schema_extra={"example": "wlanpi-bc2.local"})
+    software_version: str = Field(json_schema_extra={"example": "3.2.0"})
+    mode: str = Field(json_schema_extra={"example": "classic"})
 
 
 class DeviceStats(BaseModel):
-    ip: str = Field(example="127.0.0.1")
-    cpu: str = Field(example="23%")
-    ram: str = Field(example="1022/3792MB 26.95%")
-    disk: str = Field(example="6/59GB 11%")
-    cpu_temp: str = Field(example="52.0C")
-    uptime: str = Field(example="1h 40m")
+    ip: str = Field(json_schema_extra={"example": "127.0.0.1"})
+    cpu: str = Field(json_schema_extra={"example": "23%"})
+    ram: str = Field(json_schema_extra={"example": "1022/3792MB 26.95%"})
+    disk: str = Field(json_schema_extra={"example": "6/59GB 11%"})
+    cpu_temp: str = Field(json_schema_extra={"example": "52.0C"})
+    uptime: str = Field(json_schema_extra={"example": "1h 40m"})
 
 
 class DateTimeInfo(BaseModel):
@@ -62,7 +62,7 @@ class DateTimeInfo(BaseModel):
 
 
 class TimezoneInfo(BaseModel):
-    timezone: str = Field(example="Europe/London")
+    timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
 class TimezoneList(BaseModel):
@@ -70,7 +70,7 @@ class TimezoneList(BaseModel):
 
 
 class TimezoneSetRequest(BaseModel):
-    timezone: str = Field(example="Europe/London")
+    timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
 class RegDomainInfo(BaseModel):
@@ -93,12 +93,16 @@ class RegDomainInfo(BaseModel):
 
 
 class RegDomainSetRequest(BaseModel):
-    country: str = Field(example="GB", min_length=2, max_length=2)
+    country: str = Field(
+        min_length=2, max_length=2, json_schema_extra={"example": "GB"}
+    )
 
 
 class RegDomainCountry(BaseModel):
     code: str = Field(description="ISO 3166-1 alpha-2 country code", examples=["GB"])
-    name: str = Field(description="English display name for UI pickers", examples=["United Kingdom"])
+    name: str = Field(
+        description="English display name for UI pickers", examples=["United Kingdom"]
+    )
 
 
 class RegDomainList(BaseModel):
@@ -106,15 +110,19 @@ class RegDomainList(BaseModel):
 
 
 class BatteryInfo(BaseModel):
-    present: bool = Field(example=True)
-    capacity_percent: Optional[int] = Field(default=None, example=85)
-    status: Optional[str] = Field(default=None, example="Discharging")
-    source: Optional[str] = Field(default=None, example="BAT0")
+    present: bool = Field(json_schema_extra={"example": True})
+    capacity_percent: Optional[int] = Field(
+        default=None, json_schema_extra={"example": 85}
+    )
+    status: Optional[str] = Field(
+        default=None, json_schema_extra={"example": "Discharging"}
+    )
+    source: Optional[str] = Field(default=None, json_schema_extra={"example": "BAT0"})
 
 
 class NtpAutoInfo(BaseModel):
     ntp: bool = Field(description="Whether NTP synchronization is enabled")
-    timezone: str = Field(example="Europe/London")
+    timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
 class PowerActionResponse(BaseModel):
@@ -122,12 +130,12 @@ class PowerActionResponse(BaseModel):
 
 
 class HotspotClients(BaseModel):
-    mode: str = Field(example="hotspot")
-    interface: str = Field(example="wlan0")
-    count: int = Field(example=2)
+    mode: str = Field(json_schema_extra={"example": "hotspot"})
+    interface: str = Field(json_schema_extra={"example": "wlan0"})
+    count: int = Field(json_schema_extra={"example": 2})
 
 
 class HotspotCredentials(BaseModel):
-    mode: str = Field(example="hotspot")
-    ssid: str = Field(example="WLAN Pi abc")
-    passphrase: str = Field(example="example-passphrase")
+    mode: str = Field(json_schema_extra={"example": "hotspot"})
+    ssid: str = Field(json_schema_extra={"example": "WLAN Pi abc"})
+    passphrase: str = Field(json_schema_extra={"example": "example-passphrase"})

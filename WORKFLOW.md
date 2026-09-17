@@ -51,12 +51,13 @@ Run with auto-reload for development:
 sudo venv/bin/python -m wlanpi_core --debug --reload
 ```
 
-This will start the server on http://localhost:8000 with automatic reloading when code changes.
+This will start the development server on http://127.0.0.1:8000 (loopback only, plain HTTP).
+Production traffic goes through nginx on HTTPS port 31415; the dev server is separate.
 
 When running directly, you can interact with these URLs:
 
-- API frontend: http://localhost:8000
-- Swagger UI documentation: http://localhost:8000/documentation
+- API frontend: http://127.0.0.1:8000
+- Swagger UI documentation: http://127.0.0.1:8000/documentation
 
 ### Option 2: Running development version in place (symlink method)
 
@@ -109,7 +110,8 @@ For testing with the exact production setup:
    ```bash
    ufw allow 31415
    ```
-   Then access at `http://wlanpi-###.local:31415/` or `http://<ip>:31415/`
+   Then access at `https://wlanpi-###.local:31415/` or `https://<ip>:31415/`
+   (trust the self-signed cert at `/etc/nginx/ssl/self-signed-wlanpi.cert`)
 
 5. When done, restart original services:
    ```bash
@@ -137,8 +139,9 @@ canonical_string="POST\n/api/v1/auth/token\n\n{\"device_id\": \"testing\"}"
 signature=$(printf "$canonical_string" | openssl dgst -sha256 -hmac "$(cat /home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin)" -binary | xxd -p -c 256)
 
 curl -X 'POST' \
+  --cacert /etc/nginx/ssl/self-signed-wlanpi.cert \
   -H "X-Request-Signature: $signature" \
-  'localhost:31415/api/v1/auth/token' \
+  'https://127.0.0.1:31415/api/v1/auth/token' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{"device_id": "testing"}'
@@ -153,7 +156,7 @@ The `./install/usr/bin/lhapitest.sh` script demonstrates localhost API interacti
 ./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}'
 ./install/usr/bin/lhapitest -e /system/device/model
 
-# Custom port (8000)
+# Dev server (loopback HTTP, no TLS — not for production)
 ./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}' -p 8000
 ./install/usr/bin/lhapitest -e /system/device/model -p 8000
 ```

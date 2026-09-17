@@ -5,6 +5,7 @@
 PORT=31415
 BASE_URL="/api/v1"
 SECRETS_PATH="/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
+CACERT="/etc/nginx/ssl/self-signed-wlanpi.cert"
 METHOD="GET"
 ENDPOINT=""
 QUERY=""
@@ -84,6 +85,7 @@ api_call() {
     # Construct curl command
     local curl_cmd=(
         curl -s -X "$method"
+        --cacert "$CACERT"
         -H "accept: application/json"
     )
     
@@ -106,7 +108,7 @@ api_call() {
     fi
     
     # Construct full URL
-    local full_url="http://localhost:$port$BASE_URL$endpoint"
+    local full_url="https://127.0.0.1:$port$BASE_URL$endpoint"
     curl_cmd+=("$full_url")
     
     # Execute the curl command and pretty print with jq
@@ -127,7 +129,7 @@ usage() {
     echo "  -h, --help         Show this help message"
     echo ""
     echo "  Get model:              $0 -e /system/device/model"
-    echo "  Get model (:8000):      $0 -e /system/device/model -p 8000"
+    echo "  Get model (dev):        $0 -e /system/device/model -p 8000  # loopback HTTP only, no TLS"
     echo ""
     echo "  Get Token:              $0 -X POST -e /auth/token -P '{\"device_id\": \"1\"}'"
     exit 1

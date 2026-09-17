@@ -14,7 +14,7 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 
 | Concept | Detail |
 |---------|--------|
-| Base URL | `http://<wlanpi-host>:8000/api/v1` (adjust port if proxied) |
+| Base URL | Production: `https://<wlanpi-host>:31415/api/v1` · Dev loopback: `http://127.0.0.1:8000/api/v1` |
 | Auth | Bearer JWT for remote clients; HMAC for localhost services |
 | JSON | Many fields are **camelCase** on the wire (`selectedAdapter`, `downloadSpeed`) |
 | Device mode | `GET /system/device/info` → `mode` (`classic`, `hotspot`, …) |
@@ -30,6 +30,41 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 | Date/time | [P0-system-datetime-api.md](./P0-system-datetime-api.md) |
 | Reg domain | [P0-system-reg-domain-api.md](./P0-system-reg-domain-api.md) |
 | Deprecated routes | [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md) |
+
+---
+
+## TLS and certificate trust
+
+The production API is HTTPS-only on port 31415 via nginx. There is no cleartext
+fallback. Direct development runs on `http://127.0.0.1:8000` (loopback only)
+and is not a substitute for the packaged API.
+
+**Self-signed certificate.** The device certificate at
+`/etc/nginx/ssl/self-signed-wlanpi.cert` is its own CA. Every client must pin
+this file; it is both the leaf certificate and the trust anchor.
+
+On each connection the client checks three things: (1) the presented certificate
+matches the pinned file, (2) the connection target appears in the SANs
+(`localhost`, `wlanpi.local`, `127.0.0.1`, `198.18.42.1`), and (3) the current
+date is inside the validity window. Any failure kills the connection before API
+data flows.
+
+**Per-client setup:**
+
+| Client | Configuration |
+|--------|---------------|
+| Python Requests | `verify="/etc/nginx/ssl/self-signed-wlanpi.cert"` |
+| curl | `--cacert /etc/nginx/ssl/self-signed-wlanpi.cert` |
+| HTTPX | explicit `ssl_context` or `SSL_CERT_FILE` environment variable |
+| Firefox on device | already imported by `wlanpi-firefox-setup` — no action needed |
+
+Never use `verify=False`, `curl -k`, or an automatic HTTP fallback in
+production.
+
+**Remote clients** must import the certificate once before connecting. A
+hostname or IP outside the four SANs produces a hostname mismatch error. A
+client that has not imported the certificate receives an untrusted error and
+cannot proceed without bypassing verification — which authenticates nothing.
 
 ---
 
@@ -65,7 +100,31 @@ GET /api/v1/system/device/info
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
-**401** — missing or expired token. Re-issue via `POST /auth/token`.
+Token lifetime depends on the boot in which Core issued it:
+
+| Scenario | Result |
+|---|---|
+| Same boot, including a wall-clock correction | Valid until its monotonic lifetime ends |
+| Previous boot, restored clock is within the signed `iat` to `exp` window | Valid |
+| Previous boot, restored clock is more than 30 seconds behind `iat` | `503 AUTH_CLOCK_NOT_SET` |
+| At or after monotonic expiry on the same boot, or `exp` after reboot | `401` |
+
+The clock error has one exact body:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"error":"AUTH_CLOCK_NOT_SET","message":"NTP needs set; cannot proceed"}
+```
+
+When you receive this error, keep the token and retry it after an
+operator-controlled time synchronization. Do not treat every 503 as a clock
+error, and do not retry automatically. The unchanged token is evaluated normally
+after the clock catches up.
+
+**401** means the token is missing, malformed, revoked, or expired. Re-issue via
+`POST /auth/token` when appropriate.
 
 ### 1.3 Revoke
 
@@ -369,10 +428,10 @@ Live Wi-Fi capture: send JSON **text** commands, receive JSON **events** and
 binary **pcapng** frames. One authenticated connection owns a capture; other
 authenticated connections can subscribe to it read-only.
 
-> Through nginx the URL is `wss://<host>/api/v1/streaming/capture` on the TLS
-> front-end, or `ws://<host>:31415/...` on the plain port. Tokens go in the
-> first message, **never** in the URL (query strings are logged; a `?token=`
-> connection is refused with close code 4401).
+> The production URL is
+> `wss://<host>:31415/api/v1/streaming/capture`. Tokens go in the first message,
+> **never** in the URL (query strings are logged; a `?token=` connection is
+> refused with close code 4401).
 
 ### 11.1 Authenticate (first message, required)
 
@@ -401,7 +460,7 @@ An invalid/expired token, a non-auth first message, or a timeout closes 4401.
 `width` ∈ {20,40,80,160}; `dwell_time` 50–60000 ms. Interface names are the
 monitor VIFs (`wlanpiN`); core runs the capture in whatever namespace the
 adapter lives in. `start` replies `CAPTURE_STARTED` with a `session_id`
-(`cap_xxxx`), the `interfaces`, the `namespace`, and the running `config`.
+(`cap_xxxx`), the `interfaces`, the `namespace`, and the requested `config`.
 Then binary pcapng frames stream until `{ "command": "stop" }`, the socket
 closes, or the capture ends (`CAPTURE_ENDED`). Only the owning connection can
 `configure`/`stop`.
@@ -427,6 +486,7 @@ per interface) and:
 you are receiving), then the same binary pcapng stream arrives. A subscriber
 cannot control the capture; `{ "command": "unsubscribe" }` detaches. When the
 owner stops or disconnects, subscribers get `CAPTURE_STOPPED`/`CAPTURE_ENDED`.
+A subscriber that cannot keep up with the stream is closed with code 1013.
 
 ### 11.4 Other commands & events
 
@@ -467,7 +527,10 @@ Check status before start; stop before starting again.
 ## MCP / AI tool authoring notes
 
 1. **Load schema:** fetch `/api/v1/openapi.json` or use committed `docs/openapi.json` from `scripts/export_openapi.py`.
-2. **Always authenticate first** — tool: `auth_token_issue` → store bearer for subsequent tools.
+2. **Configure TLS** — set `WLANPI_CORE_URL=https://localhost:31415` and
+   `WLANPI_CORE_CA=/etc/nginx/ssl/self-signed-wlanpi.cert` before connecting.
+   Pass the CA file explicitly to the HTTP client; never disable verification.
+3. **Always authenticate first** — tool: `auth_token_issue` → store bearer for subsequent tools.
 3. **Never call deprecated paths** — use [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md).
 4. **Mode-gated tools** — read `device_info` before hotspot tools; return user-facing message on 409.
 5. **Scan tool** — handle four outcomes: networks, needsSelection, `NO_SCAN_ADAPTER`, `SCAN_IN_PROGRESS` (see Lesson 4).

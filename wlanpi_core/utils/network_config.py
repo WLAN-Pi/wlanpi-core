@@ -3,20 +3,24 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
-from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
-from wlanpi_core.schemas.network.network import (
-    NetConfig,
-    NetConfigUpdate,
-    NamespaceConfig,
-    RootConfig,
-    NetSecurity,
-    SecurityTypes,
-    NetworkModeEnum,
+from wlanpi_core.models.network_config_errors import (
+    ConfigActiveError,
+    ConfigMalformedError,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.schemas.network.network import (
+    NamespaceConfig,
+    NetConfig,
+    NetConfigUpdate,
+    NetSecurity,
+    NetworkModeEnum,
+    RootConfig,
+    SecurityTypes,
+)
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.validation import validate_config_id
@@ -48,7 +52,7 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
                 iface_display_name="wlan0",
                 phy="phy0",
                 interface="wlan0",
-                security = NetSecurity(
+                security=NetSecurity(
                     ssid="wlan0",
                     security=SecurityTypes.wpa2,
                 ),
@@ -62,14 +66,14 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
                 interface="wlan1",
                 default_route=True,
                 autostart_app=None,
-            )
+            ),
         ],
     )
 
 
-def parse_iw_dev_output(output: str) -> dict:
+def parse_iw_dev_output(output: str) -> dict[str, Any]:
     """Parse iw dev output into dict"""
-    interfaces = {}
+    interfaces: dict[str, Any] = {}
     current_iface = None
     skip_table_block = False
 
@@ -111,11 +115,13 @@ def parse_iw_dev_output(output: str) -> dict:
 
     return interfaces
 
+
 def interfaces_in_root(cfg_id: str) -> list[str]:
     cfg = get_config(cfg_id)
-    
+
     root = cfg.roots or []
     return [r.interface for r in root]
+
 
 def list_configs() -> dict[str, bool]:
     """List all configuration files in the CONFIG_DIR directory."""
@@ -125,7 +131,7 @@ def list_configs() -> dict[str, bool]:
     for cfg_file in cfg_dir.glob("*.json"):
         cfg_stem = cfg_file.stem
         annotation = None
-        
+
         try:
             file_content = cfg_file.read_text().strip()
             if not file_content:
@@ -135,32 +141,36 @@ def list_configs() -> dict[str, bool]:
                 data = json.loads(file_content)
                 # Validate that it's a valid NetConfig structure (at least has 'id')
                 if not isinstance(data, dict) or "id" not in data:
-                    log.warning(f"Configuration file {cfg_file.name} has invalid structure.")
+                    log.warning(
+                        f"Configuration file {cfg_file.name} has invalid structure."
+                    )
                     annotation = "(malformed)"
         except json.JSONDecodeError as e:
-            log.warning(f"Configuration file {cfg_file.name} contains malformed JSON: {e}.")
+            log.warning(
+                f"Configuration file {cfg_file.name} contains malformed JSON: {e}."
+            )
             annotation = "(malformed)"
         except Exception as e:
             log.warning(f"Error reading configuration file {cfg_file.name}: {e}.")
             annotation = "(malformed)"
-        
+
         # Annotate the key name if there's an issue
         key = f"{cfg_stem} {annotation}" if annotation else cfg_stem
-        
+
         # Check if this config is active (using original stem name for comparison)
         is_active = active_id == cfg_stem
         configs[key] = is_active
-    
+
     return configs
 
 
-def status():
+def status() -> dict[str, Any]:
     namespaces_output = run_command(["sudo", "ip", "netns", "list"])
     namespaces = []
     for line in namespaces_output.stdout.splitlines():
         namespaces.append(line.split(" ")[0])
 
-    final_status = {}
+    final_status: dict[str, Any] = {}
 
     root_info = run_command(["sudo", "iw", "dev"])
     root_status = parse_iw_dev_output(root_info.stdout)
@@ -201,31 +211,30 @@ def get_config(cfg_id: str) -> NetConfig:
             path.write_text(default_config.model_dump_json(indent=4))
             return default_config
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
-    
+
     try:
         file_content = path.read_text().strip()
         if not file_content:
             log.error(f"Configuration file {cfg_id}.json is empty.")
             raise ConfigMalformedError(
                 f"Configuration file {cfg_id}.json is empty or contains only whitespace.",
-                cfg_id=cfg_id
+                cfg_id=cfg_id,
             )
-        
+
         data = json.loads(file_content)
         return NetConfig(**data)
     except json.JSONDecodeError as e:
         log.error(f"Configuration file {cfg_id}.json contains malformed JSON: {e}")
         raise ConfigMalformedError(
             f"Configuration file {cfg_id}.json contains malformed JSON: {e}",
-            cfg_id=cfg_id
+            cfg_id=cfg_id,
         )
     except ConfigMalformedError:
         raise
     except Exception as e:
         log.error(f"Failed to parse configuration {cfg_id}: {e}")
         raise ConfigMalformedError(
-            f"Failed to parse configuration {cfg_id}: {e}",
-            cfg_id=cfg_id
+            f"Failed to parse configuration {cfg_id}: {e}", cfg_id=cfg_id
         )
 
 
@@ -285,7 +294,9 @@ def recover_current_config() -> str:
         ) from e
 
 
-def _rollback_activated_configs(activated_configs: list[NamespaceConfig | RootConfig]) -> None:
+def _rollback_activated_configs(
+    activated_configs: list[NamespaceConfig | RootConfig],
+) -> None:
     """Deactivate entries that were applied before a failed multi-adapter activation.
 
     Used for UNACCEPTABLE failures (status=error or raised exceptions). Not used when
@@ -377,7 +388,9 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
     activated_configs: list[NamespaceConfig | RootConfig] = []
     try:
         if override_active:
-            log.info("Override active set: killing all wpa_supplicant processes before activation")
+            log.info(
+                "Override active set: killing all wpa_supplicant processes before activation"
+            )
             ns.kill_all_supplicants()
         outcomes: list[str] = []
         activated_configs.clear()
@@ -387,7 +400,9 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
                 f"Activating namespace {ns_cfg.namespace} for interface {ns_cfg.interface}"
             )
             result = ns.activate_config(ns_cfg)
-            status = getattr(result, "status", "error") if result is not None else "error"
+            status = (
+                getattr(result, "status", "error") if result is not None else "error"
+            )
             outcomes.append(status)
             # Only track as activated if it succeeded (not error, not skipped)
             if status in {"connected", "provisioned"}:
@@ -396,7 +411,9 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
         for root_cfg in cfg.roots or []:
             log.info(f"Activating root config for interface {root_cfg.interface}")
             result = ns.activate_config(root_cfg)
-            status = getattr(result, "status", "error") if result is not None else "error"
+            status = (
+                getattr(result, "status", "error") if result is not None else "error"
+            )
             outcomes.append(status)
             if status in {"connected", "provisioned"}:
                 activated_configs.append(root_cfg)
@@ -404,7 +421,11 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
         # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
         # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
         acceptable_statuses = {"connected", "provisioned"}
-        all_ok = all(status in acceptable_statuses for status in outcomes) if outcomes else True
+        all_ok = (
+            all(status in acceptable_statuses for status in outcomes)
+            if outcomes
+            else True
+        )
 
         if all_ok:
             # Path 1: persist active config (monitors may still be connecting WPA)
@@ -412,7 +433,9 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
             return True
         else:
             # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
-            log.error(f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs")
+            log.error(
+                f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs"
+            )
             _rollback_activated_configs(activated_configs)
             return False
 
@@ -420,7 +443,9 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
         # Path 3: hard failure mid-loop — same rollback as path 2, then propagate
         log.error(f"Failed to activate config {cfg_id}: {ex}")
         if activated_configs:
-            log.error("Rolling back successfully activated configs after activation exception")
+            log.error(
+                "Rolling back successfully activated configs after activation exception"
+            )
             _rollback_activated_configs(activated_configs)
         raise
 

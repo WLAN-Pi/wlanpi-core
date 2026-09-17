@@ -1,13 +1,13 @@
 # Handover: WiFi packet capture over the core WebSocket → wlanpi-mcp
 
 **Audience:** whoever adds packet-capture tools to wlanpi-mcp (and the coding
-agents they drive). **Prereq reading:** the auth plan (`docs/mcp-auth-plan.md`)
-and its Appendix A. **Reference client:** `tools/capture_harness/` in this repo
-implements everything below and is worth reading as a worked example.
+agents they drive). **Prereq reading:** the auth plan in
+[#158](https://github.com/WLAN-Pi/wlanpi-core/pull/158) and its Appendix A.
+**Reference client:** `tools/capture_harness/` in this repo implements
+everything below and is worth reading as a worked example.
 
-This describes a **finished, tested** core capability and how MCP should consume
-it. The core side is done on branch `feature/capture-auth`; nothing here asks
-for core changes.
+This describes the core capability delivered by PR #165 and how MCP should
+consume it.
 
 ---
 
@@ -16,8 +16,8 @@ for core changes.
 A single WebSocket endpoint:
 
 ```
-ws://<host>:31415/api/v1/streaming/capture         (plain, through nginx)
-wss://<host>:31416/api/v1/streaming/capture        (TLS front-end, through nginx)
+wss://<host>:31415/api/v1/streaming/capture        (production, through nginx)
+ws://127.0.0.1:8000/api/v1/streaming/capture       (development server)
 ```
 
 It authenticates per-connection, runs one owned capture per socket, streams
@@ -50,8 +50,11 @@ Interface names must match `wlanpiN` (the monitor-mode interface), not `wlan0`.
 
 ### Server→client messages
 
-- **Binary frames** = pcapng bytes (multiplexed if multiple interfaces). These
-  arrive in unaligned chunks; buffer and parse pcapng blocks incrementally.
+- **Binary frames** = pcapng bytes (multiplexed if multiple interfaces). Owner
+  frames may contain unaligned chunks; subscribers receive complete blocks
+  after a replayed section/interface header. Parse the stream incrementally.
+- A subscriber that cannot keep up is detached and closed with code **1013**;
+  the owner capture continues.
 - **Text events** = `{"type","event","code","data"}`. Key codes:
   `AUTH_OK` (`data.did`), `CAPTURE_STARTED` (`data.session_id`,
   `data.interfaces`), `CHANNEL_SET` / `CHANNEL_SET_FAILED` (hop status; failure
@@ -184,10 +187,8 @@ auth plan:
 - The user's JWT is issued by core (`getjwt` for Prague; env/keychain on the
   client, never pasted into `mcp.json`). MCP reads it the same way it reads the
   token for its REST calls today.
-- After core issue #139 (credential-based dispatch, on branch
-  `feature/credential-auth-dispatch`), MCP presents a plain Bearer to core over
-  localhost with no `X-Wlanpi-Client` header. The capture WebSocket is on the
-  same core; use the same token.
+- Core's credential-based auth dispatch lets an on-device client obtain a JWT
+  through `POST /api/v1/auth/token`. Use the same token for REST and capture.
 - Send the token **in the first WebSocket message only**. Never put it in the
   URL query string — core refuses `?token=` (it would be logged) and closes
   4401.
@@ -221,19 +222,14 @@ tools use the same user JWT flow as the rest of MCP.
 
 ## 6. TLS / transport
 
-The capture WebSocket is reachable two ways through nginx, both proxying the
-`Upgrade`/`Connection` headers with unbuffered, long-lived streaming:
+Production uses
+`wss://<host>:31415/api/v1/streaming/capture`. nginx proxies the
+`Upgrade`/`Connection` headers with unbuffered, long-lived streaming. Clients
+must trust `/etc/nginx/ssl/self-signed-wlanpi.cert` and connect using a name or
+address in its SAN (`localhost`, `wlanpi.local`, `127.0.0.1`, or `198.18.42.1`).
 
-- **Plain** `ws://<host>:31415/api/v1/streaming/capture` — the default core
-  port; the right choice for **on-box MCP over loopback**, which needs no TLS.
-- **TLS** `wss://<host>:31416/api/v1/streaming/capture` — via the P3 TLS
-  front-end (feature-flagged, `wlanpi-core-tls enable api`); the right choice
-  for a **remote MCP consumer**. Clients must trust the device's self-signed
-  cert (connect by `wlanpi.local`, or distribute/TOFU the cert — the SAN does
-  not cover the LAN IP).
-
-So: on-box MCP uses loopback `ws://`; remote MCP uses `wss://` with cert trust.
-Both are live once the P6 and P3 branches are on the box.
+The development server remains available directly at
+`ws://127.0.0.1:8000/api/v1/streaming/capture` when you run it explicitly.
 
 ---
 

@@ -5,11 +5,12 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
 from wlanpi_core.core.logging import get_logger
 
+from ..models.command_result import CommandResult
 from ..models.runcommand_error import RunCommandError
 from ..utils.general import run_command_async, terminate_process
 from ..utils.network import get_default_gateways
@@ -18,6 +19,14 @@ from ..utils.speedtest import run_speedtest
 from ..utils.validation import validate_interface_name
 
 log = get_logger(__name__)
+
+
+def _as_dict(result: CommandResult) -> Optional[dict[str, Any]]:
+    """JSON output of a command as a dict, or None on failure/non-dict output."""
+    if not result.success:
+        return None
+    parsed = result.output_from_json()
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _read_dns_servers(path: str = "/etc/resolv.conf") -> list[str]:
@@ -31,7 +40,7 @@ def _read_dns_servers(path: str = "/etc/resolv.conf") -> list[str]:
     return servers
 
 
-async def _cancel_tasks(tasks: list[asyncio.Task]) -> None:
+async def _cancel_tasks(tasks: list[asyncio.Task[Any]]) -> None:
     for task in tasks:
         if not task.done():
             task.cancel()
@@ -39,14 +48,14 @@ async def _cancel_tasks(tasks: list[asyncio.Task]) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def show_reachability(targets: Optional[list[str]] = None):
+async def show_reachability(targets: Optional[list[str]] = None) -> dict[str, Any]:
     """
     Check if default gateway, internet and DNS are reachable and working.
 
     Optionally ping additional ``targets`` (hostnames or IPs) in parallel.
     """
 
-    output = {"results": {}}
+    output: dict[str, Any] = {"results": {}}
 
     # --- Variables ---
     try:
@@ -138,17 +147,17 @@ async def show_reachability(targets: Optional[list[str]] = None):
     finally:
         await _cancel_tasks(all_tasks)
 
-    output["results"]["Ping Google"] = ping_stats_from_jc(
-        ping_google.output_from_json() if ping_google.success else None
-    )["display"]
+    output["results"]["Ping Google"] = ping_stats_from_jc(_as_dict(ping_google))[
+        "display"
+    ]
     output["results"]["Browse Google"] = (
         "OK"
         if browse_google.success and "google.com" in browse_google.stdout
         else "FAIL"
     )
-    output["results"]["Ping Gateway"] = ping_stats_from_jc(
-        ping_gateway.output_from_json() if ping_gateway.success else None
-    )["display"]
+    output["results"]["Ping Gateway"] = ping_stats_from_jc(_as_dict(ping_gateway))[
+        "display"
+    ]
 
     for index, dns_result in enumerate(dns_results, start=1):
         output["results"][f"DNS Server {index} Resolution"] = (
@@ -162,7 +171,7 @@ async def show_reachability(targets: Optional[list[str]] = None):
     return output
 
 
-async def show_speedtest():
+async def show_speedtest() -> dict[str, Any]:
     """Run LibreSpeed CLI speedtest and return parsed results."""
     try:
         return {"results": await run_speedtest()}
@@ -172,11 +181,11 @@ async def show_speedtest():
         return {"error": str(err)}
 
 
-async def show_usb():
+async def show_usb() -> dict[str, Any]:
     """
     Return a list of non-Linux USB interfaces found with the lsusb command
     """
-    interfaces = {}
+    interfaces: dict[str, Any] = {}
 
     try:
         lsusb_output = (
@@ -203,7 +212,7 @@ async def show_usb():
     return interfaces
 
 
-def parse_ufw(output):
+def parse_ufw(output: str) -> dict[str, Any]:
     """
     Parses the output of the UFW file into readable json for the api.
     """
@@ -216,7 +225,7 @@ def parse_ufw(output):
     # Check if there are at least 3 lines (status + headers + at least one rule)
     if len(lines) <= 3:
         # No rules present in the output
-        parsed_rules = []
+        parsed_rules: list[Any] = []
     else:
         rules = lines[3:]
         parsed_rules = []
@@ -243,14 +252,14 @@ def parse_ufw(output):
     return final_output
 
 
-async def show_ufw():
+async def show_ufw() -> dict[str, Any]:
     """
     Return a list ufw ports
     """
     ufw_file = UFW_FILE
-    ufw_info = []
+    ufw_info: Any = []
 
-    response = {}
+    response: dict[str, Any] = {}
 
     # check ufw is available
     if not os.path.isfile(ufw_file):
@@ -277,7 +286,7 @@ async def show_ufw():
     return response
 
 
-_blinker_process: Optional[subprocess.Popen] = None
+_blinker_process: Optional[subprocess.Popen[Any]] = None
 _blinker_lock = threading.Lock()
 _BLINKER_CONTROL_TIMEOUT_SEC = 3
 _BLINKER_TERMINATE_GRACE_SEC = 1
@@ -325,7 +334,7 @@ def _stop_unowned_blinker() -> None:
         raise RuntimeError("Port blinker did not stop after SIGKILL")
 
 
-def start_port_blinker(interface: str = "eth0") -> dict:
+def start_port_blinker(interface: str = "eth0") -> dict[str, Any]:
     """Start the port blinker script (runs until stopped)."""
     global _blinker_process
     interface = validate_interface_name(interface)
@@ -358,7 +367,7 @@ def start_port_blinker(interface: str = "eth0") -> dict:
         return {"active": True, "status": "started", "interface": interface}
 
 
-def stop_port_blinker() -> dict:
+def stop_port_blinker() -> dict[str, Any]:
     """Stop a running port blinker process."""
     global _blinker_process
     with _blinker_lock:
@@ -376,7 +385,7 @@ def stop_port_blinker() -> dict:
         return {"active": False, "status": "stopped" if stopped else "not_running"}
 
 
-def port_blinker_status() -> dict:
+def port_blinker_status() -> dict[str, Any]:
     """Return whether the port blinker script is running."""
     global _blinker_process
     with _blinker_lock:

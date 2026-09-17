@@ -3,9 +3,10 @@ OpenAPI metadata, tag descriptions, and shared response definitions.
 
 Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guide.
 """
+
 from __future__ import annotations
 
-from typing import Union
+from typing import Any, Union
 
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
@@ -21,7 +22,7 @@ OPENAPI_DESCRIPTION = """
 
 HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.
 
-**Base path:** `/api/v1`  
+**Base path:** `/api/v1`
 **Interactive docs:** `/docs` (this page) · **OpenAPI JSON:** `/api/v1/openapi.json`
 
 ## Authentication
@@ -31,7 +32,15 @@ HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, an
 | Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |
 | On-device services (wlanpi-ui) | `X-Request-Signature: …` | HMAC with shared secret |
 
-JWT default lifetime: **7 days**. All documented routes require auth unless noted.
+JWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic
+clock and is unaffected by wall-clock changes. After a reboot, Core evaluates
+the signed `iat` and `exp` claims. If the restored clock is more than 30 seconds
+behind `iat`, Bearer authentication returns
+`503 {"error":"AUTH_CLOCK_NOT_SET","message":"NTP needs set; cannot proceed"}`.
+Retry the unchanged token after time synchronization. Branch on the `error`
+field because unrelated 503 responses are not clock errors.
+
+All documented routes require auth unless noted.
 
 ## Conventions
 
@@ -139,28 +148,28 @@ OPENAPI_TAGS: list[dict[str, str]] = [
 ]
 
 # Shared OpenAPI response entries for route decorators: responses={**RESPONSES.auth, ...}
-RESPONSES_AUTH = {
+RESPONSES_AUTH: dict[int | str, dict[str, Any]] = {
     401: {
         "model": MessageResponse,
         "description": "Missing or invalid Bearer token / HMAC signature",
     },
 }
 
-RESPONSES_MODE_CONFLICT = {
+RESPONSES_MODE_CONFLICT: dict[int | str, dict[str, Any]] = {
     409: {
         "model": MessageResponse,
         "description": "Device mode precondition not met (e.g. not in hotspot mode)",
     },
 }
 
-RESPONSES_GONE = {
+RESPONSES_GONE: dict[int | str, dict[str, Any]] = {
     410: {
         "model": DeprecatedEndpointResponse,
         "description": "Endpoint removed — use the `replacement` path in the body",
     },
 }
 
-RESPONSES_SCAN = {
+RESPONSES_SCAN: dict[int | str, dict[str, Any]] = {
     409: {
         "model": Union[ScanNeedsSelectionResponse, ScanInProgressResponse],
         "description": (
@@ -175,7 +184,7 @@ RESPONSES_SCAN = {
     },
 }
 
-RESPONSES_API_ERROR = {
+RESPONSES_API_ERROR: dict[int | str, dict[str, Any]] = {
     400: {
         "model": ApiErrorResponse,
         "description": "Invalid request (e.g. bad query parameters)",
@@ -186,7 +195,7 @@ RESPONSES_API_ERROR = {
     },
 }
 
-RESPONSES_SERVICE_UNAVAILABLE = {
+RESPONSES_SERVICE_UNAVAILABLE: dict[int | str, dict[str, Any]] = {
     503: {
         "model": MessageResponse,
         "description": "Underlying command or hardware unavailable",

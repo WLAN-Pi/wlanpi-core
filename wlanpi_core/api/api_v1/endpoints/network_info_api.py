@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
@@ -19,7 +20,7 @@ log = get_logger(__name__)
     response_model=network_info.NetworkInfo,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_network_info():
+async def show_network_info() -> Any:
     """
     Returns information about network related stuff.
     """
@@ -42,7 +43,7 @@ async def show_network_info():
     response_model=network_info.PublicIpInfo,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_public_ip6():
+async def show_public_ip6() -> Any:
     """
     Returns public IPv6 address and related details.
     """

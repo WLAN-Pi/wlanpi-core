@@ -22,7 +22,9 @@ T = TypeVar("T")
 _PROCESS_TERMINATE_GRACE_SEC = 1.0
 
 
-def _signal_process_group(proc, sig: signal.Signals) -> None:
+def _signal_process_group(
+    proc: Union[subprocess.Popen[Any], Process], sig: signal.Signals
+) -> None:
     """Signal the isolated process group, falling back to the direct child."""
     pid = getattr(proc, "pid", None)
     if isinstance(pid, int):
@@ -41,7 +43,7 @@ def _signal_process_group(proc, sig: signal.Signals) -> None:
         pass
 
 
-def terminate_process(proc: subprocess.Popen) -> None:
+def terminate_process(proc: subprocess.Popen[Any]) -> None:
     """Terminate, force-kill when needed, and reap a synchronous child group."""
     if proc.poll() is not None:
         return
@@ -72,11 +74,11 @@ async def terminate_process_async(proc: Process) -> None:
 
 
 def run_command(
-    cmd: Union[list, str],
+    cmd: Union[list[str], str],
     input: Optional[str] = None,
     stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+    shell: bool = False,
+    raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
@@ -116,9 +118,7 @@ def run_command(
     if shell:
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
-            cmd: list
-            cmd: str = shlex.join(cmd)
-        cmd: str
+            cmd = shlex.join(cmd)
         logging.getLogger(__name__).warning(
             "Executing a command with shell=True; verify that no "
             "user-controlled input reaches the shell"
@@ -126,9 +126,7 @@ def run_command(
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
-            cmd: str
-            cmd: list[str] = shlex.split(cmd)
-        cmd: list[str]
+            cmd = shlex.split(cmd)
     with subprocess.Popen(
         cmd,
         shell=shell,
@@ -158,11 +156,11 @@ def run_command(
 
 
 async def run_command_async(
-    cmd: Union[list, str],
+    cmd: Union[list[str], str],
     input: Optional[str] = None,
     stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+    shell: bool = False,
+    raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
     """Run a single CLI command with subprocess and returns the output"""
@@ -213,9 +211,7 @@ async def run_command_async(
     if shell:
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
-            cmd: list
-            cmd: str = shlex.join(cmd)
-        cmd: str
+            cmd = shlex.join(cmd)
         logging.getLogger(__name__).warning(
             "Executing a command with shell=True; verify that no "
             "user-controlled input reaches the shell"
@@ -228,13 +224,10 @@ async def run_command_async(
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
         )
-        proc: Process
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
-            cmd: str
-            cmd: list[str] = shlex.split(cmd)
-        cmd: list[str]
+            cmd = shlex.split(cmd)
         proc = await asyncio.subprocess.create_subprocess_exec(
             cmd[0],
             *cmd[1:],
@@ -243,7 +236,6 @@ async def run_command_async(
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
         )
-        proc: Process
 
     try:
         stdout, stderr = await asyncio.wait_for(
@@ -255,8 +247,10 @@ async def run_command_async(
         raise
 
     if raise_on_fail and proc.returncode != 0:
-        raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)
-    return CommandResult(stdout.decode(), stderr.decode(), proc.returncode)
+        raise RunCommandError(
+            error_msg=stderr.decode(), return_code=proc.returncode or 0
+        )
+    return CommandResult(stdout.decode(), stderr.decode(), proc.returncode or 0)
 
 
 def get_model_info() -> dict[str, str]:
@@ -275,7 +269,7 @@ def get_model_info() -> dict[str, str]:
     return model_dict
 
 
-def get_uptime() -> dict[str, str]:
+def get_uptime() -> Union[dict[str, Any], list[Any], int, float, str, None]:
     """Gets the system uptime using jc and the uptime command.
     Returns:
         dictionary of uptime info

@@ -3,9 +3,10 @@
 # stdlib imports
 import asyncio
 import grp
-import json
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any, AsyncIterator, Optional
 
 # third party imports
 from fastapi import FastAPI, Request
@@ -24,39 +25,37 @@ from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.constants import (
     CONFIG_DIR,
+    CREATE_MONITOR_PAIRS_DEFAULT,
+    CREATE_MONITOR_PAIRS_UNINIT,
     CURRENT_CONFIG_FILE,
     MODE_FILE,
     SECRETS_DIR,
     SUPPORTED_MODELS,
-    CREATE_MONITOR_PAIRS_DEFAULT,
-    CREATE_MONITOR_PAIRS_UNINIT,
 )
+from wlanpi_core.core.auth import AUTH_CLOCK_MESSAGE, AuthClockNotSetError
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
-from wlanpi_core.core.token import TokenManager
-from wlanpi_core.services.system_service import get_model
+from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
-from wlanpi_core.utils.network_config import activate_config, get_config, interfaces_in_root, recover_current_config
+from wlanpi_core.services.system_service import get_model
+from wlanpi_core.utils.network_config import (
+    activate_config,
+    get_config,
+    interfaces_in_root,
+    recover_current_config,
+)
 from wlanpi_core.views.api import router as views_router
 
 
-async def _stop_token_purge_task(app: FastAPI) -> None:
-    """Cancel and await the token purge worker before database shutdown."""
-    task = getattr(app.state, "token_purge_task", None)
-    if task is None:
-        return
-
-    app.state.token_purge_task = None
-    if not task.done():
-        task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
+    )
 
 
 class ApplicationHealthManager:
@@ -64,19 +63,19 @@ class ApplicationHealthManager:
     Manager for monitoring and recovering application health
     """
 
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         self.app = app
         self.log = get_logger(__name__)
         self.health_check_interval = 300
-        self._health_check_task = None
+        self._health_check_task: Optional[asyncio.Task[Any]] = None
         self._lock = asyncio.Lock()
 
-    async def start_health_checks(self):
+    async def start_health_checks(self) -> None:
         """Start the health check loop"""
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         self.log.debug("Application health monitoring started")
 
-    async def stop_health_checks(self):
+    async def stop_health_checks(self) -> None:
         """Stop the health check loop"""
         if self._health_check_task and not self._health_check_task.done():
             self._health_check_task.cancel()
@@ -86,7 +85,7 @@ class ApplicationHealthManager:
                 pass
         self.log.debug("Application health monitoring stopped")
 
-    async def _health_check_loop(self):
+    async def _health_check_loop(self) -> None:
         """Periodically check application health and recover if needed"""
         while True:
             try:
@@ -97,28 +96,7 @@ class ApplicationHealthManager:
             except Exception as e:
                 self.log.error(f"Health check failed: {e}")
 
-    def _invalidate_caches(self):
-        """Invalidate auth caches after database reset"""
-        self.log.info("Invalidating caches after database reset")
-        try:
-            from wlanpi_core.core.token import SKeyCache
-
-            key_cache = SKeyCache()
-            key_cache.clear()
-            self.log.debug("Signing key cache cleared")
-        except Exception as e:
-            self.log.error(f"Failed to clear signing key cache: {e}")
-
-        try:
-            from wlanpi_core.core.token import TokenCache
-
-            token_cache = TokenCache()
-            token_cache.clear()
-            self.log.debug("Token cache cleared")
-        except Exception as e:
-            self.log.error(f"Failed to clear token cache: {e}")
-
-    async def _check_application_health(self):
+    async def _check_application_health(self) -> None:
         """Check health of all application components"""
         async with self._lock:
             if (
@@ -160,8 +138,6 @@ class ApplicationHealthManager:
                                 f"Database schema error: {schema_error}, recreating tables"
                             )
                             try:
-                                self._invalidate_caches()
-
                                 if hasattr(self.app.state, "db_manager"):
                                     try:
                                         await self.app.state.db_manager.cleanup()
@@ -224,18 +200,32 @@ class ApplicationHealthManager:
                         self.log.error(f"Failed to recover token manager: {e}")
 
 
+class CriticalInitializationError(RuntimeError):
+    """Raised when a critical component fails to initialize.
+
+    Critical init failures must abort the ASGI lifespan ("fully initialized or
+    it doesn't start") so gunicorn/uvicorn report a failed startup and systemd
+    can detect it and apply its restart policy, rather than the service coming
+    up half-initialized and serving broken auth-protected routes.
+    """
+
+
 class InitializationManager:
     """
     Manager for application initialization with retry mechanisms
     """
 
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         self.app = app
         self.max_retries = 3
+        # Base delay (seconds) for the security-init retry backoff. Without this
+        # attribute the retry path raised AttributeError before it could retry,
+        # defeating the whole retry loop on the very first failure.
+        self.initial_retry_delay = 2.0
         self.log = get_logger(__name__)
         self.initialized = False
 
-    async def check_system_readiness(self):
+    async def check_system_readiness(self) -> bool:
         """Check if the system is ready for application initialization"""
         try:
             wlanpi_gid = grp.getgrnam("wlanpi").gr_gid
@@ -255,7 +245,9 @@ class InitializationManager:
                 self.log.info(f"Creating parent directory {parent_dir}")
                 try:
                     parent_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-                    self.log.debug(f"Successfully created parent directory {parent_dir}")
+                    self.log.debug(
+                        f"Successfully created parent directory {parent_dir}"
+                    )
                 except PermissionError as e:
                     self.log.error(
                         f"FATAL: Permission denied creating {parent_dir}. "
@@ -287,7 +279,9 @@ class InitializationManager:
                 self.log.info(f"Creating parent directory {parent_dir}")
                 try:
                     parent_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-                    self.log.debug(f"Successfully created parent directory {parent_dir}")
+                    self.log.debug(
+                        f"Successfully created parent directory {parent_dir}"
+                    )
                 except PermissionError as e:
                     self.log.error(
                         f"FATAL: Permission denied creating {parent_dir}. "
@@ -336,20 +330,28 @@ class InitializationManager:
                 mode_content = mode_file.read_text().strip()
                 is_classic = mode_content == "classic"
                 if not is_classic:
-                    self.log.info(f"WLAN Pi mode is '{mode_content}', not 'classic'. Skipping namespace operations.")
+                    self.log.info(
+                        f"WLAN Pi mode is '{mode_content}', not 'classic'. Skipping namespace operations."
+                    )
                 return is_classic
             else:
-                self.log.warning(f"Mode file {MODE_FILE} does not exist. Skipping namespace operations.")
+                self.log.warning(
+                    f"Mode file {MODE_FILE} does not exist. Skipping namespace operations."
+                )
                 return False
         except Exception as e:
-            self.log.warning(f"Failed to read mode file {MODE_FILE}: {e}. Skipping namespace operations.")
+            self.log.warning(
+                f"Failed to read mode file {MODE_FILE}: {e}. Skipping namespace operations."
+            )
             return False
 
-    async def _initialize_network_namespaces(self):
+    async def _initialize_network_namespaces(self) -> None:
         """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
         # Only proceed if in classic mode
         if not self._is_classic_mode():
-            self.log.info("Exiting network namespace initialization (not in classic mode)")
+            self.log.info(
+                "Exiting network namespace initialization (not in classic mode)"
+            )
             return
 
         try:
@@ -357,7 +359,9 @@ class InitializationManager:
                 # recover_current_config writes default on malformed current.txt before re-raising
                 current_config = recover_current_config()
             except ConfigMalformedError as cme:
-                self.log.error(f"Current configuration is malformed: {cme.message}. Using default.")
+                self.log.error(
+                    f"Current configuration is malformed: {cme.message}. Using default."
+                )
                 current_config = "default"
             except FileNotFoundError:
                 self.log.warning("No current network configuration found")
@@ -365,24 +369,34 @@ class InitializationManager:
             except Exception as e:
                 self.log.error(f"Unexpected error getting current config: {e}")
                 return  # Don't proceed with namespace setup if we can't get config
-            
+
             if current_config == "default" or not current_config:
                 try:
                     success = activate_config("default", override_active=True)
                     if not success:
-                        self.log.warning(f"Failed to activate default config (non-critical)")
+                        self.log.warning(
+                            f"Failed to activate default config (non-critical)"
+                        )
                     else:
                         self.log.info(f"Default config activated successfully")
                 except Exception as e:
-                    self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
-                    
+                    self.log.error(
+                        f"Error activating default config: {e} (non-critical, continuing)"
+                    )
+
                 if CREATE_MONITOR_PAIRS_DEFAULT:
                     try:
-                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                        system_initialized = await self._initialize_system_manager(
+                            "wlanpi", exclusions=[]
+                        )
                         if not system_initialized:
-                            self.log.warning("System manager initialization failed (non-critical)")
+                            self.log.warning(
+                                "System manager initialization failed (non-critical)"
+                            )
                     except Exception as e:
-                        self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                        self.log.error(
+                            f"Error initializing system manager: {e} (non-critical, continuing)"
+                        )
             else:
                 model = get_model()
                 if model not in SUPPORTED_MODELS:
@@ -392,19 +406,29 @@ class InitializationManager:
                     try:
                         success = activate_config("default", override_active=True)
                         if not success:
-                            self.log.warning(f"Failed to activate default config (non-critical)")
+                            self.log.warning(
+                                f"Failed to activate default config (non-critical)"
+                            )
                         else:
                             self.log.info(f"Default config activated successfully")
                     except Exception as e:
-                        self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
-                                                
+                        self.log.error(
+                            f"Error activating default config: {e} (non-critical, continuing)"
+                        )
+
                     if CREATE_MONITOR_PAIRS_DEFAULT:
                         try:
-                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            system_initialized = await self._initialize_system_manager(
+                                "wlanpi", exclusions=[]
+                            )
                             if not system_initialized:
-                                self.log.warning("System manager initialization failed (non-critical)")
+                                self.log.warning(
+                                    "System manager initialization failed (non-critical)"
+                                )
                         except Exception as e:
-                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                            self.log.error(
+                                f"Error initializing system manager: {e} (non-critical, continuing)"
+                            )
                 else:
                     self.log.info(
                         f"Activating current network configuration: {current_config}"
@@ -412,29 +436,50 @@ class InitializationManager:
                     try:
                         success = activate_config(current_config, override_active=True)
                         if not success:
-                            self.log.warning(f"Failed to activate configuration {current_config} (non-critical)")
+                            self.log.warning(
+                                f"Failed to activate configuration {current_config} (non-critical)"
+                            )
                         else:
-                            self.log.info(f"Config {current_config} activated successfully")
+                            self.log.info(
+                                f"Config {current_config} activated successfully"
+                            )
                     except Exception as e:
-                        self.log.error(f"Error activating config {current_config}: {e} (non-critical, continuing)")
-                    
+                        self.log.error(
+                            f"Error activating config {current_config}: {e} (non-critical, continuing)"
+                        )
+
                     if CREATE_MONITOR_PAIRS_UNINIT:
                         try:
-                            exclusions = interfaces_in_root(current_config)
-                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            interfaces_in_root(current_config)
+                            system_initialized = await self._initialize_system_manager(
+                                "wlanpi", exclusions=[]
+                            )
                             if not system_initialized:
-                                self.log.warning("System manager initialization failed (non-critical)")
+                                self.log.warning(
+                                    "System manager initialization failed (non-critical)"
+                                )
                         except Exception as e:
-                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                            self.log.error(
+                                f"Error initializing system manager: {e} (non-critical, continuing)"
+                            )
 
         except Exception as e:
-            self.log.error(f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)", exc_info=True)
+            self.log.error(
+                f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)",
+                exc_info=True,
+            )
 
-    async def initialize_components(self):
-        """Initialize all application components with proper sequencing and retry"""
+    async def initialize_components(self) -> bool:
+        """Initialize all application components with proper sequencing and retry.
+
+        Critical components (system readiness, security, database) must succeed
+        or this raises CriticalInitializationError to fail the ASGI lifespan.
+        Non-critical components (token manager) degrade to limited functionality
+        without aborting startup.
+        """
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
-            return False
+            raise CriticalInitializationError("System not ready for initialization")
 
         # Initialize network namespaces (non-blocking - failures don't stop core)
         await self._initialize_network_namespaces()
@@ -442,29 +487,28 @@ class InitializationManager:
         security_initialized = await self._initialize_security_manager()
         if not security_initialized:
             self.log.error("Security initialization failed - cannot proceed")
-            return False
+            raise CriticalInitializationError("Security manager initialization failed")
 
         database_initialized = await self._initialize_database()
         if not database_initialized:
             self.log.error(
                 "Database initialization failed - cannot proceed with token management"
             )
-            self.initialized = True
-            return True
+            raise CriticalInitializationError("Database initialization failed")
 
         token_initialized = await self._initialize_token_manager()
         if not token_initialized:
+            # Token manager is not critical: the service can start with reduced
+            # functionality. Do not abort the lifespan for this.
             self.log.warning(
                 "Token manager initialization failed - some functionality will be limited"
             )
-            self.initialized = True
-            return True
 
         self.initialized = True
         self.log.info("All components initialized ...")
         return True
 
-    async def _initialize_security_manager(self):
+    async def _initialize_security_manager(self) -> bool:
         """Initialize the security manager with retry"""
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -491,7 +535,7 @@ class InitializationManager:
                 return False
         return False
 
-    async def _initialize_database(self):
+    async def _initialize_database(self) -> bool:
         """Initialize the database manager with retry"""
         try:
             self.app.state.db_manager = DatabaseManager()
@@ -506,24 +550,26 @@ class InitializationManager:
             self.log.error(f"Unexpected error creating database manager: {e}")
             return False
 
-    async def _initialize_token_manager(self):
+    async def _initialize_token_manager(self) -> bool:
         """Initialize the token manager"""
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
+            # ponytail: retain token rows; add cleanup only if table growth is
+            # measurable on deployed devices.
             self.log.debug("Token manager initialized successfully")
-            self.app.state.token_purge_task = asyncio.create_task(
-                self.app.state.token_manager.purge_expired_tokens(),
-                name="token-purge",
-            )
             return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
 
-    async def _initialize_system_manager(self, iface_name: str, exclusions: list[str] = []):
+    async def _initialize_system_manager(
+        self, iface_name: str, exclusions: list[str] = []
+    ) -> bool:
         """Initialize the system manager"""
         try:
-            self.app.state.system_manager = SystemManager(iface_name, exclusions=exclusions)
+            self.app.state.system_manager = SystemManager(
+                iface_name, exclusions=exclusions
+            )
             self.log.debug("System manager initialized succcessfully")
             return True
         except Exception as e:
@@ -531,12 +577,47 @@ class InitializationManager:
             return False
 
 
-def create_app(debug: bool = False):
+def create_app(debug: bool = False) -> FastAPI:
     configure_logging(debug_mode=debug)
     log = get_logger(__name__)
 
     if debug:
         log.debug("Starting application in DEBUG mode")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        log.info("Starting application initialization")
+        app.state.initialization_manager = InitializationManager(app)
+        app.state.health_manager = ApplicationHealthManager(app)
+
+        # A critical-init failure raises CriticalInitializationError, which is
+        # allowed to propagate out of the lifespan so the ASGI startup fails.
+        # gunicorn/uvicorn then report a failed startup and systemd's restart
+        # policy takes over, rather than the service coming up half-initialized
+        # and serving broken auth-protected routes.
+        await app.state.initialization_manager.initialize_components()
+
+        log.info("Application successfully initialized")
+        await app.state.health_manager.start_health_checks()
+
+        yield
+
+        log.info("Application shutting down")
+        if hasattr(app.state, "health_manager"):
+            await app.state.health_manager.stop_health_checks()
+
+        from wlanpi_core.api.api_v1.endpoints.streaming_api import (
+            manager as capture_manager,
+        )
+
+        await capture_manager.shutdown_all()
+
+        if hasattr(app.state, "db_manager"):
+            try:
+                await app.state.db_manager.cleanup()
+                log.info("Database connections cleaned up")
+            except Exception as e:
+                log.error(f"Error cleaning up database connections: {e}")
 
     app = FastAPI(
         title=settings.PROJECT_NAME,
@@ -548,9 +629,10 @@ def create_app(debug: bool = False):
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         openapi_tags=settings.TAGS_METADATA,
         debug=debug,
+        lifespan=lifespan,
     )
 
-    def custom_openapi():
+    def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
         schema = get_openapi(
@@ -591,7 +673,7 @@ def create_app(debug: bool = False):
                 "summary": "Packet capture WebSocket",
                 "description": (
                     "Upgrade to WebSocket for live Wi-Fi capture. First message must "
-                    "authenticate: {\"command\": \"auth\", \"token\": <core JWT>} "
+                    'authenticate: `{"command": "auth", "token": "<JWT>"}` '
                     "(no tokens in the URL; failure closes with code 4401). Send "
                     "JSON text commands (`get_supported_frequencies`, `configure`, "
                     "`start`, `stop`, `subscribe`, `unsubscribe`, `list_sessions`); "
@@ -610,17 +692,23 @@ def create_app(debug: bool = False):
         app.openapi_schema = schema
         return app.openapi_schema
 
-    app.openapi = custom_openapi
+    app.openapi = custom_openapi  # type: ignore[method-assign]
 
     @app.exception_handler(DatabaseError)
-    async def database_error_handler(request: Request, exc: DatabaseError):
+    async def database_error_handler(
+        request: Request, exc: DatabaseError
+    ) -> JSONResponse:
         log.error(f"Database error: {exc}", exc_info=True)
         return JSONResponse(
             status_code=503, content={"detail": "Service temporarily unavailable"}
         )
 
+    app.add_exception_handler(AuthClockNotSetError, auth_clock_not_set_handler)
+
     @app.exception_handler(SecurityInitError)
-    async def security_error_handler(request: Request, exc: SecurityInitError):
+    async def security_error_handler(
+        request: Request, exc: SecurityInitError
+    ) -> JSONResponse:
         log.error(f"Security initialization error: {exc}", exc_info=True)
         return JSONResponse(
             status_code=503, content={"detail": "Security system unavailable"}
@@ -629,7 +717,9 @@ def create_app(debug: bool = False):
     # setup slowapi
     limiter = Limiter(key_func=get_remote_address, default_limits=["90/minute"])
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(
+        RateLimitExceeded, _rate_limit_exceeded_handler  # type: ignore[arg-type]
+    )
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ActivityMiddleware)
 
@@ -640,7 +730,7 @@ def create_app(debug: bool = False):
             endpoints.append(
                 {
                     "path": route.path,
-                    "methods": "".join(list(route.methods)),
+                    "methods": "".join(list(route.methods or [])),
                     "description": route.description.split("\n")[0],
                 }
             )
@@ -649,44 +739,8 @@ def create_app(debug: bool = False):
 
     app.mount(
         "/static",
-        StaticFiles(directory=settings.Config.base_dir / "static"),
+        StaticFiles(directory=settings.base_dir / "static"),
         name="static",
     )
-
-    @app.on_event("startup")
-    async def startup():
-        log.info("Starting application initialization")
-        app.state.initialization_manager = InitializationManager(app)
-        app.state.health_manager = ApplicationHealthManager(app)
-
-        initialization_success = (
-            await app.state.initialization_manager.initialize_components()
-        )
-
-        if initialization_success:
-            log.info("Application successfully initialized")
-            await app.state.health_manager.start_health_checks()
-        else:
-            log.error("Application initialization failed")
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        log.info("Application shutting down")
-        if hasattr(app.state, "health_manager"):
-            await app.state.health_manager.stop_health_checks()
-
-        from wlanpi_core.api.api_v1.endpoints.streaming_api import (
-            manager as capture_manager,
-        )
-
-        await capture_manager.shutdown_all()
-        await _stop_token_purge_task(app)
-
-        if hasattr(app.state, "db_manager"):
-            try:
-                await app.state.db_manager.cleanup()
-                log.info("Database connections cleaned up")
-            except Exception as e:
-                log.error(f"Error cleaning up database connections: {e}")
 
     return app

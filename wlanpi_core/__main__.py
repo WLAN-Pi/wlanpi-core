@@ -18,6 +18,7 @@ import argparse
 import os
 import platform
 import sys
+from typing import Any
 
 # third party imports
 import uvicorn
@@ -26,7 +27,7 @@ import uvicorn
 from .__version__ import __version__
 
 
-def port(port) -> int:
+def port(port: Any) -> int:
     """Check if the provided port is valid"""
     try:
         # make sure port is an int
@@ -94,7 +95,7 @@ def main() -> None:
     uvicorn.run(
         "wlanpi_core.asgi:app",
         port=args.port,
-        host="0.0.0.0",
+        host="127.0.0.1",
         reload=args.livereload,
     )
 
@@ -107,16 +108,16 @@ def init() -> None:
             "{0} only works on Linux... exiting...".format(os.path.basename(__file__))
         )
 
-    # hard set no support for python < v3.9
-    if sys.version_info < (3, 9):
+    # hard set no support for python < v3.13
+    if sys.version_info < (3, 13):
         sys.exit(
-            "{0} requires Python version 3.9 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
+            "{0} requires Python version 3.13 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
                 os.path.basename(__file__), platform.python_version()
             )
         )
 
     if __name__ == "__main__":
-        sys.exit(main())
+        main()
 
 
 init()

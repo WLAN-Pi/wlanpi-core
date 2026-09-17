@@ -8,10 +8,6 @@ from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
-from wlanpi_core.utils import network_config
-from wlanpi_core.utils.general import run_command_async, terminate_process_async
-from wlanpi_core.utils.validation import validate_namespace_name
-from wlanpi_core.wlan.scan import iter_adapters
 from wlanpi_core.streaming.models import (
     CaptureInterfaceConfig,
     CaptureStart,
@@ -19,13 +15,22 @@ from wlanpi_core.streaming.models import (
     validate_capture_interface,
     validate_capture_width,
 )
+from wlanpi_core.utils import network_config
+from wlanpi_core.utils.general import run_command_async, terminate_process_async
+from wlanpi_core.utils.validation import validate_namespace_name
+from wlanpi_core.wlan.scan import iter_adapters
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
+_SUBSCRIBER_SEND_TIMEOUT_SEC = 1.0
+_SUBSCRIBER_QUEUE_BLOCKS = 128
+_SLOW_SUBSCRIBER_CLOSE_CODE = 1013
+_PCAPNG_SECTION_HEADER = b"\x0a\x0d\x0d\x0a"
+_PCAPNG_PACKET_BLOCK_TYPES = {0x00000002, 0x00000003, 0x00000006}
 
 
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.clients: Dict[WebSocket, Dict[str, Any]] = {}
         self.interface_owners: Dict[str, WebSocket] = {}
         # Running captures by session id -> owning WebSocket. Sessions exist
@@ -33,6 +38,7 @@ class ConnectionManager:
         self.sessions: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
         self.clients[websocket] = {
             "configs": {},
             "proc": None,
@@ -45,8 +51,15 @@ class ConnectionManager:
             "namespace": None,
             "subscribers": set(),
             "subscribed_to": None,
+            "session_end": None,
+            "pcapng_buffer": bytearray(),
+            "pcapng_header": bytearray(),
+            "pcapng_endian": None,
+            "pcapng_header_complete": False,
+            "subscription_queue": None,
+            "subscription_task": None,
+            "subscription_closing": False,
         }
-        await websocket.accept()
 
     def authenticate(self, websocket: WebSocket, did: str) -> None:
         """Record the verified principal for this socket. Commands are only
@@ -63,12 +76,12 @@ class ConnectionManager:
         self, websocket: WebSocket, interfaces: list[str]
     ) -> list[str]:
         """Atomically claim capture interfaces for one WebSocket client."""
-        conflicts = sorted(
-            iface
-            for iface in interfaces
-            if (owner := self.interface_owners.get(iface)) is not None
-            and owner is not websocket
-        )
+        conflicts = []
+        for iface in interfaces:
+            owner = self.interface_owners.get(iface)
+            if owner is not None and owner is not websocket:
+                conflicts.append(iface)
+        conflicts = sorted(conflicts)
         if conflicts:
             return conflicts
 
@@ -88,40 +101,161 @@ class ConnectionManager:
                 self.interface_owners.pop(iface, None)
         client["interfaces"] = set()
 
-    def _detach_subscriber(self, websocket: WebSocket) -> None:
+    def _clear_subscription(
+        self, websocket: WebSocket, expected_session: Optional[str] = None
+    ) -> Optional[asyncio.Task[Any]]:
         client = self.clients.get(websocket)
         if not client:
-            return
+            return None
         session_id = client.get("subscribed_to")
+        if expected_session is not None and session_id != expected_session:
+            return None
         client["subscribed_to"] = None
-        if not session_id:
-            return
-        owner_ws = self.sessions.get(session_id)
-        if owner_ws is not None:
-            owner_client = self.clients.get(owner_ws)
-            if owner_client:
-                owner_client["subscribers"].discard(websocket)
+        client["subscription_queue"] = None
+        client["subscription_closing"] = False
+        task = client.get("subscription_task")
+        client["subscription_task"] = None
+        if session_id:
+            owner_ws = self.sessions.get(session_id)
+            if owner_ws is not None:
+                owner_client = self.clients.get(owner_ws)
+                if owner_client:
+                    owner_client["subscribers"].discard(websocket)
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+        return task
 
-    async def _end_session(self, client: Dict[str, Any], code: str, message: str) -> None:
+    async def _detach_subscriber(self, websocket: WebSocket) -> None:
+        task = self._clear_subscription(websocket)
+        if task is None or task is asyncio.current_task():
+            return
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            log.debug("Capture subscription task shutdown failed: %s", exc)
+
+    async def _send_subscription(
+        self,
+        websocket: WebSocket,
+        session_id: str,
+        queue: asyncio.Queue[tuple[str, Any]],
+    ) -> None:
+        try:
+            while True:
+                kind, payload = await queue.get()
+                if kind == "done":
+                    return
+                if kind == "close":
+                    code, reason = payload
+                    await asyncio.wait_for(
+                        websocket.close(code=code, reason=reason),
+                        timeout=_SUBSCRIBER_SEND_TIMEOUT_SEC,
+                    )
+                    return
+                if kind == "event":
+                    send = websocket.send_text(payload)
+                else:
+                    send = websocket.send_bytes(payload)
+                await asyncio.wait_for(
+                    send,
+                    timeout=_SUBSCRIBER_SEND_TIMEOUT_SEC,
+                )
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            try:
+                await asyncio.wait_for(
+                    websocket.close(
+                        code=_SLOW_SUBSCRIBER_CLOSE_CODE,
+                        reason="Capture subscriber cannot keep up.",
+                    ),
+                    timeout=_SUBSCRIBER_SEND_TIMEOUT_SEC,
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+        finally:
+            self._clear_subscription(websocket, session_id)
+
+    @staticmethod
+    def _close_subscription_queue(client: Dict[str, Any]) -> None:
+        queue = client.get("subscription_queue")
+        if queue is None or client.get("subscription_closing"):
+            return
+        client["subscription_closing"] = True
+        while not queue.empty():
+            queue.get_nowait()
+        queue.put_nowait(
+            (
+                "close",
+                (_SLOW_SUBSCRIBER_CLOSE_CODE, "Capture subscriber cannot keep up."),
+            )
+        )
+
+    async def _end_session(
+        self, client: Dict[str, Any], code: str, message: str
+    ) -> None:
         """Unregister a finished capture and notify/detach its subscribers.
         Idempotent: safe to call from both stream teardown and stop paths."""
         session_id = client.get("session_id")
         client["session_id"] = None
         client["session_config"] = None
         client["namespace"] = None
+        client["session_end"] = None
         if session_id:
             self.sessions.pop(session_id, None)
+        client.setdefault("pcapng_buffer", bytearray()).clear()
+        client.setdefault("pcapng_header", bytearray()).clear()
+        client["pcapng_endian"] = None
+        client["pcapng_header_complete"] = False
+
+        notification_targets = []
         for subscriber in list(client.get("subscribers", set())):
             sub_client = self.clients.get(subscriber)
-            if sub_client:
-                sub_client["subscribed_to"] = None
+            if sub_client and sub_client.get("subscribed_to") == session_id:
+                queue = sub_client.get("subscription_queue")
+                if queue is None:
+                    notification_targets.append(subscriber)
+                else:
+                    try:
+                        queue.put_nowait(
+                            (
+                                "event",
+                                self._event_text(
+                                    "status",
+                                    code,
+                                    {"message": message, "session_id": session_id},
+                                ),
+                            )
+                        )
+                        queue.put_nowait(("done", None))
+                    except asyncio.QueueFull:
+                        self._close_subscription_queue(sub_client)
             client["subscribers"].discard(subscriber)
-            await self.send_message_event(subscriber, "status", code, message)
+        if notification_targets:
+            await asyncio.gather(
+                *(
+                    asyncio.wait_for(
+                        self.send_event(
+                            subscriber,
+                            "status",
+                            code,
+                            {"message": message, "session_id": session_id},
+                        ),
+                        timeout=_SUBSCRIBER_SEND_TIMEOUT_SEC,
+                    )
+                    for subscriber in notification_targets
+                ),
+                return_exceptions=True,
+            )
 
-    def _session_descriptor(self, session_id: str, owner_ws: WebSocket) -> dict:
-        """Public description of a running capture: who owns it and the exact
-        config it is running (channels/width/dwell per interface + filter), so
-        a subscriber is never blind to what it is receiving."""
+    def _session_descriptor(
+        self, session_id: str, owner_ws: WebSocket
+    ) -> dict[str, Any]:
+        """Describe a running capture and its requested configuration."""
         owner_client = self.clients.get(owner_ws, {})
         return {
             "session_id": session_id,
@@ -140,31 +274,78 @@ class ConnectionManager:
         client = self.clients.get(websocket)
         if client is None:
             return
-        owner_ws = self.sessions.get(session_id) if session_id else None
-        if owner_ws is None:
+        if not isinstance(session_id, str) or not session_id:
             await self.send_message_event(
-                websocket, "error", "SESSION_NOT_FOUND",
+                websocket,
+                "error",
+                "SESSION_NOT_FOUND",
                 f"No running capture session: {session_id}",
             )
             return
-        if owner_ws is websocket:
+        owner_ws = self.sessions.get(session_id)
+        if owner_ws is None:
             await self.send_message_event(
-                websocket, "error", "SESSION_IS_OWN",
-                "This socket owns that capture; it already receives its stream.",
+                websocket,
+                "error",
+                "SESSION_NOT_FOUND",
+                f"No running capture session: {session_id}",
             )
             return
-        self._detach_subscriber(websocket)
-        owner_client = self.clients[owner_ws]
-        owner_client["subscribers"].add(websocket)
+        if client.get("session_id"):
+            await self.send_message_event(
+                websocket,
+                "error",
+                "SESSION_IS_OWN",
+                "A capture owner cannot subscribe to another capture.",
+            )
+            return
+        await self._detach_subscriber(websocket)
+        owner_ws = self.sessions.get(session_id)
+        if owner_ws is None:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "SESSION_NOT_FOUND",
+                f"No running capture session: {session_id}",
+            )
+            return
+        owner_client = self.clients.get(owner_ws)
+        if owner_client is None:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "SESSION_NOT_FOUND",
+                f"No running capture session: {session_id}",
+            )
+            return
+
+        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(
+            maxsize=_SUBSCRIBER_QUEUE_BLOCKS
+        )
+        queue.put_nowait(
+            (
+                "event",
+                self._event_text(
+                    "status",
+                    "SUBSCRIBED",
+                    self._session_descriptor(session_id, owner_ws),
+                ),
+            )
+        )
+        header = bytes(owner_client.get("pcapng_header", b""))
+        if header:
+            queue.put_nowait(("bytes", header))
         client["subscribed_to"] = session_id
-        await self.send_event(
-            websocket, "status", "SUBSCRIBED",
-            self._session_descriptor(session_id, owner_ws),
+        client["subscription_queue"] = queue
+        client["subscription_closing"] = False
+        owner_client["subscribers"].add(websocket)
+        client["subscription_task"] = asyncio.create_task(
+            self._send_subscription(websocket, session_id, queue)
         )
 
     async def unsubscribe(self, websocket: WebSocket) -> None:
         session_id = (self.clients.get(websocket) or {}).get("subscribed_to")
-        self._detach_subscriber(websocket)
+        await self._detach_subscriber(websocket)
         await self.send_event(
             websocket, "status", "UNSUBSCRIBED", {"session_id": session_id}
         )
@@ -176,17 +357,94 @@ class ConnectionManager:
         ]
         await self.send_event(websocket, "status", "SESSIONS", {"sessions": sessions})
 
+    @staticmethod
+    def _pcapng_blocks(client: Dict[str, Any], chunk: bytes) -> list[bytes]:
+        """Frame dumpcap's arbitrary stdout chunks into complete pcapng blocks."""
+        buffer = client.setdefault("pcapng_buffer", bytearray())
+        buffer.extend(chunk)
+        blocks = []
+
+        while len(buffer) >= 12:
+            if client.get("pcapng_endian") is None:
+                start = buffer.find(_PCAPNG_SECTION_HEADER)
+                if start < 0:
+                    del buffer[:-3]
+                    break
+                if start:
+                    del buffer[:start]
+                if len(buffer) < 12:
+                    break
+
+            if bytes(buffer[:4]) == _PCAPNG_SECTION_HEADER:
+                byte_order_magic = bytes(buffer[8:12])
+                if byte_order_magic == b"\x4d\x3c\x2b\x1a":
+                    client["pcapng_endian"] = "little"
+                elif byte_order_magic == b"\x1a\x2b\x3c\x4d":
+                    client["pcapng_endian"] = "big"
+                else:
+                    del buffer[0]
+                    client["pcapng_endian"] = None
+                    continue
+
+            endian = client["pcapng_endian"]
+            total_length = int.from_bytes(buffer[4:8], endian)
+            if total_length < 12 or total_length % 4:
+                del buffer[0]
+                client["pcapng_endian"] = None
+                continue
+            if len(buffer) < total_length:
+                break
+            if (
+                int.from_bytes(buffer[total_length - 4 : total_length], endian)
+                != total_length
+            ):
+                del buffer[0]
+                client["pcapng_endian"] = None
+                continue
+
+            block = bytes(buffer[:total_length])
+            del buffer[:total_length]
+            block_type = int.from_bytes(block[:4], endian)
+            if block[:4] == _PCAPNG_SECTION_HEADER:
+                client["pcapng_header"] = bytearray()
+                client["pcapng_header_complete"] = False
+            if not client.get("pcapng_header_complete"):
+                if block_type in _PCAPNG_PACKET_BLOCK_TYPES:
+                    client["pcapng_header_complete"] = True
+                else:
+                    client["pcapng_header"].extend(block)
+            blocks.append(block)
+
+        return blocks
+
+    def _queue_subscriber_block(self, client: Dict[str, Any], block: bytes) -> None:
+        session_id = client.get("session_id")
+        for subscriber in list(client.get("subscribers", set())):
+            sub_client = self.clients.get(subscriber)
+            if not sub_client or sub_client.get("subscribed_to") != session_id:
+                client["subscribers"].discard(subscriber)
+                continue
+            queue = sub_client.get("subscription_queue")
+            if sub_client.get("subscription_closing"):
+                client["subscribers"].discard(subscriber)
+                continue
+            if queue is None:
+                self._clear_subscription(subscriber, session_id)
+                continue
+            try:
+                queue.put_nowait(("bytes", block))
+            except asyncio.QueueFull:
+                client["subscribers"].discard(subscriber)
+                self._close_subscription_queue(sub_client)
+
     async def _broadcast_chunk(
         self, owner_ws: WebSocket, client: Dict[str, Any], chunk: bytes
     ) -> None:
-        # Owner send failures propagate and end the capture (as before).
-        # A failing subscriber is dropped without disturbing the capture.
+        # The owner keeps dumpcap's original chunks. Subscribers receive complete
+        # blocks so a replayed section header is followed at a valid boundary.
         await owner_ws.send_bytes(chunk)
-        for subscriber in list(client.get("subscribers", set())):
-            try:
-                await subscriber.send_bytes(chunk)
-            except Exception:
-                self._detach_subscriber(subscriber)
+        for block in self._pcapng_blocks(client, chunk):
+            self._queue_subscriber_block(client, block)
 
     async def _stop_channel_tasks(self, client: Dict[str, Any]) -> None:
         channel_tasks = list(client.get("channel_tasks", {}).values())
@@ -201,14 +459,14 @@ class ConnectionManager:
             except Exception as exc:
                 log.debug("Channel hopping task shutdown failed: %s", exc)
 
-    def configure(self, websocket: WebSocket, iface: str, config: dict) -> None:
+    def configure(self, websocket: WebSocket, iface: str, config: Any) -> None:
         if websocket in self.clients:
             iface = validate_capture_interface(iface)
             validated = CaptureInterfaceConfig.model_validate(config)
             self.clients[websocket]["configs"][iface] = validated.model_dump()
 
     async def disconnect(self, websocket: WebSocket) -> None:
-        self._detach_subscriber(websocket)
+        await self._detach_subscriber(websocket)
         try:
             await self.stop_streaming(websocket)
         except Exception as e:
@@ -216,18 +474,20 @@ class ConnectionManager:
         self.clients.pop(websocket, None)
 
     async def send_event(
-        self, websocket: WebSocket, event_type: str, code: str, data: dict
+        self, websocket: WebSocket, event_type: str, code: str, data: dict[str, Any]
     ) -> None:
         try:
-            await websocket.send_text(
-                json.dumps(
-                    {"type": "event", "event": event_type, "code": code, "data": data}
-                )
-            )
+            await websocket.send_text(self._event_text(event_type, code, data))
         except RuntimeError:
             pass
         except Exception as e:
             log.debug(f"send_event() failed: {e!r}")
+
+    @staticmethod
+    def _event_text(event_type: str, code: str, data: dict[str, Any]) -> str:
+        return json.dumps(
+            {"type": "event", "event": event_type, "code": code, "data": data}
+        )
 
     async def send_message_event(
         self, websocket: WebSocket, event_type: str, code: str, message: str
@@ -246,14 +506,12 @@ class ConnectionManager:
                 a for a in iter_adapters(status) if a["iface"].startswith("wlanpi")
             ]
 
-            freqs_by_iface = {}
+            freqs_by_iface: dict[str, list[int]] = {}
             for adapter in adapters:
                 iface = adapter["iface"]
                 namespace = adapter["namespace"]
                 try:
-                    info = await asyncio.to_thread(
-                        get_interface_info, iface, namespace
-                    )
+                    info = await asyncio.to_thread(get_interface_info, iface, namespace)
                     phy = (info or {}).get("phy")
                     if not phy:
                         freqs_by_iface[iface] = []
@@ -291,7 +549,7 @@ class ConnectionManager:
             )
 
     @staticmethod
-    def _ns_prefix(namespace: Optional[str]) -> list:
+    def _ns_prefix(namespace: Optional[str]) -> list[str]:
         """Command prefix to run in a network namespace. Empty for root.
 
         wlanpi-core runs as root, so `ip netns exec` needs no sudo. The whole
@@ -313,11 +571,11 @@ class ConnectionManager:
         """
         status = await asyncio.to_thread(network_config.status)
         adapters = iter_adapters(status)
-        by_name: Dict[str, list] = {}
+        by_name: Dict[str, list[dict[str, Any]]] = {}
         for a in adapters:
             by_name.setdefault(a["iface"], []).append(a)
 
-        namespaces = set()
+        namespaces: set[Optional[str]] = set()
         for iface in interfaces:
             records = by_name.get(iface)
             if not records:
@@ -334,7 +592,7 @@ class ConnectionManager:
         self,
         websocket: WebSocket,
         interfaces: list[str],
-        pcap_filter: str,
+        pcap_filter: Optional[str],
     ) -> None:
         client = self.clients.get(websocket)
         if not client:
@@ -346,10 +604,19 @@ class ConnectionManager:
             )
             return
 
+        if client.get("subscribed_to"):
+            await self.send_message_event(
+                websocket,
+                "error",
+                "SUBSCRIBER_READ_ONLY",
+                "Unsubscribe before starting a capture.",
+            )
+            return
+
         try:
             start = CaptureStart(
                 interfaces=interfaces,
-                pcap_filter=pcap_filter,
+                pcap_filter=pcap_filter or "",
             )
         except ValueError:
             await self.send_message_event(
@@ -362,9 +629,9 @@ class ConnectionManager:
         interfaces = start.interfaces
         pcap_filter = start.pcap_filter
 
-        if (
-            client["task"] and not client["task"].done()
-        ) or (client["proc"] and client["proc"].returncode is None):
+        if (client["task"] and not client["task"].done()) or (
+            client["proc"] and client["proc"].returncode is None
+        ):
             await self.send_message_event(
                 websocket,
                 "error",
@@ -404,6 +671,11 @@ class ConnectionManager:
             )
             return
         client["namespace"] = namespace
+        client["pcapng_buffer"].clear()
+        client["pcapng_header"].clear()
+        client["pcapng_endian"] = None
+        client["pcapng_header_complete"] = False
+        client["session_end"] = None
 
         for iface in interfaces:
             config = client["configs"].get(iface)
@@ -453,6 +725,11 @@ class ConnectionManager:
 
         async def stream() -> None:
             try:
+                if proc.stdout is None:
+                    await self.send_message_event(
+                        websocket, "status", "CAPTURE_ENDED", "Capture ended."
+                    )
+                    return
                 while True:
                     chunk = await proc.stdout.read(4096)
                     if not chunk:
@@ -474,7 +751,12 @@ class ConnectionManager:
                 await terminate_process_async(proc)
                 await self._stop_channel_tasks(client)
                 self._release_interfaces(websocket)
-                await self._end_session(client, "CAPTURE_ENDED", "Capture ended.")
+                code, message = client.get("session_end") or (
+                    "CAPTURE_ENDED",
+                    "Capture ended.",
+                )
+                client["session_end"] = None
+                await self._end_session(client, code, message)
                 if client.get("proc") is proc:
                     client["proc"] = None
                 if client.get("task") is asyncio.current_task():
@@ -498,8 +780,8 @@ class ConnectionManager:
 
         session_id = f"cap_{secrets.token_hex(4)}"
         client["session_id"] = session_id
-        # Snapshot the exact running config so list_sessions / SUBSCRIBED can
-        # report it to subscribers (who otherwise only see raw frames).
+        # Snapshot the requested config so subscribers know what the owner
+        # asked dumpcap and the channel hopper to capture.
         client["session_config"] = {
             "interfaces": {
                 iface: client["configs"].get(iface, {}) for iface in interfaces
@@ -516,6 +798,7 @@ class ConnectionManager:
                 "message": f"Started capture on {', '.join(interfaces)}",
                 "session_id": session_id,
                 "interfaces": sorted(interfaces),
+                "namespace": namespace,
                 "config": client["session_config"],
             },
         )
@@ -525,8 +808,20 @@ class ConnectionManager:
         if not client:
             return
 
+        if client.get("subscribed_to"):
+            if notify:
+                await self.send_message_event(
+                    websocket,
+                    "error",
+                    "SUBSCRIBER_READ_ONLY",
+                    "A subscriber cannot stop the owner's capture.",
+                )
+            return
+
         task = client.get("task")
         proc = client.get("proc")
+        if client.get("session_id"):
+            client["session_end"] = ("CAPTURE_STOPPED", "Capture stopped.")
         if task:
             task.cancel()
 
@@ -563,14 +858,23 @@ class ConnectionManager:
                 await self.stop_streaming(websocket, notify=False)
             except Exception as exc:
                 log.warning("Capture shutdown failed for a client: %r", exc)
+        subscription_tasks: list[asyncio.Task[Any]] = []
+        for client in self.clients.values():
+            task = client.get("subscription_task")
+            if task is not None:
+                subscription_tasks.append(task)
+        for task in subscription_tasks:
+            task.cancel()
+        if subscription_tasks:
+            await asyncio.gather(*subscription_tasks, return_exceptions=True)
         self.clients.clear()
         self.interface_owners.clear()
         self.sessions.clear()
 
     async def _hop_channels(
-        self, websocket: WebSocket, iface: str, channels: list, dwell_time_ms: int
+        self, websocket: WebSocket, iface: str, channels: list[Any], dwell_time_ms: int
     ) -> None:
-        async def apply_channel(ch: dict) -> None:
+        async def apply_channel(ch: dict[str, Any]) -> None:
             freq = ch.get("freq")
             width = ch.get("width")
 
@@ -632,7 +936,13 @@ class ConnectionManager:
             return str(exc)
 
         cmd = self._ns_prefix(namespace) + [
-            IW_FILE, "dev", iface, "set", "freq", str(freq), str(width)
+            IW_FILE,
+            "dev",
+            iface,
+            "set",
+            "freq",
+            str(freq),
+            str(width),
         ]
 
         if width >= 40:

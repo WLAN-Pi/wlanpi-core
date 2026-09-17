@@ -55,11 +55,44 @@ jobs:
         source venv/bin/activate
         tox
 
+  nginx-tls:
+    name: nginx TLS config validation
+    runs-on: "ubuntu-26.04"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Install nginx and openssl
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y nginx-light openssl
+
+    - name: Generate temporary certificate
+      run: |
+        sudo mkdir -p /etc/nginx/ssl
+        sudo openssl req -x509 -newkey rsa:2048 -nodes \
+          -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
+          -out /etc/nginx/ssl/self-signed-wlanpi.cert \
+          -days 1 -subj "/CN=localhost" \
+          -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
+
+    - name: Link site configuration
+      run: |
+        sudo mkdir -p /var/log/wlanpi_core
+        sudo rm -f /etc/nginx/sites-enabled/default
+        sudo ln -sf "$PWD/install/etc/wlanpi-core/nginx/wlanpi_core.conf" \
+          /etc/nginx/sites-enabled/wlanpi_core.conf
+
+    - name: Validate nginx configuration
+      run: sudo nginx -t
+
   slack-workflow-status:
     if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (! github.event.pull_request.head.repo.fork) }}
     name: Post Workflow Status to Slack
     needs:
       - python
+      - nginx-tls
     runs-on: "ubuntu-26.04"
     steps:
       - name: Slack Workflow Notification

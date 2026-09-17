@@ -25,11 +25,11 @@ Auth: the token is a wlanpi-core JWT. Get one on the device with
 Pass it with --token or the WLANPI_CAP_TOKEN environment variable. Tokens are
 NEVER placed in the URL (the server refuses that; query strings get logged).
 
-Transport note: the capture WebSocket works through nginx - plain
-ws://<host>:31415/api/v1/streaming/capture, or wss://<host>:31416/... via the
-P3 TLS front-end (trust the device cert; connect by wlanpi.local). For local
-development you can also hit the dev/app server port directly, e.g.
-ws://wlanpi.local:8000/api/v1/streaming/capture.
+Transport note: production uses
+wss://<host>:31415/api/v1/streaming/capture through nginx. Trust the device
+certificate with --ca-cert and connect using a name or address in its SAN.
+For local development you can hit the app server directly at
+ws://127.0.0.1:8000/api/v1/streaming/capture.
 
 Dissector limitations (documented on purpose; this is a test tool, not
 Wireshark): radiotap parsing reads the first present-word only (covers channel,
@@ -41,6 +41,7 @@ import argparse
 import asyncio
 import json
 import os
+import ssl
 import struct
 import sys
 import time
@@ -53,7 +54,16 @@ except ImportError:
     sys.exit("This harness needs the 'websockets' package: pip install websockets")
 
 DEFAULT_URL = "ws://localhost:8000/api/v1/streaming/capture"
+DEFAULT_CA_CERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
 AUTH_TIMEOUT = 10.0
+
+
+def websocket_connection(url: str, ca_cert: str):
+    ssl_context = None
+    if url.startswith("wss://"):
+        ssl_context = ssl.create_default_context(cafile=ca_cert)
+    return websockets.connect(url, max_size=None, ssl=ssl_context)
+
 
 # ---------------------------------------------------------------------------
 # Channel / frequency helpers
@@ -148,9 +158,21 @@ class PcapngReader:
 
 # (align, size) for radiotap present bits 0..14 - enough for our targets.
 _RT_FIELDS = {
-    0: (8, 8), 1: (1, 1), 2: (1, 1), 3: (2, 4), 4: (2, 2), 5: (1, 1),
-    6: (1, 1), 7: (2, 2), 8: (2, 2), 9: (2, 2), 10: (1, 1), 11: (1, 1),
-    12: (1, 1), 13: (1, 1), 14: (2, 2),
+    0: (8, 8),
+    1: (1, 1),
+    2: (1, 1),
+    3: (2, 4),
+    4: (2, 2),
+    5: (1, 1),
+    6: (1, 1),
+    7: (2, 2),
+    8: (2, 2),
+    9: (2, 2),
+    10: (1, 1),
+    11: (1, 1),
+    12: (1, 1),
+    13: (1, 1),
+    14: (2, 2),
 }
 
 
@@ -370,9 +392,7 @@ class ScanTable:
                 f"{str(a.txpower if a.txpower is not None else '?'):>4} "
                 f"{a.country:<3} {a.count:>5}  {a.ssid[:32]}"
             )
-        lines.append(
-            f"\n{len(self.aps)} AP(s), {self.other} non-beacon frame(s)"
-        )
+        lines.append(f"\n{len(self.aps)} AP(s), {self.other} non-beacon frame(s)")
         return "\n".join(lines)
 
 
@@ -406,8 +426,9 @@ async def _authenticate(ws, token: str) -> str:
         raise RuntimeError(f"auth failed: {code} {event.get('data')}")
 
 
-async def _consume(ws, table: ScanTable, refresh: float, deadline: Optional[float],
-                   raw_fp) -> None:
+async def _consume(
+    ws, table: ScanTable, refresh: float, deadline: Optional[float], raw_fp
+) -> None:
     reader = PcapngReader()
     last_print = 0.0
     while True:
@@ -480,7 +501,7 @@ async def run_owner(args) -> None:
     interfaces = config["interfaces"]
     pcap_filter = config.get("pcap_filter", "")
 
-    async with websockets.connect(args.url, max_size=None) as ws:
+    async with websocket_connection(args.url, args.ca_cert) as ws:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
 
@@ -523,8 +544,9 @@ async def run_owner(args) -> None:
         print(f"  ROLE: OWNER (in control of this capture)")
         print(f"  CAPTURE SESSION: {session_id}")
         print(f"  subscribe from another instance:")
-        print(f"    capture_harness.py run --subscribe {session_id} "
-              f"--url {args.url}")
+        print(
+            f"    capture_harness.py run --subscribe {session_id} " f"--url {args.url}"
+        )
         print("=" * 60)
 
         raw_fp = open(args.raw_out, "wb") if args.raw_out else None
@@ -547,7 +569,7 @@ async def run_owner(args) -> None:
 
 async def run_subscriber(args) -> None:
     token = resolve_token(args)
-    async with websockets.connect(args.url, max_size=None) as ws:
+    async with websocket_connection(args.url, args.ca_cert) as ws:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
 
@@ -573,9 +595,7 @@ async def run_subscriber(args) -> None:
                 file=sys.stderr,
             )
 
-        await ws.send(
-            json.dumps({"command": "subscribe", "session_id": session_id})
-        )
+        await ws.send(json.dumps({"command": "subscribe", "session_id": session_id}))
         # Learn the running config before consuming, so we are not blind.
         while True:
             msg = await asyncio.wait_for(ws.recv(), timeout=AUTH_TIMEOUT)
@@ -587,8 +607,10 @@ async def run_subscriber(args) -> None:
                 print("=" * 60)
                 print(f"  ROLE: SUBSCRIBER (read-only, not in control)")
                 ns = data.get("namespace") or "root"
-                print(f"  session {session_id} owned by "
-                      f"did={data.get('owner')} in namespace {ns}")
+                print(
+                    f"  session {session_id} owned by "
+                    f"did={data.get('owner')} in namespace {ns}"
+                )
                 _print_config(data.get("config"))
                 print("=" * 60)
                 break
@@ -609,7 +631,7 @@ async def run_subscriber(args) -> None:
 
 async def run_list(args) -> None:
     token = resolve_token(args)
-    async with websockets.connect(args.url, max_size=None) as ws:
+    async with websocket_connection(args.url, args.ca_cert) as ws:
         await _authenticate(ws, token)
         await ws.send(json.dumps({"command": "list_sessions"}))
         while True:
@@ -660,8 +682,10 @@ def build_config(args) -> None:
         with open(args.out, "w") as fh:
             fh.write(text + "\n")
         print(f"wrote {args.out}")
-        print(f"  {len(channels)} channel(s) on {args.interface}, "
-              f"dwell {args.dwell}ms")
+        print(
+            f"  {len(channels)} channel(s) on {args.interface}, "
+            f"dwell {args.dwell}ms"
+        )
     else:
         print(text)
 
@@ -686,6 +710,11 @@ def main() -> None:
 
     def add_client_args(p):
         p.add_argument("--url", default=DEFAULT_URL)
+        p.add_argument(
+            "--ca-cert",
+            default=DEFAULT_CA_CERT,
+            help="CA/certificate file for wss:// connections",
+        )
         p.add_argument("--token", help="wlanpi-core JWT")
         p.add_argument("--token-env", default="WLANPI_CAP_TOKEN")
         p.add_argument("--refresh", type=float, default=3.0, help="table interval s")

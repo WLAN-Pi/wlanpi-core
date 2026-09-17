@@ -1,10 +1,13 @@
 import asyncio
-from typing import Optional, Union
+from typing import Any, Union
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
+from wlanpi_core.models.network_config_errors import (
+    ConfigActiveError,
+    ConfigMalformedError,
+)
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
@@ -25,7 +28,7 @@ log = get_logger(__name__)
     response_model=NetworkConfigStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_status():
+async def get_status() -> Any:
     """
     Per-namespace `iw dev` adapter layout (`root` plus each netns).
 
@@ -47,7 +50,7 @@ async def get_status():
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_configs():
+async def get_configs() -> Any:
     """
     Get all network configuration ids.
     """
@@ -69,7 +72,7 @@ async def get_configs():
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_config_by_id(id: str):
+async def get_config_by_id(id: str) -> Any:
     """
     Get a specific network configuration by ID.
     """
@@ -96,7 +99,7 @@ async def get_config_by_id(id: str):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def create_config(config: NetConfig):
+async def create_config(config: NetConfig) -> Any:
     """
     Create a new network configuration.
     """
@@ -128,7 +131,7 @@ async def create_config(config: NetConfig):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def update_config(id: str, config_update: NetConfigUpdate):
+async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     """
     Update an existing network configuration.
     """
@@ -164,7 +167,7 @@ async def update_config(id: str, config_update: NetConfigUpdate):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def delete_config(id: str, force: Optional[bool] = False):
+async def delete_config(id: str, force: bool = False) -> Any:
     """
     Delete a network configuration by ID.
     """
@@ -196,7 +199,7 @@ async def delete_config(id: str, force: Optional[bool] = False):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def activate_config(id: str, override_active: Optional[bool] = False):
+async def activate_config(id: str, override_active: bool = False) -> Any:
     """
     Activate a network configuration by ID.
     """
@@ -233,7 +236,7 @@ async def activate_config(id: str, override_active: Optional[bool] = False):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def deactivate_config(id: str, override_active: Optional[bool] = False):
+async def deactivate_config(id: str, override_active: bool = False) -> Any:
     """
     Deactivate a network configuration by ID.
     """

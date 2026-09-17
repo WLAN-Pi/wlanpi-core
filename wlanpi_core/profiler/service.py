@@ -1,7 +1,8 @@
 import os
+from typing import Any, Optional
 
 
-def get_status():
+def get_status() -> dict[str, Any]:
     running = profiler_beaconing()
     ssid = profiler_beaconing_ssid()
 
@@ -12,7 +13,7 @@ def get_status():
     }
 
 
-def profiler_beaconing():
+def profiler_beaconing() -> bool:
     """
     Checks the presence of /var/run/wlanpi-profiler.ssid to determine whether
     or not the Profiler is beaconing
@@ -24,7 +25,7 @@ def profiler_beaconing():
         return False
 
 
-def profiler_beaconing_ssid():
+def profiler_beaconing_ssid() -> Optional[str]:
     """
     Returns the SSID currently in used by the Profiler
     """

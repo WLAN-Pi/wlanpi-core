@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class PhyCapabilities(BaseModel):
-    phy: str = Field(example="phy0")
+    phy: str = Field(json_schema_extra={"example": "phy0"})
     info: Optional[str] = Field(default=None, description="Raw iw phy info output")
     error: Optional[str] = Field(default=None)
 
@@ -16,8 +16,8 @@ class WifiCapabilitiesResponse(BaseModel):
 
 
 class WifiRegulatoryResponse(BaseModel):
-    country: Optional[str] = Field(default=None, example="GB")
-    source: Optional[str] = Field(default=None, example="iw")
+    country: Optional[str] = Field(default=None, json_schema_extra={"example": "GB"})
+    source: Optional[str] = Field(default=None, json_schema_extra={"example": "iw"})
     raw: str = Field(description="Raw output of iw reg get")
 
 
@@ -37,9 +37,9 @@ class HotspotStation(BaseModel):
 
 
 class HotspotStationsResponse(BaseModel):
-    mode: str = Field(example="hotspot")
-    interface: str = Field(example="wlan0")
-    count: int = Field(example=1)
+    mode: str = Field(json_schema_extra={"example": "hotspot"})
+    interface: str = Field(json_schema_extra={"example": "wlan0"})
+    count: int = Field(json_schema_extra={"example": 1})
     stations: list[HotspotStation] = Field(default_factory=list)
 
 
@@ -57,7 +57,7 @@ class HotspotClientLink(BaseModel):
 
 
 class HotspotClientLinkResponse(BaseModel):
-    mode: str = Field(example="hotspot")
-    interface: str = Field(example="wlan0")
-    count: int = Field(example=1)
+    mode: str = Field(json_schema_extra={"example": "hotspot"})
+    interface: str = Field(json_schema_extra={"example": "wlan0"})
+    count: int = Field(json_schema_extra={"example": 1})
     links: list[HotspotClientLink] = Field(default_factory=list)
