@@ -49,9 +49,12 @@ deterministic and warning-clean. Hard rules, each one from a real failure:
 ## OpenAPI docs
 
 `docs/openapi.json` is generated (`scripts/export_openapi.py`) and maintained
-by the sync workflow. Never hand-edit it; fix the source docstrings or
-`openapi_docs.py` on `dev`. Placeholders like `<jwt>` in descriptions must sit
-inside backticks or Swagger UI swallows them as HTML tags.
+by the sync workflow, which keeps a `chore: update generated OpenAPI
+reference` PR open against `dev`. Never hand-edit it; fix the source
+docstrings or `openapi_docs.py` on `dev`. Release PRs to `main` are gated on
+freshness: if the OpenAPI Reference Check workflow fails, merge the
+automation PR into `dev` first. Placeholders like `<jwt>` in descriptions
+must sit inside backticks or Swagger UI swallows them as HTML tags.
 
 ## Before you write
 

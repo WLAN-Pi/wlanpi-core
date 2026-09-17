@@ -242,6 +242,11 @@ Regular merge commits preserve the full history and keep both branches properly 
 
 ### Version locations
 
+Before cutting a release, confirm the **OpenAPI Reference Check** is green on
+the dev→main PR. If it fails, `docs/openapi.json` is stale: merge the open
+`chore: update generated OpenAPI reference` PR into `dev` (the sync workflow
+keeps one current) and the release PR re-runs green.
+
 Each release requires versions to be updated in **two** locations:
 
 1. **Debian changelog**: `debian/changelog` via `dch` (`devscripts`)
