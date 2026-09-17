@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Union
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -72,21 +72,6 @@ class TokenRepository(BaseRepository):
 
         result = await self._session.execute(query)
         return result.scalars().all()
-
-    async def purge_expired_tokens(self) -> int:
-        """
-        Remove expired and revoked tokens
-
-        Returns:
-            Number of tokens deleted
-        """
-        delete_query = delete(Token).where(
-            Token.revoked == True, Token.expires_at < datetime.now(timezone.utc)
-        )
-
-        result = await self._session.execute(delete_query)
-
-        return result.rowcount
 
 
 class DeviceRepository(BaseRepository):

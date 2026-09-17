@@ -1,19 +1,15 @@
 #!/opt/wlanpi-core/bin/python3
 
-import hashlib
-import hmac
+import argparse
 import json
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from urllib.parse import urlparse
-import argparse
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-SECRET_PATH = "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
 COMMAND_TIMEOUT_SEC = 10
 
 # Enhanced security type definitions with detailed descriptions
@@ -104,8 +100,6 @@ class NetworkConfigCLI:
         self.PID_DIR = "/run/wifictl/pids"
         self.APPS_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/apps.json"
         self.WPA_LOG_FILE = "/tmp/wpa.log"
-        self.secret_file = Path(SECRET_PATH)
-
         self.API_PORT = 31415
         self.HOST = "localhost"
         self.BASE = f"http://{self.HOST}:{self.API_PORT}/api/v1/network/config/"
@@ -233,33 +227,13 @@ class NetworkConfigCLI:
             self.print_warning("Could not detect available interfaces, using default")
             return ["wlan0"]
 
-    def generate_signature(self, method: str, request_endpoint: str, request_body: str) -> str:
-        """Generate HMAC signature for the request using SHA256"""
-        parsed = urlparse(request_endpoint)
-        path = parsed.path
-        query_string = parsed.query
-
-        if not query_string and "?" in request_endpoint:
-            query_string = request_endpoint.split("?", 1)[1]
-
-        if method.upper() == "GET":
-            request_body = ""
-
-        canonical_string = f"{method}\n{path}\n{query_string}\n{request_body}"
-        secret = self.secret_file.read_bytes()
-        signature = hmac.new(secret, canonical_string.encode(), hashlib.sha256).hexdigest()
-        return signature
-
     def make_request(self, method: str, url: str, data: Optional[Dict] = None) -> Optional[Dict]:
         """Make HTTP request with proper error handling"""
         try:
-            json_data = json.dumps(data) if data else "{}"
-            signature = self.generate_signature(method, url, json_data)
             headers = {
                 "Authorization": f"Bearer {self.token}",
                 "accept": "application/json",
                 "Content-Type": "application/json",
-                "X-Request-Signature": signature,
             } if self.token else {}
 
             print(f"Making {method} request...")

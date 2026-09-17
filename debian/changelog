@@ -1,3 +1,10 @@
+wlanpi-core (2.1.10-4) unstable; urgency=medium
+
+  * Enforce boot-aware JWT lifetime and immediate revocation
+  * Dispatch authentication by presented credentials
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 16 Sep 2026 20:57:01 -0400
+
 wlanpi-core (2.1.10-3) unstable; urgency=medium
 
   * Rebuild to publish packages for Debian trixie to packagecloud

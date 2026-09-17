@@ -1,280 +1,346 @@
-"""Revoked tokens must stop validating immediately, including via the
-in-process token cache (the cache fast-path previously kept accepting them
-until an unrelated cache clear or restart)."""
-
+import asyncio
+import sqlite3
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import Mock
 
+import aiosqlite
 import pytest
 import pytest_asyncio
 
 import wlanpi_core.core.database as database_module
 import wlanpi_core.core.token as token_module
-from wlanpi_core.core.cache import SKeyCache, TokenCache
 from wlanpi_core.core.database import DatabaseManager
-from wlanpi_core.core.token import TokenManager
+from wlanpi_core.core.repositories import TokenRepository
+from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
+
+BOOT_ID = "boot-a"
+BOOTTIME = 1_000.0
+WALL_TIME = 1_000_000.0
 
 
 @pytest_asyncio.fixture
 async def token_manager(tmp_path, monkeypatch):
-    monkeypatch.setattr(database_module, "DATABASE_PATH", str(tmp_path / "tokens.db"))
-    TokenCache().clear()
-    SKeyCache().clear()
+    monkeypatch.setattr(database_module, "DATABASE_PATH", str(tmp_path))
+    monkeypatch.setattr(token_module, "current_boot_id", lambda: BOOT_ID)
+    monkeypatch.setattr(token_module, "current_boottime", lambda: BOOTTIME)
+    monkeypatch.setattr(token_module, "current_wall_time", lambda: WALL_TIME)
+    monkeypatch.setattr(token_module.system_service, "get_hostname", lambda: "wlanpi")
 
     db_manager = DatabaseManager(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'tokens.db'}"
     )
     await db_manager.initialize_models()
-
     manager = TokenManager(SimpleNamespace(db_manager=db_manager))
+
     yield manager
 
-    TokenCache().clear()
-    SKeyCache().clear()
     await db_manager.cleanup()
 
 
+async def _rewrite_token(manager, token, *, updates=None, remove=()):
+    async with manager.app_state.db_manager.session() as session:
+        token_model = await TokenRepository(session).get_token_by_value(token)
+        key = token_model.signing_key
+        payload = dict(token_module.jwt.decode(token, key.key))
+        payload.update(updates or {})
+        for claim in remove:
+            payload.pop(claim, None)
+        replacement = token_module.jwt.encode(
+            {"alg": "HS256", "kid": str(key.id)}, payload, key.key
+        ).decode()
+        token_model.token = replacement
+        await session.commit()
+    return replacement
+
+
+async def _replace_stored_token(manager, token, replacement):
+    async with manager.app_state.db_manager.session() as session:
+        token_model = await TokenRepository(session).get_token_by_value(token)
+        token_model.token = replacement
+        await session.commit()
+
+
+async def _decode_token(manager, token):
+    async with manager.app_state.db_manager.session() as session:
+        token_model = await TokenRepository(session).get_token_by_value(token)
+        return token_module.jwt.decode(token, token_model.signing_key.key)
+
+
 @pytest.mark.asyncio
-async def test_revoked_token_fails_verification_immediately(token_manager):
-    token = await token_manager.create_token(device_id="revocation-test")
+async def test_issuance_uses_absolute_boot_expiry(token_manager):
+    token = await token_manager.create_token(
+        "claims", expires_delta=timedelta(seconds=60)
+    )
+    payload = await _decode_token(token_manager, token)
+
+    assert payload["bid"] == BOOT_ID
+    assert payload["bexp"] == BOOTTIME + 60
+    assert payload["iat"] == WALL_TIME
+    assert payload["exp"] == WALL_TIME + 60
+    assert "upt" not in payload
+    assert "ttl" not in payload
+
+
+@pytest.mark.asyncio
+async def test_verification_normalizes_bearer_whitespace(token_manager):
+    token = await token_manager.create_token("whitespace")
+
+    assert (await token_manager.verify_token(f"  {token}")).is_valid
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("boottime", "is_valid"),
+    [(BOOTTIME + 59.9, True), (BOOTTIME + 60, False), (BOOTTIME + 61, False)],
+)
+async def test_same_boot_expiry_boundary(
+    token_manager, monkeypatch, boottime, is_valid
+):
+    token = await token_manager.create_token(
+        "boundary", expires_delta=timedelta(seconds=60)
+    )
+    monkeypatch.setattr(token_module, "current_boottime", lambda: boottime)
 
     result = await token_manager.verify_token(token)
-    assert result.is_valid
 
-    # verify_token above populated the cache; revocation must still take
-    # effect on the very next verification.
-    revocation = await token_manager.revoke_token(token)
-    assert revocation["status"] == "success"
+    assert result.is_valid is is_valid
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wall_time", [1.0, WALL_TIME + 30 * 86400])
+async def test_same_boot_ignores_wall_clock(token_manager, monkeypatch, wall_time):
+    token = await token_manager.create_token(
+        "wall-jump", expires_delta=timedelta(seconds=60)
+    )
+    monkeypatch.setattr(token_module, "current_wall_time", lambda: wall_time)
+
+    assert (await token_manager.verify_token(token)).is_valid
+
+
+@pytest.mark.asyncio
+async def test_service_restart_on_same_boot_keeps_token(token_manager):
+    token = await token_manager.create_token("restart")
+    restarted = TokenManager(token_manager.app_state)
+
+    assert (await restarted.verify_token(token)).is_valid
+
+
+@pytest.mark.asyncio
+async def test_issuance_reserves_write_lock_before_selecting_key(
+    token_manager, monkeypatch
+):
+    await token_manager.create_token("race-setup")
+    selected = asyncio.Event()
+    release = asyncio.Event()
+    original = token_manager._get_or_create_signing_key
+
+    async def pause_after_selection(session):
+        key = await original(session)
+        selected.set()
+        await release.wait()
+        return key
+
+    monkeypatch.setattr(
+        token_manager, "_get_or_create_signing_key", pause_after_selection
+    )
+    issuance = asyncio.create_task(token_manager.create_token("race-setup"))
+    try:
+        await asyncio.wait_for(selected.wait(), timeout=1)
+        database_path = token_manager.app_state.db_manager.engine.url.database
+        async with aiosqlite.connect(database_path, timeout=0) as contender:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                await contender.execute("BEGIN IMMEDIATE")
+    finally:
+        release.set()
+        await asyncio.wait_for(issuance, timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_cross_boot_and_legacy_tokens_use_wall_expiry(
+    token_manager, monkeypatch, legacy
+):
+    token = await token_manager.create_token(
+        "cross-boot", expires_delta=timedelta(seconds=60)
+    )
+    if legacy:
+        token = await _rewrite_token(token_manager, token, remove=("bid", "bexp"))
+    monkeypatch.setattr(token_module, "current_boot_id", lambda: "boot-b")
+    monkeypatch.setattr(token_module, "current_wall_time", lambda: WALL_TIME + 59)
+    assert (await token_manager.verify_token(token)).is_valid
+
+    monkeypatch.setattr(token_module, "current_wall_time", lambda: WALL_TIME + 60)
+    result = await token_manager.verify_token(token)
+    assert not result.is_valid
+    assert result.error == "Token expired"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_clock_lag_result_is_transient(token_manager, monkeypatch, legacy):
+    token = await token_manager.create_token("clock-lag")
+    if legacy:
+        token = await _rewrite_token(token_manager, token, remove=("bid", "bexp"))
+    monkeypatch.setattr(token_module, "current_boot_id", lambda: "boot-b")
+    monkeypatch.setattr(
+        token_module,
+        "current_wall_time",
+        lambda: WALL_TIME - token_module.CLOCK_SKEW_TOLERANCE_SEC - 1,
+    )
 
     result = await token_manager.verify_token(token)
     assert not result.is_valid
+    assert result.error == AUTH_CLOCK_NOT_SET
+
+    monkeypatch.setattr(token_module, "current_wall_time", lambda: WALL_TIME)
+    assert (await token_manager.verify_token(token)).is_valid
 
 
 @pytest.mark.asyncio
-async def test_revoked_token_fails_verification_from_cold_cache(token_manager):
-    token = await token_manager.create_token(device_id="revocation-cold-cache")
-    await token_manager.revoke_token(token)
-    TokenCache().clear()
+async def test_clock_skew_boundary_is_not_clock_error(token_manager, monkeypatch):
+    token = await token_manager.create_token("clock-boundary")
+    monkeypatch.setattr(token_module, "current_boot_id", lambda: "boot-b")
+    monkeypatch.setattr(
+        token_module,
+        "current_wall_time",
+        lambda: WALL_TIME - token_module.CLOCK_SKEW_TOLERANCE_SEC,
+    )
 
+    assert (await token_manager.verify_token(token)).is_valid
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("updates", "remove"),
+    [
+        ({}, ("bexp",)),
+        ({"bid": 1}, ()),
+        ({"bexp": "later"}, ()),
+        ({"bexp": True}, ()),
+        ({"bexp": float("inf")}, ()),
+        ({"bid": "boot-b", "bexp": -1}, ()),
+        ({"iat": True}, ()),
+        ({"exp": float("nan")}, ()),
+    ],
+)
+async def test_malformed_lifetime_claims_are_permanent_failures(
+    token_manager, updates, remove
+):
+    token = await token_manager.create_token("malformed")
+    token = await _rewrite_token(token_manager, token, updates=updates, remove=remove)
+
+    result = await token_manager.verify_token(token)
+
+    assert not result.is_valid
+    assert result.error != AUTH_CLOCK_NOT_SET
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["revoke", "rotate"])
+async def test_persisted_invalidation_precedes_clock_checks(
+    token_manager, monkeypatch, action
+):
+    token = await token_manager.create_token("invalidated")
+    if action == "revoke":
+        await token_manager.revoke_token(token)
+    else:
+        await token_manager.rotate_key()
+    boot_id = Mock(side_effect=AssertionError("clock must not be read"))
+    monkeypatch.setattr(token_module, "current_boot_id", boot_id)
+
+    result = await token_manager.verify_token(token)
+
+    assert not result.is_valid
+    boot_id.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bad_signature_precedes_clock_checks(token_manager, monkeypatch):
+    token = await token_manager.create_token("bad-signature")
+    tampered = f"{token.rsplit('.', 1)[0]}.AAAA"
+    await _replace_stored_token(token_manager, token, tampered)
+    boot_id = Mock(side_effect=AssertionError("clock must not be read"))
+    monkeypatch.setattr(token_module, "current_boot_id", boot_id)
+
+    result = await token_manager.verify_token(tampered)
+
+    assert not result.is_valid
+    boot_id.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_revocation_is_immediate_and_idempotent(token_manager):
+    token = await token_manager.create_token("revocation")
+    assert (await token_manager.verify_token(token)).is_valid
+
+    first = await token_manager.revoke_token(token)
+    assert first["status"] == "success"
     result = await token_manager.verify_token(token)
     assert not result.is_valid
     assert result.error == "Token revoked"
-
-
-@pytest.mark.asyncio
-async def test_revoking_twice_reports_already_revoked(token_manager):
-    token = await token_manager.create_token(device_id="revocation-repeat")
-    await token_manager.revoke_token(token)
 
     second = await token_manager.revoke_token(token)
     assert second["status"] == "info"
 
 
-# --- Boot-bound, monotonic token lifetime ---------------------------------
-#
-# The device has no RTC, so wall-clock exp is advisory. Lifetime enforcement:
-# within a boot its age is measured on CLOCK_BOOTTIME. In boot_bound mode a
-# token also dies with the boot it was issued in; wall_clock_grace (the default)
-# keeps previous-boot tokens valid until wall-clock expiry (7 days by default).
+@pytest.mark.asyncio
+async def test_expired_token_row_is_retained(token_manager, monkeypatch):
+    token = await token_manager.create_token(
+        "retained", expires_delta=timedelta(seconds=60)
+    )
+    monkeypatch.setattr(token_module, "current_boottime", lambda: BOOTTIME + 60)
+
+    assert not (await token_manager.verify_token(token)).is_valid
+    async with token_manager.app_state.db_manager.session() as session:
+        assert await TokenRepository(session).get_token_by_value(token) is not None
 
 
-@pytest.fixture
-def boot_bound_mode(monkeypatch):
+@pytest.mark.asyncio
+async def test_boot_source_failure_is_operational(token_manager, monkeypatch):
+    token = await token_manager.create_token("boot-failure")
     monkeypatch.setattr(
-        token_module.settings, "TOKEN_LIFETIME_MODE", "boot_bound"
+        token_module, "current_boot_id", Mock(side_effect=OSError("no boot id"))
     )
 
-
-@pytest.mark.asyncio
-async def test_token_from_previous_boot_is_rejected(
-    token_manager, monkeypatch, boot_bound_mode
-):
-    token = await token_manager.create_token(device_id="boot-bound")
-    assert (await token_manager.verify_token(token)).is_valid
-
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "new-boot-id")
-
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-    assert result.error == "Token from previous boot"
+    with pytest.raises(OSError, match="no boot id"):
+        await token_manager.verify_token(token)
 
 
 @pytest.mark.asyncio
-async def test_monotonic_expiry_rejects_on_cache_hit_and_cold_path(
+async def test_boottime_failure_is_operational(token_manager, monkeypatch):
+    token = await token_manager.create_token("boottime-failure")
+    monkeypatch.setattr(
+        token_module,
+        "current_boottime",
+        Mock(side_effect=OSError("no boottime")),
+    )
+
+    with pytest.raises(OSError, match="no boottime"):
+        await token_manager.verify_token(token)
+
+
+@pytest.mark.asyncio
+async def test_database_failure_is_operational(token_manager, monkeypatch):
+    token = await token_manager.create_token("database-failure")
+    monkeypatch.setattr(
+        token_manager.app_state.db_manager,
+        "session",
+        Mock(side_effect=RuntimeError("database unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await token_manager.verify_token(token)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_header_parser_failure_is_operational(
     token_manager, monkeypatch
 ):
-    token = await token_manager.create_token(
-        device_id="monotonic-expiry", expires_delta=timedelta(seconds=60)
-    )
-    assert (await token_manager.verify_token(token)).is_valid
-
-    real_uptime = token_module.current_uptime()
+    token = await token_manager.create_token("parser-failure")
     monkeypatch.setattr(
-        token_module, "current_uptime", lambda: real_uptime + 61
+        token_module.json, "loads", Mock(side_effect=RuntimeError("parser failed"))
     )
 
-    # Cache is populated from the verify above: the fast path must reject too.
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-    assert result.error == "Token expired"
-
-    TokenCache().clear()
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-    assert result.error == "Token expired"
-
-
-@pytest.mark.asyncio
-async def test_wall_clock_reset_cannot_resurrect_expired_token(
-    token_manager, monkeypatch, boot_bound_mode
-):
-    token = await token_manager.create_token(
-        device_id="no-resurrection", expires_delta=timedelta(seconds=60)
-    )
-
-    real_uptime = token_module.current_uptime()
-    monkeypatch.setattr(
-        token_module, "current_uptime", lambda: real_uptime + 61
-    )
-    assert not (await token_manager.verify_token(token)).is_valid
-
-    # A reboot resets uptime to near zero and the wall clock to a stale base.
-    # The boot id changed, so the token must stay dead regardless of clocks.
-    monkeypatch.setattr(token_module, "current_uptime", lambda: 1.0)
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "post-reboot")
-
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-
-
-@pytest.mark.asyncio
-async def test_previous_boot_tokens_are_swept(
-    token_manager, monkeypatch, boot_bound_mode
-):
-    stale = await token_manager.create_token(device_id="sweep-stale")
-
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "boot-2")
-    fresh = await token_manager.create_token(device_id="sweep-fresh")
-
-    removed = await token_manager.purge_previous_boot_tokens()
-    assert removed == 1
-
-    TokenCache().clear()
-    assert not (await token_manager.verify_token(stale)).is_valid
-    assert (await token_manager.verify_token(fresh)).is_valid
-
-
-@pytest.mark.asyncio
-async def test_service_restart_without_reboot_keeps_tokens(token_manager):
-    token = await token_manager.create_token(device_id="restart-survivor")
-
-    # Same boot id: a wlanpi-core restart must not invalidate anything.
-    removed = await token_manager.purge_previous_boot_tokens()
-    assert removed == 0
-    assert (await token_manager.verify_token(token)).is_valid
-
-
-# --- wall_clock_grace mode ------------------------------------------------
-#
-# Previous-boot tokens stay valid until wall-clock expiry. The wall clock is
-# only trusted across reboots because setting it requires SSH/sudo — the same
-# privilege that can mint tokens anyway. Within a boot both modes are
-# monotonic, so time manipulation still cannot stretch a live token.
-
-
-@pytest.fixture
-def grace_mode(monkeypatch):
-    monkeypatch.setattr(
-        token_module.settings, "TOKEN_LIFETIME_MODE", "wall_clock_grace"
-    )
-
-
-def test_default_lifetime_mode_is_wall_clock_grace():
-    assert token_module.settings.TOKEN_LIFETIME_MODE == "wall_clock_grace"
-    assert token_module.settings.ACCESS_TOKEN_EXPIRE_DAYS == 7
-
-
-@pytest.mark.asyncio
-async def test_grace_mode_accepts_previous_boot_token_within_wall_expiry(
-    token_manager, monkeypatch, grace_mode
-):
-    token = await token_manager.create_token(device_id="grace-survivor")
-
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "post-reboot")
-    monkeypatch.setattr(token_module, "current_uptime", lambda: 1.0)
-
-    assert (await token_manager.verify_token(token)).is_valid
-
-    removed = await token_manager.purge_previous_boot_tokens()
-    assert removed == 0
-
-
-@pytest.mark.asyncio
-async def test_grace_mode_rejects_wall_expired_previous_boot_token(
-    token_manager, monkeypatch, grace_mode
-):
-    token = await token_manager.create_token(
-        device_id="grace-expired", expires_delta=timedelta(seconds=-60)
-    )
-
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "post-reboot")
-
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-    assert result.error == "Token expired"
-
-
-@pytest.mark.asyncio
-async def test_grace_mode_rejects_retryably_while_clock_lags_issuance(
-    token_manager, monkeypatch, grace_mode
-):
-    token = await token_manager.create_token(device_id="grace-clock-lag")
-
-    monkeypatch.setattr(token_module, "current_boot_id", lambda: "post-reboot")
-
-    real_datetime = token_module.datetime
-
-    class StaleClock:
-        @staticmethod
-        def now(tz=None):
-            return real_datetime.fromtimestamp(1000.0, tz=tz)
-
-        @staticmethod
-        def fromtimestamp(ts, tz=None):
-            return real_datetime.fromtimestamp(ts, tz=tz)
-
-    monkeypatch.setattr(token_module, "datetime", StaleClock)
-
-    result = await token_manager.verify_token(token)
-    assert not result.is_valid
-    assert result.error == "Clock not yet synchronized"
-
-    # Nothing was purged: once the clock catches up, the token works again.
-    monkeypatch.setattr(token_module, "datetime", real_datetime)
-    TokenCache().clear()
-    assert (await token_manager.verify_token(token)).is_valid
-
-
-@pytest.mark.asyncio
-async def test_grace_mode_same_boot_still_monotonic_despite_clock_jump(
-    token_manager, monkeypatch, grace_mode
-):
-    token = await token_manager.create_token(
-        device_id="grace-monotonic", expires_delta=timedelta(seconds=60)
-    )
-
-    # Wall clock jumped far past exp, but this boot's monotonic age rules.
-    real_datetime = token_module.datetime
-
-    class FutureClock:
-        @staticmethod
-        def now(tz=None):
-            return real_datetime.now(tz) + timedelta(days=30)
-
-        @staticmethod
-        def fromtimestamp(ts, tz=None):
-            return real_datetime.fromtimestamp(ts, tz=tz)
-
-    monkeypatch.setattr(token_module, "datetime", FutureClock)
-
-    assert (await token_manager.verify_token(token)).is_valid
+    with pytest.raises(RuntimeError, match="parser failed"):
+        await token_manager.verify_token(token)
