@@ -24,39 +24,39 @@ from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.constants import (
     CONFIG_DIR,
+    CREATE_MONITOR_PAIRS_DEFAULT,
+    CREATE_MONITOR_PAIRS_UNINIT,
     CURRENT_CONFIG_FILE,
     MODE_FILE,
     SECRETS_DIR,
     SUPPORTED_MODELS,
-    CREATE_MONITOR_PAIRS_DEFAULT,
-    CREATE_MONITOR_PAIRS_UNINIT,
 )
+from wlanpi_core.core.auth import AUTH_CLOCK_MESSAGE, AuthClockNotSetError
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
 from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
-from wlanpi_core.core.token import TokenManager
-from wlanpi_core.services.system_service import get_model
+from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
-from wlanpi_core.utils.network_config import activate_config, get_config, interfaces_in_root, recover_current_config
+from wlanpi_core.services.system_service import get_model
+from wlanpi_core.utils.network_config import (
+    activate_config,
+    get_config,
+    interfaces_in_root,
+    recover_current_config,
+)
 from wlanpi_core.views.api import router as views_router
 
 
-async def _stop_token_purge_task(app: FastAPI) -> None:
-    """Cancel and await the token purge worker before database shutdown."""
-    task = getattr(app.state, "token_purge_task", None)
-    if task is None:
-        return
-
-    app.state.token_purge_task = None
-    if not task.done():
-        task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+async def auth_clock_not_set_handler(
+    request: Request, exc: AuthClockNotSetError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
+    )
 
 
 class ApplicationHealthManager:
@@ -96,27 +96,6 @@ class ApplicationHealthManager:
                 break
             except Exception as e:
                 self.log.error(f"Health check failed: {e}")
-
-    def _invalidate_caches(self):
-        """Invalidate auth caches after database reset"""
-        self.log.info("Invalidating caches after database reset")
-        try:
-            from wlanpi_core.core.token import SKeyCache
-
-            key_cache = SKeyCache()
-            key_cache.clear()
-            self.log.debug("Signing key cache cleared")
-        except Exception as e:
-            self.log.error(f"Failed to clear signing key cache: {e}")
-
-        try:
-            from wlanpi_core.core.token import TokenCache
-
-            token_cache = TokenCache()
-            token_cache.clear()
-            self.log.debug("Token cache cleared")
-        except Exception as e:
-            self.log.error(f"Failed to clear token cache: {e}")
 
     async def _check_application_health(self):
         """Check health of all application components"""
@@ -160,8 +139,6 @@ class ApplicationHealthManager:
                                 f"Database schema error: {schema_error}, recreating tables"
                             )
                             try:
-                                self._invalidate_caches()
-
                                 if hasattr(self.app.state, "db_manager"):
                                     try:
                                         await self.app.state.db_manager.cleanup()
@@ -510,11 +487,9 @@ class InitializationManager:
         """Initialize the token manager"""
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
+            # ponytail: retain token rows; add cleanup only if table growth is
+            # measurable on deployed devices.
             self.log.debug("Token manager initialized successfully")
-            self.app.state.token_purge_task = asyncio.create_task(
-                self.app.state.token_manager.purge_expired_tokens(),
-                name="token-purge",
-            )
             return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
@@ -615,6 +590,8 @@ def create_app(debug: bool = False):
             status_code=503, content={"detail": "Service temporarily unavailable"}
         )
 
+    app.add_exception_handler(AuthClockNotSetError, auth_clock_not_set_handler)
+
     @app.exception_handler(SecurityInitError)
     async def security_error_handler(request: Request, exc: SecurityInitError):
         log.error(f"Security initialization error: {exc}", exc_info=True)
@@ -676,7 +653,6 @@ def create_app(debug: bool = False):
         )
 
         await capture_manager.shutdown_all()
-        await _stop_token_purge_task(app)
 
         if hasattr(app.state, "db_manager"):
             try:

@@ -95,6 +95,12 @@ def test_auth_token_openapi_security(openapi_schema):
     post = openapi_schema["paths"]["/api/v1/auth/token"]["post"]
     security = post.get("security", [])
     assert security == [{"HmacSignature": []}, {"HTTPBearer": []}]
+    description = openapi_schema["info"]["description"]
+    assert "AUTH_CLOCK_NOT_SET" in description
+    assert "NTP needs set; cannot proceed" in description
+    assert "unrelated 503 responses are not clock errors" in description
+    schema = openapi_schema["components"]["schemas"]["ApiErrorResponse"]
+    assert {"error", "message"} <= schema["properties"].keys()
 
 
 def test_reachability_documents_targets_and_errors(openapi_schema):

@@ -3,6 +3,7 @@ OpenAPI metadata, tag descriptions, and shared response definitions.
 
 Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guide.
 """
+
 from __future__ import annotations
 
 from typing import Union
@@ -31,7 +32,15 @@ HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, an
 | Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |
 | On-device services (wlanpi-ui) | `X-Request-Signature: …` | HMAC with shared secret |
 
-JWT default lifetime: **7 days**. All documented routes require auth unless noted.
+JWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic
+clock and is unaffected by wall-clock changes. After a reboot, Core evaluates
+the signed `iat` and `exp` claims. If the restored clock is more than 30 seconds
+behind `iat`, Bearer authentication returns
+`503 {"error":"AUTH_CLOCK_NOT_SET","message":"NTP needs set; cannot proceed"}`.
+Retry the unchanged token after time synchronization. Branch on the `error`
+field because unrelated 503 responses are not clock errors.
+
+All documented routes require auth unless noted.
 
 ## Conventions
 

@@ -65,7 +65,31 @@ GET /api/v1/system/device/info
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
-**401** — missing or expired token. Re-issue via `POST /auth/token`.
+Token lifetime depends on the boot in which Core issued it:
+
+| Scenario | Result |
+|---|---|
+| Same boot, including a wall-clock correction | Valid until its monotonic lifetime ends |
+| Previous boot, restored clock is within the signed `iat` to `exp` window | Valid |
+| Previous boot, restored clock is more than 30 seconds behind `iat` | `503 AUTH_CLOCK_NOT_SET` |
+| At or after monotonic expiry on the same boot, or `exp` after reboot | `401` |
+
+The clock error has one exact body:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"error":"AUTH_CLOCK_NOT_SET","message":"NTP needs set; cannot proceed"}
+```
+
+When you receive this error, keep the token and retry it after an
+operator-controlled time synchronization. Do not treat every 503 as a clock
+error, and do not retry automatically. The unchanged token is evaluated normally
+after the clock catches up.
+
+**401** means the token is missing, malformed, revoked, or expired. Re-issue via
+`POST /auth/token` when appropriate.
 
 ### 1.3 Revoke
 

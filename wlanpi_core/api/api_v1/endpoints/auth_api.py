@@ -6,14 +6,18 @@ signing key rotation, and authentication-related debug operations.
 """
 
 from datetime import timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
 from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
 from wlanpi_core.core.config import settings
-from wlanpi_core.schemas.auth import KeyResponse, Token, TokenRequest, TokenRevokeResponse
-from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
+from wlanpi_core.schemas.auth import (
+    KeyResponse,
+    Token,
+    TokenRequest,
+    TokenRevokeResponse,
+)
 
 router = APIRouter()
 from wlanpi_core.core.logging import get_logger
@@ -88,10 +92,11 @@ async def revoke_token(request: Request, token_request: TokenRequest):
     try:
         _require_device_id(token_request)
         auth = request.headers.get("Authorization")
-        if not auth or not auth.startswith("Bearer "):
+        parts = auth.split() if auth else []
+        if len(parts) != 2 or parts[0].lower() != "bearer":
             raise HTTPException(status_code=401, detail="Invalid authorization header")
 
-        token = auth.split(" ")[1]
+        token = parts[1]
         result = await request.app.state.token_manager.revoke_token(token)
         return result
 
@@ -136,14 +141,6 @@ async def list_all_signing_keys(request: Request):
     except Exception:
         log.exception("Unexpected error getting keys")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get(
-    "/debug/cache/verify", dependencies=[Depends(verify_hmac)], include_in_schema=False
-)
-async def verify_cache(request: Request, token: Optional[str] = None):
-    """Verify cache state"""
-    return await request.app.state.token_manager.verify_cache_state(token)
 
 
 @router.get(
