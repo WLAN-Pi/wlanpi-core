@@ -1,19 +1,20 @@
 """Tests for P0 network primitive modules."""
+
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network import (
+    connections,
     dhcp,
     link_stats,
     lookup,
     routing,
-    connections,
     wlan_drivers,
 )
 
@@ -37,8 +38,48 @@ def test_get_routing_table_parses_json():
     assert result["routes"] == routes
 
 
+def test_get_interfaces_drops_empty_dicts_from_ip_output():
+    from wlanpi_core.models.network.common import get_interfaces
+
+    eth0 = {
+        "ifindex": 2,
+        "ifname": "eth0",
+        "flags": ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"],
+        "mtu": 1500,
+        "qdisc": "fq_codel",
+        "operstate": "UP",
+        "group": "default",
+        "txqlen": 1000,
+        "link_type": "ether",
+        "address": "52:54:00:00:00:01",
+        "broadcast": "ff:ff:ff:ff:ff:ff",
+        "addr_info": [],
+    }
+
+    def _fake_run(cmd, **kwargs):
+        if cmd[0] == "ip":
+            return CommandResult(
+                stdout=json.dumps([{}, {}, {}, eth0]),
+                stderr="",
+                return_code=0,
+            )
+        return CommandResult(stdout="1000", stderr="", return_code=0)
+
+    with patch(
+        "wlanpi_core.models.network.common.run_command",
+        side_effect=_fake_run,
+    ):
+        result = get_interfaces(show_type="vlan")
+
+    assert len(result) == 1
+    assert result[0].ifname == "eth0"
+    assert result[0].link_speed == 1000
+
+
 def test_get_link_stats_parses_ethtool():
-    ethtool_out = "Settings for eth0:\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tLink detected: yes\n"
+    ethtool_out = (
+        "Settings for eth0:\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tLink detected: yes\n"
+    )
     with patch(
         "wlanpi_core.network.link_stats.ns_exec",
         return_value=MagicMock(stdout=ethtool_out),
@@ -195,10 +236,25 @@ async def test_renew_interface_dhcp_rejects_invalid_iface(iface):
 def test_resolve_interface_namespace_root():
     with patch(
         "wlanpi_core.network.lookup.network_config.status",
-        return_value={"root": {"eth0": {"mode": "managed"}}, "scan_ns": {"wlanpi0": {}}},
+        return_value={
+            "root": {"eth0": {"mode": "managed"}},
+            "scan_ns": {"wlanpi0": {}},
+        },
     ):
         assert lookup.resolve_interface_namespace("eth0") is None
         assert lookup.resolve_interface_namespace("wlanpi0") == "scan_ns"
+
+
+def test_resolve_interface_namespace_root_falls_back_to_root_link():
+    with patch(
+        "wlanpi_core.network.lookup.network_config.status",
+        return_value={"root": {}},
+    ):
+        with patch(
+            "wlanpi_core.network.lookup._exists_in_root",
+            return_value=True,
+        ):
+            assert lookup.resolve_interface_namespace("eth0") is None
 
 
 def test_resolve_interface_namespace_fails_closed_on_status_error():
@@ -217,8 +273,12 @@ def test_resolve_interface_namespace_rejects_missing_interface():
         "wlanpi_core.network.lookup.network_config.status",
         return_value={"root": {"eth0": {}}, "scan_ns": {"wlanpi0": {}}},
     ):
-        with pytest.raises(ValidationError) as exc:
-            lookup.resolve_interface_namespace("eth9")
+        with patch(
+            "wlanpi_core.network.lookup._exists_in_root",
+            return_value=False,
+        ):
+            with pytest.raises(ValidationError) as exc:
+                lookup.resolve_interface_namespace("eth9")
 
     assert exc.value.status_code == 404
 
@@ -246,7 +306,11 @@ def test_get_usb_wlan_drivers_filters_bus():
 
 def test_bus_from_sysfs_path_pci_bdf():
     path = Path("/sys/class/ieee80211/phy0/device")
-    with patch.object(Path, "resolve", return_value=Path("/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0")):
+    with patch.object(
+        Path,
+        "resolve",
+        return_value=Path("/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0"),
+    ):
         assert wlan_drivers._bus_from_sysfs_path(path) == "pci"
 
 
