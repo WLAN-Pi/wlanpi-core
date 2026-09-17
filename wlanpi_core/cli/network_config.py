@@ -587,12 +587,10 @@ class NetworkConfigCLI:
                 # Handle empty responses
                 if value == "":
                     if existing_value is not None:
-                        if not secret:
-                            self.print_info(f"Using existing value: '{existing_value}'")
+                        self.print_info("Using existing value.")
                         return existing_value
                     elif default_value is not None:
-                        if not secret:
-                            self.print_info(f"Using default value: '{default_value}'")
+                        self.print_info("Using default value.")
                         return default_value
                     elif required:
                         raise ValidationError(
