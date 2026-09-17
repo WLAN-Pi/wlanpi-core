@@ -19,14 +19,14 @@ from wlanpi_core.utils.general import run_command
 log = get_logger(__name__)
 
 
-def _lldpctl_neighbours() -> list[dict]:
+def _lldpctl_neighbours() -> list[dict[str, Any]]:
     """Query lldpd for the current neighbour table, one entry per interface."""
     result = run_command([LLDPCTL_FILE, "-f", "json0"], raise_on_fail=True)
     data = result.output_from_json()
     if not isinstance(data, dict):
         raise OSError("unexpected lldpctl json0 output")
 
-    neighbours = []
+    neighbours: list[dict[str, Any]] = []
     for entry in data.get("lldp") or []:
         neighbours.extend(entry.get("interface") or [])
     return neighbours
@@ -38,19 +38,19 @@ def _first_group(pattern: str, text: str) -> str:
     return match.group(1) if match else ""
 
 
-def _json0_value(field) -> str | None:
+def _json0_value(field: Any) -> str | None:
     """First value of a json0 field (each field is a list of dicts)."""
     if field and isinstance(field, list):
         return field[0].get("value")
     return None
 
 
-def _neighbour_matches(interface: dict, protocol: str) -> bool:
+def _neighbour_matches(interface: dict[str, Any], protocol: str) -> bool:
     # lldpd reports the source protocol as e.g. "LLDP", "CDPv1", "CDPv2"
     return str(interface.get("via", "")).upper().startswith(protocol)
 
 
-def _render_neighbour(interface: dict) -> list[str]:
+def _render_neighbour(interface: dict[str, Any]) -> list[str]:
     """Flatten one lldpctl interface entry into legacy networkinfo lines."""
     chassis = (interface.get("chassis") or [{}])[0]
     port = (interface.get("port") or [{}])[0]

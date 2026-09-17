@@ -1,7 +1,7 @@
 import typing
 from typing import Any, Optional
 
-from pydantic import BaseModel, Extra, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class NetworkAddress(BaseModel):
@@ -22,7 +22,7 @@ class NetworkAddress(BaseModel):
 
 
 # class InetNetworkAddress(NetworkAddress):
-class InetNetworkAddress(NetworkAddress, extra=Extra.allow):
+class InetNetworkAddress(NetworkAddress, extra="allow"):
     family: str = "inet"
     address_type: str
 
