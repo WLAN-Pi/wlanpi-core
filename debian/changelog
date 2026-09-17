@@ -1,3 +1,12 @@
+wlanpi-core (2.1.11-1) unstable; urgency=medium
+
+  * Migrate production API port 31415 to TLS-only (HTTPS)
+  * Bind development server to loopback only
+  * Validate nginx configuration before reload; reload instead of restart
+  * Remove nginx stop from preinst; nginx stays live during upgrade
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 00:00:00 -0400
+
 wlanpi-core (2.1.10-4) unstable; urgency=medium
 
   * Enforce boot-aware JWT lifetime and immediate revocation

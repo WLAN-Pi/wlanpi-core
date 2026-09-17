@@ -102,8 +102,9 @@ class NetworkConfigCLI:
         self.APPS_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/apps.json"
         self.WPA_LOG_FILE = "/tmp/wpa.log"
         self.API_PORT = 31415
-        self.HOST = "localhost"
-        self.BASE = f"http://{self.HOST}:{self.API_PORT}/api/v1/network/config/"
+        self.HOST = "127.0.0.1"
+        self.CA_CERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
+        self.BASE = f"https://{self.HOST}:{self.API_PORT}/api/v1/network/config/"
         self.token: Optional[str] = None
         self.existing_configs: Dict[str, Any] = {}
 
@@ -250,13 +251,21 @@ class NetworkConfigCLI:
             print(f"Making {method} request...")
 
             if method == "GET":
-                response = requests.get(url, headers=headers, timeout=30)
+                response = requests.get(
+                    url, headers=headers, timeout=30, verify=self.CA_CERT
+                )
             elif method == "POST":
-                response = requests.post(url, json=data, headers=headers, timeout=60)
+                response = requests.post(
+                    url, json=data, headers=headers, timeout=60, verify=self.CA_CERT
+                )
             elif method == "PATCH":
-                response = requests.patch(url, json=data, headers=headers, timeout=60)
+                response = requests.patch(
+                    url, json=data, headers=headers, timeout=60, verify=self.CA_CERT
+                )
             elif method == "DELETE":
-                response = requests.delete(url, json=data, headers=headers, timeout=60)
+                response = requests.delete(
+                    url, json=data, headers=headers, timeout=60, verify=self.CA_CERT
+                )
             else:
                 raise ValueError(f"Unsupported method: {method}")
 
@@ -1374,7 +1383,7 @@ def main() -> None:
     try:
         cli = NetworkConfigCLI()
         cli.API_PORT = args.port
-        cli.BASE = f"http://{cli.HOST}:{cli.API_PORT}/api/v1/network/config/"
+        cli.BASE = f"https://{cli.HOST}:{cli.API_PORT}/api/v1/network/config/"
         cli.main()
     except KeyboardInterrupt:
         print("\nExiting Network Configuration CLI")

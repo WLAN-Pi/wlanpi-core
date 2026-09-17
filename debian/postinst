@@ -161,8 +161,15 @@ if ! ischroot; then
             systemctl status wlanpi-core.service >&2 || true
         fi
         if which nginx >/dev/null 2>&1; then
-            echo "Restarting nginx ..."
-            deb-systemd-invoke restart nginx.service || true
+            echo "Validating nginx configuration..."
+            nginx -t
+            if systemctl is-active --quiet nginx.service; then
+                echo "Reloading nginx..."
+                deb-systemd-invoke reload nginx.service
+            else
+                echo "Starting nginx..."
+                deb-systemd-invoke start nginx.service
+            fi
         fi
     fi
 fi

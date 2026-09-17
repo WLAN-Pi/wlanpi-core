@@ -19,6 +19,7 @@ except ImportError:
 DEFAULT_PORT = 31415
 AUTH_ENDPOINT = "/api/v1/auth/token"
 SECRET_PATH = "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
+CA_CERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
 RED = "\033[0;31m"
 BLUE = "\033[0;34m"
 GREEN = "\033[0;32m"
@@ -32,7 +33,7 @@ class DeviceAuthClient:
     def __init__(self, device_id: str, port: int = DEFAULT_PORT) -> None:
         self.device_id = device_id
         self.port = port
-        self.api_url = f"localhost:{port}"
+        self.api_url = f"127.0.0.1:{port}"
         self.auth_endpoint = AUTH_ENDPOINT
         self.secret_file = Path(SECRET_PATH)
         self.validate_setup()
@@ -79,7 +80,7 @@ class DeviceAuthClient:
         signature = self.generate_signature(request_body)
 
         response = requests.post(
-            f"http://{self.api_url}{self.auth_endpoint}",
+            f"https://{self.api_url}{self.auth_endpoint}",
             headers={
                 "X-Request-Signature": signature,
                 "accept": "application/json",
@@ -87,6 +88,7 @@ class DeviceAuthClient:
             },
             data=request_body,
             timeout=5,
+            verify=CA_CERT,
         )
         response.raise_for_status()
 
