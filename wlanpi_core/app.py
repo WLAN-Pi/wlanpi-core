@@ -3,7 +3,6 @@
 # stdlib imports
 import asyncio
 import grp
-import json
 import time
 from pathlib import Path
 
@@ -232,7 +231,9 @@ class InitializationManager:
                 self.log.info(f"Creating parent directory {parent_dir}")
                 try:
                     parent_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-                    self.log.debug(f"Successfully created parent directory {parent_dir}")
+                    self.log.debug(
+                        f"Successfully created parent directory {parent_dir}"
+                    )
                 except PermissionError as e:
                     self.log.error(
                         f"FATAL: Permission denied creating {parent_dir}. "
@@ -264,7 +265,9 @@ class InitializationManager:
                 self.log.info(f"Creating parent directory {parent_dir}")
                 try:
                     parent_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-                    self.log.debug(f"Successfully created parent directory {parent_dir}")
+                    self.log.debug(
+                        f"Successfully created parent directory {parent_dir}"
+                    )
                 except PermissionError as e:
                     self.log.error(
                         f"FATAL: Permission denied creating {parent_dir}. "
@@ -313,20 +316,28 @@ class InitializationManager:
                 mode_content = mode_file.read_text().strip()
                 is_classic = mode_content == "classic"
                 if not is_classic:
-                    self.log.info(f"WLAN Pi mode is '{mode_content}', not 'classic'. Skipping namespace operations.")
+                    self.log.info(
+                        f"WLAN Pi mode is '{mode_content}', not 'classic'. Skipping namespace operations."
+                    )
                 return is_classic
             else:
-                self.log.warning(f"Mode file {MODE_FILE} does not exist. Skipping namespace operations.")
+                self.log.warning(
+                    f"Mode file {MODE_FILE} does not exist. Skipping namespace operations."
+                )
                 return False
         except Exception as e:
-            self.log.warning(f"Failed to read mode file {MODE_FILE}: {e}. Skipping namespace operations.")
+            self.log.warning(
+                f"Failed to read mode file {MODE_FILE}: {e}. Skipping namespace operations."
+            )
             return False
 
     async def _initialize_network_namespaces(self):
         """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
         # Only proceed if in classic mode
         if not self._is_classic_mode():
-            self.log.info("Exiting network namespace initialization (not in classic mode)")
+            self.log.info(
+                "Exiting network namespace initialization (not in classic mode)"
+            )
             return
 
         try:
@@ -334,7 +345,9 @@ class InitializationManager:
                 # recover_current_config writes default on malformed current.txt before re-raising
                 current_config = recover_current_config()
             except ConfigMalformedError as cme:
-                self.log.error(f"Current configuration is malformed: {cme.message}. Using default.")
+                self.log.error(
+                    f"Current configuration is malformed: {cme.message}. Using default."
+                )
                 current_config = "default"
             except FileNotFoundError:
                 self.log.warning("No current network configuration found")
@@ -342,24 +355,34 @@ class InitializationManager:
             except Exception as e:
                 self.log.error(f"Unexpected error getting current config: {e}")
                 return  # Don't proceed with namespace setup if we can't get config
-            
+
             if current_config == "default" or not current_config:
                 try:
                     success = activate_config("default", override_active=True)
                     if not success:
-                        self.log.warning(f"Failed to activate default config (non-critical)")
+                        self.log.warning(
+                            f"Failed to activate default config (non-critical)"
+                        )
                     else:
                         self.log.info(f"Default config activated successfully")
                 except Exception as e:
-                    self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
-                    
+                    self.log.error(
+                        f"Error activating default config: {e} (non-critical, continuing)"
+                    )
+
                 if CREATE_MONITOR_PAIRS_DEFAULT:
                     try:
-                        system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                        system_initialized = await self._initialize_system_manager(
+                            "wlanpi", exclusions=[]
+                        )
                         if not system_initialized:
-                            self.log.warning("System manager initialization failed (non-critical)")
+                            self.log.warning(
+                                "System manager initialization failed (non-critical)"
+                            )
                     except Exception as e:
-                        self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                        self.log.error(
+                            f"Error initializing system manager: {e} (non-critical, continuing)"
+                        )
             else:
                 model = get_model()
                 if model not in SUPPORTED_MODELS:
@@ -369,19 +392,29 @@ class InitializationManager:
                     try:
                         success = activate_config("default", override_active=True)
                         if not success:
-                            self.log.warning(f"Failed to activate default config (non-critical)")
+                            self.log.warning(
+                                f"Failed to activate default config (non-critical)"
+                            )
                         else:
                             self.log.info(f"Default config activated successfully")
                     except Exception as e:
-                        self.log.error(f"Error activating default config: {e} (non-critical, continuing)")
-                                                
+                        self.log.error(
+                            f"Error activating default config: {e} (non-critical, continuing)"
+                        )
+
                     if CREATE_MONITOR_PAIRS_DEFAULT:
                         try:
-                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            system_initialized = await self._initialize_system_manager(
+                                "wlanpi", exclusions=[]
+                            )
                             if not system_initialized:
-                                self.log.warning("System manager initialization failed (non-critical)")
+                                self.log.warning(
+                                    "System manager initialization failed (non-critical)"
+                                )
                         except Exception as e:
-                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                            self.log.error(
+                                f"Error initializing system manager: {e} (non-critical, continuing)"
+                            )
                 else:
                     self.log.info(
                         f"Activating current network configuration: {current_config}"
@@ -389,23 +422,38 @@ class InitializationManager:
                     try:
                         success = activate_config(current_config, override_active=True)
                         if not success:
-                            self.log.warning(f"Failed to activate configuration {current_config} (non-critical)")
+                            self.log.warning(
+                                f"Failed to activate configuration {current_config} (non-critical)"
+                            )
                         else:
-                            self.log.info(f"Config {current_config} activated successfully")
+                            self.log.info(
+                                f"Config {current_config} activated successfully"
+                            )
                     except Exception as e:
-                        self.log.error(f"Error activating config {current_config}: {e} (non-critical, continuing)")
-                    
+                        self.log.error(
+                            f"Error activating config {current_config}: {e} (non-critical, continuing)"
+                        )
+
                     if CREATE_MONITOR_PAIRS_UNINIT:
                         try:
-                            exclusions = interfaces_in_root(current_config)
-                            system_initialized = await self._initialize_system_manager("wlanpi", exclusions=[])
+                            interfaces_in_root(current_config)
+                            system_initialized = await self._initialize_system_manager(
+                                "wlanpi", exclusions=[]
+                            )
                             if not system_initialized:
-                                self.log.warning("System manager initialization failed (non-critical)")
+                                self.log.warning(
+                                    "System manager initialization failed (non-critical)"
+                                )
                         except Exception as e:
-                            self.log.error(f"Error initializing system manager: {e} (non-critical, continuing)")
+                            self.log.error(
+                                f"Error initializing system manager: {e} (non-critical, continuing)"
+                            )
 
         except Exception as e:
-            self.log.error(f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)", exc_info=True)
+            self.log.error(
+                f"Unexpected error during network namespace initialization: {e} (non-critical, continuing)",
+                exc_info=True,
+            )
 
     async def initialize_components(self):
         """Initialize all application components with proper sequencing and retry"""
@@ -495,10 +543,14 @@ class InitializationManager:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
 
-    async def _initialize_system_manager(self, iface_name: str, exclusions: list[str] = []):
+    async def _initialize_system_manager(
+        self, iface_name: str, exclusions: list[str] = []
+    ):
         """Initialize the system manager"""
         try:
-            self.app.state.system_manager = SystemManager(iface_name, exclusions=exclusions)
+            self.app.state.system_manager = SystemManager(
+                iface_name, exclusions=exclusions
+            )
             self.log.debug("System manager initialized succcessfully")
             return True
         except Exception as e:

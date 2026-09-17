@@ -4,6 +4,7 @@ Connection monitoring for network interfaces.
 This module provides background monitoring of network connections,
 handling DHCP, default routes, and app startup when connections complete.
 """
+
 import logging
 import threading
 import time
@@ -77,7 +78,9 @@ class ConnectionMonitor:
 
             stop_event = _monitor_stop_flags.get(monitor_key)
             if not stop_event:
-                log.error(f"[ConnectionMonitor] No stop event found for {monitor_key}, monitor cannot start")
+                log.error(
+                    f"[ConnectionMonitor] No stop event found for {monitor_key}, monitor cannot start"
+                )
                 return
 
             log.info(
@@ -128,12 +131,16 @@ class ConnectionMonitor:
             if connected_state:
                 # Start DHCP after connection
                 try:
-                    log.info(f"[ConnectionMonitor] Starting DHCP for {iface} in {namespace_display} after connection")
+                    log.info(
+                        f"[ConnectionMonitor] Starting DHCP for {iface} in {namespace_display} after connection"
+                    )
                     restart_dhcp_with_timeout(iface, namespace, timeout=15)
 
                     # Set default route if requested
                     if cfg.default_route:
-                        log.info(f"[ConnectionMonitor] Setting default route for {iface} in {namespace_display}")
+                        log.info(
+                            f"[ConnectionMonitor] Setting default route for {iface} in {namespace_display}"
+                        )
                         set_default_route(iface, namespace)
 
                     # Start app if configured
@@ -143,9 +150,12 @@ class ConnectionMonitor:
                             f"for {iface} in {namespace_display}"
                         )
                         from wlanpi_core.namespaces.apps import start_app_in_namespace
+
                         start_app_in_namespace(namespace, cfg.autostart_app)
 
-                    log.info(f"[ConnectionMonitor] Connection setup complete for {iface} in {namespace_display}")
+                    log.info(
+                        f"[ConnectionMonitor] Connection setup complete for {iface} in {namespace_display}"
+                    )
                 except Exception as e:
                     log.error(
                         f"[ConnectionMonitor] Error completing connection setup for {iface}: {e}",
@@ -245,7 +255,9 @@ def stop_all_connection_monitors() -> None:
         if monitor_thread.is_alive():
             monitor_thread.join(timeout=2.0)
             if monitor_thread.is_alive():
-                log.warning(f"Connection monitor {monitor_key} did not stop within timeout")
+                log.warning(
+                    f"Connection monitor {monitor_key} did not stop within timeout"
+                )
 
     with _monitor_lock:
         _connection_monitors.clear()

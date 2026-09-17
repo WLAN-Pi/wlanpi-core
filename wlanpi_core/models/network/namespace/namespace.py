@@ -2,6 +2,7 @@ import logging
 import re
 from typing import List
 
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.network.namespace.namespace_errors import (
     NetworkNamespaceError,
@@ -9,7 +10,6 @@ from wlanpi_core.models.network.namespace.namespace_errors import (
 )
 from wlanpi_core.utils.general import run_command
 
-from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 

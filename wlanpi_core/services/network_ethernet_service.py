@@ -3,9 +3,9 @@ from typing import Optional, Union
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
 from ..models.network.vlan.vlan_file import VLANFile
+from ..models.validation_error import ValidationError
 from ..schemas.network.network import IPInterfaceAddress
 from ..schemas.network.types import CustomIPInterfaceFilter
-from ..models.validation_error import ValidationError
 from ..utils.validation import validate_interface_name, validate_vlan_id
 
 

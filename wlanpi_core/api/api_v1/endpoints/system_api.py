@@ -4,8 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import hotspot_service, system_service
@@ -266,7 +266,10 @@ async def list_reg_domains():
     try:
         log.debug("GET /system/reg-domain/list request")
         result = system_service.list_reg_domains()
-        log.debug("GET /system/reg-domain/list response: %d countries", len(result["countries"]))
+        log.debug(
+            "GET /system/reg-domain/list response: %d countries",
+            len(result["countries"]),
+        )
         return result
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
@@ -288,7 +291,9 @@ async def show_reg_domain():
         log.debug("GET /system/reg-domain response: %s", result)
         if result.get("country") == "unknown":
             log.error("GET /system/reg-domain produced unparseable country: %s", result)
-            return Response(content="Unable to determine regulatory domain", status_code=503)
+            return Response(
+                content="Unable to determine regulatory domain", status_code=503
+            )
         return result
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

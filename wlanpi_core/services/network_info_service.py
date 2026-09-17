@@ -14,8 +14,8 @@ from wlanpi_core.constants import (
     PUBLICIP6_CMD,
     PUBLICIP_CMD,
 )
-from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 
 log = get_logger(__name__)
@@ -103,7 +103,10 @@ def show_info():
     output = {}
 
     output["interfaces"] = show_interfaces()
-    log.debug("show_info: interfaces %s", _section_debug_label("interfaces", output["interfaces"]))
+    log.debug(
+        "show_info: interfaces %s",
+        _section_debug_label("interfaces", output["interfaces"]),
+    )
 
     output["wlan_interfaces"] = show_wlan_interfaces()
     log.debug(
@@ -118,7 +121,10 @@ def show_info():
     )
 
     output["vlan_info"] = show_vlan()
-    log.debug("show_info: vlan_info %s", _section_debug_label("vlan_info", output["vlan_info"]))
+    log.debug(
+        "show_info: vlan_info %s",
+        _section_debug_label("vlan_info", output["vlan_info"]),
+    )
 
     output["lldp_neighbour_info"] = show_lldp_neighbour()
     log.debug(
@@ -133,7 +139,10 @@ def show_info():
     )
 
     output["public_ip"] = show_publicip()
-    log.debug("show_info: public_ip %s", _section_debug_label("public_ip", output["public_ip"]))
+    log.debug(
+        "show_info: public_ip %s",
+        _section_debug_label("public_ip", output["public_ip"]),
+    )
 
     return output
 
@@ -245,9 +254,7 @@ def show_wlan_interfaces():
 
         # Driver
         try:
-            ethtool_output = run_command(
-                [ETHTOOL_FILE, "-i", interface]
-            ).stdout.strip()
+            ethtool_output = run_command([ETHTOOL_FILE, "-i", interface]).stdout.strip()
             driver = re.search(r".*driver:\s+(.*)", ethtool_output).group(1)
             output[interface]["driver"] = driver
         except Exception:
@@ -286,9 +293,7 @@ def show_wlan_interfaces():
 
             # Frequency
             try:
-                freq = int(
-                    re.search(r".*\(([0-9]+)\s+MHz\).*", iw_output).group(1)
-                )
+                freq = int(re.search(r".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
@@ -346,7 +351,9 @@ def show_vlan():
         try:
             lines = _read_neighbour_file(neighbour_file)
         except OSError as exc:
-            log.warning("Unable to read neighbour VLAN data from %s: %s", neighbour_file, exc)
+            log.warning(
+                "Unable to read neighbour VLAN data from %s: %s", neighbour_file, exc
+            )
             continue
 
         vlan_info["info"] = [line for line in lines or [] if "VLAN" in line]

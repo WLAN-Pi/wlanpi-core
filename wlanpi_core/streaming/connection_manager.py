@@ -7,7 +7,6 @@ from fastapi import WebSocket
 
 from wlanpi_core.constants import DUMPCAP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
-from wlanpi_core.utils.general import run_command_async, terminate_process_async
 from wlanpi_core.streaming.models import (
     CaptureInterfaceConfig,
     CaptureStart,
@@ -15,6 +14,7 @@ from wlanpi_core.streaming.models import (
     validate_capture_interface,
     validate_capture_width,
 )
+from wlanpi_core.utils.general import run_command_async, terminate_process_async
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
@@ -189,9 +189,9 @@ class ConnectionManager:
         interfaces = start.interfaces
         pcap_filter = start.pcap_filter
 
-        if (
-            client["task"] and not client["task"].done()
-        ) or (client["proc"] and client["proc"].returncode is None):
+        if (client["task"] and not client["task"].done()) or (
+            client["proc"] and client["proc"].returncode is None
+        ):
             await self.send_message_event(
                 websocket,
                 "error",

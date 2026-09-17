@@ -4,10 +4,10 @@ Process management within network namespaces.
 This module provides functions for listing and managing processes running
 within network namespaces.
 """
+
 import logging
 from typing import List, Optional
 
-from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
@@ -39,7 +39,9 @@ def get_processes_in_namespace(namespace: str) -> List[int]:
 
     try:
         # Use 'ip netns pids' command
-        result = ns_exec(["ip", "netns", "pids", namespace], namespace=None, no_output=True)
+        result = ns_exec(
+            ["ip", "netns", "pids", namespace], namespace=None, no_output=True
+        )
 
         # Parse PIDs from output (one per line, may have whitespace)
         pids = []
@@ -58,9 +60,7 @@ def get_processes_in_namespace(namespace: str) -> List[int]:
         raise
 
 
-def kill_process_in_namespace(
-    pid: int, namespace: str, signal: str = "TERM"
-) -> bool:
+def kill_process_in_namespace(pid: int, namespace: str, signal: str = "TERM") -> bool:
     """
     Kill a specific process in a network namespace.
 
@@ -118,7 +118,7 @@ def kill_processes_in_namespace(
     Examples:
         >>> # Kill all processes in namespace
         >>> count = kill_processes_in_namespace("test_ns")
-        
+
         >>> # Kill specific process by name
         >>> count = kill_processes_in_namespace("test_ns", process_name="wpa_supplicant")
     """
@@ -138,7 +138,9 @@ def kill_processes_in_namespace(
         except RunCommandError as e:
             # pkill returns non-zero if no processes matched, which is not necessarily an error
             if "No such process" in str(e) or "No processes found" in str(e):
-                log.debug(f"No processes matching '{process_name}' found in namespace {namespace}")
+                log.debug(
+                    f"No processes matching '{process_name}' found in namespace {namespace}"
+                )
                 return 0
             log.error(f"Failed to kill processes in namespace {namespace}: {e}")
             raise
@@ -153,7 +155,9 @@ def kill_processes_in_namespace(
                 kill_process_in_namespace(pid, namespace, signal=signal)
                 killed_count += 1
             except RunCommandError as e:
-                log.warning(f"Failed to kill process {pid} in namespace {namespace}: {e}")
+                log.warning(
+                    f"Failed to kill process {pid} in namespace {namespace}: {e}"
+                )
                 # Continue with other processes
 
         log.info(f"Killed {killed_count} process(es) in namespace {namespace}")

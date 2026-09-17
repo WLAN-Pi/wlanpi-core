@@ -22,7 +22,7 @@ OPENAPI_DESCRIPTION = """
 
 HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.
 
-**Base path:** `/api/v1`  
+**Base path:** `/api/v1`
 **Interactive docs:** `/docs` (this page) · **OpenAPI JSON:** `/api/v1/openapi.json`
 
 ## Authentication

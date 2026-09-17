@@ -4,7 +4,10 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
+from wlanpi_core.models.network_config_errors import (
+    ConfigActiveError,
+    ConfigMalformedError,
+)
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (

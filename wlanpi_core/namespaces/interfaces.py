@@ -4,10 +4,10 @@ Interface management within network namespaces.
 This module provides functions for listing, moving, and managing network interfaces
 within network namespaces.
 """
+
 import logging
 from typing import List, Optional
 
-from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
@@ -40,7 +40,9 @@ def get_interfaces_in_namespace(
     log.debug(f"Getting interfaces in namespace: {namespace}")
 
     try:
-        result = ns_exec(["ip", "-o", "link", "show"], namespace=namespace, no_output=True)
+        result = ns_exec(
+            ["ip", "-o", "link", "show"], namespace=namespace, no_output=True
+        )
         interfaces = []
 
         for line in result.stdout.splitlines():

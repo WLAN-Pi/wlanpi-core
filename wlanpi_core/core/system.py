@@ -1,6 +1,5 @@
 import subprocess
 import time
-
 from threading import Thread
 
 from wlanpi_core.constants import ETHTOOL_FILE, IP_FILE, IW_FILE
@@ -80,7 +79,7 @@ class SystemManager:
                 if current_iface not in self.exclusions:
                     interfaces[current_iface] = iface_type
                     current_iface = None
-                    
+
         return interfaces
 
     def _create_monitor(self, name, index):
@@ -138,6 +137,7 @@ class SystemManager:
                 if driver == "iwlwifi":
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
+
                     def background_scan_with_timeout():
                         time.sleep(1)
                         try:
@@ -145,13 +145,14 @@ class SystemManager:
                                 [IW_FILE, iface, "scan"],
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
-                                timeout=10
+                                timeout=10,
                             )
                             log.info(f"Scan on {iface} done")
-                            
+
                             self._iface_down(iface)
                         except subprocess.TimeoutExpired:
                             log.warning(f"Scan on {iface} timed out after 10s")
+
                     Thread(target=background_scan_with_timeout, daemon=True).start()
                 else:
                     self._iface_down(iface)

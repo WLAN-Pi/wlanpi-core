@@ -1,4 +1,5 @@
 """WPA supplicant and iw scan primitives."""
+
 from __future__ import annotations
 
 import json
@@ -329,9 +330,7 @@ def fetch_scan_results(iface: str, namespace: Optional[str] = None) -> str:
     ).stdout.strip()
 
 
-def find_bss(
-    networks: list[dict[str, Any]], bssid: str
-) -> Optional[dict[str, Any]]:
+def find_bss(networks: list[dict[str, Any]], bssid: str) -> Optional[dict[str, Any]]:
     """Return the scan entry matching ``bssid``, if present."""
     target = bssid.lower()
     for network in networks:
@@ -356,9 +355,7 @@ def _interface_is_up(iface: str, namespace: Optional[str] = None) -> bool:
     return "UP" in flags
 
 
-def _set_interface_state(
-    iface: str, up: bool, namespace: Optional[str] = None
-) -> None:
+def _set_interface_state(iface: str, up: bool, namespace: Optional[str] = None) -> None:
     """Set the interface's administrative state."""
     ns_exec(
         ["ip", "link", "set", iface, "up" if up else "down"],

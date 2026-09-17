@@ -1,4 +1,5 @@
 """WLAN adapter driver discovery (USB and PCI)."""
+
 from __future__ import annotations
 
 import logging
@@ -69,7 +70,9 @@ def _collect_wlan_driver_inventory() -> dict[str, Any]:
             if not re.search(r"network controller|wireless", line, re.I):
                 continue
             pci_id, _, description = line.partition(" ")
-            pci_devices.append({"pci_id": pci_id.strip(), "description": description.strip()})
+            pci_devices.append(
+                {"pci_id": pci_id.strip(), "description": description.strip()}
+            )
     except (RunCommandError, FileNotFoundError):
         pci_devices = []
 

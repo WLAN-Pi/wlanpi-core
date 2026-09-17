@@ -98,7 +98,9 @@ class RegDomainSetRequest(BaseModel):
 
 class RegDomainCountry(BaseModel):
     code: str = Field(description="ISO 3166-1 alpha-2 country code", examples=["GB"])
-    name: str = Field(description="English display name for UI pickers", examples=["United Kingdom"])
+    name: str = Field(
+        description="English display name for UI pickers", examples=["United Kingdom"]
+    )
 
 
 class RegDomainList(BaseModel):

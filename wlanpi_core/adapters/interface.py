@@ -4,6 +4,7 @@ Interface operations for network adapters.
 This module provides functions for creating, deleting, and managing network interfaces,
 separate from namespace concerns.
 """
+
 import logging
 from typing import Optional
 
@@ -52,7 +53,16 @@ def create_interface(
     )
 
     try:
-        cmd = [IW_FILE, "phy", phy, "interface", "add", interface_name, "type", interface_type]
+        cmd = [
+            IW_FILE,
+            "phy",
+            phy,
+            "interface",
+            "add",
+            interface_name,
+            "type",
+            interface_type,
+        ]
 
         if namespace is None:
             run_command(cmd, raise_on_fail=True)
@@ -70,9 +80,7 @@ def create_interface(
         raise
 
 
-def delete_interface(
-    interface_name: str, namespace: Optional[str] = None
-) -> bool:
+def delete_interface(interface_name: str, namespace: Optional[str] = None) -> bool:
     """
     Delete a network interface.
 
@@ -182,9 +190,7 @@ def get_interface_info(
         raise
 
 
-def bring_interface_up(
-    interface_name: str, namespace: Optional[str] = None
-) -> bool:
+def bring_interface_up(interface_name: str, namespace: Optional[str] = None) -> bool:
     """
     Bring a network interface up.
 
@@ -206,7 +212,9 @@ def bring_interface_up(
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
 
-    log.debug(f"Bringing interface {interface_name} up in namespace {namespace or 'root'}")
+    log.debug(
+        f"Bringing interface {interface_name} up in namespace {namespace or 'root'}"
+    )
 
     try:
         cmd = ["ip", "link", "set", interface_name, "up"]
@@ -223,9 +231,7 @@ def bring_interface_up(
         raise
 
 
-def bring_interface_down(
-    interface_name: str, namespace: Optional[str] = None
-) -> bool:
+def bring_interface_down(interface_name: str, namespace: Optional[str] = None) -> bool:
     """
     Bring a network interface down.
 
@@ -247,7 +253,9 @@ def bring_interface_down(
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
 
-    log.debug(f"Bringing interface {interface_name} down in namespace {namespace or 'root'}")
+    log.debug(
+        f"Bringing interface {interface_name} down in namespace {namespace or 'root'}"
+    )
 
     try:
         cmd = ["ip", "link", "set", interface_name, "down"]

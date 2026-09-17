@@ -1,4 +1,5 @@
 """Namespace-aware WLAN scan with adapter auto-selection."""
+
 from __future__ import annotations
 
 import logging
@@ -6,11 +7,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from wlanpi_core.utils import network_config
-from wlanpi_core.wpa import scan as wpa_scan
 from wlanpi_core.utils.validation import (
     validate_interface_name,
     validate_namespace_name,
 )
+from wlanpi_core.wpa import scan as wpa_scan
 
 log = logging.getLogger(__name__)
 
@@ -130,8 +131,7 @@ def select_scan_adapter(
         matches = [
             adapter
             for adapter in adapters
-            if adapter["iface"] == iface
-            and (ns is None or adapter["namespace"] == ns)
+            if adapter["iface"] == iface and (ns is None or adapter["namespace"] == ns)
         ]
         if not matches:
             raise NoScanAdapterError()

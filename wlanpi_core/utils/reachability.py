@@ -1,4 +1,5 @@
 """Reachability and ping helpers for utils API."""
+
 from __future__ import annotations
 
 import ipaddress

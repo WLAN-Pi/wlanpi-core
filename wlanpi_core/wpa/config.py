@@ -4,6 +4,7 @@ WPA supplicant configuration file generation.
 This module provides functions for generating wpa_supplicant configuration files,
 including global headers and network blocks.
 """
+
 import logging
 from pathlib import Path
 from typing import Union
@@ -72,7 +73,7 @@ def generate_network_block(
     lines = ["network={"]
 
     # Validate security.ssid exists before accessing
-    if not cfg.security or not hasattr(cfg.security, 'ssid') or not cfg.security.ssid:
+    if not cfg.security or not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
         raise ValueError("security.ssid is required when generating network block")
 
     # Preserve exact SSID case
@@ -81,7 +82,7 @@ def generate_network_block(
     lines.append(f"    priority={priority}")
 
     # Get security type safely
-    if hasattr(cfg.security, 'security') and cfg.security.security:
+    if hasattr(cfg.security, "security") and cfg.security.security:
         sec_str = (
             cfg.security.security.value
             if isinstance(cfg.security.security, SecurityTypes)
@@ -114,11 +115,11 @@ def generate_network_block(
             lines.append(f"    password={_quote_wpa_value(cfg.security.password)}")
 
         # Enhanced EAP method support
-        eap_method = getattr(cfg.security, 'eap_method', 'PEAP')
+        eap_method = getattr(cfg.security, "eap_method", "PEAP")
         lines.append(f"    eap={eap_method}")
 
         if eap_method == "PEAP":
-            phase2_method = getattr(cfg.security, 'phase2_method', 'MSCHAPV2')
+            phase2_method = getattr(cfg.security, "phase2_method", "MSCHAPV2")
             lines.append(f'    phase2="auth={phase2_method}"')
         elif eap_method == "TLS":
             if cfg.security.client_cert:
@@ -170,7 +171,7 @@ def write_wpa_config(
     iface = cfg.iface_display_name or cfg.interface
 
     # Validate security.ssid exists before accessing
-    if not cfg.security or not hasattr(cfg.security, 'ssid') or not cfg.security.ssid:
+    if not cfg.security or not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
         raise ValueError("security.ssid is required when writing config with security")
 
     # Generate both interface.conf and wlan<index>.conf files
@@ -224,8 +225,8 @@ def write_wpa_config(
         filtered_blocks.insert(0, new_block)
 
         global_header = generate_global_header(
-            ctrl_interface=global_settings.get('ctrl_interface', '/run/wpa_supplicant'),
-            update_config=global_settings.get('update_config', 1),
+            ctrl_interface=global_settings.get("ctrl_interface", "/run/wpa_supplicant"),
+            update_config=global_settings.get("update_config", 1),
         )
 
         with conf_path.open("w") as f:

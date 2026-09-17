@@ -13,12 +13,17 @@ from zoneinfo import ZoneInfo
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
-from wlanpi_core.constants import MODE_FILE, REG_DOMAIN_FILE, TIME_ZONE_FILE, WLANPI_IMAGE_FILE
+from wlanpi_core.constants import (
+    MODE_FILE,
+    REG_DOMAIN_FILE,
+    TIME_ZONE_FILE,
+    WLANPI_IMAGE_FILE,
+)
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.data.reg_domain_countries import (
     is_supported_reg_domain,
     reg_domain_country_entries,
 )
-from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils.general import run_command
@@ -240,7 +245,12 @@ def get_platform():
     try:
         platform = run_command(model_cmd).stdout.strip()
 
-    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+    except (
+        RunCommandError,
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        OSError,
+    ) as exc:
         if isinstance(exc, RunCommandError):
             log.warning(
                 "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
@@ -276,7 +286,12 @@ def get_model():
     try:
         platform = run_command(model_cmd).stdout.strip()
 
-    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+    except (
+        RunCommandError,
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        OSError,
+    ) as exc:
         if isinstance(exc, RunCommandError):
             log.warning(
                 "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
@@ -597,7 +612,9 @@ def get_datetime():
     """
     log.debug("get_datetime: resolving local time")
     try:
-        local_iso = run_command(["date", "-Iseconds"], raise_on_fail=True).stdout.strip()
+        local_iso = run_command(
+            ["date", "-Iseconds"], raise_on_fail=True
+        ).stdout.strip()
         display = run_command(["date"], raise_on_fail=False).stdout.strip() or None
         timezone = _resolve_timezone()
         result = {
@@ -653,7 +670,9 @@ def get_timezone():
 def _timezone_names() -> tuple[str, ...]:
     """Load the static tzdata name set once per service process."""
     try:
-        output = run_command(["timedatectl", "list-timezones"], raise_on_fail=True).stdout
+        output = run_command(
+            ["timedatectl", "list-timezones"], raise_on_fail=True
+        ).stdout
         return tuple(line.strip() for line in output.splitlines() if line.strip())
     except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError):
         raise ValidationError("Unable to list timezones", status_code=503)
@@ -710,7 +729,9 @@ def get_reg_domain():
             for line in crda_path.read_text().splitlines():
                 if line.strip().startswith("REGDOMAIN="):
                     candidate = line.split("=", 1)[1].strip()
-                    log.debug("get_reg_domain: /etc/default/crda REGDOMAIN=%r", candidate)
+                    log.debug(
+                        "get_reg_domain: /etc/default/crda REGDOMAIN=%r", candidate
+                    )
                     if _is_plain_country_code(candidate):
                         raw = candidate
                         source = "crda"
@@ -718,11 +739,17 @@ def get_reg_domain():
 
     if raw is None:
         try:
-            iw_raw = run_command(["iw", "reg", "get"], raise_on_fail=True).stdout.strip()
+            iw_raw = run_command(
+                ["iw", "reg", "get"], raise_on_fail=True
+            ).stdout.strip()
             log.debug("get_reg_domain: iw reg get stdout=%r", iw_raw)
             raw = iw_raw
             source = "iw"
-        except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+        except (
+            RunCommandError,
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ) as exc:
             log.error("get_reg_domain: unable to read reg domain: %r", exc)
             raise ValidationError(
                 f"Unable to read regulatory domain: {exc}", status_code=503
@@ -746,7 +773,9 @@ def set_reg_domain(country: str):
             status_code=400,
         )
     if Path(REG_DOMAIN_FILE).exists():
-        run_command([REG_DOMAIN_FILE, "set", country, "--no-prompt"], raise_on_fail=True)
+        run_command(
+            [REG_DOMAIN_FILE, "set", country, "--no-prompt"], raise_on_fail=True
+        )
     else:
         run_command(["iw", "reg", "set", country], raise_on_fail=True)
     return get_reg_domain()

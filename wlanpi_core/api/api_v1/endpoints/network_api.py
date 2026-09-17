@@ -5,13 +5,14 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
+from wlanpi_core import network as network_primitives
 from wlanpi_core.adapters.discovery import list_interfaces
 from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
-
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
@@ -19,16 +20,14 @@ from wlanpi_core.schemas.common.errors import (
 )
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
-from wlanpi_core import network as network_primitives
-from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.services import (
     network_ethernet_service,
     network_namespace_service,
 )
-from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
-from wlanpi_core.wpa.status import get_wpa_status
-from wlanpi_core.wpa.scan import ScanInProgressError
 from wlanpi_core.utils.validation import validate_vlan_id
+from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
+from wlanpi_core.wpa.scan import ScanInProgressError
+from wlanpi_core.wpa.status import get_wpa_status
 
 router = APIRouter()
 legacy_wlan_router = APIRouter()
@@ -158,11 +157,11 @@ async def show_all_ethernet_vlans(
             return Response(content=str(ex), status_code=400)
 
         def filterfunc(i):
-            return i.model_dump().get("linkinfo", {}).get(
-                "info_kind"
-            ) == "vlan" and i.model_dump().get("linkinfo", {}).get("info_data", {}).get(
-                "id"
-            ) == requested_vlan_id
+            return (
+                i.model_dump().get("linkinfo", {}).get("info_kind") == "vlan"
+                and i.model_dump().get("linkinfo", {}).get("info_data", {}).get("id")
+                == requested_vlan_id
+            )
 
         custom_filter = filterfunc
     try:
@@ -256,6 +255,7 @@ async def delete_ethernet_vlan(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
 
 ################################
 # Network primitives (P0)      #

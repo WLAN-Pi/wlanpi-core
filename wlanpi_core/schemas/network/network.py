@@ -79,7 +79,8 @@ class IPInterface(BaseModel, extra=Extra.allow):
 class NetworkModeEnum(str, Enum):
     managed = "managed"
     monitor = "monitor"
-    
+
+
 class SecurityTypes(str, Enum):
     wpa2 = "WPA2-PSK"
     wpa3 = "WPA3-PSK"

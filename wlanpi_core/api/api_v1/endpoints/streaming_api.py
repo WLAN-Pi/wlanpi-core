@@ -3,6 +3,7 @@ WebSocket streaming endpoints.
 
 See docs/API-INTEGRATION-GUIDE.md §7 for the capture command protocol.
 """
+
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect

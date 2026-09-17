@@ -4,6 +4,7 @@ WPA supplicant process management.
 This module provides functions for starting, stopping, and managing
 wpa_supplicant processes.
 """
+
 import logging
 import time
 from pathlib import Path
@@ -37,7 +38,9 @@ def start_or_restart_supplicant(
         >>> start_or_restart_supplicant("wlan0", "test_ns", Path("/etc/wpa_supplicant/wlan0.conf"))
     """
     namespace_display = namespace if namespace else "root"
-    log.info(f"Starting/restarting wpa_supplicant for {iface} in namespace {namespace_display}")
+    log.info(
+        f"Starting/restarting wpa_supplicant for {iface} in namespace {namespace_display}"
+    )
 
     # Kill any existing wpa_supplicant for this interface
     try:
@@ -113,7 +116,7 @@ def parse_wpa_log(iface: str, timeout: int = 30) -> None:
             # Extract timestamp if present
             parts = line.split(":", 1)
             if len(parts) == 2 and parts[0].replace(".", "", 1).isdigit():
-                epoch = float(parts[0])
+                float(parts[0])
                 log_msg = parts[1].strip()
             else:
                 log_msg = line
@@ -136,6 +139,7 @@ def kill_all_supplicants() -> None:
     """
     try:
         from wlanpi_core.utils.general import run_command
+
         run_command(["sudo", "pkill", "-f", "wpa_supplicant"], raise_on_fail=False)
         log.info("Killed all wpa_supplicant processes")
     except Exception as e:

@@ -3,8 +3,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import wifi as wifi_schema
 from wlanpi_core.wlan.capabilities import get_wifi_capabilities
@@ -93,4 +93,6 @@ async def show_hotspot_client_link(iface: Optional[str] = None):
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content="Unable to read hotspot client link stats", status_code=503)
+        return Response(
+            content="Unable to read hotspot client link stats", status_code=503
+        )

@@ -4,11 +4,11 @@ Interface discovery and listing.
 This module provides functions for discovering and listing network interfaces
 on the system.
 """
+
 import logging
 from typing import List, Optional
 
 from wlanpi_core.constants import IW_FILE
-from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 
@@ -82,7 +82,9 @@ def get_interface_by_name(interface_name: str) -> Optional[dict]:
             return None
 
         # Get detailed info using 'iw dev <interface> info'
-        result = run_command([IW_FILE, "dev", interface_name, "info"], raise_on_fail=True)
+        result = run_command(
+            [IW_FILE, "dev", interface_name, "info"], raise_on_fail=True
+        )
 
         # Parse basic info from output
         info = {"name": interface_name, "exists": True}

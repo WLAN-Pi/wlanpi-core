@@ -165,8 +165,7 @@ async def blinker_status():
         409: {
             "model": utils.WlanScanErrorResponse,
             "description": (
-                "Selected adapter is already scanning "
-                "(`error`: `SCAN_IN_PROGRESS`)"
+                "Selected adapter is already scanning " "(`error`: `SCAN_IN_PROGRESS`)"
             ),
         },
         422: {

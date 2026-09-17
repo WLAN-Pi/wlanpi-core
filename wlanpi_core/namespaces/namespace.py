@@ -4,8 +4,9 @@ Namespace lifecycle operations.
 This module provides functions for creating, listing, checking existence,
 and deleting network namespaces.
 """
+
 import logging
-from typing import List, Optional
+from typing import List
 
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.network.namespace.namespace_errors import (
@@ -101,7 +102,9 @@ def delete_namespace(
     except Exception as e:
         log.error(f"Failed to delete namespace {namespace_name}: {e}")
         if raise_on_fail:
-            raise NetworkNamespaceError(f"Failed to delete namespace {namespace_name}: {e}")
+            raise NetworkNamespaceError(
+                f"Failed to delete namespace {namespace_name}: {e}"
+            )
         return CommandResult("", str(e), 1)
 
 
@@ -137,7 +140,9 @@ def list_namespaces(use_json: bool = False) -> List[str]:
             try:
                 return result.output_from_json() or []
             except Exception as e:
-                log.warning(f"Failed to parse JSON output: {e}, falling back to text parsing")
+                log.warning(
+                    f"Failed to parse JSON output: {e}, falling back to text parsing"
+                )
                 use_json = False
 
         if not use_json:

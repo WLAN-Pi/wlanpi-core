@@ -71,7 +71,9 @@ class BlinkerStatus(BaseModel):
 
 class BlinkerActionResponse(BaseModel):
     active: bool = Field(example=True)
-    status: str = Field(examples=["started", "stopped", "already_running", "not_running"])
+    status: str = Field(
+        examples=["started", "stopped", "already_running", "not_running"]
+    )
     interface: Optional[str] = Field(default=None, example="eth0")
 
 
