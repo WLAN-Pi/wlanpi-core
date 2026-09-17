@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "wlanpi-core",
-    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`\n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic\nclock and is unaffected by wall-clock changes. After a reboot, Core evaluates\nthe signed `iat` and `exp` claims. If the restored clock is more than 30 seconds\nbehind `iat`, Bearer authentication returns\n`503 {\"error\":\"AUTH_CLOCK_NOT_SET\",\"message\":\"NTP needs set; cannot proceed\"}`.\nRetry the unchanged token after time synchronization. Branch on the `error`\nfield because unrelated 503 responses are not clock errors.\n\nAll documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30\u201390s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
-    "version": "2.1.16"
+    "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`\n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| On-device services (wlanpi-ui) | `X-Request-Signature: \u2026` | HMAC with shared secret |\n\nJWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic\nclock and is unaffected by wall-clock changes. After a reboot, Core evaluates\nthe signed `iat` and `exp` claims. If the restored clock is more than 30 seconds\nbehind `iat`, Bearer authentication returns\n`503 {\"error\":\"AUTH_CLOCK_NOT_SET\",\"message\":\"NTP needs set; cannot proceed\"}`.\nRetry the unchanged token after time synchronization. Branch on the `error`\nfield because unrelated 503 responses are not clock errors.\n\nAll documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30-90s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |\n| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |\n| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |\n| Date/time | `docs/P0-system-datetime-api.md` |\n| Reg domain | `docs/P0-system-reg-domain-api.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
+    "version": "2.1.17"
   },
   "paths": {
     "/api/v1/auth/token": {
@@ -139,7 +139,7 @@
           "bluetooth"
         ],
         "summary": "Btstatus",
-        "description": "Returns the bluetooth status",
+        "description": "Return the bluetooth status.",
         "operationId": "btstatus_api_v1_bluetooth_status_get",
         "responses": {
           "200": {
@@ -166,7 +166,7 @@
           "bluetooth"
         ],
         "summary": "Bt Power",
-        "description": "Turns on bluetooth\n\n- action: \"on\" or \"off\"",
+        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"",
         "operationId": "bt_power_api_v1_bluetooth_power__action__post",
         "security": [
           {
@@ -261,7 +261,7 @@
           "network"
         ],
         "summary": "Show All Interfaces",
-        "description": "Returns all network interfaces.",
+        "description": "Return all network interfaces.",
         "operationId": "show_all_interfaces_api_v1_network_interfaces__interface__get",
         "security": [
           {
@@ -323,7 +323,7 @@
           "network"
         ],
         "summary": "Show All Interfaces",
-        "description": "Returns all network interfaces.",
+        "description": "Return all network interfaces.",
         "operationId": "show_all_interfaces_api_v1_network_interfaces_get",
         "security": [
           {
@@ -385,7 +385,7 @@
           "network"
         ],
         "summary": "Show All Ethernet Interfaces",
-        "description": "Returns all ethernet interfaces.",
+        "description": "Return all ethernet interfaces.",
         "operationId": "show_all_ethernet_interfaces_api_v1_network_ethernet__interface__get",
         "security": [
           {
@@ -447,7 +447,7 @@
           "network"
         ],
         "summary": "Show All Ethernet Vlans",
-        "description": "Returns all VLANS for a given ethernet interface.",
+        "description": "Return all VLANs for a given ethernet interface.",
         "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet__interface__vlan__vlan__get",
         "security": [
           {
@@ -523,7 +523,7 @@
           "network"
         ],
         "summary": "Create Ethernet Vlan",
-        "description": "Creates (or replaces) a VLAN on the given interface.",
+        "description": "Create (or replace) a VLAN on the given interface.",
         "operationId": "create_ethernet_vlan_api_v1_network_ethernet__interface__vlan__vlan__post",
         "security": [
           {
@@ -599,7 +599,7 @@
           "network"
         ],
         "summary": "Delete Ethernet Vlan",
-        "description": "Removes a VLAN from the given interface.",
+        "description": "Remove a VLAN from the given interface.",
         "operationId": "delete_ethernet_vlan_api_v1_network_ethernet__interface__vlan__vlan__delete",
         "security": [
           {
@@ -673,7 +673,7 @@
           "network"
         ],
         "summary": "Show All Ethernet Vlans",
-        "description": "Returns all VLANS for a given ethernet interface.",
+        "description": "Return all VLANs for a given ethernet interface.",
         "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet__interface__vlan_get",
         "security": [
           {
@@ -751,7 +751,7 @@
           "network"
         ],
         "summary": "Show All Ethernet Vlans",
-        "description": "Returns all VLANS for a given ethernet interface.",
+        "description": "Return all VLANs for a given ethernet interface.",
         "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet_all_vlan__vlan__get",
         "security": [
           {
@@ -829,7 +829,7 @@
           "network"
         ],
         "summary": "Show All Ethernet Vlans",
-        "description": "Returns all VLANS for a given ethernet interface.",
+        "description": "Return all VLANs for a given ethernet interface.",
         "operationId": "show_all_ethernet_vlans_api_v1_network_ethernet_all_vlan_get",
         "security": [
           {
@@ -1279,7 +1279,7 @@
           "network"
         ],
         "summary": "Revert Wlan Namespace",
-        "description": "Reverts the PHY and interface back to the root namespace.",
+        "description": "Revert the PHY and interface back to the root namespace.",
         "operationId": "revert_wlan_namespace_api_v1_network_wlan_revert_post",
         "security": [
           {
@@ -1338,7 +1338,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] List wireless interfaces",
-        "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status`.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `iw dev` (no DBus).",
+        "description": "Prefer `GET /api/v1/network/config/status`; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `iw dev` (no DBus).",
         "operationId": "get_a_systemd_network_interfaces_api_v1_network_wlan_getInterfaces_get",
         "deprecated": true,
         "security": [
@@ -1388,7 +1388,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] WLAN scan",
-        "description": "**Deprecated** \u2014 use `GET /api/v1/utils/wlan/scan`.\n\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
+        "description": "Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
         "operationId": "get_a_systemd_network_scan_api_v1_network_wlan_scan_get",
         "deprecated": true,
         "security": [
@@ -1474,7 +1474,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] DBus network setup \u2014 removed",
-        "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`",
+        "description": "Return 410 Gone; this endpoint is deprecated.\n\n**Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`",
         "operationId": "set_a_systemd_network_dbus_api_v1_network_wlan_set_dbus_post",
         "deprecated": true,
         "security": [
@@ -1534,7 +1534,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] Namespace stub \u2014 removed",
-        "description": "**Deprecated \u2014 returns 410 Gone.**\n\n**Replacement:** same as `/wlan/set-dbus` \u2014 use `/network/config/` + activate.",
+        "description": "Return 410 Gone; this endpoint is deprecated.\n\n**Replacement:** same as `/wlan/set-dbus` \u2014 use `/network/config/` + activate.",
         "operationId": "set_a_systemd_network_api_v1_network_wlan_set_post",
         "deprecated": true,
         "security": [
@@ -1594,7 +1594,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] Connected network details",
-        "description": "**Deprecated** \u2014 prefer `GET /api/v1/network/config/status` plus wpa state.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`.",
+        "description": "Prefer `GET /api/v1/network/config/status` plus wpa state; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`.",
         "operationId": "get_a_systemd_currentNetwork_details_api_v1_network_wlan_getConnected_get",
         "deprecated": true,
         "security": [
@@ -2059,7 +2059,7 @@
           "network_information"
         ],
         "summary": "Show Network Info",
-        "description": "Returns information about network related stuff.",
+        "description": "Return information about the current network state.",
         "operationId": "show_network_info_api_v1_network_info__get",
         "responses": {
           "200": {
@@ -2086,7 +2086,7 @@
           "network_information"
         ],
         "summary": "Show Public Ip6",
-        "description": "Returns public IPv6 address and related details.",
+        "description": "Return the public IPv6 address and related details.",
         "operationId": "show_public_ip6_api_v1_network_info_publicip6_get",
         "responses": {
           "200": {
@@ -2113,7 +2113,7 @@
           "system"
         ],
         "summary": "Show Device Info",
-        "description": "Returns core information about the PI.\n\nCommands:\n - Uses 'wlanpi-model -b' to query the device model.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
+        "description": "Return core information about the PI.\n\nCommands:\n - Uses 'wlanpi-model -b' to query the device model.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
         "operationId": "show_device_info_api_v1_system_device_info_get",
         "responses": {
           "200": {
@@ -2140,7 +2140,7 @@
           "system"
         ],
         "summary": "Device Stats",
-        "description": "Returns system stats about the PI.\n\nSee get_stats in system_service.py",
+        "description": "Return system stats about the PI.\n\nSee get_stats in system_service.py",
         "operationId": "device_stats_api_v1_system_device_stats_get",
         "responses": {
           "200": {
@@ -2167,7 +2167,7 @@
           "system"
         ],
         "summary": "Show Device Model",
-        "description": "Uses 'wlanpi-model -b' to query the device model.",
+        "description": "Use 'wlanpi-model -b' to query the device model.",
         "operationId": "show_device_model_api_v1_system_device_model_get",
         "responses": {
           "200": {
@@ -2194,7 +2194,7 @@
           "system"
         ],
         "summary": "Show A Systemd Service Status",
-        "description": "Queries systemd via dbus to get the current status of an allowed service.",
+        "description": "Query systemd via dbus to get the current status of an allowed service.",
         "operationId": "show_a_systemd_service_status_api_v1_system_service_status_get",
         "security": [
           {
@@ -2242,7 +2242,7 @@
           "system"
         ],
         "summary": "Start A Systemd Service",
-        "description": "Uses systemd via dbus to start an allowed service.",
+        "description": "Use systemd via dbus to start an allowed service.",
         "operationId": "start_a_systemd_service_api_v1_system_service_start_post",
         "security": [
           {
@@ -2290,7 +2290,7 @@
           "system"
         ],
         "summary": "Stop A Systemd Service",
-        "description": "Uses systemd via dbus to stop an allowed service.",
+        "description": "Use systemd via dbus to stop an allowed service.",
         "operationId": "stop_a_systemd_service_api_v1_system_service_stop_post",
         "security": [
           {
@@ -2338,7 +2338,7 @@
           "system"
         ],
         "summary": "Restart A Systemd Service",
-        "description": "Uses systemd via dbus to restart an allowed service.",
+        "description": "Use systemd via dbus to restart an allowed service.",
         "operationId": "restart_a_systemd_service_api_v1_system_service_restart_post",
         "security": [
           {
@@ -2386,7 +2386,7 @@
           "system"
         ],
         "summary": "Show Datetime",
-        "description": "Returns current local date/time and timezone.",
+        "description": "Return the current local date/time and timezone.",
         "operationId": "show_datetime_api_v1_system_datetime_get",
         "responses": {
           "200": {
@@ -2413,7 +2413,7 @@
           "system"
         ],
         "summary": "Show Timezone",
-        "description": "Returns the current system timezone.",
+        "description": "Return the current system timezone.",
         "operationId": "show_timezone_api_v1_system_timezone_get",
         "responses": {
           "200": {
@@ -2440,7 +2440,7 @@
           "system"
         ],
         "summary": "List Timezones",
-        "description": "Returns available system timezones.",
+        "description": "Return the available system timezones.",
         "operationId": "list_timezones_api_v1_system_timezone_list_get",
         "responses": {
           "200": {
@@ -2467,7 +2467,7 @@
           "system"
         ],
         "summary": "Set Timezone",
-        "description": "Sets the system timezone.",
+        "description": "Set the system timezone.",
         "operationId": "set_timezone_api_v1_system_timezone_set_post",
         "requestBody": {
           "content": {
@@ -2514,7 +2514,7 @@
           "system"
         ],
         "summary": "List Reg Domains",
-        "description": "Returns supported Wi-Fi regulatory domain country codes.",
+        "description": "Return the supported Wi-Fi regulatory domain country codes.",
         "operationId": "list_reg_domains_api_v1_system_reg_domain_list_get",
         "responses": {
           "200": {
@@ -2541,7 +2541,7 @@
           "system"
         ],
         "summary": "Show Reg Domain",
-        "description": "Returns the current Wi-Fi regulatory domain.",
+        "description": "Return the current Wi-Fi regulatory domain.",
         "operationId": "show_reg_domain_api_v1_system_reg_domain_get",
         "responses": {
           "200": {
@@ -2568,7 +2568,7 @@
           "system"
         ],
         "summary": "Set Reg Domain",
-        "description": "Sets the Wi-Fi regulatory domain country code.",
+        "description": "Set the Wi-Fi regulatory domain country code.",
         "operationId": "set_reg_domain_api_v1_system_reg_domain_set_post",
         "requestBody": {
           "content": {
@@ -2615,7 +2615,7 @@
           "system"
         ],
         "summary": "Show Battery",
-        "description": "Returns battery status if a power supply is present.",
+        "description": "Return battery status if a power supply is present.",
         "operationId": "show_battery_api_v1_system_battery_get",
         "responses": {
           "200": {
@@ -2723,7 +2723,7 @@
           "system"
         ],
         "summary": "Hotspot connected client count",
-        "description": "Connected client count for hotspot mode.\n\nReturns 409 when the device is not in hotspot mode.",
+        "description": "Return the connected client count for hotspot mode.\n\nReturns 409 when the device is not in hotspot mode.",
         "operationId": "show_hotspot_clients_api_v1_system_hotspot_clients_get",
         "security": [
           {
@@ -2825,7 +2825,7 @@
           "device utils"
         ],
         "summary": "Reachability",
-        "description": "Runs reachability checks for gateway, internet, DNS, and optional custom targets.",
+        "description": "Run reachability checks for gateway, internet, DNS, and optional custom targets.",
         "operationId": "reachability_api_v1_utils_reachability_get",
         "security": [
           {
@@ -2905,7 +2905,7 @@
           "device utils"
         ],
         "summary": "Internet speed test (slow)",
-        "description": "Run LibreSpeed CLI (typically **30\u201390 seconds**).\n\n  Use a client HTTP timeout of at least **120 seconds**. UI platforms should\nwrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.\n\n  On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.",
+        "description": "Run LibreSpeed CLI (typically **30-90 seconds**).\n\n  Use a client HTTP timeout of at least **120 seconds**. UI platforms should\nwrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.\n\n  On success returns `downloadSpeed`, `uploadSpeed`, `pingMs`, `ipAddress`, `server`.",
         "operationId": "speedtest_api_v1_utils_speedtest_get",
         "responses": {
           "200": {
@@ -3166,7 +3166,7 @@
           "device utils"
         ],
         "summary": "Usb Interfaces",
-        "description": "Gets a list of usb interfaces and returns them.",
+        "description": "Get a list of USB interfaces.",
         "operationId": "usb_interfaces_api_v1_utils_usb_get",
         "responses": {
           "200": {
@@ -3193,7 +3193,7 @@
           "device utils"
         ],
         "summary": "Ufw Information",
-        "description": "Returns the UFW information.",
+        "description": "Return the UFW firewall status information.",
         "operationId": "ufw_information_api_v1_utils_ufw_get",
         "responses": {
           "200": {
@@ -3274,7 +3274,7 @@
           "wifi"
         ],
         "summary": "Hotspot AP station list",
-        "description": "Connected stations on the hotspot AP interface.\n\nReturns 409 when the device is not in hotspot mode.",
+        "description": "Return the connected stations on the hotspot AP interface.\n\nReturns 409 when the device is not in hotspot mode.",
         "operationId": "show_hotspot_stations_api_v1_wifi_hotspot_stations_get",
         "security": [
           {
@@ -3404,7 +3404,7 @@
           "profiler"
         ],
         "summary": "Profiler Status",
-        "description": "Returns status of profiler",
+        "description": "Return the profiler status.",
         "operationId": "profiler_status_api_v1_profiler_status_get",
         "responses": {
           "200": {
@@ -3431,7 +3431,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Starts profiler with provided arguments",
+        "description": "Start the profiler with the provided arguments.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
@@ -3478,7 +3478,7 @@
           "profiler"
         ],
         "summary": "Stop Profiler",
-        "description": "Stops  profiler",
+        "description": "Stop the profiler.",
         "operationId": "stop_profiler_api_v1_profiler_stop_post",
         "responses": {
           "200": {
@@ -3541,7 +3541,8 @@
         "required": [
           "error"
         ],
-        "title": "ApiErrorResponse"
+        "title": "ApiErrorResponse",
+        "description": "Machine-readable API error response."
       },
       "BatteryInfo": {
         "properties": {
@@ -3591,7 +3592,8 @@
         "required": [
           "present"
         ],
-        "title": "BatteryInfo"
+        "title": "BatteryInfo",
+        "description": "Battery status if a power supply is present."
       },
       "BlinkerActionResponse": {
         "properties": {
@@ -3628,7 +3630,8 @@
           "active",
           "status"
         ],
-        "title": "BlinkerActionResponse"
+        "title": "BlinkerActionResponse",
+        "description": "Result of starting or stopping the port blinker."
       },
       "BlinkerStatus": {
         "properties": {
@@ -3642,7 +3645,8 @@
         "required": [
           "active"
         ],
-        "title": "BlinkerStatus"
+        "title": "BlinkerStatus",
+        "description": "Whether the port blinker is currently running."
       },
       "BluetoothPairResponse": {
         "properties": {
@@ -3669,7 +3673,8 @@
           "alias",
           "message"
         ],
-        "title": "BluetoothPairResponse"
+        "title": "BluetoothPairResponse",
+        "description": "Result of entering bluetooth pairing mode."
       },
       "BluetoothStatus": {
         "properties": {
@@ -3718,7 +3723,8 @@
           "power",
           "paired_devices"
         ],
-        "title": "BluetoothStatus"
+        "title": "BluetoothStatus",
+        "description": "Bluetooth adapter status."
       },
       "BssLoad": {
         "properties": {
@@ -3747,7 +3753,8 @@
           }
         },
         "type": "object",
-        "title": "BssLoad"
+        "title": "BssLoad",
+        "description": "Channel utilisation reported by the BSS Load element."
       },
       "ConnectedNetwork": {
         "properties": {
@@ -3772,7 +3779,8 @@
           "connectedStatus",
           "connectedNet"
         ],
-        "title": "ConnectedNetwork"
+        "title": "ConnectedNetwork",
+        "description": "Whether the device is connected and to which network."
       },
       "ConnectionsResponse": {
         "properties": {
@@ -3796,7 +3804,8 @@
           }
         },
         "type": "object",
-        "title": "ConnectionsResponse"
+        "title": "ConnectionsResponse",
+        "description": "Socket connections for a namespace."
       },
       "DateTimeInfo": {
         "properties": {
@@ -3881,7 +3890,8 @@
           "message",
           "replacement"
         ],
-        "title": "DeprecatedEndpointResponse"
+        "title": "DeprecatedEndpointResponse",
+        "description": "Body returned by deprecated endpoints."
       },
       "DeviceInfo": {
         "properties": {
@@ -3919,7 +3929,8 @@
           "software_version",
           "mode"
         ],
-        "title": "DeviceInfo"
+        "title": "DeviceInfo",
+        "description": "Device identity and operating mode."
       },
       "DeviceModel": {
         "properties": {
@@ -3933,7 +3944,8 @@
         "required": [
           "model"
         ],
-        "title": "DeviceModel"
+        "title": "DeviceModel",
+        "description": "Device model identifier."
       },
       "DeviceStats": {
         "properties": {
@@ -3977,7 +3989,8 @@
           "cpu_temp",
           "uptime"
         ],
-        "title": "DeviceStats"
+        "title": "DeviceStats",
+        "description": "Device resource usage statistics."
       },
       "DhcpLeasesResponse": {
         "properties": {
@@ -4008,7 +4021,8 @@
         "required": [
           "source"
         ],
-        "title": "DhcpLeasesResponse"
+        "title": "DhcpLeasesResponse",
+        "description": "Parsed DHCP leases."
       },
       "DhcpRenewResponse": {
         "properties": {
@@ -4037,7 +4051,8 @@
           "interface",
           "status"
         ],
-        "title": "DhcpRenewResponse"
+        "title": "DhcpRenewResponse",
+        "description": "Result of renewing a DHCP lease."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4166,7 +4181,8 @@
           }
         },
         "type": "object",
-        "title": "HotspotClientLink"
+        "title": "HotspotClientLink",
+        "description": "Per-client link statistics for a hotspot station."
       },
       "HotspotClientLinkResponse": {
         "properties": {
@@ -4199,7 +4215,8 @@
           "interface",
           "count"
         ],
-        "title": "HotspotClientLinkResponse"
+        "title": "HotspotClientLinkResponse",
+        "description": "Link statistics for all hotspot AP clients."
       },
       "HotspotClients": {
         "properties": {
@@ -4225,7 +4242,8 @@
           "interface",
           "count"
         ],
-        "title": "HotspotClients"
+        "title": "HotspotClients",
+        "description": "Connected client count for hotspot mode."
       },
       "HotspotCredentials": {
         "properties": {
@@ -4251,7 +4269,8 @@
           "ssid",
           "passphrase"
         ],
-        "title": "HotspotCredentials"
+        "title": "HotspotCredentials",
+        "description": "Hotspot SSID and WPA passphrase."
       },
       "HotspotStation": {
         "properties": {
@@ -4358,7 +4377,8 @@
           "mac",
           "interface"
         ],
-        "title": "HotspotStation"
+        "title": "HotspotStation",
+        "description": "A station connected to the hotspot AP."
       },
       "HotspotStationsResponse": {
         "properties": {
@@ -4391,7 +4411,8 @@
           "interface",
           "count"
         ],
-        "title": "HotspotStationsResponse"
+        "title": "HotspotStationsResponse",
+        "description": "List of stations connected to the hotspot AP."
       },
       "IPInterface": {
         "properties": {
@@ -4511,7 +4532,8 @@
           "broadcast",
           "addr_info"
         ],
-        "title": "IPInterface"
+        "title": "IPInterface",
+        "description": "One network interface and its addresses."
       },
       "IPInterfaceAddress": {
         "properties": {
@@ -4660,7 +4682,8 @@
         "required": [
           "family"
         ],
-        "title": "IPInterfaceAddress"
+        "title": "IPInterfaceAddress",
+        "description": "One IP address assigned to an interface."
       },
       "InfoLinesSection": {
         "properties": {
@@ -4685,7 +4708,8 @@
           }
         },
         "type": "object",
-        "title": "InfoLinesSection"
+        "title": "InfoLinesSection",
+        "description": "Section of human-readable info lines."
       },
       "Interface": {
         "properties": {
@@ -4699,7 +4723,8 @@
         "required": [
           "interface"
         ],
-        "title": "Interface"
+        "title": "Interface",
+        "description": "One interface name."
       },
       "InterfaceSummary": {
         "properties": {
@@ -4737,7 +4762,8 @@
           }
         },
         "type": "object",
-        "title": "InterfaceSummary"
+        "title": "InterfaceSummary",
+        "description": "Summary of one interface's status and address."
       },
       "Interfaces": {
         "properties": {
@@ -4753,7 +4779,8 @@
         "required": [
           "interfaces"
         ],
-        "title": "Interfaces"
+        "title": "Interfaces",
+        "description": "List of interface names."
       },
       "IwInterfaceStatus": {
         "properties": {
@@ -4904,7 +4931,8 @@
         "required": [
           "interface"
         ],
-        "title": "LinkStats"
+        "title": "LinkStats",
+        "description": "Per-interface link statistics."
       },
       "MessageResponse": {
         "properties": {
@@ -4918,7 +4946,8 @@
         "required": [
           "detail"
         ],
-        "title": "MessageResponse"
+        "title": "MessageResponse",
+        "description": "Simple human-readable message response."
       },
       "NamespaceConfig-Input": {
         "properties": {
@@ -4981,7 +5010,8 @@
           "interface",
           "namespace"
         ],
-        "title": "NamespaceConfig"
+        "title": "NamespaceConfig",
+        "description": "Configuration for an interface in a network namespace."
       },
       "NamespaceConfig-Output": {
         "properties": {
@@ -5044,7 +5074,8 @@
           "interface",
           "namespace"
         ],
-        "title": "NamespaceConfig"
+        "title": "NamespaceConfig",
+        "description": "Configuration for an interface in a network namespace."
       },
       "NamespaceStatusError": {
         "properties": {
@@ -5058,7 +5089,8 @@
         "required": [
           "error"
         ],
-        "title": "NamespaceStatusError"
+        "title": "NamespaceStatusError",
+        "description": "Error marker when a namespace could not be queried."
       },
       "NetConfig-Input": {
         "properties": {
@@ -5099,7 +5131,8 @@
         "required": [
           "id"
         ],
-        "title": "NetConfig"
+        "title": "NetConfig",
+        "description": "A named network configuration with root and namespace interfaces."
       },
       "NetConfig-Output": {
         "properties": {
@@ -5140,7 +5173,8 @@
         "required": [
           "id"
         ],
-        "title": "NetConfig"
+        "title": "NetConfig",
+        "description": "A named network configuration with root and namespace interfaces."
       },
       "NetConfigUpdate": {
         "properties": {
@@ -5174,7 +5208,8 @@
           }
         },
         "type": "object",
-        "title": "NetConfigUpdate"
+        "title": "NetConfigUpdate",
+        "description": "Partial update for a network configuration."
       },
       "NetSecurity": {
         "properties": {
@@ -5279,7 +5314,8 @@
           "ssid",
           "security"
         ],
-        "title": "NetSecurity"
+        "title": "NetSecurity",
+        "description": "WLAN security settings for a connection."
       },
       "NetworkConfigResponse": {
         "properties": {
@@ -5304,7 +5340,8 @@
           }
         },
         "type": "object",
-        "title": "NetworkConfigResponse"
+        "title": "NetworkConfigResponse",
+        "description": "Result of a network configuration operation."
       },
       "NetworkConfigStatus": {
         "additionalProperties": {
@@ -5375,7 +5412,8 @@
           "cdp_neighbour_info",
           "public_ip"
         ],
-        "title": "NetworkInfo"
+        "title": "NetworkInfo",
+        "description": "Aggregated network information."
       },
       "NetworkModeEnum": {
         "type": "string",
@@ -5383,7 +5421,8 @@
           "managed",
           "monitor"
         ],
-        "title": "NetworkModeEnum"
+        "title": "NetworkModeEnum",
+        "description": "Operating modes for a root interface."
       },
       "NtpAutoInfo": {
         "properties": {
@@ -5403,7 +5442,8 @@
           "ntp",
           "timezone"
         ],
-        "title": "NtpAutoInfo"
+        "title": "NtpAutoInfo",
+        "description": "NTP automatic time synchronization status."
       },
       "PciDevice": {
         "properties": {
@@ -5423,7 +5463,8 @@
           "pci_id",
           "description"
         ],
-        "title": "PciDevice"
+        "title": "PciDevice",
+        "description": "A PCI device from lspci."
       },
       "PhyCapabilities": {
         "properties": {
@@ -5460,7 +5501,8 @@
         "required": [
           "phy"
         ],
-        "title": "PhyCapabilities"
+        "title": "PhyCapabilities",
+        "description": "Capabilities reported by one Wi-Fi PHY."
       },
       "PingTargetResult": {
         "properties": {
@@ -5528,7 +5570,8 @@
           "success",
           "display"
         ],
-        "title": "PingTargetResult"
+        "title": "PingTargetResult",
+        "description": "Result of pinging one target."
       },
       "PowerActionResponse": {
         "properties": {
@@ -5545,7 +5588,8 @@
         "required": [
           "status"
         ],
-        "title": "PowerActionResponse"
+        "title": "PowerActionResponse",
+        "description": "Result of a device power action."
       },
       "PowerState": {
         "properties": {
@@ -5568,7 +5612,8 @@
           "status",
           "action"
         ],
-        "title": "PowerState"
+        "title": "PowerState",
+        "description": "Result of a bluetooth power action."
       },
       "PublicIpInfo": {
         "properties": {
@@ -5593,7 +5638,8 @@
           }
         },
         "type": "object",
-        "title": "PublicIpInfo"
+        "title": "PublicIpInfo",
+        "description": "Public IP probe output."
       },
       "ReachabilityTest": {
         "properties": {
@@ -5681,7 +5727,8 @@
           "Ping Gateway",
           "Arping Gateway"
         ],
-        "title": "ReachabilityTest"
+        "title": "ReachabilityTest",
+        "description": "Results of the reachability checks."
       },
       "RegDomainCountry": {
         "properties": {
@@ -5707,7 +5754,8 @@
           "code",
           "name"
         ],
-        "title": "RegDomainCountry"
+        "title": "RegDomainCountry",
+        "description": "One supported regulatory domain country."
       },
       "RegDomainInfo": {
         "properties": {
@@ -5762,7 +5810,8 @@
           }
         },
         "type": "object",
-        "title": "RegDomainList"
+        "title": "RegDomainList",
+        "description": "List of supported regulatory domain countries."
       },
       "RegDomainSetRequest": {
         "properties": {
@@ -5778,7 +5827,8 @@
         "required": [
           "country"
         ],
-        "title": "RegDomainSetRequest"
+        "title": "RegDomainSetRequest",
+        "description": "Request to set the regulatory domain country code."
       },
       "RevertNamespace": {
         "properties": {
@@ -5797,7 +5847,8 @@
           "success",
           "message"
         ],
-        "title": "RevertNamespace"
+        "title": "RevertNamespace",
+        "description": "Result of reverting a namespace."
       },
       "RootConfig-Input": {
         "properties": {
@@ -5855,7 +5906,8 @@
           "phy",
           "interface"
         ],
-        "title": "RootConfig"
+        "title": "RootConfig",
+        "description": "Configuration for a root (non-namespaced) interface."
       },
       "RootConfig-Output": {
         "properties": {
@@ -5913,7 +5965,8 @@
           "phy",
           "interface"
         ],
-        "title": "RootConfig"
+        "title": "RootConfig",
+        "description": "Configuration for a root (non-namespaced) interface."
       },
       "RoutingTable": {
         "properties": {
@@ -5937,7 +5990,8 @@
           }
         },
         "type": "object",
-        "title": "RoutingTable"
+        "title": "RoutingTable",
+        "description": "Routing table for a namespace."
       },
       "ScanAdapter": {
         "properties": {
@@ -5972,7 +6026,8 @@
           "namespace",
           "label"
         ],
-        "title": "ScanAdapter"
+        "title": "ScanAdapter",
+        "description": "A monitor adapter candidate for scanning."
       },
       "ScanInProgressResponse": {
         "properties": {
@@ -5997,7 +6052,8 @@
         "required": [
           "message"
         ],
-        "title": "ScanInProgressResponse"
+        "title": "ScanInProgressResponse",
+        "description": "A scan is already running on the selected adapter."
       },
       "ScanItem": {
         "properties": {
@@ -6041,7 +6097,8 @@
           "freq",
           "minrate"
         ],
-        "title": "ScanItem"
+        "title": "ScanItem",
+        "description": "One scanned network."
       },
       "ScanNeedsSelectionResponse": {
         "properties": {
@@ -6066,7 +6123,8 @@
         "required": [
           "candidates"
         ],
-        "title": "ScanNeedsSelectionResponse"
+        "title": "ScanNeedsSelectionResponse",
+        "description": "Scan deferred until a monitor adapter is chosen."
       },
       "ScanNoAdapterResponse": {
         "properties": {
@@ -6087,7 +6145,8 @@
           }
         },
         "type": "object",
-        "title": "ScanNoAdapterResponse"
+        "title": "ScanNoAdapterResponse",
+        "description": "No suitable scan adapter is available."
       },
       "ScanResults": {
         "properties": {
@@ -6103,7 +6162,8 @@
         "required": [
           "nets"
         ],
-        "title": "ScanResults"
+        "title": "ScanResults",
+        "description": "List of scanned networks."
       },
       "SecurityTypes": {
         "type": "string",
@@ -6113,7 +6173,8 @@
           "OPEN",
           "OWE"
         ],
-        "title": "SecurityTypes"
+        "title": "SecurityTypes",
+        "description": "Supported WLAN security types."
       },
       "ServiceRunning": {
         "properties": {
@@ -6133,7 +6194,8 @@
           "name",
           "active"
         ],
-        "title": "ServiceRunning"
+        "title": "ServiceRunning",
+        "description": "Whether a systemd service is running."
       },
       "ServiceStatus": {
         "properties": {
@@ -6157,7 +6219,8 @@
           "name",
           "active"
         ],
-        "title": "ServiceStatus"
+        "title": "ServiceStatus",
+        "description": "Status of a systemd service."
       },
       "SocketConnection": {
         "properties": {
@@ -6191,7 +6254,8 @@
           "local",
           "peer"
         ],
-        "title": "SocketConnection"
+        "title": "SocketConnection",
+        "description": "One socket connection."
       },
       "SpeedTest": {
         "properties": {
@@ -6263,7 +6327,8 @@
           "downloadSpeed",
           "uploadSpeed"
         ],
-        "title": "SpeedTest"
+        "title": "SpeedTest",
+        "description": "Results of a LibreSpeed test."
       },
       "SpeedTestErrorResponse": {
         "properties": {
@@ -6277,7 +6342,8 @@
         "required": [
           "error"
         ],
-        "title": "SpeedTestErrorResponse"
+        "title": "SpeedTestErrorResponse",
+        "description": "Speedtest failure response."
       },
       "Start-Input": {
         "properties": {
@@ -6451,7 +6517,8 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "Start"
+        "title": "Start",
+        "description": "Arguments accepted by the profiler start command."
       },
       "Start-Output": {
         "properties": {
@@ -6468,7 +6535,8 @@
         "required": [
           "success"
         ],
-        "title": "Start"
+        "title": "Start",
+        "description": "Result of starting the profiler."
       },
       "Status": {
         "properties": {
@@ -6510,7 +6578,8 @@
         "required": [
           "running"
         ],
-        "title": "Status"
+        "title": "Status",
+        "description": "Profiler status and beaconing credentials."
       },
       "Stop": {
         "properties": {
@@ -6527,7 +6596,8 @@
         "required": [
           "success"
         ],
-        "title": "Stop"
+        "title": "Stop",
+        "description": "Result of stopping the profiler."
       },
       "TimezoneInfo": {
         "properties": {
@@ -6541,7 +6611,8 @@
         "required": [
           "timezone"
         ],
-        "title": "TimezoneInfo"
+        "title": "TimezoneInfo",
+        "description": "Current system timezone."
       },
       "TimezoneList": {
         "properties": {
@@ -6554,7 +6625,8 @@
           }
         },
         "type": "object",
-        "title": "TimezoneList"
+        "title": "TimezoneList",
+        "description": "Available system timezones."
       },
       "TimezoneSetRequest": {
         "properties": {
@@ -6568,7 +6640,8 @@
         "required": [
           "timezone"
         ],
-        "title": "TimezoneSetRequest"
+        "title": "TimezoneSetRequest",
+        "description": "Request to set the system timezone."
       },
       "Token": {
         "properties": {
@@ -6590,7 +6663,8 @@
         "required": [
           "access_token"
         ],
-        "title": "Token"
+        "title": "Token",
+        "description": "Issued JWT bearer token."
       },
       "TokenRequest": {
         "properties": {
@@ -6608,7 +6682,8 @@
           }
         },
         "type": "object",
-        "title": "TokenRequest"
+        "title": "TokenRequest",
+        "description": "Request body carrying a device ID."
       },
       "TokenRevokeResponse": {
         "properties": {
@@ -6647,7 +6722,8 @@
           "status",
           "message"
         ],
-        "title": "TokenRevokeResponse"
+        "title": "TokenRevokeResponse",
+        "description": "Result of revoking a token."
       },
       "Ufw": {
         "properties": {
@@ -6666,7 +6742,8 @@
           "status",
           "ports"
         ],
-        "title": "Ufw"
+        "title": "Ufw",
+        "description": "UFW firewall status."
       },
       "Usb": {
         "properties": {
@@ -6680,7 +6757,8 @@
         "required": [
           "interfaces"
         ],
-        "title": "Usb"
+        "title": "Usb",
+        "description": "List of detected USB interfaces."
       },
       "ValidationError": {
         "properties": {
@@ -6726,7 +6804,8 @@
           }
         },
         "type": "object",
-        "title": "WifiCapabilitiesResponse"
+        "title": "WifiCapabilitiesResponse",
+        "description": "Capabilities for each adapter PHY."
       },
       "WifiRegulatoryResponse": {
         "properties": {
@@ -6764,7 +6843,8 @@
         "required": [
           "raw"
         ],
-        "title": "WifiRegulatoryResponse"
+        "title": "WifiRegulatoryResponse",
+        "description": "Wi-Fi regulatory domain information."
       },
       "WlanAdapterDriver": {
         "properties": {
@@ -6796,7 +6876,8 @@
           "interface",
           "bus"
         ],
-        "title": "WlanAdapterDriver"
+        "title": "WlanAdapterDriver",
+        "description": "A WLAN interface and its bound driver."
       },
       "WlanInterfaceSetup": {
         "properties": {
@@ -6819,7 +6900,8 @@
           "netConfig",
           "removeAllFirst"
         ],
-        "title": "WlanInterfaceSetup"
+        "title": "WlanInterfaceSetup",
+        "description": "Legacy WLAN interface setup request."
       },
       "WlanInterfaceSummary": {
         "properties": {
@@ -6894,7 +6976,8 @@
           }
         },
         "type": "object",
-        "title": "WlanInterfaceSummary"
+        "title": "WlanInterfaceSummary",
+        "description": "Summary of one WLAN interface."
       },
       "WlanNetwork": {
         "properties": {
@@ -7013,7 +7096,8 @@
           "signal",
           "freq"
         ],
-        "title": "WlanNetwork"
+        "title": "WlanNetwork",
+        "description": "One detected WLAN network (BSS)."
       },
       "WlanPciDriversResponse": {
         "properties": {
@@ -7041,7 +7125,8 @@
           }
         },
         "type": "object",
-        "title": "WlanPciDriversResponse"
+        "title": "WlanPciDriversResponse",
+        "description": "PCI or platform WLAN adapters and their drivers."
       },
       "WlanRevertRequest": {
         "properties": {
@@ -7065,7 +7150,8 @@
           "iface",
           "namespace"
         ],
-        "title": "WlanRevertRequest"
+        "title": "WlanRevertRequest",
+        "description": "Request to revert an interface to the root namespace."
       },
       "WlanScanErrorResponse": {
         "properties": {
@@ -7106,7 +7192,8 @@
         "required": [
           "error"
         ],
-        "title": "WlanScanErrorResponse"
+        "title": "WlanScanErrorResponse",
+        "description": "Error result of a WLAN scan."
       },
       "WlanScanResponse": {
         "properties": {
@@ -7159,7 +7246,8 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "WlanScanResponse"
+        "title": "WlanScanResponse",
+        "description": "Result of a WLAN scan."
       },
       "WlanUsbDriversResponse": {
         "properties": {
@@ -7179,7 +7267,8 @@
           }
         },
         "type": "object",
-        "title": "WlanUsbDriversResponse"
+        "title": "WlanUsbDriversResponse",
+        "description": "USB-attached WLAN adapters and their drivers."
       }
     },
     "securitySchemes": {
