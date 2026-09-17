@@ -6,7 +6,7 @@ Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guid
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
@@ -54,7 +54,7 @@ All documented routes require auth unless noted.
 
 | Pattern | Examples | Client approach |
 |---------|----------|-----------------|
-| Single slow HTTP call | `GET /utils/speedtest` (30–90s) | Use generous timeout; poll is not required |
+| Single slow HTTP call | `GET /utils/speedtest` (30-90s) | Use generous timeout; poll is not required |
 | Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |
 | WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |
 | Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |
@@ -171,7 +171,7 @@ RESPONSES_GONE: dict[int | str, dict[str, Any]] = {
 
 RESPONSES_SCAN: dict[int | str, dict[str, Any]] = {
     409: {
-        "model": Union[ScanNeedsSelectionResponse, ScanInProgressResponse],
+        "model": ScanNeedsSelectionResponse | ScanInProgressResponse,
         "description": (
             "Conflict — branch on JSON `error`: "
             "`NEEDS_SELECTION` (multiple monitors; pass `iface`/`namespace`) or "

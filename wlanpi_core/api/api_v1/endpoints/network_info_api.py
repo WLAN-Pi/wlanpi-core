@@ -1,16 +1,17 @@
+"""Network information endpoints."""
+
 import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import network_info
 from wlanpi_core.services import network_info_service
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -21,9 +22,7 @@ log = get_logger(__name__)
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_network_info() -> Any:
-    """
-    Returns information about network related stuff.
-    """
+    """Return information about the current network state."""
 
     try:
         log.debug("GET /network/info request")
@@ -44,9 +43,7 @@ async def show_network_info() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_public_ip6() -> Any:
-    """
-    Returns public IPv6 address and related details.
-    """
+    """Return the public IPv6 address and related details."""
     try:
         return await asyncio.to_thread(network_info_service.show_publicip, ip_version=6)
     except ValidationError as ve:

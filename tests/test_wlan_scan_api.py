@@ -1,4 +1,5 @@
 """API-level tests for GET /api/v1/utils/wlan/scan."""
+
 from unittest.mock import patch
 
 import pytest
@@ -41,7 +42,9 @@ def test_api_wlan_scan_auto_single_monitor(client):
         "needsSelection": False,
         "candidates": [],
     }
-    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload):
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload
+    ):
         response = client.get("/api/v1/utils/wlan/scan")
     assert response.status_code == 200
     body = response.json()
@@ -60,7 +63,9 @@ def test_api_wlan_scan_needs_selection(client):
         "networks": [],
         "scannedAt": None,
     }
-    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload):
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload
+    ):
         response = client.get("/api/v1/utils/wlan/scan")
     assert response.status_code == 200
     body = response.json()
@@ -110,7 +115,9 @@ def test_api_wlan_scan_explicit_iface_namespace(client):
         "needsSelection": False,
         "candidates": [],
     }
-    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload) as scan:
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload
+    ) as scan:
         response = client.get(
             "/api/v1/utils/wlan/scan",
             params={"iface": "wlanpi1", "namespace": "scan_ns"},
@@ -145,7 +152,9 @@ def test_api_wlan_scan_detail_full_passthrough(client):
         "needsSelection": False,
         "candidates": [],
     }
-    with patch("wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload) as scan:
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan", return_value=payload
+    ) as scan:
         response = client.get("/api/v1/utils/wlan/scan", params={"detail": "full"})
     assert response.status_code == 200
     assert response.json()["networks"][0]["raw"].startswith("BSS ")

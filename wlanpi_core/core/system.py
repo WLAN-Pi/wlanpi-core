@@ -1,7 +1,9 @@
+"""System-level helpers for interface monitoring."""
+
 import subprocess
 import time
 from threading import Thread
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import ETHTOOL_FILE, IP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
@@ -11,9 +13,13 @@ _SYSTEM_COMMAND_TIMEOUT_SEC = 10
 
 
 class SystemManager:
-    def __init__(self, iface_name: str = "wlanpi", exclusions: list[str] = []) -> None:
+    """Manage system processes and monitor interfaces."""
+
+    def __init__(
+        self, iface_name: str = "wlanpi", exclusions: list[str] | None = None
+    ) -> None:
         self.iface_name = iface_name
-        self.exclusions = exclusions
+        self.exclusions = exclusions if exclusions is not None else []
         self.sync_monitor_interfaces()
 
     def _run(
@@ -21,7 +27,7 @@ class SystemManager:
         cmd: list[str],
         capture_output: bool = False,
         suppress_output: bool = False,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         try:
             if capture_output:
                 return (
@@ -48,13 +54,13 @@ class SystemManager:
                 log.warning("System command timed out")
             return None if capture_output else False
 
-    def _iface_up(self, name: str) -> Optional[Any]:
+    def _iface_up(self, name: str) -> Any | None:
         return self._run([IP_FILE, "link", "set", name, "up"])
 
-    def _iface_down(self, name: str) -> Optional[Any]:
+    def _iface_down(self, name: str) -> Any | None:
         return self._run([IP_FILE, "link", "set", name, "down"])
 
-    def _get_driver(self, name: str) -> Optional[str]:
+    def _get_driver(self, name: str) -> str | None:
         output = self._run([ETHTOOL_FILE, "-i", name], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -62,7 +68,7 @@ class SystemManager:
                     return line.split(":")[1].strip()
         return None
 
-    def _get_wiphy_index(self, name: str) -> Optional[str]:
+    def _get_wiphy_index(self, name: str) -> str | None:
         output = self._run([IW_FILE, "dev", name, "info"], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -73,7 +79,7 @@ class SystemManager:
     def _get_interfaces_by_type(self) -> dict[str, str]:
         output = self._run([IW_FILE, "dev"], capture_output=True)
         interfaces: dict[str, str] = {}
-        current_iface: Optional[str] = None
+        current_iface: str | None = None
         if not output:
             return interfaces
 
@@ -88,7 +94,7 @@ class SystemManager:
 
         return interfaces
 
-    def _create_monitor(self, name: str, index: str) -> Optional[str]:
+    def _create_monitor(self, name: str, index: str) -> str | None:
         mon = f"{self.iface_name}{index}"
         self._run(
             [
@@ -111,6 +117,7 @@ class SystemManager:
             return None
 
     def sync_monitor_interfaces(self) -> None:
+        """Sync monitor interfaces with their managed counterparts."""
         interfaces = self._get_interfaces_by_type()
         managed: dict[str, str] = {}
         for name, typ in interfaces.items():
@@ -146,7 +153,7 @@ class SystemManager:
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
 
-                    def background_scan_with_timeout() -> None:
+                    def background_scan_with_timeout(iface: str = iface) -> None:
                         time.sleep(1)
                         try:
                             subprocess.run(

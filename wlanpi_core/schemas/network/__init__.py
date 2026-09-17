@@ -1,3 +1,5 @@
+"""Network schemas."""
+
 from .network import (
     APIConfig,
     ConnectedNetwork,

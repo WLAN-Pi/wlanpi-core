@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from wlanpi_core.constants import LIBRESPEED_CLI, SPEEDTEST_TIMEOUT_SEC
 from wlanpi_core.utils.general import run_command_async
@@ -13,7 +13,7 @@ from wlanpi_core.utils.general import run_command_async
 
 def parse_librespeed_output(stdout: str) -> dict[str, Any]:
     """Parse ``librespeed-cli --json --simple`` output."""
-    payload: Optional[list[dict[str, Any]]] = None
+    payload: list[dict[str, Any]] | None = None
     for line in reversed(stdout.strip().splitlines()):
         line = line.strip()
         if not line.startswith("["):
@@ -45,7 +45,7 @@ def parse_librespeed_output(stdout: str) -> dict[str, Any]:
     if tested_at:
         try:
             normalized = re.sub(r"(\.\d{6})\d+", r"\1", tested_at)
-            tested_at = datetime.fromisoformat(normalized).astimezone(timezone.utc)
+            tested_at = datetime.fromisoformat(normalized).astimezone(UTC)
         except ValueError:
             tested_at = None
     else:

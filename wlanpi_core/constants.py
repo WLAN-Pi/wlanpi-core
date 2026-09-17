@@ -1,3 +1,5 @@
+"""Core configuration constants for the wlanpi-core API."""
+
 import os
 from pathlib import Path
 

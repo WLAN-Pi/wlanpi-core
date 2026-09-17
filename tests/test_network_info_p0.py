@@ -1,4 +1,5 @@
 """Tests for P0 network info API additions."""
+
 from unittest.mock import MagicMock, patch
 
 from wlanpi_core.models.command_result import CommandResult

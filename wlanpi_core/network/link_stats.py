@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import ETHTOOL_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -25,7 +25,7 @@ def _parse_ethtool(stdout: str) -> dict[str, str]:
     return parsed
 
 
-def get_link_stats(iface: str, namespace: Optional[str] = None) -> dict[str, Any]:
+def get_link_stats(iface: str, namespace: str | None = None) -> dict[str, Any]:
     """Return link statistics for ``iface`` using ethtool."""
     iface = validate_interface_name(iface)
     log.debug("get_link_stats iface=%s namespace=%r", iface, namespace)

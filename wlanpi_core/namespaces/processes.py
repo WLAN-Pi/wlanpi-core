@@ -6,7 +6,7 @@ within network namespaces.
 """
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -14,7 +14,7 @@ from wlanpi_core.utils.namespace_execution import ns_exec
 log = logging.getLogger(__name__)
 
 
-def get_processes_in_namespace(namespace: str) -> List[int]:
+def get_processes_in_namespace(namespace: str) -> list[int]:
     """
     Get list of process IDs (PIDs) running in a network namespace.
 
@@ -97,7 +97,7 @@ def kill_process_in_namespace(pid: int, namespace: str, signal: str = "TERM") ->
 
 def kill_processes_in_namespace(
     namespace: str,
-    process_name: Optional[str] = None,
+    process_name: str | None = None,
     signal: str = "TERM",
 ) -> int:
     """
@@ -164,7 +164,7 @@ def kill_processes_in_namespace(
         return killed_count
 
 
-def get_process_info(pid: int, namespace: Optional[str] = None) -> dict[str, Any]:
+def get_process_info(pid: int, namespace: str | None = None) -> dict[str, Any]:
     """
     Get information about a process (basic implementation).
 

@@ -1,10 +1,11 @@
+"""Security manager for encryption keys and shared secrets."""
+
 import grp
 import os
 import pwd
 import secrets
 import time
 from pathlib import Path
-from typing import Optional
 
 from cryptography.fernet import Fernet
 
@@ -15,13 +16,15 @@ log = get_logger(__name__)
 
 
 class SecurityInitError(Exception):
-    pass
+    """Raised when security initialization fails."""
 
 
 class SecurityManager:
+    """Manage encryption keys and shared secrets on disk."""
+
     def __init__(self) -> None:
         self.secrets_path = Path(SECRETS_DIR)
-        self._fernet: Optional[Fernet] = None
+        self._fernet: Fernet | None = None
         try:
             # Wait for filesystem to be ready before proceeding
             if not self._wait_for_filesystem_ready():
@@ -33,12 +36,12 @@ class SecurityManager:
             log.debug("Security initialization complete")
         except Exception as e:
             log.exception(f"Security initialization failed: {e}")
-            raise SecurityInitError(f"Failed to initialize security: {e}")
+            raise SecurityInitError(f"Failed to initialize security: {e}") from None
 
     def _wait_for_filesystem_ready(
         self, max_retries: int = 5, retry_delay: float = 2.0
     ) -> bool:
-        """Wait for filesystem to be ready for write operations"""
+        """Wait for filesystem to be ready for write operations."""
         for attempt in range(max_retries):
             try:
                 self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -56,7 +59,7 @@ class SecurityManager:
                     # Always try to clean up, even if the test fails
                     try:
                         test_file.unlink()
-                    except:
+                    except OSError:
                         pass
 
                     if read_data == test_data:
@@ -67,7 +70,7 @@ class SecurityManager:
                     try:
                         if test_file.exists():
                             test_file.unlink()
-                    except:
+                    except OSError:
                         pass
                     log.debug(f"Write test failed: {e}")
 
@@ -86,7 +89,7 @@ class SecurityManager:
         return False
 
     def _setup_secrets_directory(self) -> None:
-        """Create and secure secrets directory"""
+        """Create and secure secrets directory."""
         try:
             self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         except Exception as e:
@@ -94,7 +97,7 @@ class SecurityManager:
             raise
 
     def _setup_shared_secret(self) -> bytes:
-        """Generate or load HMAC shared secret"""
+        """Generate or load HMAC shared secret."""
         secret_path = self.secrets_path / SHARED_SECRET_FILE
         secrets_dir = self.secrets_path
 
@@ -146,7 +149,7 @@ class SecurityManager:
             raise
 
     def _setup_encryption_key(self) -> None:
-        """Generate or load Fernet encryption key"""
+        """Generate or load Fernet encryption key."""
         key_path = self.secrets_path / ENCRYPTION_KEY_FILE
 
         try:
@@ -187,15 +190,15 @@ class SecurityManager:
 
     @property
     def fernet(self) -> Fernet:
-        """Get initialized Fernet instance"""
+        """Get initialized Fernet instance."""
         if not self._fernet:
             raise SecurityInitError("Fernet not initialized")
         return self._fernet
 
     def encrypt(self, data: bytes) -> bytes:
-        """Encrypt data using Fernet"""
+        """Encrypt data using Fernet."""
         return self.fernet.encrypt(data)
 
     def decrypt(self, data: bytes) -> bytes:
-        """Decrypt data using Fernet"""
+        """Decrypt data using Fernet."""
         return self.fernet.decrypt(data)

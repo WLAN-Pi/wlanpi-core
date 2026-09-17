@@ -8,7 +8,6 @@ wpa_supplicant processes.
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -18,7 +17,7 @@ log = logging.getLogger(__name__)
 
 def start_or_restart_supplicant(
     iface: str,
-    namespace: Optional[str],
+    namespace: str | None,
     config_path: Path,
     ctrl_interface: str = "/run/wpa_supplicant",
 ) -> None:

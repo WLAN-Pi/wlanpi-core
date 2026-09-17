@@ -42,9 +42,7 @@ def test_activate_config_uses_to_thread(mocker):
         network_config_api.activate_config("lab_cfg", override_active=True)
     )
 
-    to_thread.assert_awaited_once_with(
-        network_config.activate_config, "lab_cfg", True
-    )
+    to_thread.assert_awaited_once_with(network_config.activate_config, "lab_cfg", True)
     assert result == {
         "id": "lab_cfg",
         "message": "Configuration activated successfully",

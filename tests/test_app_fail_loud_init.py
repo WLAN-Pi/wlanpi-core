@@ -1,4 +1,5 @@
 """Fail-loud critical initialization (PR #157)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -14,8 +15,10 @@ _REAL_INITIALIZE_COMPONENTS = InitializationManager.initialize_components
 
 
 async def test_initialize_components_fails_loud_when_system_not_ready(monkeypatch):
-    """A failed readiness check must raise so the ASGI lifespan fails and
-    systemd sees a failed startup, instead of serving half-initialized."""
+    """A failed readiness check must raise so the ASGI lifespan fails.
+
+    systemd then sees a failed startup instead of serving half-initialized.
+    """
     # Restore the real method over the autouse fixture's stub for this test.
     monkeypatch.setattr(
         app_module.InitializationManager,

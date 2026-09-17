@@ -1,4 +1,5 @@
 """Unit tests for hotspot and wlan helper modules."""
+
 from unittest.mock import patch
 
 import pytest

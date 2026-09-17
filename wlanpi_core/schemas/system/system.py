@@ -1,27 +1,37 @@
-from typing import Optional
+"""System information and control schemas."""
 
 from pydantic import BaseModel, Field
 
 
 class ServiceStatus(BaseModel):
+    """Status of a systemd service."""
+
     name: str = Field(examples=["wlanpi-fpms"])
     active: bool = Field(examples=[True])
 
 
 class ServiceRunning(BaseModel):
+    """Whether a systemd service is running."""
+
     name: str = Field(json_schema_extra={"example": "wlanpi-fpms"})
     active: bool = Field(json_schema_extra={"example": True})
 
 
 class DeviceSerial(BaseModel):
+    """Device serial number."""
+
     serial: str = Field(json_schema_extra={"example": "133700330070513050022035384b"})
 
 
 class DeviceModel(BaseModel):
+    """Device model identifier."""
+
     model: str = Field(json_schema_extra={"example": "R4"})
 
 
 class DeviceInfo(BaseModel):
+    """Device identity and operating mode."""
+
     model: str = Field(json_schema_extra={"example": "R4"})
     name: str = Field(json_schema_extra={"example": "wlanpi-bc2"})
     hostname: str = Field(json_schema_extra={"example": "wlanpi-bc2.local"})
@@ -30,6 +40,8 @@ class DeviceInfo(BaseModel):
 
 
 class DeviceStats(BaseModel):
+    """Device resource usage statistics."""
+
     ip: str = Field(json_schema_extra={"example": "127.0.0.1"})
     cpu: str = Field(json_schema_extra={"example": "23%"})
     ram: str = Field(json_schema_extra={"example": "1022/3792MB 26.95%"})
@@ -49,7 +61,7 @@ class DateTimeInfo(BaseModel):
         description="IANA timezone name when available, e.g. Europe/London",
         examples=["Europe/London"],
     )
-    display: Optional[str] = Field(
+    display: str | None = Field(
         default=None,
         description="Human-readable local time for UI labels; do not parse programmatically",
         examples=["Sun 2026-06-07 21:32:22 BST"],
@@ -62,14 +74,20 @@ class DateTimeInfo(BaseModel):
 
 
 class TimezoneInfo(BaseModel):
+    """Current system timezone."""
+
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
 class TimezoneList(BaseModel):
+    """Available system timezones."""
+
     timezones: list[str] = Field(default_factory=list)
 
 
 class TimezoneSetRequest(BaseModel):
+    """Request to set the system timezone."""
+
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
@@ -80,7 +98,7 @@ class RegDomainInfo(BaseModel):
         description="Two-letter country code, e.g. GB, US",
         examples=["GB"],
     )
-    raw: Optional[str] = Field(
+    raw: str | None = Field(
         default=None,
         description="Underlying tool output for diagnostics; do not parse — use country",
         examples=["GB"],
@@ -93,12 +111,16 @@ class RegDomainInfo(BaseModel):
 
 
 class RegDomainSetRequest(BaseModel):
+    """Request to set the regulatory domain country code."""
+
     country: str = Field(
         min_length=2, max_length=2, json_schema_extra={"example": "GB"}
     )
 
 
 class RegDomainCountry(BaseModel):
+    """One supported regulatory domain country."""
+
     code: str = Field(description="ISO 3166-1 alpha-2 country code", examples=["GB"])
     name: str = Field(
         description="English display name for UI pickers", examples=["United Kingdom"]
@@ -106,36 +128,48 @@ class RegDomainCountry(BaseModel):
 
 
 class RegDomainList(BaseModel):
+    """List of supported regulatory domain countries."""
+
     countries: list[RegDomainCountry] = Field(default_factory=list)
 
 
 class BatteryInfo(BaseModel):
+    """Battery status if a power supply is present."""
+
     present: bool = Field(json_schema_extra={"example": True})
-    capacity_percent: Optional[int] = Field(
+    capacity_percent: int | None = Field(
         default=None, json_schema_extra={"example": 85}
     )
-    status: Optional[str] = Field(
+    status: str | None = Field(
         default=None, json_schema_extra={"example": "Discharging"}
     )
-    source: Optional[str] = Field(default=None, json_schema_extra={"example": "BAT0"})
+    source: str | None = Field(default=None, json_schema_extra={"example": "BAT0"})
 
 
 class NtpAutoInfo(BaseModel):
+    """NTP automatic time synchronization status."""
+
     ntp: bool = Field(description="Whether NTP synchronization is enabled")
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
 class PowerActionResponse(BaseModel):
+    """Result of a device power action."""
+
     status: str = Field(examples=["rebooting", "shutting_down"])
 
 
 class HotspotClients(BaseModel):
+    """Connected client count for hotspot mode."""
+
     mode: str = Field(json_schema_extra={"example": "hotspot"})
     interface: str = Field(json_schema_extra={"example": "wlan0"})
     count: int = Field(json_schema_extra={"example": 2})
 
 
 class HotspotCredentials(BaseModel):
+    """Hotspot SSID and WPA passphrase."""
+
     mode: str = Field(json_schema_extra={"example": "hotspot"})
     ssid: str = Field(json_schema_extra={"example": "WLAN Pi abc"})
     passphrase: str = Field(json_schema_extra={"example": "example-passphrase"})

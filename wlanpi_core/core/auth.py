@@ -1,8 +1,10 @@
+"""Authentication helpers for the API: HMAC, JWT, and bearer tokens."""
+
 import hashlib
 import hmac
 import ipaddress
 import urllib
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,12 +21,12 @@ AUTH_CLOCK_MESSAGE = "NTP needs set; cannot proceed"
 
 
 class AuthClockNotSetError(Exception):
-    pass
+    """Raised when the auth clock is not set (NTP)."""
 
 
 async def verify_auth_wrapper(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = DEFAULT_SECURITY,
+    credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
 ) -> Any:
     """Select authentication from the credential presented."""
 
@@ -50,6 +52,7 @@ async def verify_jwt_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials = DEFAULT_SECURITY,
 ) -> Any:
+    """Verify a JWT bearer token and return the validation result."""
     if not credentials:
         log.error("Authentication failed: No bearer token provided")
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -64,7 +67,7 @@ async def verify_jwt_token(
 
 
 async def verify_hmac(request: Request) -> Any:
-    """Verify HMAC signature for internal requests"""
+    """Verify HMAC signature for internal requests."""
     if not is_localhost_request(request):
         raise HTTPException(
             status_code=403,
@@ -91,16 +94,9 @@ async def verify_hmac(request: Request) -> Any:
 
     calculated = hmac.new(secret, canonical_string.encode(), hashlib.sha256).hexdigest()
 
-    log.debug(f"Client provided signature: {signature}")
-    log.debug(f"Server calculated signature: {calculated}")
-
-    log.debug(f"Backend HMAC components:")
     log.debug(f"Method: {request.method}")
     log.debug(f"Path: {request.url.path}")
     log.debug(f"Query string: {query_string}")
-    log.debug(f"Body string: {body.decode()}")
-
-    log.debug(f"Backend canonical string (hex): {canonical_string.encode().hex()}")
 
     if not hmac.compare_digest(signature, calculated):
         raise HTTPException(
@@ -113,7 +109,7 @@ async def verify_hmac(request: Request) -> Any:
 
 
 def is_localhost_request(request: Request) -> bool:
-    """Check if request comes from loopback address (127.0.0.1/::1)"""
+    """Check if request comes from loopback address (127.0.0.1/::1)."""
     try:
         log.debug(f"Client: {request.client}")
         log.debug(f"Scope client: {request.scope.get('client')}")

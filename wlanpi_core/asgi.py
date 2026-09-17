@@ -1,12 +1,8 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 
-"""
-wlanpi_core.asgi
-~~~~~~~~~~~~~~~~~
-a web application for the WLAN Pi
+"""ASGI entry point for the WLAN Pi web application.
 
-run this from gunicorn
+Run this from gunicorn.
 """
 
 import os

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -11,7 +11,7 @@ from wlanpi_core.utils.namespace_execution import ns_exec
 log = logging.getLogger(__name__)
 
 
-def _parse_ss_line(line: str, protocol: str) -> Optional[dict[str, Any]]:
+def _parse_ss_line(line: str, protocol: str) -> dict[str, Any] | None:
     parts = line.split()
     if len(parts) < 5:
         return None
@@ -32,7 +32,7 @@ def _parse_ss_line(line: str, protocol: str) -> Optional[dict[str, Any]]:
     }
 
 
-def _get_connections(protocol: str, namespace: Optional[str] = None) -> dict[str, Any]:
+def _get_connections(protocol: str, namespace: str | None = None) -> dict[str, Any]:
     flag = "t" if protocol == "tcp" else "u"
     log.debug("get_%s_connections namespace=%r", protocol, namespace)
     try:
@@ -54,9 +54,11 @@ def _get_connections(protocol: str, namespace: Optional[str] = None) -> dict[str
         raise
 
 
-def get_tcp_connections(namespace: Optional[str] = None) -> dict[str, Any]:
+def get_tcp_connections(namespace: str | None = None) -> dict[str, Any]:
+    """Return active TCP sockets, optionally in a namespace."""
     return _get_connections("tcp", namespace=namespace)
 
 
-def get_udp_connections(namespace: Optional[str] = None) -> dict[str, Any]:
+def get_udp_connections(namespace: str | None = None) -> dict[str, Any]:
+    """Return active UDP sockets, optionally in a namespace."""
     return _get_connections("udp", namespace=namespace)

@@ -38,8 +38,7 @@ def openapi_schema():
 def test_openapi_has_external_docs(openapi_schema):
     assert "externalDocs" in openapi_schema
     assert openapi_schema["externalDocs"]["url"] == (
-        "https://github.com/WLAN-Pi/wlanpi-core/blob/dev/"
-        "docs/API-INTEGRATION-GUIDE.md"
+        "https://github.com/WLAN-Pi/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md"
     )
 
 
@@ -192,7 +191,9 @@ def test_hotspot_clients_documents_409(openapi_schema):
 def test_speedtest_documents_slow_operation(openapi_schema):
     get = openapi_schema["paths"]["/api/v1/utils/speedtest"]["get"]
     assert get.get("summary")
-    assert "slow" in get["summary"].lower() or "slow" in get.get("description", "").lower()
+    assert (
+        "slow" in get["summary"].lower() or "slow" in get.get("description", "").lower()
+    )
 
 
 def test_bluetooth_pair_contract(openapi_schema):
@@ -209,9 +210,7 @@ def test_bluetooth_pair_contract(openapi_schema):
 
 
 def test_dhcp_renew_documents_networkd_guard(openapi_schema):
-    post = openapi_schema["paths"][
-        "/api/v1/network/interfaces/{iface}/renew"
-    ]["post"]
+    post = openapi_schema["paths"]["/api/v1/network/interfaces/{iface}/renew"]["post"]
     assert "systemd-networkd" in post["description"]
     assert "400" in post["responses"]
     assert "409" in post["responses"]

@@ -27,22 +27,18 @@ from wlanpi_core.wpa.supplicant import (
 )
 
 __all__ = [
-    # Config management
-    "write_wpa_config",
-    "generate_network_block",
-    "generate_global_header",
-    # Supplicant management
-    "start_or_restart_supplicant",
-    "parse_wpa_log",
-    "kill_all_supplicants",
-    # Status
-    "get_wpa_status",
-    "parse_key_mgmt",
-    # Scan
     "fetch_scan_results",
     "find_bss",
-    "parse_wpa_scan_results",
+    "generate_global_header",
+    "generate_network_block",
+    "get_wpa_status",
+    "kill_all_supplicants",
     "parse_iw_scan_output",
+    "parse_key_mgmt",
+    "parse_wpa_log",
+    "parse_wpa_scan_results",
     "run_interface_scan",
     "run_iw_scan",
+    "start_or_restart_supplicant",
+    "write_wpa_config",
 ]

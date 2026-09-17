@@ -1,6 +1,6 @@
 from wlanpi_core.schemas.network.network import (
-    NetConfig,
     NamespaceConfig,
+    NetConfig,
     NetSecurity,
     RootConfig,
     SecurityTypes,

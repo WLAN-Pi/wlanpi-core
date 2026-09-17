@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import HOSTAPD_CONF_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
@@ -63,9 +63,9 @@ def _parse_hostapd_credentials(conf_path: Path) -> dict[str, str]:
 
 def _iface_type(
     iface: str,
-    namespace: Optional[str] = None,
-    status: Optional[dict[str, Any]] = None,
-) -> Optional[str]:
+    namespace: str | None = None,
+    status: dict[str, Any] | None = None,
+) -> str | None:
     if status is None:
         status = network_config.status()
     ns_key = namespace or "root"
@@ -76,7 +76,7 @@ def _iface_type(
     return str(raw).lower() if raw else None
 
 
-def resolve_ap_interface(iface: Optional[str] = None) -> str:
+def resolve_ap_interface(iface: str | None = None) -> str:
     """Return an AP-mode interface name, preferring ``iface`` when valid."""
     status = network_config.status()
     if iface:
@@ -103,7 +103,8 @@ def resolve_ap_interface(iface: Optional[str] = None) -> str:
     raise ValidationError("No AP-mode wireless interface found", status_code=503)
 
 
-def get_hotspot_clients(iface: Optional[str] = None) -> dict[str, Any]:
+def get_hotspot_clients(iface: str | None = None) -> dict[str, Any]:
+    """Return the connected client count for hotspot mode."""
     require_mode("hotspot")
     ap_iface = resolve_ap_interface(iface)
     try:
@@ -125,6 +126,7 @@ def get_hotspot_clients(iface: Optional[str] = None) -> dict[str, Any]:
 
 
 def get_hotspot_ssid_passphrase() -> dict[str, str]:
+    """Return the hotspot SSID and WPA passphrase."""
     require_mode("hotspot")
     creds = _parse_hostapd_credentials(_resolve_hostapd_conf())
     return {

@@ -24,18 +24,17 @@ from wlanpi_core.adapters.phy import (
 )
 
 __all__ = [
-    # PHY operations
-    "list_phys",
-    "get_phy_info",
-    "move_phy_to_namespace",
-    "move_phy_to_root",
     # Interface operations
+    "bring_interface_down",
+    "bring_interface_up",
     "create_interface",
     "delete_interface",
-    "get_interface_info",
-    "bring_interface_up",
-    "bring_interface_down",
-    # Discovery
-    "list_interfaces",
     "get_interface_by_name",
+    "get_interface_info",
+    # PHY operations
+    "get_phy_info",
+    "list_interfaces",
+    "list_phys",
+    "move_phy_to_namespace",
+    "move_phy_to_root",
 ]

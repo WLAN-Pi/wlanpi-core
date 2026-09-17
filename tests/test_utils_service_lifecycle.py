@@ -107,9 +107,7 @@ async def test_show_ufw_returns_error_response(monkeypatch):
 
     result = await utils_service.show_ufw()
 
-    assert result == {
-        "error": {"error": "Issue getting ufw info using ufw command"}
-    }
+    assert result == {"error": {"error": "Issue getting ufw info using ufw command"}}
 
 
 @pytest.mark.asyncio

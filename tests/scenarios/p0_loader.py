@@ -2,6 +2,7 @@
 
 Outcome semantics: tests/scenarios/P0_API_OUTCOMES.md
 """
+
 from __future__ import annotations
 
 import csv
@@ -42,7 +43,9 @@ def load_api_scenarios(path: Path | None = None) -> list[ApiScenario]:
                     description=row["Description"].strip(),
                     purpose=row["Purpose"].strip(),
                     precondition=row["Precondition"].strip(),
-                    hardware_adapters=row["Hardware adapters (monitor/managed)"].strip(),
+                    hardware_adapters=row[
+                        "Hardware adapters (monitor/managed)"
+                    ].strip(),
                     request=row["Request"].strip(),
                     expected_http=row["Expected HTTP"].strip(),
                     expected_response=row["Expected response"].strip(),

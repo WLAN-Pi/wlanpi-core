@@ -1,7 +1,8 @@
+"""SQLAlchemy ORM models for the core database."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,7 +12,7 @@ from wlanpi_core.core.database import Base
 
 class SigningKey(Base):
     """
-    Model representing cryptographic signing keys
+    Model representing cryptographic signing keys.
 
     Stores encrypted keys used for token signing and verification
     """
@@ -24,17 +25,17 @@ class SigningKey(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
-    tokens: Mapped[List[Token]] = relationship(
+    tokens: Mapped[list[Token]] = relationship(
         "Token", back_populates="signing_key", cascade="all, delete-orphan"
     )
 
 
 class Token(Base):
     """
-    Model representing authentication tokens
+    Model representing authentication tokens.
 
     Stores token details, associated device, and signing key
     """
@@ -61,7 +62,7 @@ class Token(Base):
 
 class APIDevice(Base):
     """
-    Model representing devices interacting with the system
+    Model representing devices interacting with the system.
 
     Tracks device first seen and last seen timestamps
     """
@@ -72,28 +73,26 @@ class APIDevice(Base):
     first_seen: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    last_seen: Mapped[Optional[datetime]] = mapped_column(
+    last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
-    tokens: Mapped[List[Token]] = relationship(
+    tokens: Mapped[list[Token]] = relationship(
         "Token", back_populates="device", cascade="all, delete-orphan"
     )
-    stats: Mapped[Optional[APIDeviceStats]] = relationship(
+    stats: Mapped[APIDeviceStats | None] = relationship(
         "APIDeviceStats",
         back_populates="device",
         uselist=False,
         cascade="all, delete-orphan",
     )
-    activities: Mapped[List[APIDeviceActivity]] = relationship(
+    activities: Mapped[list[APIDeviceActivity]] = relationship(
         "APIDeviceActivity", back_populates="device", cascade="all, delete-orphan"
     )
 
 
 class APIDeviceActivity(Base):
-    """
-    Model for tracking device activities and API interactions
-    """
+    """Model for tracking device activities and API interactions."""
 
     __tablename__ = "device_activity"
 
@@ -108,9 +107,7 @@ class APIDeviceActivity(Base):
 
 
 class APIDeviceActivityRecent(Base):
-    """
-    Model for recent device activities with short-term retention
-    """
+    """Model for recent device activities with short-term retention."""
 
     __tablename__ = "device_activity_recent"
 
@@ -126,9 +123,7 @@ class APIDeviceActivityRecent(Base):
 
 
 class APIDeviceStats(Base):
-    """
-    Model for tracking device-level statistics
-    """
+    """Model for tracking device-level statistics."""
 
     __tablename__ = "device_stats"
 
@@ -138,7 +133,7 @@ class APIDeviceStats(Base):
     request_count: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     endpoint_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_activity: Mapped[Optional[datetime]] = mapped_column(
+    last_activity: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

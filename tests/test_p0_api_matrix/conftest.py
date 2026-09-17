@@ -1,4 +1,5 @@
 """Fixtures for P0 API matrix tests."""
+
 from __future__ import annotations
 
 import pytest

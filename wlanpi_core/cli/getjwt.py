@@ -1,5 +1,7 @@
 #!/opt/wlanpi-core/bin/python3
 
+"""CLI to obtain a JWT token for a device via the local API."""
+
 import argparse
 import hashlib
 import hmac
@@ -15,7 +17,7 @@ try:
 except ImportError:
     raise SystemExit(
         "The 'requests' package is required. Please install it with 'pip install requests'"
-    )
+    ) from None
 
 DEFAULT_PORT = 31415
 AUTH_ENDPOINT = "/api/v1/auth/token"
@@ -40,9 +42,7 @@ class DeviceAuthClient:
         self.validate_setup()
 
     def validate_setup(self) -> None:
-        """
-        Validate something is running on the port and file access.
-        """
+        """Validate something is running on the port and file access."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(5)
@@ -51,7 +51,7 @@ class DeviceAuthClient:
             raise RuntimeError(
                 f"Nothing appears to be running on port {self.port}. "
                 "Please ensure wlanpi-core server is running."
-            )
+            ) from None
 
         if not self.secret_file.exists():
             raise FileNotFoundError(f"Secret not found at {self.secret_file}")
@@ -59,12 +59,10 @@ class DeviceAuthClient:
         try:
             self.secret_file.read_bytes()
         except PermissionError:
-            raise PermissionError("Secret exists but is not readable")
+            raise PermissionError("Secret exists but is not readable") from None
 
     def generate_signature(self, request_body: str) -> str:
-        """
-        Generates HMAC signature for the request using SHA256.
-        """
+        """Generate an HMAC signature for the request using SHA256."""
         canonical_string = f"POST\n{self.auth_endpoint}\n\n{request_body}"
         secret = self.secret_file.read_bytes()
         signature = hmac.new(
@@ -74,9 +72,7 @@ class DeviceAuthClient:
         return signature
 
     def get_token(self) -> dict[str, Any]:
-        """
-        Makes the API request to get the JWT token.
-        """
+        """Make the API request to get the JWT token."""
         request_body = json.dumps({"device_id": self.device_id})
         signature = self.generate_signature(request_body)
 
@@ -137,21 +133,21 @@ def main() -> int:
             print(colorize_json(json_str))
     except (FileNotFoundError, PermissionError) as e:
         if not use_color:
-            print(f"File Error: {str(e)}")
+            print(f"File Error: {e!s}")
         else:
-            print(f"{RED}File Error: {str(e)}{NC}")
+            print(f"{RED}File Error: {e!s}{NC}")
         return 1
     except requests.RequestException as e:
         if not use_color:
-            print(f"API Error: {str(e)}")
+            print(f"API Error: {e!s}")
         else:
-            print(f"{RED}API Error: {str(e)}{NC}")
+            print(f"{RED}API Error: {e!s}{NC}")
         return 1
     except Exception as e:
         if not use_color:
-            print(f"Unexpected Error: {str(e)}")
+            print(f"Unexpected Error: {e!s}")
         else:
-            print(f"{RED}Unexpected Error: {str(e)}{NC}")
+            print(f"{RED}Unexpected Error: {e!s}{NC}")
         return 1
 
     return 0

@@ -115,13 +115,16 @@ def _country_data() -> tuple[tuple[str, str], ...]:
 
 
 def reg_domain_country_codes() -> list[str]:
+    """Return the list of supported country codes."""
     return [code for code, _ in _country_data()]
 
 
 def reg_domain_country_entries() -> list[dict[str, str]]:
+    """Return supported countries as code and name entries."""
     return [{"code": code, "name": name} for code, name in _country_data()]
 
 
 def is_supported_reg_domain(code: str) -> bool:
+    """Return whether the country code is supported."""
     normalized = code.strip().upper()
     return any(entry_code == normalized for entry_code, _ in _country_data())

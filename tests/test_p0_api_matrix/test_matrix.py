@@ -5,6 +5,7 @@ skipped until a handler exists.
 
 See tests/scenarios/P0_API_OUTCOMES.md for outcome semantics.
 """
+
 import pytest
 
 from tests.scenarios.p0_loader import ApiScenario, load_api_scenarios

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.validation import (
@@ -19,16 +19,16 @@ log = logging.getLogger(__name__)
 class NoScanAdapterError(Exception):
     """Raised when no interface is available for scanning."""
 
-    def __init__(self, candidates: Optional[list[dict[str, Any]]] = None):
+    def __init__(self, candidates: list[dict[str, Any]] | None = None):
         self.candidates = candidates or []
         super().__init__("NO_SCAN_ADAPTER")
 
 
-def _ns_display(namespace: Optional[str]) -> str:
+def _ns_display(namespace: str | None) -> str:
     return "root" if namespace is None else namespace
 
 
-def _ns_from_param(namespace: Optional[str]) -> Optional[str]:
+def _ns_from_param(namespace: str | None) -> str | None:
     if not namespace:
         return None
     if namespace.strip().lower() == "root":
@@ -41,7 +41,7 @@ def _iface_mode(iface_info: dict[str, Any]) -> str:
     return str(mode).strip().lower()
 
 
-def _adapter_label(iface: str, mode: str, namespace: Optional[str]) -> str:
+def _adapter_label(iface: str, mode: str, namespace: str | None) -> str:
     ns_label = _ns_display(namespace)
     if mode:
         return f"{iface} ({mode}, {ns_label})"
@@ -82,7 +82,7 @@ def _adapter_response(adapter: dict[str, Any]) -> dict[str, Any]:
 
 def find_managed_sibling(
     adapter: dict[str, Any], adapters: list[dict[str, Any]]
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Return a managed interface in the same namespace (e.g. wlan0 for wlanpi0)."""
     namespace = adapter["namespace"]
     for candidate in adapters:
@@ -113,8 +113,8 @@ def resolve_scan_target(
 
 def select_scan_adapter(
     status: dict[str, Any],
-    iface: Optional[str] = None,
-    namespace: Optional[str] = None,
+    iface: str | None = None,
+    namespace: str | None = None,
 ) -> dict[str, Any]:
     """
     Apply P0 adapter selection rules.
@@ -161,11 +161,11 @@ def select_scan_adapter(
 
 
 def wlan_scan(
-    iface: Optional[str] = None,
-    namespace: Optional[str] = None,
+    iface: str | None = None,
+    namespace: str | None = None,
     hidden: bool = True,
     detail: str = "short",
-    status: Optional[dict[str, Any]] = None,
+    status: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run namespace-aware WLAN scan with adapter selection."""
     detail = wpa_scan.normalize_scan_detail(detail)
@@ -197,7 +197,7 @@ def wlan_scan(
         "detail": detail,
         "selectedAdapter": _adapter_response(scan_target),
         "networks": networks,
-        "scannedAt": datetime.now(timezone.utc).replace(microsecond=0),
+        "scannedAt": datetime.now(UTC).replace(microsecond=0),
         "needsSelection": False,
         "candidates": [],
     }

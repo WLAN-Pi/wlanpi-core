@@ -1,18 +1,19 @@
+"""System information and control endpoints."""
+
 import asyncio
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import hotspot_service, system_service
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -47,7 +48,7 @@ def _read_device_info() -> dict[str, Any]:
 )
 async def show_device_info() -> Any:
     """
-    Returns core information about the PI.
+    Return core information about the PI.
 
     Commands:
      - Uses 'wlanpi-model -b' to query the device model.
@@ -73,7 +74,7 @@ async def show_device_info() -> Any:
 )
 async def device_stats() -> Any:
     """
-    Returns system stats about the PI.
+    Return system stats about the PI.
 
     See get_stats in system_service.py
     """
@@ -97,9 +98,7 @@ async def device_stats() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_model() -> Any:
-    """
-    Uses 'wlanpi-model -b' to query the device model.
-    """
+    """Use 'wlanpi-model -b' to query the device model."""
     try:
         model = await asyncio.to_thread(system_service.get_model)
         return {"model": model}
@@ -116,9 +115,7 @@ async def show_device_model() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_a_systemd_service_status(name: str) -> Any:
-    """
-    Queries systemd via dbus to get the current status of an allowed service.
-    """
+    """Query systemd via dbus to get the current status of an allowed service."""
 
     try:
         return await system_service.get_systemd_service_status(name)
@@ -135,9 +132,7 @@ async def show_a_systemd_service_status(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_a_systemd_service(name: str) -> Any:
-    """
-    Uses systemd via dbus to start an allowed service.
-    """
+    """Use systemd via dbus to start an allowed service."""
 
     try:
         return await system_service.start_systemd_service(name)
@@ -154,9 +149,7 @@ async def start_a_systemd_service(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def stop_a_systemd_service(name: str) -> Any:
-    """
-    Uses systemd via dbus to stop an allowed service.
-    """
+    """Use systemd via dbus to stop an allowed service."""
 
     try:
         return await system_service.stop_systemd_service(name)
@@ -173,9 +166,7 @@ async def stop_a_systemd_service(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def restart_a_systemd_service(name: str) -> Any:
-    """
-    Uses systemd via dbus to restart an allowed service.
-    """
+    """Use systemd via dbus to restart an allowed service."""
 
     try:
         return await system_service.restart_systemd_service(name)
@@ -192,7 +183,7 @@ async def restart_a_systemd_service(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_datetime() -> Any:
-    """Returns current local date/time and timezone."""
+    """Return the current local date/time and timezone."""
     try:
         log.debug("GET /system/datetime request")
         result = await asyncio.to_thread(system_service.get_datetime)
@@ -214,7 +205,7 @@ async def show_datetime() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_timezone() -> Any:
-    """Returns the current system timezone."""
+    """Return the current system timezone."""
     try:
         return await asyncio.to_thread(system_service.get_timezone)
     except ValidationError as ve:
@@ -230,7 +221,7 @@ async def show_timezone() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def list_timezones() -> Any:
-    """Returns available system timezones."""
+    """Return the available system timezones."""
     try:
         return await asyncio.to_thread(system_service.list_timezones)
     except ValidationError as ve:
@@ -246,7 +237,7 @@ async def list_timezones() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_timezone(body: system.TimezoneSetRequest) -> Any:
-    """Sets the system timezone."""
+    """Set the system timezone."""
     try:
         return await asyncio.to_thread(system_service.set_timezone, body.timezone)
     except ValidationError as ve:
@@ -262,7 +253,7 @@ async def set_timezone(body: system.TimezoneSetRequest) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def list_reg_domains() -> Any:
-    """Returns supported Wi-Fi regulatory domain country codes."""
+    """Return the supported Wi-Fi regulatory domain country codes."""
     try:
         log.debug("GET /system/reg-domain/list request")
         result = system_service.list_reg_domains()
@@ -284,7 +275,7 @@ async def list_reg_domains() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_reg_domain() -> Any:
-    """Returns the current Wi-Fi regulatory domain."""
+    """Return the current Wi-Fi regulatory domain."""
     try:
         log.debug("GET /system/reg-domain request")
         result = await asyncio.to_thread(system_service.get_reg_domain)
@@ -308,7 +299,7 @@ async def show_reg_domain() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_reg_domain(body: system.RegDomainSetRequest) -> Any:
-    """Sets the Wi-Fi regulatory domain country code."""
+    """Set the Wi-Fi regulatory domain country code."""
     try:
         log.debug("POST /system/reg-domain/set request country=%s", body.country)
         result = await asyncio.to_thread(system_service.set_reg_domain, body.country)
@@ -327,7 +318,7 @@ async def set_reg_domain(body: system.RegDomainSetRequest) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_battery() -> Any:
-    """Returns battery status if a power supply is present."""
+    """Return battery status if a power supply is present."""
     try:
         return await asyncio.to_thread(system_service.get_battery)
     except ValidationError as ve:
@@ -388,9 +379,9 @@ async def shutdown_device() -> Any:
     responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_hotspot_clients(iface: Optional[str] = None) -> Any:
+async def show_hotspot_clients(iface: str | None = None) -> Any:
     """
-    Connected client count for hotspot mode.
+    Return the connected client count for hotspot mode.
 
     Returns 409 when the device is not in hotspot mode.
     """

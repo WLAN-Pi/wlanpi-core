@@ -1,5 +1,5 @@
 """
-wlanpi-core package
+wlanpi-core package.
 
 This package provides core services for applications on and off the WLAN Pi.
 """
