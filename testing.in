@@ -10,3 +10,5 @@ pytest-cov
 coverage-badge
 pytest-mock
 pydantic_settings
+
+--extra-index-url https://www.piwheels.org/simple

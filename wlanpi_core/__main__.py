@@ -108,10 +108,10 @@ def init() -> None:
             "{0} only works on Linux... exiting...".format(os.path.basename(__file__))
         )
 
-    # hard set no support for python < v3.9
-    if sys.version_info < (3, 9):
+    # hard set no support for python < v3.13
+    if sys.version_info < (3, 13):
         sys.exit(
-            "{0} requires Python version 3.9 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
+            "{0} requires Python version 3.13 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
                 os.path.basename(__file__), platform.python_version()
             )
         )
