@@ -99,64 +99,12 @@ check_prerequisites() {
     fi
 }
 
-# Generate the self-signed TLS certs nginx, wlanpi-webui, and cockpit use.
+# Generate the per-device TLS certs nginx, wlanpi-webui, and cockpit use.
 # postinst skips this inside image-build chroots (unique key per device), so
-# first real boot must produce them; also self-heals a device that lost them.
+# first real boot must produce them; also self-heals a device that lost them
+# or predates the renamed-.local SAN (wlanpi-core#175).
 generate_self_signed_certs() {
-    if [ -f /etc/nginx/ssl/self-signed-wlanpi.cert ] && \
-       [ -f /etc/nginx/ssl/self-signed-grafana.cert ] && \
-       [ -f /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert ]; then
-        log_info "Self-signed certificates already present"
-        return 0
-    fi
-
-    log_info "Generating self-signed certificates..."
-    mkdir -p /etc/nginx/ssl
-    mkdir -p /etc/cockpit/ws-certs.d
-
-    cat > /tmp/wlanpi-ssl.cnf << 'EOF'
-[req]
-default_bits = 4096
-distinguished_name = req_distinguished_name
-req_extensions = v3_req
-prompt = no
-[req_distinguished_name]
-CN = wlanpi.local
-O = wlanpi
-OU = wlanpi
-[v3_req]
-basicConstraints = CA:FALSE
-keyUsage = digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = localhost
-DNS.2 = wlanpi.local
-IP.1 = 127.0.0.1
-IP.2 = 198.18.42.1
-EOF
-    if ! openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
-        -nodes -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
-        -out /etc/nginx/ssl/self-signed-wlanpi.cert \
-        -config /tmp/wlanpi-ssl.cnf -extensions v3_req; then
-        rm -f /tmp/wlanpi-ssl.cnf
-        error "Failed to generate self-signed SSL certificate"
-    fi
-    rm -f /tmp/wlanpi-ssl.cnf
-    chmod 654 /etc/nginx/ssl/self-signed-wlanpi.cert
-    chmod 650 /etc/nginx/ssl/self-signed-wlanpi.key
-    cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.key
-    cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert
-    cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/nginx/ssl/self-signed-grafana.key
-    cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/nginx/ssl/self-signed-grafana.cert
-    chmod 654 /etc/nginx/ssl/self-signed-grafana.cert
-    chmod 650 /etc/nginx/ssl/self-signed-grafana.key
-    getent group grafana >/dev/null 2>&1 || groupadd grafana
-    chgrp grafana /etc/nginx/ssl/self-signed-grafana.key
-    chgrp grafana /etc/nginx/ssl/self-signed-grafana.cert
-    chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.key
-    chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.cert
-    log_info "Self-signed certificates generated"
+    /etc/wlanpi-core/scripts/wlanpi-generate-certs.sh
 }
 
 apply_ufw_rules() {
