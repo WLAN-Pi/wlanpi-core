@@ -25,13 +25,13 @@ certifi==2024.12.14
     #   httpcore
     #   httpx
     #   requests
-cffi==1.17.1
+cffi==2.1.1
     # via cryptography
 charset-normalizer==3.4.1
     # via requests
 click==8.1.8
     # via uvicorn
-cryptography==44.0.0
+cryptography==50.0.1
     # via authlib
 dbus-python==1.3.2
     # via -r requirements.in
@@ -43,24 +43,24 @@ greenlet==3.1.1
     # via sqlalchemy
 gunicorn==23.0.0
     # via -r requirements.in
-h11==0.14.0
+h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-httpcore==1.0.7
+httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via -r requirements.in
-idna==3.10
+idna==3.19
     # via
     #   anyio
     #   httpx
     #   requests
-jinja2==3.1.5
+jinja2==3.1.6
     # via -r requirements.in
 limits==4.0.0
     # via slowapi
-mako==1.3.8
+mako==1.4.1
     # via alembic
 markupsafe==3.0.2
     # via
@@ -82,11 +82,11 @@ pydantic-core==2.27.2
     # via pydantic
 pydantic-settings==2.7.1
     # via -r requirements.in
-python-dotenv==1.0.1
+python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   pydantic-settings
-requests==2.32.3
+requests==2.34.2
     # via -r requirements.in
 slowapi==0.1.9
     # via -r requirements.in
@@ -107,7 +107,7 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
-urllib3==2.3.0
+urllib3==2.8.0
     # via requests
 uvicorn==0.34.0
     # via -r requirements.in

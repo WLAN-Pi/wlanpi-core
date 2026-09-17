@@ -10,7 +10,7 @@ annotated-types==0.7.0
     # via pydantic
 autoflake==2.3.1
     # via -r testing.in
-black==24.10.0
+black==26.5.1
     # via -r testing.in
 cachetools==5.5.1
     # via tox
@@ -28,8 +28,9 @@ coverage-badge==1.1.2
     # via -r testing.in
 distlib==0.3.9
     # via virtualenv
-filelock==3.17.0
+filelock==3.32.7
     # via
+    #   python-discovery
     #   tox
     #   virtualenv
 flake8==7.1.1
@@ -52,7 +53,7 @@ packaging==24.2
     #   pyproject-api
     #   pytest
     #   tox
-pathspec==0.12.1
+pathspec==1.1.1
     # via black
 platformdirs==4.3.6
     # via
@@ -75,22 +76,28 @@ pyflakes==3.2.0
     # via
     #   autoflake
     #   flake8
+pygments==2.21.0
+    # via pytest
 pyproject-api==1.9.0
     # via tox
-pytest==8.3.4
+pytest==9.1.1
     # via
     #   -r testing.in
     #   pytest-asyncio
     #   pytest-cov
     #   pytest-mock
-pytest-asyncio==0.25.3
+pytest-asyncio==1.4.0
     # via -r testing.in
 pytest-cov==6.0.0
     # via -r testing.in
 pytest-mock==3.14.0
     # via -r testing.in
+python-discovery==1.6.0
+    # via virtualenv
 python-dotenv==1.0.1
     # via pydantic-settings
+pytokens==0.4.1
+    # via black
 tox==4.24.1
     # via -r testing.in
 typing-extensions==4.12.2
@@ -98,7 +105,7 @@ typing-extensions==4.12.2
     #   mypy
     #   pydantic
     #   pydantic-core
-virtualenv==20.29.1
+virtualenv==21.7.10
     # via tox
 
 # The following packages are considered to be unsafe in a requirements file:
