@@ -72,11 +72,17 @@ if isValidSymlink $DEFAULT_FILE; then
     unlink $DEFAULT_FILE
 fi
 
-if [ ! -f /etc/nginx/ssl/self-signed-wlanpi.cert ] || [ ! -f /etc/nginx/ssl/self-signed-grafana.cert ] || [ ! -f /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert ]; then
-    mkdir -p /etc/nginx/ssl
-    mkdir -p /etc/cockpit/ws-certs.d
+# Skip cert generation inside image-build chroots: the ischroot guard on service
+# restart/UFW below already prevents service actions, but without this guard
+# every image built in a chroot ships with an identical private key — any holder
+# of one image can impersonate or decrypt traffic for all devices from that image.
+# On first real boot the block runs as normal and generates a unique key per device.
+if ! ischroot; then
+    if [ ! -f /etc/nginx/ssl/self-signed-wlanpi.cert ] || [ ! -f /etc/nginx/ssl/self-signed-grafana.cert ] || [ ! -f /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert ]; then
+        mkdir -p /etc/nginx/ssl
+        mkdir -p /etc/cockpit/ws-certs.d
 
-    cat > /tmp/wlanpi-ssl.cnf << 'EOF'
+        cat > /tmp/wlanpi-ssl.cnf << 'EOF'
 [req]
 default_bits = 4096
 distinguished_name = req_distinguished_name
@@ -97,36 +103,37 @@ DNS.2 = wlanpi.local
 IP.1 = 127.0.0.1
 IP.2 = 198.18.42.1
 EOF
-    if ! openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
-        -nodes -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
-        -out /etc/nginx/ssl/self-signed-wlanpi.cert \
-        -config /tmp/wlanpi-ssl.cnf -extensions v3_req; then
-        echo "Error: Failed to generate SSL certificate"
+        if ! openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
+            -nodes -keyout /etc/nginx/ssl/self-signed-wlanpi.key \
+            -out /etc/nginx/ssl/self-signed-wlanpi.cert \
+            -config /tmp/wlanpi-ssl.cnf -extensions v3_req; then
+            echo "Error: Failed to generate SSL certificate"
+            rm -f /tmp/wlanpi-ssl.cnf
+            exit 1
+        fi
         rm -f /tmp/wlanpi-ssl.cnf
+        chmod 654 /etc/nginx/ssl/self-signed-wlanpi.cert
+        chmod 650 /etc/nginx/ssl/self-signed-wlanpi.key
+        /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.key
+        /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert
+        /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/nginx/ssl/self-signed-grafana.key
+        /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/nginx/ssl/self-signed-grafana.cert
+        chmod 654 /etc/nginx/ssl/self-signed-grafana.cert
+        chmod 650 /etc/nginx/ssl/self-signed-grafana.key
+        getent group grafana || groupadd grafana
+        chgrp grafana /etc/nginx/ssl/self-signed-grafana.key
+        chgrp grafana /etc/nginx/ssl/self-signed-grafana.cert
+        CONF_CHANGED=1
+    fi
+
+    if ! getent group wlanpi >/dev/null; then
+        echo "Error: wlanpi group does not exist" >&2
         exit 1
     fi
-    rm -f /tmp/wlanpi-ssl.cnf
-    chmod 654 /etc/nginx/ssl/self-signed-wlanpi.cert
-    chmod 650 /etc/nginx/ssl/self-signed-wlanpi.key
-    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.key
-    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/cockpit/ws-certs.d/0-self-signed-wlanpi.cert
-    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.key /etc/nginx/ssl/self-signed-grafana.key
-    /bin/cp /etc/nginx/ssl/self-signed-wlanpi.cert /etc/nginx/ssl/self-signed-grafana.cert
-    chmod 654 /etc/nginx/ssl/self-signed-grafana.cert
-    chmod 650 /etc/nginx/ssl/self-signed-grafana.key
-    getent group grafana || groupadd grafana
-    chgrp grafana /etc/nginx/ssl/self-signed-grafana.key
-    chgrp grafana /etc/nginx/ssl/self-signed-grafana.cert
-    CONF_CHANGED=1
-fi
 
-if ! getent group wlanpi >/dev/null; then
-    echo "Error: wlanpi group does not exist" >&2
-    exit 1
+    chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.key
+    chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.cert
 fi
-
-chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.key
-chgrp wlanpi /etc/nginx/ssl/self-signed-wlanpi.cert
 
 # Ensure nginx sites-enabled directory exists
 mkdir -p /etc/nginx/sites-enabled
