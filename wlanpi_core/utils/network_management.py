@@ -8,7 +8,6 @@ in namespaces.
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -35,7 +34,7 @@ def write_dhcp_config(iface: str, dhcp_dir: Path) -> None:
 
 def restart_dhcp_with_timeout(
     iface: str,
-    namespace: Optional[str],
+    namespace: str | None,
     timeout: int = 15,
 ) -> None:
     """
@@ -92,7 +91,7 @@ def restart_dhcp_with_timeout(
 
 def set_default_route(
     iface: str,
-    namespace: Optional[str],
+    namespace: str | None,
     metric: int = 200,
 ) -> None:
     """

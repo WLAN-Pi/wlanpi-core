@@ -4,20 +4,20 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.network.link_stats import get_link_stats
 from wlanpi_core.schemas.network.network import (
+    NamespaceConfig,
     NetConfig,
     NetSecurity,
-    NamespaceConfig,
     NetworkModeEnum,
     RootConfig,
     SecurityTypes,
 )
+from wlanpi_core.services import network_ethernet_service, utils_service
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.utils.validation import validate_vlan_id
 from wlanpi_core.wpa.config import generate_network_block
-from wlanpi_core.network.link_stats import get_link_stats
-from wlanpi_core.services import network_ethernet_service, utils_service
 
 
 def _root_config(**overrides):
@@ -86,9 +86,7 @@ def test_wpa_values_are_quoted_without_config_injection():
 
 
 def test_namespace_execution_rejects_path_syntax_before_command(mocker):
-    run_command = mocker.patch(
-        "wlanpi_core.utils.namespace_execution.run_command"
-    )
+    run_command = mocker.patch("wlanpi_core.utils.namespace_execution.run_command")
 
     with pytest.raises(ValueError):
         ns_exec(["ip", "addr"], namespace="../../root")

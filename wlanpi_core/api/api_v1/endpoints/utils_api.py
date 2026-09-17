@@ -1,12 +1,15 @@
+"""Miscellaneous utility endpoints."""
+
 import asyncio
 import json
-from typing import Any, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 
 from wlanpi_core.api.openapi_docs import RESPONSES_API_ERROR
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import utils
 from wlanpi_core.services import utils_service
@@ -14,8 +17,6 @@ from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.scan import ScanInProgressError
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -28,17 +29,17 @@ log = get_logger(__name__)
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def reachability(
-    targets: Optional[list[str]] = Query(
-        default=None,
-        description=(
-            "Optional hostnames or IPs to ping. Repeat the parameter or use "
-            "comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
+    targets: Annotated[
+        list[str] | None,
+        Query(
+            description=(
+                "Optional hostnames or IPs to ping. Repeat the parameter or use "
+                "comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
+            ),
         ),
-    ),
+    ] = None,
 ) -> Any:
-    """
-    Runs reachability checks for gateway, internet, DNS, and optional custom targets.
-    """
+    """Run reachability checks for gateway, internet, DNS, and optional custom targets."""
 
     try:
         reachability_result = await utils_service.show_reachability(targets=targets)
@@ -62,7 +63,7 @@ async def reachability(
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
+        return Response(content="Internal Server Error", status_code=500)
 
 
 @router.get(
@@ -80,7 +81,7 @@ async def reachability(
 )
 async def speedtest() -> Any:
     """
-      Run LibreSpeed CLI (typically **30–90 seconds**).
+      Run LibreSpeed CLI (typically **30-90 seconds**).
 
       Use a client HTTP timeout of at least **120 seconds**. UI platforms should
     wrap as a job with `freshnessSec` deduplication rather than blocking the UI thread.
@@ -96,7 +97,7 @@ async def speedtest() -> Any:
                 media_type="application/json",
             )
         return result["results"]
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return Response(
             content=json.dumps({"error": "speedtest timed out"}),
             status_code=503,
@@ -165,7 +166,7 @@ async def blinker_status() -> Any:
         409: {
             "model": utils.WlanScanErrorResponse,
             "description": (
-                "Selected adapter is already scanning " "(`error`: `SCAN_IN_PROGRESS`)"
+                "Selected adapter is already scanning (`error`: `SCAN_IN_PROGRESS`)"
             ),
         },
         422: {
@@ -177,8 +178,8 @@ async def blinker_status() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def wlan_scan_endpoint(
-    iface: Optional[str] = None,
-    namespace: Optional[str] = None,
+    iface: str | None = None,
+    namespace: str | None = None,
     hidden: bool = True,
     detail: str = "short",
 ) -> Any:
@@ -235,9 +236,7 @@ async def wlan_scan_endpoint(
     "/usb", response_model=utils.Usb, dependencies=[Depends(verify_auth_wrapper)]
 )
 async def usb_interfaces() -> Any:
-    """
-    Gets a list of usb interfaces and returns them.
-    """
+    """Get a list of USB interfaces."""
 
     try:
         result = await utils_service.show_usb()
@@ -255,16 +254,14 @@ async def usb_interfaces() -> Any:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
+        return Response(content="Internal Server Error", status_code=500)
 
 
 @router.get(
     "/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_auth_wrapper)]
 )
 async def ufw_information() -> Any:
-    """
-    Returns the UFW information.
-    """
+    """Return the UFW firewall status information."""
 
     try:
         result = await utils_service.show_ufw()
@@ -282,4 +279,4 @@ async def ufw_information() -> Any:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
+        return Response(content="Internal Server Error", status_code=500)

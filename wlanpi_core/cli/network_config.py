@@ -1,19 +1,22 @@
 #!/opt/wlanpi-core/bin/python3
 
+"""CLI for managing WLAN Pi network configurations."""
+
 import argparse
 import json
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
 COMMAND_TIMEOUT_SEC = 10
 
 # Enhanced security type definitions with detailed descriptions
-SECURITY_TYPES: Dict[str, Dict[str, Any]] = {
+SECURITY_TYPES: dict[str, dict[str, Any]] = {
     "OPEN": {
         "name": "Open Network",
         "description": "No authentication required",
@@ -61,7 +64,7 @@ SECURITY_TYPES: Dict[str, Dict[str, Any]] = {
     },
 }
 
-EAP_METHODS: Dict[str, Dict[str, Any]] = {
+EAP_METHODS: dict[str, dict[str, Any]] = {
     "PEAP": {
         "name": "PEAP",
         "description": "Protected EAP (most common for username/password)",
@@ -90,10 +93,12 @@ EAP_METHODS: Dict[str, Dict[str, Any]] = {
 
 
 class ValidationError(Exception):
-    """Custom exception for validation errors"""
+    """Custom exception for validation errors."""
 
 
 class NetworkConfigCLI:
+    """Interactive CLI for network configuration management."""
+
     def __init__(self) -> None:
         self.DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
         self.DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
@@ -105,33 +110,33 @@ class NetworkConfigCLI:
         self.HOST = "127.0.0.1"
         self.CA_CERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
         self.BASE = f"https://{self.HOST}:{self.API_PORT}/api/v1/network/config/"
-        self.token: Optional[str] = None
-        self.existing_configs: Dict[str, Any] = {}
+        self.token: str | None = None
+        self.existing_configs: dict[str, Any] = {}
 
     def print_header(self, text: str, char: str = "=") -> None:
-        """Print a formatted header"""
+        """Print a formatted header."""
         print(f"\n{char * 60}")
         print(f" {text}")
         print(f"{char * 60}")
 
     def print_info(self, text: str) -> None:
-        """Print informational message"""
-        print(f"ℹ️  {text}")
+        """Print informational message."""
+        print(f"\N{INFORMATION SOURCE}\N{VARIATION SELECTOR-16}  {text}")
 
     def print_warning(self, text: str) -> None:
-        """Print warning message"""
+        """Print warning message."""
         print(f"⚠️  {text}")
 
     def print_error(self, text: str) -> None:
-        """Print error message"""
+        """Print error message."""
         print(f"❌ {text}")
 
     def print_success(self, text: str) -> None:
-        """Print success message"""
+        """Print success message."""
         print(f"✅ {text}")
 
     def validate_network_name(self, name: str) -> bool:
-        """Validate network configuration name"""
+        """Validate network configuration name."""
         if not name or len(name.strip()) == 0:
             raise ValidationError("Configuration name cannot be empty")
         if len(name) > 64:
@@ -143,7 +148,7 @@ class NetworkConfigCLI:
         return True
 
     def validate_ssid(self, ssid: str) -> bool:
-        """Validate SSID"""
+        """Validate SSID."""
         if not ssid or len(ssid.strip()) == 0:
             raise ValidationError("SSID cannot be empty")
         if len(ssid.encode("utf-8")) > 32:
@@ -151,7 +156,7 @@ class NetworkConfigCLI:
         return True
 
     def validate_psk(self, psk: str) -> bool:
-        """Validate PSK/password"""
+        """Validate PSK/password."""
         if not psk:
             raise ValidationError("PSK/password cannot be empty")
         if len(psk) == 64 and all(c in "0123456789abcdefABCDEF" for c in psk):
@@ -164,7 +169,7 @@ class NetworkConfigCLI:
             raise ValidationError("PSK must be 8-63 characters or 64 hex characters")
 
     def validate_interface_name(self, name: str) -> bool:
-        """Validate interface name"""
+        """Validate interface name."""
         if not name or len(name.strip()) == 0:
             raise ValidationError("Interface name cannot be empty")
         if len(name) > 15:  # Linux interface name limit
@@ -172,15 +177,15 @@ class NetworkConfigCLI:
         return True
 
     def validate_file_path(self, path: str) -> bool:
-        """Validate file path exists"""
+        """Validate file path exists."""
         if not path:
             return True  # Optional field
         if not Path(path).exists():
             raise ValidationError(f"File does not exist: {path}")
         return True
 
-    def get_available_phys(self) -> List[str]:
-        """Get list of available PHY interfaces"""
+    def get_available_phys(self) -> list[str]:
+        """Get list of available PHY interfaces."""
         try:
             result = subprocess.run(
                 ["iw", "phy"],
@@ -208,8 +213,8 @@ class NetworkConfigCLI:
             )
             return ["phy0"]
 
-    def get_available_interfaces(self) -> List[str]:
-        """Get list of available network interfaces"""
+    def get_available_interfaces(self) -> list[str]:
+        """Get list of available network interfaces."""
         try:
             result = subprocess.run(
                 ["ip", "link", "show"],
@@ -234,9 +239,9 @@ class NetworkConfigCLI:
             return ["wlan0"]
 
     def make_request(
-        self, method: str, url: str, data: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Make HTTP request with proper error handling"""
+        self, method: str, url: str, data: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """Make HTTP request with proper error handling."""
         try:
             headers = (
                 {
@@ -289,7 +294,7 @@ class NetworkConfigCLI:
             return None
 
     def get_token(self) -> None:
-        """Get authentication token"""
+        """Get authentication token."""
         try:
             print("Authenticating with server...")
             getjwt_output = subprocess.run(
@@ -308,7 +313,7 @@ class NetworkConfigCLI:
 
             try:
                 token_json = json.loads(getjwt_output)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 self.print_error("Failed to parse token output as JSON:")
                 print(getjwt_output)
                 sys.exit(1)
@@ -334,7 +339,7 @@ class NetworkConfigCLI:
             sys.exit(1)
 
     def view_configs(self, no_default: bool = True) -> None:
-        """View existing configurations with enhanced formatting"""
+        """View existing configurations with enhanced formatting."""
         self.print_header("Loading Network Configurations")
 
         configs_data = self.make_request("GET", self.BASE)
@@ -363,7 +368,7 @@ class NetworkConfigCLI:
         print(f"Total configurations: {len(self.existing_configs)}")
 
     def status(self) -> None:
-        """Show network status with enhanced formatting"""
+        """Show network status with enhanced formatting."""
         self.print_header("Network Configuration Status")
 
         status_data = self.make_request("GET", self.BASE + "status")
@@ -411,9 +416,9 @@ class NetworkConfigCLI:
                         print(f"{branch} {key}: {value}")
 
     def prompt_security_type(
-        self, existing_security: Optional[Dict[str, Any]] = None
+        self, existing_security: dict[str, Any] | None = None
     ) -> str:
-        """Enhanced security type selection"""
+        """Enhanced security type selection."""
         self.print_header("Security Configuration", "-")
 
         current_type = existing_security.get("security") if existing_security else None
@@ -459,9 +464,9 @@ class NetworkConfigCLI:
                 self.print_error(str(e))
 
     def prompt_eap_method(
-        self, existing_method: Optional[str] = None
-    ) -> Tuple[str, Optional[str]]:
-        """Enhanced EAP method selection"""
+        self, existing_method: str | None = None
+    ) -> tuple[str, str | None]:
+        """Enhanced EAP method selection."""
         print("\nEAP Method Configuration:")
         print("-" * 40)
 
@@ -536,14 +541,14 @@ class NetworkConfigCLI:
     def prompt_field_with_validation(
         self,
         prompt: str,
-        validator: Optional[Callable[[str], bool]] = None,
-        existing_value: Optional[str] = None,
-        default_value: Optional[str] = None,
+        validator: Callable[[str], bool] | None = None,
+        existing_value: str | None = None,
+        default_value: str | None = None,
         required: bool = False,
         secret: bool = False,
         multiline: bool = False,
     ) -> str:
-        """Enhanced field prompting with validation"""
+        """Enhanced field prompting with validation."""
         attempts = 0
         max_attempts = 3
 
@@ -553,7 +558,7 @@ class NetworkConfigCLI:
                 prompt_text = prompt
                 if existing_value is not None:
                     if secret:
-                        prompt_text += f" [current: ***] (Enter to keep): "
+                        prompt_text += " [current: ***] (Enter to keep): "
                     else:
                         prompt_text += (
                             f" [current: '{existing_value}'] (Enter to keep): "
@@ -614,10 +619,10 @@ class NetworkConfigCLI:
         return existing_value or default_value or ""
 
     def prompt_security_config(
-        self, security_type: str, existing_security: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Enhanced security configuration prompting"""
-        config: Dict[str, Any] = {"security": security_type}
+        self, security_type: str, existing_security: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Enhanced security configuration prompting."""
+        config: dict[str, Any] = {"security": security_type}
         existing_security = existing_security or {}
 
         # Always prompt for SSID
@@ -747,8 +752,8 @@ class NetworkConfigCLI:
 
         return config
 
-    def prompt_app_id(self, existing_app: Optional[str] = None) -> Optional[str]:
-        """Enhanced app configuration"""
+    def prompt_app_id(self, existing_app: str | None = None) -> str | None:
+        """Enhanced app configuration."""
         self.print_header("Application Configuration", "-")
 
         if existing_app:
@@ -801,14 +806,14 @@ class NetworkConfigCLI:
         return app_id if app_id else None
 
     def prompt_network_config(
-        self, is_namespace: bool = True, existing_data: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Enhanced network configuration prompting"""
+        self, is_namespace: bool = True, existing_data: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """Enhanced network configuration prompting."""
         config_type = "Namespace" if is_namespace else "Root"
         self.print_header(f"{config_type} Configuration")
 
         existing_data = existing_data or {}
-        config: Dict[str, Any] = {}
+        config: dict[str, Any] = {}
 
         # Namespace (only for namespace configs)
         if is_namespace:
@@ -924,13 +929,13 @@ class NetworkConfigCLI:
 
         return config
 
-    def _preview_config(self, config: Dict[str, Any]) -> None:
-        """Display configuration preview in a readable format"""
+    def _preview_config(self, config: dict[str, Any]) -> None:
+        """Display configuration preview in a readable format."""
         print(f"Configuration Type: {'Namespace' if 'namespace' in config else 'Root'}")
 
         for key, value in config.items():
             if key == "security" and isinstance(value, dict):
-                print(f"Security Configuration:")
+                print("Security Configuration:")
                 for sec_key, sec_value in value.items():
                     if sec_key in ["psk", "password", "private_key_passwd", "wep_key"]:
                         print(f"  {sec_key}: ***")
@@ -939,8 +944,8 @@ class NetworkConfigCLI:
             else:
                 print(f"{key}: {value}")
 
-    def _validate_config_completeness(self, config: Dict[str, Any]) -> bool:
-        """Validate that configuration is complete and consistent"""
+    def _validate_config_completeness(self, config: dict[str, Any]) -> bool:
+        """Validate that configuration is complete and consistent."""
         issues = []
 
         # Check required fields
@@ -972,7 +977,7 @@ class NetworkConfigCLI:
         return True
 
     def new_config(self) -> None:
-        """Enhanced new configuration creation"""
+        """Enhanced new configuration creation."""
         self.print_header("Create New Network Configuration")
 
         # Configuration ID with validation
@@ -989,9 +994,9 @@ class NetworkConfigCLI:
                 return self.edit_config_by_id(config_id)
             return
 
-        config: Dict[str, Any] = {"id": config_id}
-        namespaces: List[Dict[str, Any]] = []
-        roots: List[Dict[str, Any]] = []
+        config: dict[str, Any] = {"id": config_id}
+        namespaces: list[dict[str, Any]] = []
+        roots: list[dict[str, Any]] = []
 
         # Namespace configurations
         if input("Add namespace configuration(s)? (y/n): ").lower() == "y":
@@ -1048,7 +1053,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to create configuration")
 
     def edit_config_by_id(self, config_id: str) -> None:
-        """Edit existing configuration by ID"""
+        """Edit existing configuration by ID."""
         existing_config = self.make_request("GET", self.BASE + config_id)
         if not existing_config:
             return
@@ -1148,7 +1153,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to update configuration")
 
     def edit_config(self) -> None:
-        """Enhanced configuration editing"""
+        """Enhanced configuration editing."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1165,7 +1170,7 @@ class NetworkConfigCLI:
             self.print_error("Please enter a valid number")
 
     def activate_config(self) -> None:
-        """Enhanced configuration activation"""
+        """Enhanced configuration activation."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1217,7 +1222,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to activate configuration")
 
     def deactivate_config(self) -> None:
-        """Enhanced configuration deactivation"""
+        """Enhanced configuration deactivation."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1259,7 +1264,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to deactivate configuration")
 
     def delete_config(self) -> None:
-        """Enhanced configuration deletion"""
+        """Enhanced configuration deletion."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1304,7 +1309,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to delete configuration")
 
     def menu(self) -> None:
-        """Enhanced main menu"""
+        """Enhanced main menu."""
         while True:
             self.print_header("WLAN Pi Network Configuration CLI")
 
@@ -1352,7 +1357,7 @@ class NetworkConfigCLI:
                     sys.exit(1)
 
     def main(self) -> None:
-        """Enhanced main function"""
+        """Enhanced main function."""
         self.print_header("WLAN Pi Core Network Configuration CLI")
         print("Advanced network configuration tool with support for:")
         print("- WPA2/WPA3 PSK and Enterprise")
@@ -1374,6 +1379,7 @@ class NetworkConfigCLI:
 
 
 def main() -> None:
+    """Run the network configuration CLI."""
     parser = argparse.ArgumentParser(description="WLAN Pi Network Configuration CLI")
     parser.add_argument(
         "--port", type=int, default=31415, help="API port (default: 31415)"

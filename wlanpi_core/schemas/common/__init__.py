@@ -1,3 +1,5 @@
+"""Common response schemas."""
+
 from .errors import (
     ApiErrorResponse,
     DeprecatedEndpointResponse,

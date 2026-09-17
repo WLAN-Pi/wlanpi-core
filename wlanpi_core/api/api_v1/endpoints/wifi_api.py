@@ -1,10 +1,13 @@
+"""Wi-Fi capabilities, regulatory, and hotspot station endpoints."""
+
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import wifi as wifi_schema
 from wlanpi_core.wlan.capabilities import get_wifi_capabilities
@@ -12,8 +15,6 @@ from wlanpi_core.wlan.regulatory import get_wifi_regulatory
 from wlanpi_core.wlan.stations import get_hotspot_client_link, get_hotspot_stations
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -59,9 +60,9 @@ async def show_wifi_regulatory() -> Any:
     responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_hotspot_stations(iface: Optional[str] = None) -> Any:
+async def show_hotspot_stations(iface: str | None = None) -> Any:
     """
-    Connected stations on the hotspot AP interface.
+    Return the connected stations on the hotspot AP interface.
 
     Returns 409 when the device is not in hotspot mode.
     """
@@ -81,7 +82,7 @@ async def show_hotspot_stations(iface: Optional[str] = None) -> Any:
     responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_hotspot_client_link(iface: Optional[str] = None) -> Any:
+async def show_hotspot_client_link(iface: str | None = None) -> Any:
     """
     Per-station link statistics for hotspot AP clients.
 

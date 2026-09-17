@@ -1,3 +1,5 @@
+"""Profiler status and control endpoints."""
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
@@ -7,11 +9,10 @@ import wlanpi_core.profiler.models as models
 import wlanpi_core.profiler.schemas as schemas
 import wlanpi_core.profiler.service as service
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -22,9 +23,7 @@ log = get_logger(__name__)
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def profiler_status() -> Any:
-    """
-    Returns status of profiler
-    """
+    """Return the profiler status."""
 
     try:
         status = service.get_status()
@@ -44,9 +43,7 @@ async def profiler_status() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_profiler(args: models.Start) -> Any:
-    """
-    Starts profiler with provided arguments
-    """
+    """Start the profiler with the provided arguments."""
 
     try:
         # start with args
@@ -67,9 +64,7 @@ async def start_profiler(args: models.Start) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def stop_profiler() -> Any:
-    """
-    Stops  profiler
-    """
+    """Stop the profiler."""
 
     try:
         result = await cli.stop_profiler()

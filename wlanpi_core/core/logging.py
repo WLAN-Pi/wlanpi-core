@@ -1,3 +1,5 @@
+"""Structured JSON logging setup for wlanpi-core."""
+
 import json
 import logging
 import os
@@ -5,7 +7,7 @@ import pathlib
 import sys
 import tempfile
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any
 
 LOG_LEVELS = {
     "DEBUG": 10,
@@ -17,14 +19,10 @@ LOG_LEVELS = {
 
 
 def create_contextual_log_record() -> type:
-    """
-    Create ContextualLogRecord class dynamically to avoid circular import
-    """
+    """Create ContextualLogRecord class dynamically to avoid circular import."""
 
     class ContextualLogRecord(logging.LogRecord):
-        """
-        Custom LogRecord that captures additional context information
-        """
+        """Custom LogRecord that captures additional context information."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
@@ -34,7 +32,7 @@ def create_contextual_log_record() -> type:
 
             if self.levelno >= logging.ERROR and self.exc_info:
                 try:
-                    exc_type, exc_value, exc_traceback = self.exc_info
+                    _, _, exc_traceback = self.exc_info
                     tb = traceback.extract_tb(exc_traceback)
                     if tb:
                         last_frame = tb[-1]
@@ -77,11 +75,10 @@ def create_contextual_log_record() -> type:
 
 
 class ContextFilter(logging.Filter):
-    """
-    A logging filter that ensures contextual information is added to log records
-    """
+    """A logging filter that ensures contextual information is added to log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Populate contextual fields on log records."""
         if not hasattr(record, "source_file"):
             record.source_file = "Unknown"
         if not hasattr(record, "line_number"):
@@ -92,12 +89,12 @@ class ContextFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
-    """JSON log formatter"""
+    """JSON log formatter."""
 
     def __init__(
         self,
         *,
-        fmt_keys: Optional[Dict[str, str]] = None,
+        fmt_keys: dict[str, str] | None = None,
     ):
         super().__init__()
         self.fmt_keys = (
@@ -117,6 +114,7 @@ class JsonFormatter(logging.Formatter):
         )
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format the record as JSON with the configured keys."""
         if record.args:
             record.message = record.msg % record.args
         else:
@@ -157,15 +155,13 @@ class JsonFormatter(logging.Formatter):
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get a logger with the specified name
-    """
+    """Get a logger with the specified name."""
     return logging.getLogger(f"{name}")
 
 
 def configure_logging(debug_mode: bool = False) -> None:
     """
-    Configure logging with console and file handlers
+    Configure logging with console and file handlers.
 
     Args:
         debug_mode: Whether to force DEBUG level logging
@@ -226,8 +222,8 @@ def configure_logging(debug_mode: bool = False) -> None:
     root_logger.addHandler(debug_file_handler)
 
 
-def test_logging_levels() -> Dict[str, str]:
-    """Test function to verify logging levels are working"""
+def test_logging_levels() -> dict[str, str]:
+    """Test function to verify logging levels are working."""
     logger = get_logger("test")
 
     test_messages = {

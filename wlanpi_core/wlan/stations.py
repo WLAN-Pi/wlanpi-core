@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.core.mode_guard import require_mode
@@ -67,7 +67,8 @@ def _station_dump(iface: str) -> str:
         ) from exc
 
 
-def get_hotspot_stations(iface: Optional[str] = None) -> dict[str, Any]:
+def get_hotspot_stations(iface: str | None = None) -> dict[str, Any]:
+    """Return stations connected to the hotspot AP."""
     require_mode("hotspot")
     ap_iface = resolve_ap_interface(iface)
     stations = _parse_station_blocks(_station_dump(ap_iface))
@@ -79,7 +80,7 @@ def get_hotspot_stations(iface: Optional[str] = None) -> dict[str, Any]:
     }
 
 
-def get_hotspot_client_link(iface: Optional[str] = None) -> dict[str, Any]:
+def get_hotspot_client_link(iface: str | None = None) -> dict[str, Any]:
     """
     Per-station link statistics for the hotspot AP interface.
 

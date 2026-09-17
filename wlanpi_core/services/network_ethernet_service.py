@@ -1,4 +1,4 @@
-from typing import Optional, Union
+"""Ethernet interface and VLAN management service."""
 
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
@@ -16,7 +16,7 @@ def _validated_interface(interface: str) -> str:
         raise ValidationError(str(error), status_code=400) from error
 
 
-def _validated_vlan_id(vlan_id: Union[str, int]) -> int:
+def _validated_vlan_id(vlan_id: str | int) -> int:
     try:
         return validate_vlan_id(vlan_id)
     except ValueError as error:
@@ -27,12 +27,10 @@ def _validated_vlan_id(vlan_id: Union[str, int]) -> int:
 
 
 async def get_vlans(
-    interface: Optional[str] = None,
-    custom_filter: Optional[CustomIPInterfaceFilter] = None,
+    interface: str | None = None,
+    custom_filter: CustomIPInterfaceFilter | None = None,
 ) -> dict[str, list[IPInterface]]:
-    """
-    Returns all VLANS configured in /etc/network/interfaces.d/vlans as objects
-    """
+    """Return all VLANs configured on the system as objects."""
     # vlan_file = VLANFile()
     # return vlan_file.get_vlans(interface)
     if interface is None:
@@ -47,11 +45,9 @@ async def get_vlans(
 
 
 async def create_vlan(
-    interface: str, vlan_id: Union[str, int], addresses: list[IPInterfaceAddress]
+    interface: str, vlan_id: str | int, addresses: list[IPInterfaceAddress]
 ) -> None:
-    """
-    Creates or updates a VLAN definition for a given interface.
-    """
+    """Create a VLAN definition for a given interface."""
     # vlan_file = VLANFile()
     # return vlan_file.create_update_vlan(configuration=configuration, require_existing_interface=require_existing_interface)
 
@@ -63,11 +59,9 @@ async def create_vlan(
 
 
 async def remove_vlan(
-    interface: str, vlan_id: Union[str, int], allow_missing: bool = False
+    interface: str, vlan_id: str | int, allow_missing: bool = False
 ) -> None:
-    """
-    Removes a VLAN definition for a given interface.
-    """
+    """Remove a VLAN definition for a given interface."""
     VLANFile()
     return LiveVLANs.delete_vlan(
         if_name=_validated_interface(interface),
@@ -77,13 +71,11 @@ async def remove_vlan(
 
 
 async def get_interfaces(
-    interface: Optional[str],
+    interface: str | None,
     allow_missing: bool = False,
-    custom_filter: Optional[CustomIPInterfaceFilter] = None,
+    custom_filter: CustomIPInterfaceFilter | None = None,
 ) -> dict[str, list[IPInterface]]:
-    """
-    Returns definitions for all network interfaces known by the `ip` command.
-    """
+    """Return definitions for all network interfaces known by the `ip` command."""
     if interface is None:
         return common.get_interfaces_by_interface(custom_filter=custom_filter)
     else:

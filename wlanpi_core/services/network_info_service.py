@@ -1,7 +1,9 @@
+"""Service layer aggregating network information for the API."""
+
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import (
     ETHTOOL_FILE,
@@ -127,6 +129,7 @@ def _section_debug_label(section: str, value: Any) -> dict[str, Any]:
 
 
 def show_info() -> dict[str, Any]:
+    """Return the aggregated network information."""
     log.debug("show_info: building network info aggregate")
     output: dict[str, Any] = {}
 
@@ -176,9 +179,7 @@ def show_info() -> dict[str, Any]:
 
 
 def show_interfaces() -> dict[str, Any]:
-    """
-    Return the list of network interfaces with IP address (if available)
-    """
+    """Return the list of network interfaces with IP address (if available)."""
 
     ifconfig_file = IFCONFIG_FILE
     iw_file = IW_FILE
@@ -187,7 +188,7 @@ def show_interfaces() -> dict[str, Any]:
 
     try:
         ifconfig_info = run_command([ifconfig_file, "-a"], raise_on_fail=True).stdout
-    except Exception as ex:
+    except (RunCommandError, OSError) as ex:
         interfaces["error"] = "ifconfig error" + str(ex)
         return interfaces
 
@@ -230,7 +231,7 @@ def show_interfaces() -> dict[str, Any]:
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
-                    except Exception:
+                    except (RunCommandError, OSError):
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
@@ -242,10 +243,8 @@ def show_interfaces() -> dict[str, Any]:
     return interfaces
 
 
-def channel_lookup(freq_mhz: int) -> Optional[int]:
-    """
-    Converts frequency (MHz) to channel number
-    """
+def channel_lookup(freq_mhz: int) -> int | None:
+    """Convert frequency (MHz) to a channel number."""
     if freq_mhz == 2484:
         return 14
     elif 2412 <= freq_mhz <= 2484:
@@ -259,9 +258,7 @@ def channel_lookup(freq_mhz: int) -> Optional[int]:
 
 
 def show_wlan_interfaces() -> dict[str, Any]:
-    """
-    Create pages to summarise WLAN interface info
-    """
+    """Create pages to summarise WLAN interface info."""
 
     interfaces: list[Any] = []
     output: dict[str, Any] = {}
@@ -273,7 +270,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
             fields = line.strip().split()
             if len(fields) >= 2 and fields[0].lower() == "interface":
                 interfaces.append(fields[1])
-    except Exception:
+    except (RunCommandError, OSError):
         log.debug("Unable to enumerate WLAN interfaces", exc_info=True)
 
     for interface in interfaces:
@@ -284,7 +281,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
             ethtool_output = run_command([ETHTOOL_FILE, "-i", interface]).stdout.strip()
             driver = _first_group(r".*driver:\s+(.*)", ethtool_output)
             output[interface]["driver"] = driver
-        except Exception:
+        except (RunCommandError, OSError):
             pass
 
         # Addr, SSID, Mode, Channel
@@ -321,19 +318,17 @@ def show_wlan_interfaces() -> dict[str, Any]:
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
-            except Exception:
+            except ValueError:
                 pass
 
-        except Exception:
+        except (RunCommandError, OSError):
             log.debug("Unable to inspect WLAN interface %s", interface, exc_info=True)
 
     return output
 
 
 def show_eth0_ipconfig() -> dict[str, Any]:
-    """
-    Return IP configuration of eth0 including IP, default gateway, DNS servers
-    """
+    """Return IP configuration of eth0 including IP, default gateway, DNS servers."""
     ipconfig_file = IPCONFIG_FILE
 
     eth0_ipconfig_info: dict[str, Any] = {"info": []}
@@ -366,7 +361,8 @@ def show_eth0_ipconfig() -> dict[str, Any]:
 
 def show_vlan() -> dict[str, Any]:
     """
-    Display untagged VLAN number reported by the LLDP/CDP neighbour
+    Display the untagged VLAN number reported by the LLDP/CDP neighbour.
+
     Todo: Add tagged VLAN info
     """
     vlan_info: dict[str, Any] = {"info": []}
@@ -393,22 +389,19 @@ def show_vlan() -> dict[str, Any]:
 
 
 def show_lldp_neighbour() -> dict[str, Any]:
-    """
-    Display LLDP neighbours reported by lldpd
-    """
+    """Display LLDP neighbours reported by lldpd."""
     return _show_neighbour("LLDP")
 
 
 def show_cdp_neighbour() -> dict[str, Any]:
-    """
-    Display CDP neighbours reported by lldpd (requires CDP enabled via -c)
-    """
+    """Display CDP neighbours reported by lldpd (requires CDP enabled via -c)."""
     return _show_neighbour("CDP")
 
 
 def show_publicip(ip_version: int = 4) -> dict[str, Any]:
-    """
-    Shows public IP address and related details, works with any interface with internet connectivity
+    """Show the public IP address and related details.
+
+    Works with any interface that has internet connectivity.
     """
 
     publicip_info: dict[str, Any] = {"info": []}

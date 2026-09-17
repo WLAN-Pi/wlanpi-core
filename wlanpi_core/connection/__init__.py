@@ -13,6 +13,6 @@ from wlanpi_core.connection.monitor import (
 
 __all__ = [
     "ConnectionMonitor",
-    "stop_connection_monitor",
     "stop_all_connection_monitors",
+    "stop_connection_monitor",
 ]

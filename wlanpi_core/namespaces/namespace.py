@@ -6,7 +6,7 @@ and deleting network namespaces.
 """
 
 import logging
-from typing import Any, List
+from typing import Any
 
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.network.namespace.namespace_errors import (
@@ -42,7 +42,7 @@ def create_namespace(namespace_name: str, use_sudo: bool = True) -> CommandResul
 
     cmd = ["ip", "netns", "add", namespace_name]
     if use_sudo:
-        cmd = ["sudo"] + cmd
+        cmd = ["sudo", *cmd]
 
     log.info(f"Creating namespace: {namespace_name}")
     try:
@@ -51,7 +51,9 @@ def create_namespace(namespace_name: str, use_sudo: bool = True) -> CommandResul
         return result
     except Exception as e:
         log.error(f"Failed to create namespace {namespace_name}: {e}")
-        raise NetworkNamespaceError(f"Failed to create namespace {namespace_name}: {e}")
+        raise NetworkNamespaceError(
+            f"Failed to create namespace {namespace_name}: {e}"
+        ) from None
 
 
 def delete_namespace(
@@ -91,7 +93,7 @@ def delete_namespace(
 
     cmd = ["ip", "netns", "delete", namespace_name]
     if use_sudo:
-        cmd = ["sudo"] + cmd
+        cmd = ["sudo", *cmd]
 
     log.info(f"Deleting namespace: {namespace_name}")
     try:
@@ -104,11 +106,11 @@ def delete_namespace(
         if raise_on_fail:
             raise NetworkNamespaceError(
                 f"Failed to delete namespace {namespace_name}: {e}"
-            )
+            ) from None
         return CommandResult("", str(e), 1)
 
 
-def list_namespaces(use_json: bool = False) -> List[Any]:
+def list_namespaces(use_json: bool = False) -> list[Any]:
     """
     List all network namespaces.
 
@@ -159,7 +161,7 @@ def list_namespaces(use_json: bool = False) -> List[Any]:
         return []
     except Exception as e:
         log.error(f"Failed to list namespaces: {e}")
-        raise NetworkNamespaceError(f"Failed to list namespaces: {e}")
+        raise NetworkNamespaceError(f"Failed to list namespaces: {e}") from None
 
 
 def namespace_exists(namespace_name: str) -> bool:

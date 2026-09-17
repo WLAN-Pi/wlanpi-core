@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.services import network_info_service

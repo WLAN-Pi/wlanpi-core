@@ -1,25 +1,33 @@
-from typing import Any, Optional
+"""Schemas for network primitive outputs."""
+
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class RoutingTable(BaseModel):
-    namespace: Optional[str] = None
+    """Routing table for a namespace."""
+
+    namespace: str | None = None
     routes: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LinkStats(BaseModel):
+    """Per-interface link statistics."""
+
     interface: str
-    namespace: Optional[str] = None
-    link_detected: Optional[str] = None
-    speed_mbps: Optional[int] = None
-    duplex: Optional[str] = None
-    port: Optional[str] = None
-    driver: Optional[str] = None
+    namespace: str | None = None
+    link_detected: str | None = None
+    speed_mbps: int | None = None
+    duplex: str | None = None
+    port: str | None = None
+    driver: str | None = None
     raw: dict[str, str] = Field(default_factory=dict)
 
 
 class SocketConnection(BaseModel):
+    """One socket connection."""
+
     protocol: str
     state: str
     recv_q: Any = None
@@ -29,25 +37,33 @@ class SocketConnection(BaseModel):
 
 
 class ConnectionsResponse(BaseModel):
-    namespace: Optional[str] = None
+    """Socket connections for a namespace."""
+
+    namespace: str | None = None
     connections: list[SocketConnection] = Field(default_factory=list)
 
 
 class DhcpRenewResponse(BaseModel):
+    """Result of renewing a DHCP lease."""
+
     interface: str
-    namespace: Optional[str] = None
+    namespace: str | None = None
     status: str
 
 
 class DhcpLeasesResponse(BaseModel):
+    """Parsed DHCP leases."""
+
     leases: list[dict[str, Any]] = Field(default_factory=list)
     source: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class WlanAdapterDriver(BaseModel):
+    """A WLAN interface and its bound driver."""
+
     interface: str = Field(description="Linux interface name from iw dev, e.g. wlan0")
-    driver: Optional[str] = Field(
+    driver: str | None = Field(
         default=None,
         description="Kernel driver from ethtool -i, e.g. iwlwifi, ath9k_htc",
     )
@@ -57,6 +73,8 @@ class WlanAdapterDriver(BaseModel):
 
 
 class WlanUsbDriversResponse(BaseModel):
+    """USB-attached WLAN adapters and their drivers."""
+
     adapters: list[WlanAdapterDriver] = Field(
         default_factory=list,
         description=(
@@ -72,11 +90,15 @@ class WlanUsbDriversResponse(BaseModel):
 
 
 class PciDevice(BaseModel):
+    """A PCI device from lspci."""
+
     pci_id: str = Field(description="lspci BDF prefix, e.g. 0000:01:00.0")
     description: str = Field(description="Human-readable lspci device line")
 
 
 class WlanPciDriversResponse(BaseModel):
+    """PCI or platform WLAN adapters and their drivers."""
+
     adapters: list[WlanAdapterDriver] = Field(
         default_factory=list,
         description=(

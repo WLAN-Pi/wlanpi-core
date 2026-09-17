@@ -72,9 +72,7 @@ def test_stop_owned_app_terminates_group_and_reaps(mocker, tmp_path):
     )
     pid_file = tmp_path / "test-ns.pid"
     pid_file.write_text(
-        json.dumps(
-            {"pid": 1234, "app_id": "orb", "app_command": "orb --serve"}
-        )
+        json.dumps({"pid": 1234, "app_id": "orb", "app_command": "orb --serve"})
     )
     terminate = mocker.patch.object(apps, "terminate_process")
 
@@ -92,9 +90,7 @@ def test_failed_owned_stop_preserves_tracking_for_retry(mocker, tmp_path):
     apps._owned_app_processes[1234] = owned
     pid_file = tmp_path / "test-ns.pid"
     pid_file.write_text(
-        json.dumps(
-            {"pid": 1234, "app_id": "orb", "app_command": "orb --serve"}
-        )
+        json.dumps({"pid": 1234, "app_id": "orb", "app_command": "orb --serve"})
     )
     mocker.patch.object(apps, "terminate_process", side_effect=RuntimeError("failed"))
 

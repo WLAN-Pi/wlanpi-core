@@ -1,9 +1,13 @@
+"""CRUD helpers for persistent network configurations."""
+
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
 from wlanpi_core.models.network_config_errors import (
@@ -72,7 +76,7 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
 
 
 def parse_iw_dev_output(output: str) -> dict[str, Any]:
-    """Parse iw dev output into dict"""
+    """Parse iw dev output into dict."""
     interfaces: dict[str, Any] = {}
     current_iface = None
     skip_table_block = False
@@ -117,6 +121,7 @@ def parse_iw_dev_output(output: str) -> dict[str, Any]:
 
 
 def interfaces_in_root(cfg_id: str) -> list[str]:
+    """Return the root-interface names for a configuration."""
     cfg = get_config(cfg_id)
 
     root = cfg.roots or []
@@ -150,7 +155,7 @@ def list_configs() -> dict[str, bool]:
                 f"Configuration file {cfg_file.name} contains malformed JSON: {e}."
             )
             annotation = "(malformed)"
-        except Exception as e:
+        except OSError as e:
             log.warning(f"Error reading configuration file {cfg_file.name}: {e}.")
             annotation = "(malformed)"
 
@@ -165,6 +170,7 @@ def list_configs() -> dict[str, bool]:
 
 
 def status() -> dict[str, Any]:
+    """Return the per-namespace `iw dev` adapter layout."""
     namespaces_output = run_command(["sudo", "ip", "netns", "list"])
     namespaces = []
     for line in namespaces_output.stdout.splitlines():
@@ -206,7 +212,7 @@ def get_config(cfg_id: str) -> NetConfig:
     if not path.exists():
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
-            log.info(f"Default configuration file not found. Creating default config.")
+            log.info("Default configuration file not found. Creating default config.")
             default_config = get_default_config("default")
             path.write_text(default_config.model_dump_json(indent=4))
             return default_config
@@ -228,17 +234,18 @@ def get_config(cfg_id: str) -> NetConfig:
         raise ConfigMalformedError(
             f"Configuration file {cfg_id}.json contains malformed JSON: {e}",
             cfg_id=cfg_id,
-        )
+        ) from None
     except ConfigMalformedError:
         raise
-    except Exception as e:
+    except (OSError, TypeError, PydanticValidationError) as e:
         log.error(f"Failed to parse configuration {cfg_id}: {e}")
         raise ConfigMalformedError(
             f"Failed to parse configuration {cfg_id}: {e}", cfg_id=cfg_id
-        )
+        ) from None
 
 
 def is_active(cfg_id: str) -> bool:
+    """Return whether the configuration is currently active."""
     try:
         if get_current_config() == cfg_id:
             return True
@@ -273,7 +280,7 @@ def get_current_config() -> str:
         raise ConfigMalformedError(
             f"Current configuration '{content}' is invalid or malformed: {error_msg}",
             cfg_id=content,
-        )
+        ) from None
 
     return content
 

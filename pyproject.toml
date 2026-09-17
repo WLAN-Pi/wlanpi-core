@@ -43,11 +43,8 @@ text = "BSD-3-Clause"
 [project.optional-dependencies]
 testing = [
     "tox",
-    "black",
-    "isort",
-    "autoflake",
+    "ruff",
     "mypy",
-    "flake8",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -78,3 +75,41 @@ version = {attr = "wlanpi_core.__version__.__version__"}
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+# E/W/F core style + pyflakes, I imports, B/BLE bugbear+blind-except, C4
+# comprehensions, UP pyupgrade modernization, RUF ruff-specific. Docstrings
+# use the Google convention: FastAPI serves each endpoint function's __doc__
+# as the OpenAPI description (none of the route decorators set a description),
+# so missing or malformed docstrings surface directly in the generated API
+# reference. Enforce presence (D100-D106) plus the Google-style formatting
+# rules. E501 is owned by `ruff format`: the formatter leaves long
+# docstring/string lines alone, so linting them would be unsatisfiable.
+select = [
+    "E", "W", "F", "I", "B", "BLE", "C4", "UP", "RUF",
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106",
+    "D200", "D205", "D209", "D401", "D415",
+]
+# BLE001 was ignored by the previous flake8 gate (the old `B902` blind-except
+# rule): API endpoints and service boundaries intentionally catch Exception,
+# log it, and return a 500/503 response rather than crashing the request.
+# E501 is owned by `ruff format`.
+ignore = ["E501", "BLE001"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are linted and formatted with the same rules, but test functions
+# self-describe (test_* names); docstring-presence rules add noise there.
+"tests/**" = ["D100", "D101", "D102", "D103", "D104"]
+# Package __init__ files are pure re-export shims; the imported names are the
+# public API surface and are consumed by importers elsewhere.
+"wlanpi_core/**/__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["wlanpi_core"]

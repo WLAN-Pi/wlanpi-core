@@ -1,17 +1,20 @@
+"""Start and stop the profiler subprocess."""
+
 import asyncio
 from asyncio.subprocess import Process
-from typing import Any, Optional
+from typing import Any
 
 import wlanpi_core.profiler.models as models
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import terminate_process_async
 
 log = get_logger(__name__)
-profiler_process: Optional[Process] = None
+profiler_process: Process | None = None
 _profiler_lock = asyncio.Lock()
 
 
 async def start_profiler(args: models.Start) -> Any:
+    """Start the profiler process with the provided arguments."""
     global profiler_process
 
     cmd = ["profiler"]
@@ -56,12 +59,13 @@ async def start_profiler(args: models.Start) -> Any:
                 start_new_session=True,
             )
             return True
-        except Exception as error:
+        except OSError as error:
             log.error("Error starting profiler: %s", error)
             return False
 
 
 async def stop_profiler() -> Any:
+    """Stop the running profiler process."""
     global profiler_process
 
     async with _profiler_lock:

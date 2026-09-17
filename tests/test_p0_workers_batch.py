@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,7 +30,9 @@ def client():
 
 
 def test_timezone_auto(client, mocker):
-    mocker.patch.object(system_service, "run_command", return_value=MagicMock(stdout="yes\n"))
+    mocker.patch.object(
+        system_service, "run_command", return_value=MagicMock(stdout="yes\n")
+    )
     mocker.patch.object(
         system_service, "get_timezone", return_value={"timezone": "Europe/London"}
     )
@@ -220,9 +221,13 @@ def test_blinker_lifecycle(client, mocker):
         "start_port_blinker",
         return_value={"active": True, "status": "started", "interface": "eth0"},
     )
-    mocker.patch.object(utils_service, "port_blinker_status", return_value={"active": True})
     mocker.patch.object(
-        utils_service, "stop_port_blinker", return_value={"active": False, "status": "stopped"}
+        utils_service, "port_blinker_status", return_value={"active": True}
+    )
+    mocker.patch.object(
+        utils_service,
+        "stop_port_blinker",
+        return_value={"active": False, "status": "stopped"},
     )
 
     start = client.post("/api/v1/utils/blinker/start")

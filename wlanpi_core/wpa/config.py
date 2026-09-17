@@ -7,7 +7,7 @@ including global headers and network blocks.
 
 import logging
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
@@ -45,13 +45,13 @@ def generate_global_header(
     lines = [
         f"ctrl_interface={ctrl_interface}",
         f"update_config={update_config}",
-        f"sae_pwe=2",  # SAE PWE in global context
+        "sae_pwe=2",  # SAE PWE in global context
     ]
     return "\n".join(lines)
 
 
 def generate_network_block(
-    cfg: Union[NamespaceConfig, RootConfig],
+    cfg: NamespaceConfig | RootConfig,
     priority: int = 0,
 ) -> str:
     """
@@ -147,7 +147,7 @@ def generate_network_block(
 
 
 def write_wpa_config(
-    cfg: Union[NamespaceConfig, RootConfig],
+    cfg: NamespaceConfig | RootConfig,
     config_dir: Path,
     global_settings: dict[str, Any],
 ) -> None:
@@ -179,12 +179,9 @@ def write_wpa_config(
 
     # Add wlan<index>.conf if interface follows wlan pattern
     if iface.startswith("wlan") and len(iface) > 4:
-        try:
-            index = iface[4:]
-            if index.isdigit():
-                conf_files.append(config_dir / f"wlan{index}.conf")
-        except Exception:
-            pass
+        index = iface[4:]
+        if index.isdigit():
+            conf_files.append(config_dir / f"wlan{index}.conf")
 
     for conf_path in conf_files:
         # Find max priority
@@ -206,10 +203,10 @@ def write_wpa_config(
                             in_block = False
 
             for b in blocks:
-                for l in b.splitlines():
-                    if l.strip().startswith("priority="):
+                for line in b.splitlines():
+                    if line.strip().startswith("priority="):
                         try:
-                            max_priority = max(max_priority, int(l.split("=")[1]))
+                            max_priority = max(max_priority, int(line.split("=")[1]))
                         except ValueError:
                             pass
 

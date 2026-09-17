@@ -1,5 +1,5 @@
 """
-Authentication API Endpoints
+Authentication API Endpoints.
 
 This module provides API endpoints for token management,
 signing key rotation, and authentication-related debug operations.
@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
 from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
 from wlanpi_core.core.config import settings
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.schemas.auth import (
     KeyResponse,
     Token,
@@ -21,7 +22,6 @@ from wlanpi_core.schemas.auth import (
 )
 
 router = APIRouter()
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -69,8 +69,8 @@ async def generate_token(request: Request, token_request: TokenRequest) -> Any:
     except Exception:
         log.exception("Unexpected error during token generation")
         raise HTTPException(
-            status_code=500, detail=f"Internal server error during token generation"
-        )
+            status_code=500, detail="Internal server error during token generation"
+        ) from None
 
 
 @router.delete(
@@ -107,7 +107,7 @@ async def revoke_token(request: Request, token_request: TokenRequest) -> Any:
         log.exception("Unexpected error during token revocation")
         raise HTTPException(
             status_code=500, detail="Internal server error during token revocation"
-        )
+        ) from None
 
 
 # Internal key management endpoints
@@ -115,7 +115,7 @@ async def revoke_token(request: Request, token_request: TokenRequest) -> Any:
     "/signing_key", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
 async def new_signing_key(request: Request) -> Any:
-    """Create new signing key and invalidate old one"""
+    """Create new signing key and invalidate old one."""
     try:
         key_id, key_str = await request.app.state.token_manager.rotate_key()
 
@@ -128,25 +128,25 @@ async def new_signing_key(request: Request) -> Any:
         raise HTTPException(
             status_code=500,
             detail="Internal server error",
-        )
+        ) from None
 
 
 @router.get(
     "/signing_keys", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
 async def list_all_signing_keys(request: Request) -> Any:
-    """List all signing keys"""
+    """List all signing keys."""
     try:
         keys = await request.app.state.token_manager.get_active_keys()
         return keys
     except Exception:
         log.exception("Unexpected error getting keys")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.get(
     "/debug/db-state", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
 async def check_db_state(request: Request) -> Any:
-    """Check current database state"""
+    """Check current database state."""
     return await request.app.state.token_manager.verify_db_state()

@@ -6,7 +6,7 @@ moving them between namespaces and querying their state.
 """
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -16,7 +16,7 @@ from wlanpi_core.utils.namespace_execution import ns_exec
 log = logging.getLogger(__name__)
 
 
-def list_phys(namespace: Optional[str] = None) -> List[str]:
+def list_phys(namespace: str | None = None) -> list[str]:
     """
     List all PHY devices in a namespace or root.
 
@@ -59,7 +59,7 @@ def list_phys(namespace: Optional[str] = None) -> List[str]:
         raise
 
 
-def get_phy_info(phy: str, namespace: Optional[str] = None) -> Optional[dict[str, Any]]:
+def get_phy_info(phy: str, namespace: str | None = None) -> dict[str, Any] | None:
     """
     Get information about a specific PHY device.
 

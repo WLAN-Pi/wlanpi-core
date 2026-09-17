@@ -1,3 +1,5 @@
+"""Utility services: reachability, speedtest, blinker, and firewall info."""
+
 import asyncio
 import os
 import re
@@ -5,7 +7,7 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
 from wlanpi_core.core.logging import get_logger
@@ -21,7 +23,7 @@ from ..utils.validation import validate_interface_name
 log = get_logger(__name__)
 
 
-def _as_dict(result: CommandResult) -> Optional[dict[str, Any]]:
+def _as_dict(result: CommandResult) -> dict[str, Any] | None:
     """JSON output of a command as a dict, or None on failure/non-dict output."""
     if not result.success:
         return None
@@ -48,7 +50,7 @@ async def _cancel_tasks(tasks: list[asyncio.Task[Any]]) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def show_reachability(targets: Optional[list[str]] = None) -> dict[str, Any]:
+async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
     """
     Check if default gateway, internet and DNS are reachable and working.
 
@@ -63,13 +65,13 @@ async def show_reachability(targets: Optional[list[str]] = None) -> dict[str, An
         if not gateways:
             return {"error": "No default gateway found"}
 
-        dg_interface, default_gateway = list(gateways.items())[0]
+        dg_interface, default_gateway = next(iter(gateways.items()))
         dns_servers = await asyncio.to_thread(_read_dns_servers)
         custom_targets = parse_targets_param(targets)
     except ValueError as err:
         return {"error": str(err)}
     except RunCommandError as err:
-        return {"error": "Failed to determine network configuration: {}".format(err)}
+        return {"error": f"Failed to determine network configuration: {err}"}
 
     # --- Checks ---
     if not default_gateway:
@@ -182,9 +184,7 @@ async def show_speedtest() -> dict[str, Any]:
 
 
 async def show_usb() -> dict[str, Any]:
-    """
-    Return a list of non-Linux USB interfaces found with the lsusb command
-    """
+    """Return a list of non-Linux USB interfaces found with the lsusb command."""
     interfaces: dict[str, Any] = {}
 
     try:
@@ -213,9 +213,7 @@ async def show_usb() -> dict[str, Any]:
 
 
 def parse_ufw(output: str) -> dict[str, Any]:
-    """
-    Parses the output of the UFW file into readable json for the api.
-    """
+    """Parse the output of the UFW file into readable json for the api."""
 
     lines = output.strip().split("\n")
 
@@ -253,9 +251,7 @@ def parse_ufw(output: str) -> dict[str, Any]:
 
 
 async def show_ufw() -> dict[str, Any]:
-    """
-    Return a list ufw ports
-    """
+    """Return a list ufw ports."""
     ufw_file = UFW_FILE
     ufw_info: Any = []
 
@@ -273,7 +269,7 @@ async def show_ufw() -> dict[str, Any]:
         ).stdout
         ufw_info = parse_ufw(ufw_output)
 
-    except Exception as exc:
+    except (RunCommandError, OSError) as exc:
         log.warning("Unable to read UFW status: %r", exc)
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
@@ -286,7 +282,7 @@ async def show_ufw() -> dict[str, Any]:
     return response
 
 
-_blinker_process: Optional[subprocess.Popen[Any]] = None
+_blinker_process: subprocess.Popen[Any] | None = None
 _blinker_lock = threading.Lock()
 _BLINKER_CONTROL_TIMEOUT_SEC = 3
 _BLINKER_TERMINATE_GRACE_SEC = 1

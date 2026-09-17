@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class _OwnedAppProcess:
     process: subprocess.Popen[Any]
-    namespace: Optional[str]
+    namespace: str | None
     app_id: str
 
 
@@ -46,7 +46,7 @@ def _prune_owned_app_processes() -> None:
             _owned_app_processes.pop(pid, None)
 
 
-def _owned_app_running(namespace: Optional[str]) -> bool:
+def _owned_app_running(namespace: str | None) -> bool:
     _prune_owned_app_processes()
     with _owned_app_processes_lock:
         return any(
@@ -54,9 +54,7 @@ def _owned_app_running(namespace: Optional[str]) -> bool:
         )
 
 
-def _stop_owned_app(
-    pid: Optional[int], namespace: Optional[str], app_id: str
-) -> Optional[bool]:
+def _stop_owned_app(pid: int | None, namespace: str | None, app_id: str) -> bool | None:
     """Stop and reap an app launched by this service process, if known."""
     if not pid:
         return None
@@ -108,7 +106,7 @@ def _recorded_app_running(pid_file: Path) -> bool:
         return True
 
 
-def get_app_command(app_id: str) -> Optional[str]:
+def get_app_command(app_id: str) -> str | None:
     """
     Get the command for an app ID from the apps file.
 
@@ -146,9 +144,9 @@ def get_app_command(app_id: str) -> Optional[str]:
 
 
 def start_app_in_namespace(
-    namespace: Optional[str],
+    namespace: str | None,
     app_id: str,
-    pid_dir: Optional[Path] = None,
+    pid_dir: Path | None = None,
 ) -> bool:
     """
     Start an application in a network namespace or root namespace.
@@ -196,7 +194,7 @@ def start_app_in_namespace(
         cmd = app_command.split()
         pid_file = pid_dir / "root.pid"
     else:
-        cmd = ["ip", "netns", "exec", namespace] + app_command.split()
+        cmd = ["ip", "netns", "exec", namespace, *app_command.split()]
         pid_file = pid_dir / f"{namespace}.pid"
 
     if _recorded_app_running(pid_file):
@@ -258,7 +256,7 @@ def start_app_in_namespace(
                     log_content = log_file_path.read_text()[:500]
                     if log_content:
                         log.warning(f"Process log output: {log_content}")
-                except Exception:
+                except OSError:
                     pass
             return False
     except Exception as e:
@@ -320,8 +318,8 @@ def _verify_app_in_namespace(pid: int, namespace: str, app_command: str) -> None
 
 
 def stop_app_in_namespace(
-    namespace: Optional[str],
-    pid_dir: Optional[Path] = None,
+    namespace: str | None,
+    pid_dir: Path | None = None,
 ) -> bool:
     """
     Stop an application running in a network namespace or root namespace.
@@ -397,7 +395,7 @@ def stop_app_in_namespace(
 
 
 def _stop_app_in_root(
-    pid: Optional[int], app_command: str, namespace_display: str
+    pid: int | None, app_command: str, namespace_display: str
 ) -> bool:
     """Stop app in root namespace."""
     try:
@@ -422,7 +420,7 @@ def _stop_app_in_root(
 
 def _stop_app_in_namespace_safe(
     namespace: str,
-    pid: Optional[int],
+    pid: int | None,
     app_command: str,
     app_id: str,
 ) -> bool:

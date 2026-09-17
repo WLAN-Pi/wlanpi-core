@@ -1,11 +1,14 @@
-from typing import Any, Optional
+"""Helpers for querying the network configuration."""
+
+from typing import Any
 
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.validation import validate_interface_name
 
 
 def get_default_gateways() -> dict[str, str]:
-    """Finds the default gateway of each interface on the system using 'ip route show'
+    """Find the default gateway of each interface using 'ip route show'.
+
     Returns:
         a dictionary mapping interfaces to their default gateways.
     Raises:
@@ -23,7 +26,8 @@ def get_default_gateways() -> dict[str, str]:
     return gateways
 
 
-def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str, Any]]:
+def get_interface_address_data(interface: str | None = None) -> list[dict[str, Any]]:
+    """Return parsed `ip -j addr show` output for one or all interfaces."""
     cmd: list[str] = "ip -j addr show".split(" ")
     if interface is not None and interface.strip() != "":
         cmd.append(validate_interface_name(interface.strip()))
@@ -32,8 +36,9 @@ def get_interface_address_data(interface: Optional[str] = None) -> list[dict[str
 
 
 def get_interface_addresses(
-    interface: Optional[str] = None,
+    interface: str | None = None,
 ) -> dict[str, dict[str, str]]:
+    """Return interface addresses grouped by interface and address family."""
     res = get_interface_address_data(interface=interface)
     out_obj: dict[str, dict[str, Any]] = {}
     for item in res:

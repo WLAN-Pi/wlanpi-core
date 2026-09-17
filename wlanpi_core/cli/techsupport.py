@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+"""Gather WLAN Pi technical support diagnostics."""
+
 #
 # wlanpi-core : backend services for the WLAN Pi
 # Copyright : (c) 2026 Josh Schmelzle
@@ -10,7 +11,6 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -39,6 +39,7 @@ def run(cmd: list[str]) -> str:
 
 
 def read_file(path_str: str) -> str:
+    """Read a file, returning an error message on failure."""
     try:
         return Path(path_str).read_text()
     except OSError as e:
@@ -46,12 +47,14 @@ def read_file(path_str: str) -> str:
 
 
 def section(report: list[str], title: str) -> None:
+    """Append a section header to the report."""
     report.append("-" * 80)
     report.append(title)
     report.append("-" * 80)
 
 
 def generate_report() -> str:
+    """Generate the full diagnostic report text."""
     report = []
 
     # Header
@@ -128,7 +131,8 @@ def generate_report() -> str:
     return "\n".join(report)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
+    """Run the techsupport CLI."""
     # ip, iw, and lsmod live in sbin, which non-root PATHs often omit
     os.environ["PATH"] = os.environ.get("PATH", "") + ":/usr/sbin:/sbin"
 

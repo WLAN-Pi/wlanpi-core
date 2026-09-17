@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.utils import network_config
@@ -19,7 +18,7 @@ def _exists_in_root(iface: str) -> bool:
     return result.success
 
 
-def resolve_interface_namespace(iface: str) -> Optional[str]:
+def resolve_interface_namespace(iface: str) -> str | None:
     """
     Return the namespace containing ``iface``, or None for root.
 

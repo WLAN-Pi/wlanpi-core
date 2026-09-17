@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # wlanpi-core : backend services for the WLAN Pi
 # Copyright : (c) 2025 Josh Schmelzle
@@ -6,17 +5,11 @@
 # Maintainer : josh@joshschmelzle.com
 
 
-"""
-wlanpi-core
-~~~~~~~~~~~
-
-backend services for the WLAN Pi
-"""
+"""Backend services for the WLAN Pi."""
 
 # stdlib imports
 import argparse
 import os
-import platform
 import sys
 from typing import Any
 
@@ -28,12 +21,12 @@ from .__version__ import __version__
 
 
 def port(port: Any) -> int:
-    """Check if the provided port is valid"""
+    """Check if the provided port is valid."""
     try:
         # make sure port is an int
         port = int(port)
     except ValueError:
-        raise ValueError("%s is not a number")
+        raise ValueError("%s is not a number") from None
 
     port_ranges = [(1024, 65353)]
 
@@ -45,7 +38,7 @@ def port(port: Any) -> int:
 
 
 def setup_parser() -> argparse.ArgumentParser:
-    """Set default values and handle arg parser"""
+    """Set default values and handle arg parser."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="wlanpi-core provides backend services for the WLAN Pi. Read the manual with: man wlanpi-core",
@@ -80,6 +73,7 @@ def setup_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Run the uvicorn server using the parsed CLI arguments."""
     parser = setup_parser()
     args = parser.parse_args()
 
@@ -101,20 +95,10 @@ def main() -> None:
 
 
 def init() -> None:
-    """Handle main init"""
+    """Handle main init."""
     # hard set no support for non linux platforms
     if "linux" not in sys.platform:
-        sys.exit(
-            "{0} only works on Linux... exiting...".format(os.path.basename(__file__))
-        )
-
-    # hard set no support for python < v3.13
-    if sys.version_info < (3, 13):
-        sys.exit(
-            "{0} requires Python version 3.13 or higher...\nyou are trying to run with Python version {1}...\nexiting...".format(
-                os.path.basename(__file__), platform.python_version()
-            )
-        )
+        sys.exit(f"{os.path.basename(__file__)} only works on Linux... exiting...")
 
     if __name__ == "__main__":
         main()

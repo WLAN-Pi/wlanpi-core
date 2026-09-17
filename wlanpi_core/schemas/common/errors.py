@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class MessageResponse(BaseModel):
+    """Simple human-readable message response."""
+
     detail: str = Field(description="Human-readable error or status message")
 
 
 class ApiErrorResponse(BaseModel):
+    """Machine-readable API error response."""
+
     error: str = Field(description="Machine-readable error code, e.g. NO_SCAN_ADAPTER")
-    message: Optional[str] = Field(
+    message: str | None = Field(
         default=None, description="Optional human-readable detail"
     )
 
 
 class DeprecatedEndpointResponse(BaseModel):
+    """Body returned by deprecated endpoints."""
+
     error: str = Field(default="ENDPOINT_DEPRECATED", examples=["ENDPOINT_DEPRECATED"])
     message: str = Field(
         description="What to call instead",
@@ -33,6 +39,8 @@ class DeprecatedEndpointResponse(BaseModel):
 
 
 class ScanNeedsSelectionResponse(BaseModel):
+    """Scan deferred until a monitor adapter is chosen."""
+
     error: str = Field(default="NEEDS_SELECTION", examples=["NEEDS_SELECTION"])
     candidates: list[dict[str, Any]] = Field(
         description="Monitor adapters the client must choose from before retrying scan"
@@ -40,6 +48,8 @@ class ScanNeedsSelectionResponse(BaseModel):
 
 
 class ScanInProgressResponse(BaseModel):
+    """A scan is already running on the selected adapter."""
+
     error: str = Field(default="SCAN_IN_PROGRESS", examples=["SCAN_IN_PROGRESS"])
     message: str = Field(
         description="Which adapter is already scanning",
@@ -48,5 +58,7 @@ class ScanInProgressResponse(BaseModel):
 
 
 class ScanNoAdapterResponse(BaseModel):
+    """No suitable scan adapter is available."""
+
     error: str = Field(default="NO_SCAN_ADAPTER", examples=["NO_SCAN_ADAPTER"])
     candidates: list[dict[str, Any]] = Field(default_factory=list)

@@ -33,7 +33,9 @@ async def _reject(websocket: WebSocket, code: str, message: str) -> None:
 
 
 async def _authenticate(websocket: WebSocket) -> bool:
-    """First-message auth (#141): the first frame must be
+    """Authenticate the WebSocket's first message.
+
+    The first frame must be
     {"command": "auth", "token": "<core JWT>"} within AUTH_TIMEOUT_SECONDS.
 
     Tokens are never accepted in the URL: query strings end up in proxy and
@@ -54,7 +56,7 @@ async def _authenticate(websocket: WebSocket) -> bool:
             websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS
         )
         data = json.loads(raw)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await _reject(websocket, "AUTH_TIMEOUT", "No auth message received in time.")
         return False
     except (json.JSONDecodeError, KeyError, TypeError):

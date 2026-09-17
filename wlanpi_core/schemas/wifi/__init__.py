@@ -1,3 +1,5 @@
+"""Wi-Fi schemas."""
+
 from .wifi import (
     HotspotClientLink,
     HotspotClientLinkResponse,

@@ -1,8 +1,10 @@
+"""Bluetooth adapter status, power, and pairing helpers."""
+
 import asyncio
 import re
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import BT_ADAPTER
 from wlanpi_core.core.logging import get_logger
@@ -43,14 +45,13 @@ def _grep_text(result: Any, pattern: str) -> str:
 
 
 def bluetooth_present() -> bool:
-    """
-    We want to use hciconfig here as it works OK when no devices are present
-    """
-    cmd = f"hciconfig"
+    """We want to use hciconfig here as it works OK when no devices are present."""
+    cmd = "hciconfig"
     return bool(_grep_text(run_command(cmd=cmd, raise_on_fail=True), BT_ADAPTER))
 
 
 def bluetooth_name() -> str:
+    """Return the adapter name."""
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Name", split=True
@@ -59,6 +60,7 @@ def bluetooth_name() -> str:
 
 
 def bluetooth_alias() -> str:
+    """Return the adapter alias."""
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Alias", split=True
@@ -67,6 +69,7 @@ def bluetooth_alias() -> str:
 
 
 def bluetooth_address() -> str:
+    """Return the adapter MAC address."""
     cmd = f"bt-adapter -a {BT_ADAPTER} -i"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_string(
         "Address", split=True
@@ -75,9 +78,7 @@ def bluetooth_address() -> str:
 
 
 def bluetooth_power() -> str:
-    """
-    We want to use hciconfig here as it works OK when no devices are present
-    """
+    """We want to use hciconfig here as it works OK when no devices are present."""
     cmd = f"hciconfig {BT_ADAPTER} "
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(
         r"^\s+UP", split=True
@@ -86,6 +87,7 @@ def bluetooth_power() -> str:
 
 
 def bluetooth_set_power(power: bool) -> bool:
+    """Set the adapter power state and persist it."""
     bluetooth_is_on = bluetooth_power()
 
     if power:
@@ -108,10 +110,8 @@ def bluetooth_set_power(power: bool) -> bool:
         return False
 
 
-def bluetooth_paired_devices() -> Optional[dict[str, str]]:
-    """
-    Returns a dictionary of paired devices, indexed by MAC address
-    """
+def bluetooth_paired_devices() -> dict[str, str] | None:
+    """Return a dictionary of paired devices, indexed by MAC address."""
     if not bluetooth_present():
         return None
 
@@ -121,6 +121,7 @@ def bluetooth_paired_devices() -> Optional[dict[str, str]]:
 
 
 def bluetooth_status() -> Any:
+    """Return the current bluetooth status, or False when absent."""
     status: dict[str, Any] = {}
 
     if not bluetooth_present():
@@ -229,7 +230,7 @@ async def _unpair_all_devices(
             paired = await _bluetooth_paired_devices_async(
                 timeout_sec=min(BLUETOOTH_COMMAND_TIMEOUT_SEC, remaining)
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             paired = None
             log.warning("Timed out while checking for paired Bluetooth devices")
 
@@ -248,7 +249,7 @@ async def _unpair_all_devices(
                 )
                 if not result.success:
                     log.warning("Failed to remove paired Bluetooth device %s", mac)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning("Timed out removing paired Bluetooth device %s", mac)
 
         remaining = deadline - time.monotonic()
@@ -316,7 +317,7 @@ async def bluetooth_pair() -> dict[str, Any]:
         }
     except BluetoothPairingError:
         raise
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise BluetoothPairingError("A Bluetooth command timed out") from exc
     except RunCommandError as exc:
         raise BluetoothPairingError("A Bluetooth command failed") from exc

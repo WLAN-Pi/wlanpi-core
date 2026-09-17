@@ -6,7 +6,7 @@ separate from namespace concerns.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -20,7 +20,7 @@ def create_interface(
     phy: str,
     interface_name: str,
     interface_type: str = "managed",
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
 ) -> bool:
     """
     Create a wireless interface from a PHY device.
@@ -80,7 +80,7 @@ def create_interface(
         raise
 
 
-def delete_interface(interface_name: str, namespace: Optional[str] = None) -> bool:
+def delete_interface(interface_name: str, namespace: str | None = None) -> bool:
     """
     Delete a network interface.
 
@@ -124,8 +124,8 @@ def delete_interface(interface_name: str, namespace: Optional[str] = None) -> bo
 
 
 def get_interface_info(
-    interface_name: str, namespace: Optional[str] = None
-) -> Optional[dict[str, Any]]:
+    interface_name: str, namespace: str | None = None
+) -> dict[str, Any] | None:
     """
     Get information about a network interface.
 
@@ -190,7 +190,7 @@ def get_interface_info(
         raise
 
 
-def bring_interface_up(interface_name: str, namespace: Optional[str] = None) -> bool:
+def bring_interface_up(interface_name: str, namespace: str | None = None) -> bool:
     """
     Bring a network interface up.
 
@@ -231,7 +231,7 @@ def bring_interface_up(interface_name: str, namespace: Optional[str] = None) -> 
         raise
 
 
-def bring_interface_down(interface_name: str, namespace: Optional[str] = None) -> bool:
+def bring_interface_down(interface_name: str, namespace: str | None = None) -> bool:
     """
     Bring a network interface down.
 

@@ -6,7 +6,7 @@ on the system.
 """
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -15,7 +15,7 @@ from wlanpi_core.utils.general import run_command
 log = logging.getLogger(__name__)
 
 
-def list_interfaces() -> List[str]:
+def list_interfaces() -> list[str]:
     """
     List all wireless interfaces on the system using 'iw dev'.
 
@@ -51,7 +51,7 @@ def list_interfaces() -> List[str]:
         raise
 
 
-def get_interface_by_name(interface_name: str) -> Optional[dict[str, Any]]:
+def get_interface_by_name(interface_name: str) -> dict[str, Any] | None:
     """
     Get information about a specific interface by name.
 

@@ -1,3 +1,5 @@
+"""General helpers for running commands and process management."""
+
 import asyncio.subprocess
 import logging
 import os
@@ -7,9 +9,9 @@ import subprocess
 import threading
 import time
 from asyncio.subprocess import Process
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import StringIO
-from typing import Any, Dict, Generic, Optional, TextIO, Type, TypeVar, Union
+from typing import Any, ClassVar, TextIO, TypeVar
 
 from wlanpi_core.constants import COMMAND_TIMEOUT_SEC
 from wlanpi_core.core.logging import get_logger
@@ -23,7 +25,7 @@ _PROCESS_TERMINATE_GRACE_SEC = 1.0
 
 
 def _signal_process_group(
-    proc: Union[subprocess.Popen[Any], Process], sig: signal.Signals
+    proc: subprocess.Popen[Any] | Process, sig: signal.Signals
 ) -> None:
     """Signal the isolated process group, falling back to the direct child."""
     pid = getattr(proc, "pid", None)
@@ -67,21 +69,21 @@ async def terminate_process_async(proc: Process) -> None:
             proc.wait(),
             timeout=_PROCESS_TERMINATE_GRACE_SEC,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         if proc.returncode is None:
             _signal_process_group(proc, signal.SIGKILL)
         await proc.wait()
 
 
 def run_command(
-    cmd: Union[list[str], str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
+    cmd: list[str] | str,
+    input: str | None = None,
+    stdin: TextIO | None = None,
     shell: bool = False,
     raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output"""
+    """Run a single CLI command with subprocess and returns the output."""
     """
     This function executes a single CLI command using the the built-in subprocess module.
 
@@ -156,14 +158,14 @@ def run_command(
 
 
 async def run_command_async(
-    cmd: Union[list[str], str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
+    cmd: list[str] | str,
+    input: str | None = None,
+    stdin: TextIO | None = None,
     shell: bool = False,
     raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output"""
+    """Run a single CLI command with subprocess and returns the output."""
     """
     This function executes a single CLI command using the the built-in subprocess module.
 
@@ -254,7 +256,8 @@ async def run_command_async(
 
 
 def get_model_info() -> dict[str, str]:
-    """Uses wlanpi-model cli command to get model info
+    """Get model info using the wlanpi-model CLI command.
+
     Returns:
         dictionary of model info
     Raises:
@@ -269,8 +272,9 @@ def get_model_info() -> dict[str, str]:
     return model_dict
 
 
-def get_uptime() -> Union[dict[str, Any], list[Any], int, float, str, None]:
-    """Gets the system uptime using jc and the uptime command.
+def get_uptime() -> dict[str, Any] | list[Any] | int | float | str | None:
+    """Get the system uptime using jc and the uptime command.
+
     Returns:
         dictionary of uptime info
     Raises:
@@ -281,7 +285,8 @@ def get_uptime() -> Union[dict[str, Any], list[Any], int, float, str, None]:
 
 
 def get_hostname() -> str:
-    """Gets the system hostname using hostname command.
+    """Get the system hostname using the hostname command.
+
     Returns:
         The system hostname as a string
     Raises:
@@ -291,7 +296,8 @@ def get_hostname() -> str:
 
 
 def get_current_unix_timestamp() -> float:
-    """Gets the current unix timestamp in milliseconds
+    """Get the current unix timestamp in milliseconds.
+
     Returns:
         The current unix timestamp in milliseconds
     """
@@ -299,9 +305,9 @@ def get_current_unix_timestamp() -> float:
     return time.mktime(ms.timetuple()) * 1000
 
 
-def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int]:
+def to_timestamp(dt: datetime | str | int | float | None) -> int | None:
     """
-    Convert various datetime formats to Unix timestamp
+    Convert various datetime formats to Unix timestamp.
 
     Args:
         dt: Input datetime (can be datetime object, ISO string, or timestamp)
@@ -320,7 +326,7 @@ def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int
 
         if isinstance(dt, datetime):
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return int(dt.timestamp())
 
         raise ValueError(f"Unsupported datetime format: {type(dt)}")
@@ -329,9 +335,9 @@ def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int
         return None
 
 
-def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
+def from_timestamp(ts: int | float | str | None) -> datetime | None:
     """
-    Convert Unix timestamp to UTC datetime
+    Convert Unix timestamp to UTC datetime.
 
     Args:
         ts: Unix timestamp (seconds since epoch)
@@ -345,17 +351,20 @@ def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
     try:
         if isinstance(ts, str):
             ts = float(ts)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=UTC)
     except Exception:
-        log.exception(f"Failed to convert from timestamp")
+        log.exception("Failed to convert from timestamp")
         return None
 
 
-class SingletonMeta(type, Generic[T]):
-    _instances: Dict[Type[Any], Any] = {}
+class SingletonMeta[T](type):
+    """Metaclass enforcing a single instance per class."""
+
+    _instances: ClassVar[dict[type[Any], Any]] = {}
     _lock = threading.Lock()
 
     def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        """Return the existing instance, creating it on first call."""
         if cls not in cls._instances:
             with cls._lock:
                 if cls not in cls._instances:
@@ -363,7 +372,7 @@ class SingletonMeta(type, Generic[T]):
         return cls._instances[cls]
 
     @classmethod
-    def reset_instance(cls, singleton_cls: Type[T]) -> None:
+    def reset_instance(cls, singleton_cls: type[T]) -> None:
         """Reset the singleton instance for the given class."""
         with cls._lock:
             if singleton_cls in cls._instances:

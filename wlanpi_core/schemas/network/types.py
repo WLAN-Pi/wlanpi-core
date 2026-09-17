@@ -1,4 +1,7 @@
-from typing import Callable, Literal
+"""Type aliases for network interface filtering."""
+
+from collections.abc import Callable
+from typing import Literal
 
 from wlanpi_core.schemas.network.network import IPInterface
 

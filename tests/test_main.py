@@ -1,6 +1,3 @@
-from unittest.mock import patch
-
-import pytest
 from fastapi.testclient import TestClient
 
 from wlanpi_core.asgi import app

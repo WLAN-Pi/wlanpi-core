@@ -1,6 +1,8 @@
+"""Network management endpoints (interfaces, VLANs, primitives, legacy WLAN)."""
+
 import asyncio
 import json
-from typing import Any, Optional, Union
+from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
@@ -10,6 +12,7 @@ from wlanpi_core.adapters.discovery import list_interfaces
 from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.lookup import resolve_interface_namespace
@@ -31,8 +34,6 @@ from wlanpi_core.wpa.status import get_wpa_status
 
 router = APIRouter()
 legacy_wlan_router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -57,11 +58,9 @@ def _read_interface_link_stats(iface: str) -> dict[str, Any]:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_interfaces(
-    interface: Optional[str] = None,
+    interface: str | None = None,
 ) -> dict[str, list[IPInterface]] | Response:
-    """
-    Returns all network interfaces.
-    """
+    """Return all network interfaces."""
     if interface and interface.lower() == "all":
         interface = None
 
@@ -86,11 +85,9 @@ async def show_all_interfaces(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_ethernet_interfaces(
-    interface: Optional[str] = None,
+    interface: str | None = None,
 ) -> dict[str, list[IPInterface]] | Response:
-    """
-    Returns all ethernet interfaces.
-    """
+    """Return all ethernet interfaces."""
     if interface and interface.lower() == "all":
         interface = None
 
@@ -144,12 +141,13 @@ async def show_all_ethernet_interfaces(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_all_ethernet_vlans(
-    interface: Optional[str] = None, vlan: Optional[str] = None
+    interface: str | None = None, vlan: str | None = None
 ) -> dict[str, list[IPInterface]] | Response:
-    """
-    Returns all VLANS for a given ethernet interface.
-    """
-    custom_filter = lambda i: True
+    """Return all VLANs for a given ethernet interface."""
+
+    def custom_filter(i: IPInterface) -> bool:
+        return True
+
     if not interface or interface.lower() == "all":
         interface = None
     if vlan and vlan.lower() == "all":
@@ -188,11 +186,9 @@ async def show_all_ethernet_vlans(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def create_ethernet_vlan(
-    interface: str, vlan: Union[str, int], addresses: list[IPInterfaceAddress]
+    interface: str, vlan: str | int, addresses: list[IPInterfaceAddress]
 ) -> NetworkConfigResponse | Response:
-    """
-    Creates (or replaces) a VLAN on the given interface.
-    """
+    """Create (or replace) a VLAN on the given interface."""
 
     # Screen against "all" for this operation
     if interface and interface.lower() == "all":
@@ -229,11 +225,9 @@ async def create_ethernet_vlan(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_ethernet_vlan(
-    interface: str, vlan: Union[str, int], allow_missing: bool = False
+    interface: str, vlan: str | int, allow_missing: bool = False
 ) -> NetworkConfigResponse | Response:
-    """
-    Removes a VLAN from the given interface.
-    """
+    """Remove a VLAN from the given interface."""
 
     # Screen against "all" for this operation
     if interface and interface.lower() == "all":
@@ -271,7 +265,7 @@ async def delete_ethernet_vlan(
     response_model=network.RoutingTable,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_routing_table(namespace: Optional[str] = None) -> Any:
+async def show_routing_table(namespace: str | None = None) -> Any:
     """Structured routing table from ``ip -j route show`` (root by default)."""
     try:
         return await asyncio.to_thread(
@@ -290,7 +284,7 @@ async def show_routing_table(namespace: Optional[str] = None) -> Any:
     response_model=network.ConnectionsResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_tcp_connections(namespace: Optional[str] = None) -> Any:
+async def show_tcp_connections(namespace: str | None = None) -> Any:
     """Active TCP sockets from ``ss``."""
     try:
         return await asyncio.to_thread(
@@ -309,7 +303,7 @@ async def show_tcp_connections(namespace: Optional[str] = None) -> Any:
     response_model=network.ConnectionsResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_udp_connections(namespace: Optional[str] = None) -> Any:
+async def show_udp_connections(namespace: str | None = None) -> Any:
     """Active UDP sockets from ``ss``."""
     try:
         return await asyncio.to_thread(
@@ -454,7 +448,7 @@ async def get_a_systemd_network_interfaces(
     timeout: int = settings.API_DEFAULT_TIMEOUT,
 ) -> dict[str, Any] | Response:
     """
-    **Deprecated** — prefer `GET /api/v1/network/config/status`.
+    Prefer `GET /api/v1/network/config/status`; this endpoint is deprecated.
 
     **Replacement:** `GET /api/v1/network/config/status`
 
@@ -482,7 +476,7 @@ async def get_a_systemd_network_scan(
     type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
     """
-    **Deprecated** — use `GET /api/v1/utils/wlan/scan`.
+    Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.
 
     **Replacement:** `GET /api/v1/utils/wlan/scan`
 
@@ -553,7 +547,7 @@ async def set_a_systemd_network_dbus(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> DeprecatedEndpointResponse:
     """
-    **Deprecated — returns 410 Gone.**
+    Return 410 Gone; this endpoint is deprecated.
 
     **Replacement:** `POST /api/v1/network/config/` then `POST /api/v1/network/config/activate/{id}`
     """
@@ -576,7 +570,7 @@ async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> DeprecatedEndpointResponse:
     """
-    **Deprecated — returns 410 Gone.**
+    Return 410 Gone; this endpoint is deprecated.
 
     **Replacement:** same as `/wlan/set-dbus` — use `/network/config/` + activate.
     """
@@ -595,9 +589,7 @@ async def set_a_systemd_network(
 async def revert_wlan_namespace(
     req: network.WlanRevertRequest, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
-    """
-    Reverts the PHY and interface back to the root namespace.
-    """
+    """Revert the PHY and interface back to the root namespace."""
     try:
         namespace_service = network_namespace_service.NetworkNamespaceService()
         await asyncio.to_thread(
@@ -627,7 +619,7 @@ async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
     """
-    **Deprecated** — prefer `GET /api/v1/network/config/status` plus wpa state.
+    Prefer `GET /api/v1/network/config/status` plus wpa state; this endpoint is deprecated.
 
     **Replacement:** `GET /api/v1/network/config/status`
 

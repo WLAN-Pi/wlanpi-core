@@ -8,7 +8,7 @@ handling DHCP, default routes, and app startup when connections complete.
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from wlanpi_core.schemas.network.network import NamespaceConfig, RootConfig
 from wlanpi_core.utils.network_management import (
@@ -20,8 +20,8 @@ from wlanpi_core.wpa.status import get_wpa_status
 log = logging.getLogger(__name__)
 
 # Global monitor tracking
-_connection_monitors: Dict[str, threading.Thread] = {}
-_monitor_stop_flags: Dict[str, threading.Event] = {}
+_connection_monitors: dict[str, threading.Thread] = {}
+_monitor_stop_flags: dict[str, threading.Event] = {}
 _monitor_lock = threading.Lock()
 
 
@@ -35,9 +35,9 @@ class ConnectionMonitor:
 
     @staticmethod
     def start_monitor(
-        cfg: Union[NamespaceConfig, RootConfig],
+        cfg: NamespaceConfig | RootConfig,
         iface: str,
-        namespace: Optional[str],
+        namespace: str | None,
         timeout: int = 15,
     ) -> None:
         """
@@ -204,7 +204,7 @@ class ConnectionMonitor:
                 _monitor_stop_flags.pop(monitor_key, None)
 
 
-def stop_connection_monitor(namespace: Optional[str], iface: str) -> None:
+def stop_connection_monitor(namespace: str | None, iface: str) -> None:
     """
     Stop a connection monitor for a specific interface/namespace.
 
