@@ -39,6 +39,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     **Long-running:** keep connection open for entire capture session; use `stop` before disconnect.
 
+    **Production status:** nginx does not forward WebSocket upgrade headers, so this route
+    returns 404 on port 31415. Do not build against it until PR 165 ships authenticated
+    WebSocket forwarding.
+
     **Replacement (planned):** REST `/wifi/capture/sessions` + subscriber WebSocket with token.
     """
     await manager.connect(websocket)
