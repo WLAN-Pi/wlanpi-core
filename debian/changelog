@@ -1,3 +1,13 @@
+wlanpi-core (2.1.16-1) unstable; urgency=medium
+
+  * Fix VLAN listing returning 500 when no VLANs exist: iproute2 emits
+    empty objects for filtered link types, which crashed get_interfaces
+  * Fix link-stats returning 404 for root ethernet interfaces: the
+    namespace lookup only saw wireless interfaces, so resolve real root
+    links before declaring them missing
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:26:12 -0400
+
 wlanpi-core (2.1.15-1) unstable; urgency=medium
 
   * Generate self-signed TLS certs on first real boot (fixes nginx on
