@@ -1,4 +1,5 @@
 """Shared fixtures for namespace matrix tests."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -45,7 +46,11 @@ def mock_app_initialization(monkeypatch):
 
 
 _DEFAULT_WPA_STATUS = {
-    "wpa_status": {"wpa_state": "COMPLETED", "ssid": "test", "bssid": "00:11:22:33:44:55"},
+    "wpa_status": {
+        "wpa_state": "COMPLETED",
+        "ssid": "test",
+        "bssid": "00:11:22:33:44:55",
+    },
     "ip_info": "",
     "connected_scan": {
         "ssid": "test",

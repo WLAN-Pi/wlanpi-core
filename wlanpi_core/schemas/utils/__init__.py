@@ -1,3 +1,5 @@
+"""Utility schemas."""
+
 from .utils import (
     BlinkerActionResponse,
     BlinkerStatus,

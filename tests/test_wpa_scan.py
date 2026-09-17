@@ -1,4 +1,5 @@
 """Unit tests for wpa.scan primitives."""
+
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -13,8 +14,8 @@ from wlanpi_core.wpa.scan import (
     parse_iw_scan_output,
     parse_key_mgmt,
     parse_wpa_scan_results,
-    run_iw_scan,
     run_interface_scan,
+    run_iw_scan,
 )
 
 SAMPLE = """\

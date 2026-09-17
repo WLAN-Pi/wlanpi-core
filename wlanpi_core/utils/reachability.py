@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.constants import REACHABILITY_MAX_CUSTOM_TARGETS
 from wlanpi_core.utils.general import run_command_async
@@ -30,7 +30,7 @@ def validate_ping_target(target: str) -> str:
     raise ValueError(f"invalid ping target: {target}")
 
 
-def parse_targets_param(targets: Optional[list[str]]) -> list[str]:
+def parse_targets_param(targets: list[str] | None) -> list[str]:
     """Normalize repeated or comma-separated ``targets`` query values."""
     if not targets:
         return []
@@ -58,7 +58,7 @@ def parse_targets_param(targets: Optional[list[str]]) -> list[str]:
     return unique
 
 
-def ping_stats_from_jc(data: Optional[dict[str, Any]]) -> dict[str, Any]:
+def ping_stats_from_jc(data: dict[str, Any] | None) -> dict[str, Any]:
     """Build API ping stats from ``jc ping`` JSON."""
     if not data:
         return {

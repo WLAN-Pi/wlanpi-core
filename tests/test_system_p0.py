@@ -1,8 +1,8 @@
 """Tests for P0 system API additions."""
-import asyncio
+
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -49,7 +49,9 @@ def test_get_datetime_from_date_command(mocker):
             MagicMock(stdout="Sun  7 Jun 21:32:12 BST 2026\n"),
         ],
     )
-    mocker.patch.object(system_service, "_resolve_timezone", return_value="Europe/London")
+    mocker.patch.object(
+        system_service, "_resolve_timezone", return_value="Europe/London"
+    )
 
     result = system_service.get_datetime()
 
@@ -109,7 +111,9 @@ def test_get_hostname_falls_back_to_socket(mocker):
         "run_command",
         side_effect=RunCommandError("hostname unavailable", return_code=1),
     )
-    mocker.patch.object(system_service.socket, "gethostname", return_value="wlanpi.local")
+    mocker.patch.object(
+        system_service.socket, "gethostname", return_value="wlanpi.local"
+    )
 
     assert system_service.get_hostname() == "wlanpi.local"
 
@@ -193,7 +197,9 @@ def test_set_timezone_uses_script_when_present(mocker, tmp_path):
 
     result = system_service.set_timezone("Europe/London")
 
-    run.assert_called_once_with([str(script), "set", "Europe/London"], raise_on_fail=True)
+    run.assert_called_once_with(
+        [str(script), "set", "Europe/London"], raise_on_fail=True
+    )
     assert result["timezone"] == "Europe/London"
 
 

@@ -7,7 +7,6 @@ namespace-aware command execution.
 """
 
 import logging
-from typing import List, Optional
 
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -18,8 +17,8 @@ log = logging.getLogger(__name__)
 
 
 def ns_exec(
-    cmd: List[str],
-    namespace: Optional[str] = None,
+    cmd: list[str],
+    namespace: str | None = None,
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
@@ -53,11 +52,11 @@ def ns_exec(
     """
     if namespace is None:
         # Root namespace: use sudo
-        full_cmd = ["sudo"] + cmd
+        full_cmd = ["sudo", *cmd]
     else:
         namespace = validate_namespace_name(namespace)
         # Named namespace: use ip netns exec
-        full_cmd = ["sudo", "ip", "netns", "exec", namespace] + cmd
+        full_cmd = ["sudo", "ip", "netns", "exec", namespace, *cmd]
 
     log.debug(f"Executing in namespace '{namespace or 'root'}': {' '.join(full_cmd)}")
 
@@ -86,12 +85,12 @@ def ns_exec(
 
 def run_in_namespace(
     namespace: str,
-    cmd: List[str],
+    cmd: list[str],
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
     """
-    Convenience wrapper for executing a command in a specific namespace.
+    Run a command in a specific namespace.
 
     Args:
         namespace: Network namespace name (must not be None)
@@ -117,12 +116,12 @@ def run_in_namespace(
 
 
 def run_in_root(
-    cmd: List[str],
+    cmd: list[str],
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
     """
-    Convenience wrapper for executing a command in the root namespace.
+    Run a command in the root namespace.
 
     Args:
         cmd: Command to execute as a list of strings

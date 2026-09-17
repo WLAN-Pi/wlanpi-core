@@ -1,5 +1,7 @@
+"""Reader and writer for /etc/network/interfaces style VLAN files."""
+
 from collections import defaultdict
-from typing import Any, Optional, Union
+from typing import Any
 
 from wlanpi_core.constants import DEFAULT_INTERFACE_FILE, DEFAULT_VLAN_INTERFACE_FILE
 from wlanpi_core.models.validation_error import ValidationError
@@ -8,6 +10,8 @@ from wlanpi_core.utils.general import run_command_async
 
 
 class VLANFile:
+    """Manage VLAN definitions stored in an interfaces-style file."""
+
     STANZA_PREFIXES = (
         "iface",
         "mapping",
@@ -43,7 +47,7 @@ class VLANFile:
 
     @classmethod
     def get_interface_stanzas(cls, filelike: Any) -> Any:
-        """Gets the interface stanzas from a interfaces-like file"""
+        """Get the interface stanzas from an interfaces-like file."""
         tmp: list[str] = []
         line_count = 0
         for line in filelike:
@@ -62,19 +66,15 @@ class VLANFile:
         if tmp:
             yield tmp
 
-    def read_interfaces_file(self, filepath: Optional[str] = None) -> list[list[str]]:
-        """
-        Reads the interfaces file and returns a list of interface stanzas.
-        """
+    def read_interfaces_file(self, filepath: str | None = None) -> list[list[str]]:
+        """Read the interfaces file and return a list of interface stanzas."""
         if filepath is None:
             filepath = self.interface_file
         with open(filepath) as f:
             return [i for i in list(self.get_interface_stanzas(f)) if i]
 
-    def get_vlans(self, interface: Optional[str] = None) -> list[Any]:
-        """
-        Returns all VLANS configured in the configured interface file as objects
-        """
+    def get_vlans(self, interface: str | None = None) -> list[Any]:
+        """Return all VLANs configured in the interface file as objects."""
         raw_if_data = self.read_interfaces_file(self.vlan_interface_file)
 
         # Create default objects
@@ -140,13 +140,12 @@ class VLANFile:
         return return_obj
 
     def reload_vlans_file(self) -> None:
+        """Reload VLANs from the interface file."""
         self.vlans = self.get_vlans()
 
     @staticmethod
     def generate_if_config_from_object(configuration: Vlan) -> str:
-        """
-        Generates an /etc/network/interfaces style config string from a Vlan object
-        """
+        """Generate an /etc/network/interfaces style config string from a Vlan object."""
         vlan_interface = f"{configuration.interface}.{configuration.vlan_tag}"
         config_string = f"{configuration.if_control} {vlan_interface}\n"
 
@@ -171,6 +170,7 @@ class VLANFile:
 
     @staticmethod
     async def check_interface_exists(interface: str) -> bool:
+        """Check whether the interface exists on the system."""
         ethernet_interfaces = [
             x
             for x in (
@@ -178,17 +178,13 @@ class VLANFile:
             ).stdout.split("\n")
             if "eth" in x
         ]
-        ethernet_interface_names = set(
-            [i.split(".")[0] for i in ethernet_interfaces if i]
-        )
+        ethernet_interface_names = {i.split(".")[0] for i in ethernet_interfaces if i}
         return interface in ethernet_interface_names
 
     async def create_update_vlan(
         self, configuration: Vlan, require_existing_interface: bool = True
     ) -> dict[str, Any]:
-        """
-        Creates or updates a VLAN definition for a given interface.
-        """
+        """Create or update a VLAN definition for a given interface."""
 
         # Validate that the requested interface exists
         if require_existing_interface and not await self.check_interface_exists(
@@ -231,11 +227,9 @@ class VLANFile:
         return {"success": True, "result": self.vlans, "errors": {}}
 
     async def remove_vlan(
-        self, interface: str, vlan_tag: Union[str, int], allow_missing: bool = False
+        self, interface: str, vlan_tag: str | int, allow_missing: bool = False
     ) -> dict[str, Any]:
-        """
-        Removes a VLAN definition for a given interface.
-        """
+        """Remove a VLAN definition for a given interface."""
 
         # Scan existing to find a matching interface:
         original_length = len(self.vlans)
@@ -257,11 +251,10 @@ class VLANFile:
         return {"success": True, "result": self.vlans, "errors": {}}
 
     def persist_vlans(self) -> None:
+        """Write the current VLANs back to the interface file."""
         output_string = "\n".join(
-            map(
-                lambda f: self.generate_if_config_from_object(Vlan.model_validate(f)),
-                self.vlans,
-            )
+            self.generate_if_config_from_object(Vlan.model_validate(f))
+            for f in self.vlans
         )
 
         with open(self.vlan_interface_file, "w") as interface_file:

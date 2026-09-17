@@ -1,3 +1,5 @@
+"""Assemble and register the API v1 routers."""
+
 from fastapi import APIRouter
 
 from wlanpi_core.api.api_v1.endpoints import (

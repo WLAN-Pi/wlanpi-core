@@ -1,3 +1,5 @@
+"""JWT token issuance, validation, and signing key management."""
+
 import base64
 import binascii
 import json
@@ -5,14 +7,13 @@ import math
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from authlib.jose import JoseError, jwt
-from sqlalchemy import Integer
+from sqlalchemy import Integer, func, select, text, update
 from sqlalchemy import exc as sqlalchemy_exc
-from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wlanpi_core.core.config import settings
@@ -41,30 +42,31 @@ def current_boottime() -> float:
 
 
 def current_wall_time() -> float:
-    return datetime.now(timezone.utc).timestamp()
+    """Return the current Unix timestamp in UTC."""
+    return datetime.now(UTC).timestamp()
 
 
 class SKeyError(Exception):
-    pass
+    """Raised on signing key errors."""
 
 
 class JWTError(Exception):
-    pass
+    """Raised on JWT errors."""
 
 
 @dataclass
 class TokenValidationResult:
-    """Result of token validation containing validation status and metadata"""
+    """Result of token validation containing validation status and metadata."""
 
     is_valid: bool
-    payload: Optional[dict[str, Any]] = None
-    error: Optional[str] = None
-    token: Optional[str] = None
-    device_id: Optional[str] = None
-    key_id: Optional[int] = None
+    payload: dict[str, Any] | None = None
+    error: str | None = None
+    token: str | None = None
+    device_id: str | None = None
+    key_id: int | None = None
 
     def __post_init__(self) -> None:
-        """Validate required fields based on validation status"""
+        """Validate required fields based on validation status."""
         if self.is_valid:
             if not self.token:
                 raise ValueError("Valid tokens must have a token value")
@@ -79,41 +81,41 @@ class TokenValidationResult:
                 raise ValueError("Invalid tokens must have an error message")
 
     @property
-    def exp(self) -> Optional[datetime]:
-        """Get expiration time if payload exists"""
+    def exp(self) -> datetime | None:
+        """Get expiration time if payload exists."""
         if not self.payload or "exp" not in self.payload:
             return None
         try:
-            return datetime.fromtimestamp(self.payload["exp"], tz=timezone.utc)
+            return datetime.fromtimestamp(self.payload["exp"], tz=UTC)
         except (TypeError, ValueError):
             return None
 
     @property
-    def iat(self) -> Optional[datetime]:
-        """Get issued-at time if payload exists"""
+    def iat(self) -> datetime | None:
+        """Get issued-at time if payload exists."""
         if not self.payload or "iat" not in self.payload:
             return None
         try:
-            return datetime.fromtimestamp(self.payload["iat"], tz=timezone.utc)
+            return datetime.fromtimestamp(self.payload["iat"], tz=UTC)
         except (TypeError, ValueError):
             return None
 
     @property
     def is_expired(self) -> bool:
-        """Check if token is expired"""
+        """Check if token is expired."""
         # if not self.exp:
         #     return True
         # return self.exp <= datetime.now(timezone.utc)
         return False
 
     def __str__(self) -> str:
-        """Human readable representation"""
+        """Human readable representation."""
         if self.is_valid:
             return f"Valid token for device {self.device_id} (expires {self.exp})"
         return f"Invalid token: {self.error}"
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for API responses"""
+        """Convert to dictionary for API responses."""
         return {
             "valid": self.is_valid,
             "error": self.error if not self.is_valid else None,
@@ -124,17 +126,19 @@ class TokenValidationResult:
 
 
 class TokenManager:
+    """Manage token issuance, validation, and signing key rotation."""
+
     def __init__(self, app_state: Any) -> None:
         """
-        Initialize TokenManager with application state
+        Initialize TokenManager with application state.
 
         Args:
             app_state: Application state containing database manager
         """
         self.app_state = app_state
 
-    def _normalize_token(self, token: Union[str, bytes]) -> str:
-        """Normalize and validate JWT token format"""
+    def _normalize_token(self, token: str | bytes) -> str:
+        """Normalize and validate JWT token format."""
         if isinstance(token, bytes):
             try:
                 token = token.decode("utf-8")
@@ -167,7 +171,7 @@ class TokenManager:
 
     async def _get_or_create_signing_key(self, session: AsyncSession) -> SigningKey:
         """
-        Retrieve an existing active signing key or create a new one
+        Retrieve an existing active signing key or create a new one.
 
         Args:
             session: Database session
@@ -175,7 +179,7 @@ class TokenManager:
         Returns:
             Active SigningKey instance
         """
-        query = select(SigningKey).where(SigningKey.active == True)
+        query = select(SigningKey).where(SigningKey.active.is_(True))
         result = await session.execute(query)
         skey = result.scalar_one_or_none()
 
@@ -184,7 +188,7 @@ class TokenManager:
             return skey
 
         deactivate_keys = (
-            update(SigningKey).where(SigningKey.active == True).values(active=False)
+            update(SigningKey).where(SigningKey.active.is_(True)).values(active=False)
         )
         await session.execute(deactivate_keys)
 
@@ -198,7 +202,7 @@ class TokenManager:
             update(Token)
             .where(
                 Token.key_id != new_key.id,
-                Token.revoked == False,
+                Token.revoked.is_(False),
                 # Token.expires_at > datetime.now(timezone.utc),
             )
             .values(revoked=True)
@@ -217,10 +221,10 @@ class TokenManager:
         return new_key
 
     async def create_token(
-        self, device_id: str, expires_delta: Optional[timedelta] = None
+        self, device_id: str, expires_delta: timedelta | None = None
     ) -> str:
         """
-        Create a new JWT token for a specific device
+        Create a new JWT token for a specific device.
 
         Args:
             device_id: Device identifier
@@ -232,7 +236,7 @@ class TokenManager:
         lifetime = expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         lifetime_seconds = lifetime.total_seconds()
         wall_now = current_wall_time()
-        expires = datetime.fromtimestamp(wall_now + lifetime_seconds, timezone.utc)
+        expires = datetime.fromtimestamp(wall_now + lifetime_seconds, UTC)
         boot_id = current_boot_id()
         boot_expires = current_boottime() + lifetime_seconds
 
@@ -310,7 +314,7 @@ class TokenManager:
         raise RuntimeError("Token creation retry loop exited unexpectedly")
 
     @staticmethod
-    def _numeric_claim(payload: Dict[str, Any], name: str) -> Union[int, float]:
+    def _numeric_claim(payload: dict[str, Any], name: str) -> int | float:
         value = payload.get(name)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise JWTError(f"Invalid {name} claim")
@@ -354,7 +358,7 @@ class TokenManager:
             raise JWTError("Token expired")
 
     async def verify_token(self, token: str) -> TokenValidationResult:
-        """Verify JWT token and return validation result"""
+        """Verify JWT token and return validation result."""
         masked_token = token[:20] + "..." + token[-20:] if len(token) > 40 else token
         log.debug("Verifying token: %s", masked_token)
 
@@ -403,9 +407,9 @@ class TokenManager:
                 key_id=token_model.key_id,
             )
 
-    async def revoke_token(self, token: str) -> Dict[str, Any]:
+    async def revoke_token(self, token: str) -> dict[str, Any]:
         """
-        Revoke a specific token
+        Revoke a specific token.
 
         Args:
             token: JWT token string
@@ -451,9 +455,10 @@ class TokenManager:
                 )
                 raise
 
-    async def rotate_key(self) -> Tuple[int, str]:
+    async def rotate_key(self) -> tuple[int, str]:
         """
-        Rotate signing keys:
+        Rotate the signing keys.
+
         1. Create a new active key
         2. Deactivate all previous keys
         3. Revoke tokens associated with old keys
@@ -468,7 +473,7 @@ class TokenManager:
                 # deactivate active keys
                 deactivate_keys = (
                     update(SigningKey)
-                    .where(SigningKey.active == True)
+                    .where(SigningKey.active.is_(True))
                     .values(active=False)
                 )
                 await session.execute(deactivate_keys)
@@ -487,7 +492,7 @@ class TokenManager:
                     update(Token)
                     .where(
                         Token.key_id != new_key.id,
-                        Token.revoked == False,
+                        Token.revoked.is_(False),
                         # Token.expires_at > datetime.now(timezone.utc),
                     )
                     .values(revoked=True)
@@ -517,9 +522,9 @@ class TokenManager:
                 )
                 raise
 
-    async def get_active_keys(self) -> List[Dict[str, Any]]:
+    async def get_active_keys(self) -> list[dict[str, Any]]:
         """
-        Retrieve all signing keys with their metadata
+        Retrieve all signing keys with their metadata.
 
         Returns:
             List of dictionaries containing key information
@@ -557,7 +562,7 @@ class TokenManager:
 
     async def _count_tokens_for_key(self, session: AsyncSession, key_id: int) -> int:
         """
-        Count the number of tokens associated with a specific signing key
+        Count the number of tokens associated with a specific signing key.
 
         Args:
             session: Database session
@@ -571,7 +576,7 @@ class TokenManager:
             .select_from(Token)
             .where(
                 Token.key_id == key_id,
-                Token.revoked == False,
+                Token.revoked.is_(False),
                 # Token.expires_at > datetime.now(timezone.utc),
             )
         )
@@ -587,7 +592,7 @@ class TokenManager:
         """
         try:
             async with self.app_state.db_manager.session() as session:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
 
                 stats_query = select(
                     func.count().label("total"),
@@ -608,7 +613,7 @@ class TokenManager:
                         Token.revoked,
                     )
                     .where(
-                        Token.revoked == False,
+                        Token.revoked.is_(False),
                         # Token.expires_at > now,
                     )
                     .order_by(Token.expires_at.desc())

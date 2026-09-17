@@ -25,7 +25,7 @@ async def renew_interface_dhcp(iface: str, timeout: int = 15) -> dict[str, Any]:
     try:
         iface = validate_interface_name(iface)
     except ValueError:
-        raise ValidationError("invalid interface name", status_code=400)
+        raise ValidationError("invalid interface name", status_code=400) from None
 
     status_result = await run_command_async(
         [_NETWORKCTL, "status", iface, "--json=short", "--no-pager"],

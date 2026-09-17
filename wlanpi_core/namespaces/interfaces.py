@@ -6,7 +6,6 @@ within network namespaces.
 """
 
 import logging
-from typing import List, Optional
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -16,7 +15,7 @@ log = logging.getLogger(__name__)
 
 def get_interfaces_in_namespace(
     namespace: str, include_loopback: bool = False
-) -> List[str]:
+) -> list[str]:
     """
     Get list of interface names in a network namespace.
 
@@ -66,7 +65,7 @@ def get_interfaces_in_namespace(
 def move_interface_to_namespace(
     interface: str,
     namespace: str,
-    interface_type: Optional[str] = None,
+    interface_type: str | None = None,
 ) -> bool:
     """
     Move a network interface to a namespace.
@@ -171,7 +170,7 @@ def move_interface_to_root(interface: str, namespace: str) -> bool:
         raise
 
 
-def bring_interface_up(interface: str, namespace: Optional[str] = None) -> bool:
+def bring_interface_up(interface: str, namespace: str | None = None) -> bool:
     """
     Bring a network interface up in a namespace or root.
 
@@ -202,7 +201,7 @@ def bring_interface_up(interface: str, namespace: Optional[str] = None) -> bool:
         raise
 
 
-def bring_interface_down(interface: str, namespace: Optional[str] = None) -> bool:
+def bring_interface_down(interface: str, namespace: str | None = None) -> bool:
     """
     Bring a network interface down in a namespace or root.
 

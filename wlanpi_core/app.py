@@ -1,12 +1,13 @@
-# -*- coding: utf-8 -*-
+"""FastAPI application factory and lifecycle management."""
 
 # stdlib imports
 import asyncio
 import grp
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 # third party imports
 from fastapi import FastAPI, Request
@@ -52,6 +53,7 @@ from wlanpi_core.views.api import router as views_router
 
 
 async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return a 503 response when the auth clock is not set."""
     return JSONResponse(
         status_code=503,
         content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
@@ -59,24 +61,22 @@ async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONRe
 
 
 class ApplicationHealthManager:
-    """
-    Manager for monitoring and recovering application health
-    """
+    """Manager for monitoring and recovering application health."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
         self.log = get_logger(__name__)
         self.health_check_interval = 300
-        self._health_check_task: Optional[asyncio.Task[Any]] = None
+        self._health_check_task: asyncio.Task[Any] | None = None
         self._lock = asyncio.Lock()
 
     async def start_health_checks(self) -> None:
-        """Start the health check loop"""
+        """Start the health check loop."""
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         self.log.debug("Application health monitoring started")
 
     async def stop_health_checks(self) -> None:
-        """Stop the health check loop"""
+        """Stop the health check loop."""
         if self._health_check_task and not self._health_check_task.done():
             self._health_check_task.cancel()
             try:
@@ -86,7 +86,7 @@ class ApplicationHealthManager:
         self.log.debug("Application health monitoring stopped")
 
     async def _health_check_loop(self) -> None:
-        """Periodically check application health and recover if needed"""
+        """Periodically check application health and recover if needed."""
         while True:
             try:
                 await asyncio.sleep(self.health_check_interval)
@@ -97,7 +97,7 @@ class ApplicationHealthManager:
                 self.log.error(f"Health check failed: {e}")
 
     async def _check_application_health(self) -> None:
-        """Check health of all application components"""
+        """Check health of all application components."""
         async with self._lock:
             if (
                 not hasattr(self.app.state, "security_manager")
@@ -128,7 +128,7 @@ class ApplicationHealthManager:
                                 if not result.scalar_one_or_none():
                                     missing_tables.append(table)
                             if missing_tables:
-                                self.log.error(f"Schema verification failes")
+                                self.log.error("Schema verification failes")
                                 raise Exception(
                                     f"Required tables missing: {', '.join(missing_tables)}"
                                 )
@@ -149,9 +149,7 @@ class ApplicationHealthManager:
                                 self.log.info("Creating new database manager instance")
                                 self.app.state.db_manager = DatabaseManager()
 
-                                db_initialized = (
-                                    await self.app.state.db_manager.initialize_with_retry()
-                                )
+                                db_initialized = await self.app.state.db_manager.initialize_with_retry()
                                 if db_initialized:
                                     self.log.info(
                                         "Database successfully reset and initialized"
@@ -211,9 +209,7 @@ class CriticalInitializationError(RuntimeError):
 
 
 class InitializationManager:
-    """
-    Manager for application initialization with retry mechanisms
-    """
+    """Manager for application initialization with retry mechanisms."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -226,7 +222,7 @@ class InitializationManager:
         self.initialized = False
 
     async def check_system_readiness(self) -> bool:
-        """Check if the system is ready for application initialization"""
+        """Check if the system is ready for application initialization."""
         try:
             wlanpi_gid = grp.getgrnam("wlanpi").gr_gid
             self.log.debug(f"Found wlanpi group with GID: {wlanpi_gid}")
@@ -323,7 +319,7 @@ class InitializationManager:
             return False
 
     def _is_classic_mode(self) -> bool:
-        """Check if wlanpi-state file contains 'classic' mode"""
+        """Check if wlanpi-state file contains 'classic' mode."""
         try:
             mode_file = Path(MODE_FILE)
             if mode_file.exists():
@@ -375,10 +371,10 @@ class InitializationManager:
                     success = activate_config("default", override_active=True)
                     if not success:
                         self.log.warning(
-                            f"Failed to activate default config (non-critical)"
+                            "Failed to activate default config (non-critical)"
                         )
                     else:
-                        self.log.info(f"Default config activated successfully")
+                        self.log.info("Default config activated successfully")
                 except Exception as e:
                     self.log.error(
                         f"Error activating default config: {e} (non-critical, continuing)"
@@ -407,10 +403,10 @@ class InitializationManager:
                         success = activate_config("default", override_active=True)
                         if not success:
                             self.log.warning(
-                                f"Failed to activate default config (non-critical)"
+                                "Failed to activate default config (non-critical)"
                             )
                         else:
-                            self.log.info(f"Default config activated successfully")
+                            self.log.info("Default config activated successfully")
                     except Exception as e:
                         self.log.error(
                             f"Error activating default config: {e} (non-critical, continuing)"
@@ -509,7 +505,7 @@ class InitializationManager:
         return True
 
     async def _initialize_security_manager(self) -> bool:
-        """Initialize the security manager with retry"""
+        """Initialize the security manager with retry."""
         for attempt in range(1, self.max_retries + 1):
             try:
                 self.app.state.security_manager = SecurityManager()
@@ -536,7 +532,7 @@ class InitializationManager:
         return False
 
     async def _initialize_database(self) -> bool:
-        """Initialize the database manager with retry"""
+        """Initialize the database manager with retry."""
         try:
             self.app.state.db_manager = DatabaseManager()
             db_initialized = await self.app.state.db_manager.initialize_with_retry()
@@ -551,7 +547,7 @@ class InitializationManager:
             return False
 
     async def _initialize_token_manager(self) -> bool:
-        """Initialize the token manager"""
+        """Initialize the token manager."""
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
             # ponytail: retain token rows; add cleanup only if table growth is
@@ -563,9 +559,11 @@ class InitializationManager:
             return False
 
     async def _initialize_system_manager(
-        self, iface_name: str, exclusions: list[str] = []
+        self, iface_name: str, exclusions: list[str] | None = None
     ) -> bool:
-        """Initialize the system manager"""
+        """Initialize the system manager."""
+        if exclusions is None:
+            exclusions = []
         try:
             self.app.state.system_manager = SystemManager(
                 iface_name, exclusions=exclusions
@@ -578,6 +576,7 @@ class InitializationManager:
 
 
 def create_app(debug: bool = False) -> FastAPI:
+    """Create and configure the FastAPI application."""
     configure_logging(debug_mode=debug)
     log = get_logger(__name__)
 
@@ -718,7 +717,8 @@ def create_app(debug: bool = False) -> FastAPI:
     limiter = Limiter(key_func=get_remote_address, default_limits=["90/minute"])
     app.state.limiter = limiter
     app.add_exception_handler(
-        RateLimitExceeded, _rate_limit_exceeded_handler  # type: ignore[arg-type]
+        RateLimitExceeded,
+        _rate_limit_exceeded_handler,  # type: ignore[arg-type]
     )
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ActivityMiddleware)

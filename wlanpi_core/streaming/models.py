@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 
@@ -22,6 +21,7 @@ _MAX_PCAP_FILTER_BYTES = 1024
 
 
 def validate_capture_interface(value: str) -> str:
+    """Validate a capture interface name."""
     value = validate_interface_name(value)
     if not _CAPTURE_INTERFACE_RE.fullmatch(value):
         raise ValueError("capture interface must use the wlanpiN monitor name")
@@ -29,16 +29,19 @@ def validate_capture_interface(value: str) -> str:
 
 
 def validate_capture_frequency(value: int) -> int:
+    """Validate a capture frequency in MHz."""
     return validate_wifi_frequency(value)
 
 
 def validate_capture_width(value: int) -> int:
+    """Validate a capture channel width."""
     if isinstance(value, bool) or value not in _CAPTURE_WIDTHS:
         raise ValueError("capture width must be one of 20, 40, 80, or 160 MHz")
     return value
 
 
-def validate_pcap_filter(value: Optional[str]) -> str:
+def validate_pcap_filter(value: str | None) -> str:
+    """Validate a pcap filter string."""
     if value is None:
         return ""
     if not isinstance(value, str):
@@ -51,6 +54,8 @@ def validate_pcap_filter(value: Optional[str]) -> str:
 
 
 class CaptureChannel(BaseModel):
+    """One capture channel with a frequency and width."""
+
     freq: int
     width: int
 
@@ -59,15 +64,19 @@ class CaptureChannel(BaseModel):
     @field_validator("freq")
     @classmethod
     def validate_frequency_field(cls, value: int) -> int:
+        """Validate the channel frequency."""
         return validate_capture_frequency(value)
 
     @field_validator("width")
     @classmethod
     def validate_width_field(cls, value: int) -> int:
+        """Validate the channel width."""
         return validate_capture_width(value)
 
 
 class CaptureInterfaceConfig(BaseModel):
+    """Capture configuration for one interface."""
+
     channels: list[CaptureChannel] = Field(
         default_factory=list,
         max_length=_MAX_CAPTURE_CHANNELS,
@@ -82,11 +91,14 @@ class CaptureInterfaceConfig(BaseModel):
 
 
 class CaptureConfigurations(RootModel[dict[str, CaptureInterfaceConfig]]):
+    """Validated per-interface capture configurations."""
+
     @field_validator("root")
     @classmethod
     def validate_interfaces(
         cls, value: dict[str, CaptureInterfaceConfig]
     ) -> dict[str, CaptureInterfaceConfig]:
+        """Validate the capture interface map."""
         if not value:
             raise ValueError("at least one capture interface is required")
         if len(value) > _MAX_CAPTURE_INTERFACES:
@@ -97,6 +109,8 @@ class CaptureConfigurations(RootModel[dict[str, CaptureInterfaceConfig]]):
 
 
 class CaptureStart(BaseModel):
+    """Start command payload for a capture session."""
+
     interfaces: list[str] = Field(
         min_length=1,
         max_length=_MAX_CAPTURE_INTERFACES,
@@ -108,6 +122,7 @@ class CaptureStart(BaseModel):
     @field_validator("interfaces")
     @classmethod
     def validate_interfaces_field(cls, value: list[str]) -> list[str]:
+        """Validate and dedupe the capture interface list."""
         validated = [validate_capture_interface(interface) for interface in value]
         if len(set(validated)) != len(validated):
             raise ValueError("capture interfaces must be unique")
@@ -115,5 +130,6 @@ class CaptureStart(BaseModel):
 
     @field_validator("pcap_filter", mode="before")
     @classmethod
-    def validate_filter_field(cls, value: Optional[str]) -> str:
+    def validate_filter_field(cls, value: str | None) -> str:
+        """Validate the pcap filter, defaulting to empty."""
         return validate_pcap_filter(value)

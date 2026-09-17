@@ -1,4 +1,9 @@
+"""Error carrying an HTTP status code."""
+
+
 class ValidationError(Exception):
+    """Raised for API-level validation failures."""
+
     def __init__(self, error_msg: str, status_code: int):
         super().__init__(error_msg)
 

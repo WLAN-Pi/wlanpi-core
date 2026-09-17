@@ -75,8 +75,10 @@ def _mock_root_adapters(mocker, *ifaces):
 
 @pytest.mark.asyncio
 async def test_supported_frequencies_uses_bounded_async_commands(mocker):
-    """Frequencies come from core adapter enumeration + per-phy iw channels,
-    never a root-only `iw dev` scrape (namespace-aware path)."""
+    """Frequencies come from core adapter enumeration plus per-phy iw channels.
+
+    The namespace-aware path never falls back to a root-only `iw dev` scrape.
+    """
     manager = ConnectionManager()
     websocket = object()
     _mock_root_adapters(mocker, "wlanpi0")
@@ -350,8 +352,10 @@ async def test_capture_rejects_invalid_start_before_process(mocker):
 
 @pytest.mark.asyncio
 async def test_set_channel_retries_once_when_phy_is_busy(mocker):
-    """A scan on a shared phy makes iw fail with EBUSY transiently; one
-    retry absorbs the common collision."""
+    """A scan on a shared phy makes iw fail with EBUSY transiently.
+
+    One retry absorbs the common collision.
+    """
     manager = ConnectionManager()
     busy = CommandResult("", "command failed: Device or resource busy (-16)", 240)
     ok = CommandResult("", "", 0)

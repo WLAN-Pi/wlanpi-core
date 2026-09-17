@@ -1,3 +1,5 @@
+"""System schemas."""
+
 from .system import (
     BatteryInfo,
     DateTimeInfo,

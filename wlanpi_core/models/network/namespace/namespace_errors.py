@@ -1,5 +1,8 @@
+"""Errors raised when working with network namespaces."""
+
+
 class NetworkNamespaceError(Exception):
-    """Raised when there's an error working with Network Namespaces"""
+    """Raised when there's an error working with Network Namespaces."""
 
     def __init__(
         self,
@@ -10,7 +13,7 @@ class NetworkNamespaceError(Exception):
 
 
 class NetworkNamespaceNotFoundError(NetworkNamespaceError):
-    """Raised when a network namespace is not found"""
+    """Raised when a network namespace is not found."""
 
     def __init__(
         self,

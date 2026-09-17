@@ -1,6 +1,8 @@
+"""Network namespace model wrapping `ip netns` operations."""
+
 import logging
 import re
-from typing import Any, List, Optional
+from typing import Any
 
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
@@ -14,53 +16,53 @@ log = get_logger(__name__)
 
 
 class NetworkNamespace:
+    """A Linux network namespace with lifecycle management."""
+
     _static_logger = logging.getLogger("NetworkNamespace")
 
     def __init__(self, name: str) -> None:
         self.name = name
-        self.creation_result: Optional[CommandResult] = None
+        self.creation_result: CommandResult | None = None
         self.log = logging.getLogger("NetworkNamespace")
 
         if not NetworkNamespace.namespace_exists(name):
             self.creation_result = NetworkNamespace.create(name)
 
     def get_interfaces(self) -> list[Any]:
-        """
-        Returns all interfaces that belong to this network namespace, a la ifconfig
-        """
+        """Return all interfaces that belong to this network namespace, a la ifconfig."""
         return NetworkNamespace.get_interfaces_in_namespace(self.name)
 
     def get_processes(self) -> list[Any]:
-        """
-        Lists all processes currently running in a namespace
-        """
+        """List all processes currently running in a namespace."""
         return NetworkNamespace.processes_using_namespace(self.name)
 
     def run_command(
         self,
         namespace_name: str,
-        command: List[str],
+        command: list[str],
         shell: bool = False,
         raise_on_fail: bool = True,
     ) -> CommandResult:
-        """
-        Runs a command in the context of this network namespace
-        """
+        """Run a command in the context of this network namespace."""
         return NetworkNamespace.run_command_in_namespace(
             self.name, command, shell=shell, raise_on_fail=raise_on_fail
         )
 
     def destroy(self) -> None:
         """
-        Destroys this network namespace, killing all processes inside and
-        moving interfaces back to the root namespace as necessary.
+        Destroy this network namespace.
+
+        Kills all processes inside and moves interfaces back to the root
+        namespace as necessary.
         """
         return NetworkNamespace.destroy_namespace(self.name)
 
     def __enter__(self) -> "NetworkNamespace":
+        """Enter the context manager, returning this namespace."""
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exit the context manager, destroying the namespace."""
         try:
             self.destroy()
         except NetworkNamespaceNotFoundError:
@@ -71,16 +73,12 @@ class NetworkNamespace:
 
     @staticmethod
     def create(namespace_name: str) -> CommandResult:
-        """
-        Attempts to create a network namespace
-        """
+        """Attempt to create a network namespace."""
         return run_command(f"ip -j netns add {namespace_name}".split())
 
     @staticmethod
     def list_namespaces() -> list[Any]:
-        """
-        Lists all known network namespaces
-        """
+        """List all known network namespaces."""
         result = run_command("ip -j netns list".split(), raise_on_fail=False)
         if not result.success:
             raise NetworkNamespaceError(f"Error listing namespaces: {result.stderr}")
@@ -89,17 +87,13 @@ class NetworkNamespace:
 
     @staticmethod
     def namespace_exists(namespace_name: str) -> bool:
-        """
-        Indicates if a network namespace exists
-        """
+        """Indicate if a network namespace exists."""
         namespaces = NetworkNamespace.list_namespaces()
         return namespace_name in [ns["name"] for ns in namespaces]
 
     @staticmethod
     def get_interfaces_in_namespace(namespace_name: str) -> list[Any]:
-        """
-        Returns all interfaces that belong to a network namespace, a la ifconfig
-        """
+        """Return all interfaces that belong to a network namespace, a la ifconfig."""
         parsed = run_command(
             f"ip netns exec {namespace_name} jc ifconfig -a".split()
         ).output_from_json()
@@ -108,13 +102,11 @@ class NetworkNamespace:
     @staticmethod
     def run_command_in_namespace(
         namespace_name: str,
-        command: List[str],
+        command: list[str],
         shell: bool = False,
         raise_on_fail: bool = True,
     ) -> CommandResult:
-        """
-        Runs a command in the context of a network namespace
-        """
+        """Run a command in the context of a network namespace."""
         built_command = ["ip", "netns", "exec", namespace_name, *command]
         NetworkNamespace._static_logger.debug(f"Running command: {built_command}")
         return run_command(built_command, raise_on_fail=raise_on_fail, shell=shell)
@@ -122,8 +114,10 @@ class NetworkNamespace:
     @staticmethod
     def destroy_namespace(namespace_name: str) -> None:
         """
-        Destroys a network namespace, killing all processes inside and
-        moving interfaces back to the root namespace as necessary.
+        Destroy a network namespace.
+
+        Kills all processes inside and moves interfaces back to the root
+        namespace as necessary.
         """
         if not NetworkNamespace.namespace_exists(namespace_name):
             raise NetworkNamespaceNotFoundError()
@@ -203,9 +197,7 @@ class NetworkNamespace:
 
     @staticmethod
     def processes_using_namespace(namespace_name: str) -> list[int]:
-        """
-        Lists all processes currently running in a namespace
-        """
+        """List all processes currently running in a namespace."""
         result = run_command(
             f"ip netns pids {namespace_name}".split(), raise_on_fail=False
         )

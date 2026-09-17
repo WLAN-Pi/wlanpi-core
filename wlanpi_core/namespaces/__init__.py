@@ -27,20 +27,16 @@ from wlanpi_core.namespaces.processes import (
 )
 
 __all__ = [
-    # Namespace lifecycle
     "create_namespace",
     "delete_namespace",
-    "list_namespaces",
-    "namespace_exists",
-    # Interface management
+    "get_app_command",
     "get_interfaces_in_namespace",
-    "move_interface_to_namespace",
-    "move_interface_to_root",
-    # Process management
     "get_processes_in_namespace",
     "kill_processes_in_namespace",
-    # App management
-    "get_app_command",
+    "list_namespaces",
+    "move_interface_to_namespace",
+    "move_interface_to_root",
+    "namespace_exists",
     "start_app_in_namespace",
     "stop_app_in_namespace",
 ]

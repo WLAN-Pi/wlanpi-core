@@ -1,4 +1,4 @@
-from typing import Optional
+"""Errors raised when working with network configurations."""
 
 
 class ConfigActiveError(Exception):
@@ -12,7 +12,7 @@ class ConfigActiveError(Exception):
 class ConfigMalformedError(Exception):
     """Raised when a configuration file is malformed or invalid."""
 
-    def __init__(self, message: str, cfg_id: Optional[str] = None) -> None:
+    def __init__(self, message: str, cfg_id: str | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.cfg_id = cfg_id

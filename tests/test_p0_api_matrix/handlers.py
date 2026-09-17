@@ -3,9 +3,10 @@
 Mocking policy: stub adapter enumeration only for hardware layout rows;
 stub run_command for CLI wrappers; keep FastAPI routing and auth real.
 """
+
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.scenarios.p0_loader import ApiScenario
@@ -25,8 +26,12 @@ def _expect_status(response, expected: str) -> None:
 
 
 def handle_service_restart_orb(client, auth_headers, scenario):
-    with patch("wlanpi_core.services.system_service.restart_service", return_value=True):
-        with patch("wlanpi_core.services.system_service.is_allowed_service", return_value=True):
+    with patch(
+        "wlanpi_core.services.system_service.restart_service", return_value=True
+    ):
+        with patch(
+            "wlanpi_core.services.system_service.is_allowed_service", return_value=True
+        ):
             response = client.post("/api/v1/system/service/restart?name=orb")
     _expect_status(response, scenario.expected_http)
     body = response.json()

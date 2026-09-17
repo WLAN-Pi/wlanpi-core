@@ -1,6 +1,8 @@
+"""Live VLAN management via ip commands."""
+
 from collections import defaultdict
 from pprint import pp
-from typing import Any, List, Optional
+from typing import Any
 
 from wlanpi_core.models.network import common
 from wlanpi_core.models.network.vlan.vlan_errors import (
@@ -14,19 +16,23 @@ from wlanpi_core.utils.general import run_command
 
 
 class LiveVLANs:
+    """Manage VLANs on live interfaces with ip commands."""
+
     def __init__(self) -> None:
         self.vlan_interfaces_by_interface = self.get_vlan_interfaces_by_interface()
 
     @staticmethod
     def get_vlan_interfaces(
-        custom_filter: Optional[CustomIPInterfaceFilter] = None,
+        custom_filter: CustomIPInterfaceFilter | None = None,
     ) -> list[IPInterface]:
+        """Return live VLAN interfaces, optionally filtered."""
         return common.get_interfaces(show_type="vlan", custom_filter=custom_filter)
 
     @staticmethod
     def get_vlan_interfaces_by_interface(
-        custom_filter: Optional[CustomIPInterfaceFilter] = None,
+        custom_filter: CustomIPInterfaceFilter | None = None,
     ) -> dict[str, list[IPInterface]]:
+        """Return live VLAN interfaces grouped by parent interface."""
         out_dict = defaultdict(list)
         for interface in common.get_interfaces(
             show_type="vlan", custom_filter=custom_filter
@@ -36,6 +42,7 @@ class LiveVLANs:
 
     @staticmethod
     def check_if_vlan_exists(if_name: str, vlan_id: int) -> bool:
+        """Check whether a VLAN already exists on the interface."""
         cmd_output = run_command(
             ["ip", "-j", "addr", "show", f"{if_name}.{vlan_id}"], raise_on_fail=False
         )
@@ -50,13 +57,15 @@ class LiveVLANs:
 
     @staticmethod
     def stop_dhcp_for_vlan(if_name: str, vlan_id: int) -> bool:
+        """Stop DHCP for a VLAN interface."""
         res = run_command(["dhcpcd", "-x", f"{if_name}.{vlan_id}"], raise_on_fail=False)
         return res.success
 
     @staticmethod
     def start_dhcp_for_vlan(
-        if_name: str, vlan_id: int, ip_version: Optional[str] = None
+        if_name: str, vlan_id: int, ip_version: str | None = None
     ) -> bool:
+        """Start DHCP for a VLAN interface, optionally waiting for IPv4 or IPv6."""
         base_command = ["dhcpcd", "-b"]
         if ip_version == "4":
             base_command.extend(["--waitip", "4"])
@@ -67,8 +76,9 @@ class LiveVLANs:
 
     @staticmethod
     def create_vlan(
-        if_name: str, vlan_id: int, addresses: List[IPInterfaceAddress]
+        if_name: str, vlan_id: int, addresses: list[IPInterfaceAddress]
     ) -> None:
+        """Create a VLAN and add its addresses."""
         # Check if the VLAN already exists:
         if LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
             raise VLANExistsError(f"VLAN {vlan_id} already exists on {if_name}")
@@ -92,7 +102,7 @@ class LiveVLANs:
             run_command(command)
         except Exception as e:
             raise VLANCreationError(
-                f"Failed to create VLAN {vlan_id} on interface {if_name}: {str(e)}"
+                f"Failed to create VLAN {vlan_id} on interface {if_name}: {e!s}"
             ) from e
 
         # Try to raise the interface
@@ -102,7 +112,7 @@ class LiveVLANs:
             run_command(command)
         except Exception as e:
             raise VLANCreationError(
-                f"Failed to raise VLAN {vlan_id} on interface {if_name}: {str(e)}"
+                f"Failed to raise VLAN {vlan_id} on interface {if_name}: {e!s}"
             ) from e
 
         # Add addresses to the VLAN
@@ -134,7 +144,7 @@ class LiveVLANs:
                             *lifetimes,
                         ]
                     )
-                    ip_version: Optional[str] = None
+                    ip_version: str | None = None
                     if address.family == "inet":
                         ip_version = "4"
                     if address.family == "inet6":
@@ -175,11 +185,12 @@ class LiveVLANs:
                     raise_on_fail=False,
                 )
                 raise VLANCreationError(
-                    f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: {str(e)}"
+                    f"Failed to add addresses {address.local}/{address.prefixlen} to interface {if_name}.{vlan_id}: {e!s}"
                 ) from e
 
     @staticmethod
     def delete_vlan(if_name: str, vlan_id: int, allow_missing: bool = False) -> None:
+        """Delete a VLAN interface, optionally tolerating a missing one."""
         if allow_missing and not LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
             return
         # Try to down the interface
@@ -190,13 +201,13 @@ class LiveVLANs:
             run_command(command)
         except Exception as e:
             raise VLANDeletionError(
-                f"Failed to down VLAN {vlan_id} on interface {if_name}: {str(e)}"
+                f"Failed to down VLAN {vlan_id} on interface {if_name}: {e!s}"
             ) from e
         try:
             run_command(["ip", "link", "delete", f"{if_name}.{vlan_id}"])
         except Exception as e:
             raise VLANDeletionError(
-                f"Failed to delete interface {if_name}.{vlan_id}: {str(e)}"
+                f"Failed to delete interface {if_name}.{vlan_id}: {e!s}"
             ) from e
 
 

@@ -1,5 +1,6 @@
 """Unit tests for WLAN scan selection and parsing."""
-from unittest.mock import MagicMock, patch
+
+from unittest.mock import patch
 
 import pytest
 
@@ -94,8 +95,12 @@ def test_wlan_scan_runs_scan_for_single_monitor():
             "wlan0": {"type": "managed"},
         }
     }
-    networks = [{"ssid": "Test", "bssid": "aa:bb:cc:dd:ee:01", "signal": -50, "freq": 2412}]
-    with patch("wlanpi_core.wpa.scan.run_interface_scan", return_value=networks) as run_scan:
+    networks = [
+        {"ssid": "Test", "bssid": "aa:bb:cc:dd:ee:01", "signal": -50, "freq": 2412}
+    ]
+    with patch(
+        "wlanpi_core.wpa.scan.run_interface_scan", return_value=networks
+    ) as run_scan:
         result = wlan_scan(status=status)
     run_scan.assert_called_once_with(
         "wlan0",

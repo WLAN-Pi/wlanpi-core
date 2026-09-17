@@ -13,11 +13,7 @@ def test_get_wpa_status_tolerates_non_numeric_frequency(mocker):
         "ns_exec",
         side_effect=[
             MagicMock(
-                stdout=(
-                    "ssid=Test Network\n"
-                    "bssid=aa:bb:cc:dd:ee:ff\n"
-                    "freq=unknown\n"
-                )
+                stdout=("ssid=Test Network\nbssid=aa:bb:cc:dd:ee:ff\nfreq=unknown\n")
             ),
             MagicMock(stdout="3: wlan0: <UP>\n"),
         ],

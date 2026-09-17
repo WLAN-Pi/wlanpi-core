@@ -1,3 +1,5 @@
+"""Bluetooth status and control endpoints."""
+
 import asyncio
 from typing import Any
 
@@ -5,14 +7,13 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import bluetooth
 from wlanpi_core.schemas.common import ApiErrorResponse
 from wlanpi_core.services import bluetooth_service
 
 router = APIRouter()
-
-from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -30,21 +31,19 @@ def _set_power_if_present(state: bool) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def btstatus() -> Any:
-    """
-    Returns the bluetooth status
-    """
+    """Return the bluetooth status."""
 
     try:
         status = await asyncio.to_thread(bluetooth_service.bluetooth_status)
-        if status == False:
-            return Response(content=f"Bluetooth hardware not found", status_code=503)
+        if not status:
+            return Response(content="Bluetooth hardware not found", status_code=503)
         return status
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
+        return Response(content="Internal Server Error", status_code=500)
 
 
 @router.post(
@@ -54,7 +53,7 @@ async def btstatus() -> Any:
 )
 async def bt_power(action: str) -> Any:
     """
-    Turns on bluetooth
+    Turn bluetooth on or off.
 
     - action: "on" or "off"
     """
@@ -72,7 +71,7 @@ async def bt_power(action: str) -> Any:
         if status is None:
             return Response(content="Bluetooth hardware not found", status_code=503)
 
-        if status == False:
+        if not status:
             return Response(
                 content=f"Bluetooth failed to turn {action}", status_code=503
             )
@@ -83,7 +82,7 @@ async def bt_power(action: str) -> Any:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content=f"Internal Server Error", status_code=500)
+        return Response(content="Internal Server Error", status_code=500)
 
 
 @router.post(

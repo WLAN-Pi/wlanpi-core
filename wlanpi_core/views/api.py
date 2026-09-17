@@ -1,3 +1,5 @@
+"""HTML views for the wlanpi-core application."""
+
 # stdlib imports
 
 # third party imports
@@ -18,12 +20,14 @@ router = fastapi.APIRouter()
 
 @router.get("/", include_in_schema=False)
 async def index(request: Request) -> Response:
+    """Render the home page."""
     return templates.TemplateResponse(request, "home/index.html", {"request": request})
 
 
 @router.get("/api", include_in_schema=False)
 @router.get("/api/v1", include_in_schema=False)
 async def api(request: Request) -> Response:
+    """Render the API landing page."""
     return templates.TemplateResponse(
         request, "api/index.html", {"request": request, "endpoints": endpoints}
     )
@@ -31,4 +35,5 @@ async def api(request: Request) -> Response:
 
 @router.get("/favicon.ico", include_in_schema=False)
 def favicon() -> fastapi.responses.RedirectResponse:
+    """Redirect to the favicon."""
     return fastapi.responses.RedirectResponse(url="/static/img/favicon.ico")

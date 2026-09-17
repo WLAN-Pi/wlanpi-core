@@ -1,3 +1,5 @@
+"""System service layer querying device and systemd state."""
+
 import asyncio
 import json
 import os
@@ -7,8 +9,8 @@ import threading
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
-from zoneinfo import ZoneInfo
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
@@ -77,7 +79,7 @@ _SYSTEMD_CONNECTION_ERRORS = {
     "org.freedesktop.DBus.Error.TimedOut",
 }
 
-_systemd_client: Optional[tuple[object, object]] = None
+_systemd_client: tuple[object, object] | None = None
 _systemd_lock = threading.RLock()
 
 
@@ -113,7 +115,7 @@ def _get_systemd_client() -> tuple[Any, Any]:
         return _systemd_client
 
 
-def _dbus_error_name(exc: DBusException) -> Optional[str]:
+def _dbus_error_name(exc: DBusException) -> str | None:
     """Read a D-Bus error name without relying on private exception fields."""
     try:
         return exc.get_dbus_name()
@@ -160,10 +162,11 @@ def _raise_systemd_dbus_error(
 
 
 def get_mode() -> str:
+    """Return the current device mode."""
     valid_modes = ["classic", "wconsole", "hotspot", "wiperf", "server", "bridge"]
 
     try:
-        with open(MODE_FILE, "r", encoding="utf-8") as mode_file:
+        with open(MODE_FILE, encoding="utf-8") as mode_file:
             current_mode = mode_file.readline().strip()
     except FileNotFoundError:
         # Missing state means the device has not selected a non-default mode. A
@@ -184,10 +187,11 @@ def get_mode() -> str:
 
 
 def get_image_ver() -> str:
+    """Return the software version from the WLAN Pi image file."""
     wlanpi_ver = "unknown"
 
     if os.path.isfile(WLANPI_IMAGE_FILE):
-        with open(WLANPI_IMAGE_FILE, "r", encoding="utf-8") as image_file:
+        with open(WLANPI_IMAGE_FILE, encoding="utf-8") as image_file:
             lines = image_file.readlines()
 
         # pull out the version number for the FPMS home page
@@ -203,6 +207,7 @@ def get_image_ver() -> str:
 
 
 def get_hostname() -> str:
+    """Return the fully qualified hostname."""
     try:
         hostname = run_command(["/usr/bin/hostname"]).stdout.strip()
     except (RunCommandError, OSError) as exc:
@@ -226,7 +231,8 @@ def get_hostname() -> str:
 
 def get_platform() -> str:
     """
-    Method to determine which platform we're running on.
+    Determine which platform we're running on.
+
     Uses output of "cat /proc/cpuinfo"
 
     Possible strings seen in the wild:
@@ -267,7 +273,8 @@ def get_platform() -> str:
 
 def get_model() -> str:
     """
-    Method to determine which model the device is
+    Determine which model the device is.
+
     Uses output of "wlanpi-model -b"
 
     Possible strings seen in the wild:
@@ -322,6 +329,7 @@ def _read_cpu_temperature() -> str:
 
 
 def get_stats() -> dict[str, str]:
+    """Return device stats such as CPU, RAM, disk, and uptime."""
     # figure out our IP
     IP = ""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -329,7 +337,7 @@ def get_stats() -> dict[str, str]:
         # doesn't even have to be reachable
         s.connect(("10.255.255.255", 1))
         IP = s.getsockname()[0]
-    except Exception:
+    except OSError:
         IP = "127.0.0.1"
     finally:
         s.close()
@@ -343,26 +351,26 @@ def get_stats() -> dict[str, str]:
         if isinstance(CPU_JSON, list):
             CPU_JSON = "\n".join(CPU_JSON)
         CPU_IDLE = json.loads(CPU_JSON)["idle"]
-        CPU = "{0:.2f}%".format(100 - CPU_IDLE)
+        CPU = f"{100 - CPU_IDLE:.2f}%"
         if CPU_IDLE == 100:
             CPU = "0%"
         if CPU_IDLE == 0:
             CPU = "100%"
-    except Exception:
+    except (RunCommandError, OSError, ValueError):
         CPU = "unknown"
 
     # determine mem useage
     cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
         MemUsage = run_command(cmd, shell=True).stdout.strip()
-    except Exception:
+    except (RunCommandError, OSError):
         MemUsage = "unknown"
 
     # determine disk util
     cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
         Disk = run_command(cmd, shell=True).stdout.strip()
-    except Exception:
+    except (RunCommandError, OSError):
         Disk = "unknown"
 
     tempStr = _read_cpu_temperature()
@@ -371,7 +379,7 @@ def get_stats() -> dict[str, str]:
     cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
         uptime = run_command(cmd, shell=True).stdout.strip()
-    except Exception:
+    except (RunCommandError, OSError):
         uptime = "unknown"
 
     uptimeStr = f"{uptime}"
@@ -389,7 +397,7 @@ def get_stats() -> dict[str, str]:
 
 
 def is_allowed_service(service: str) -> bool:
-    """Check if service is in allowed services list"""
+    """Check if service is in allowed services list."""
     service_name = service.replace(".service", "")
     is_allowed = service_name in allowed_services
 
@@ -407,7 +415,7 @@ def is_allowed_service(service: str) -> bool:
 
 def check_service_status(service: str) -> bool:
     """
-    Queries systemd through dbus to see if the service is running
+    Query systemd through dbus to see if the service is running.
 
     You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
@@ -451,14 +459,12 @@ def check_service_status(service: str) -> bool:
                 missing_status=503,
             )
         except ValueError as error:
-            raise ValidationError(f"{error}", status_code=400)
+            raise ValidationError(f"{error}", status_code=400) from None
     return service_running
 
 
 async def get_systemd_service_status(name: str) -> dict[str, Any]:
-    """
-    Queries systemd via dbus to get the current status of an allowed service.
-    """
+    """Query systemd via dbus to get the current status of an allowed service."""
     status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
@@ -471,6 +477,7 @@ async def get_systemd_service_status(name: str) -> dict[str, Any]:
 
 
 def stop_service(service: str) -> bool:
+    """Stop a systemd service."""
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -492,9 +499,7 @@ def stop_service(service: str) -> bool:
 
 
 async def stop_systemd_service(name: str) -> dict[str, Any]:
-    """
-    Queries systemd via dbus to get the current status of an allowed service.
-    """
+    """Stop an allowed systemd service via dbus."""
     status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
@@ -507,6 +512,7 @@ async def stop_systemd_service(name: str) -> dict[str, Any]:
 
 
 def start_service(service: str) -> bool:
+    """Start a systemd service."""
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -528,6 +534,7 @@ def start_service(service: str) -> bool:
 
 
 async def start_systemd_service(name: str) -> dict[str, Any]:
+    """Start an allowed systemd service via dbus."""
     status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
@@ -540,6 +547,7 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
 
 
 def restart_service(service: str) -> bool:
+    """Restart a systemd service and report its status."""
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -560,6 +568,7 @@ def restart_service(service: str) -> bool:
 
 
 async def restart_systemd_service(name: str) -> dict[str, Any]:
+    """Restart an allowed systemd service via dbus."""
     name = name.strip().lower()
     if is_allowed_service(name):
         active = await asyncio.to_thread(restart_service, name)
@@ -605,7 +614,7 @@ def _resolve_timezone() -> str:
     return "UTC"
 
 
-def get_datetime() -> dict[str, Optional[str]]:
+def get_datetime() -> dict[str, str | None]:
     """
     Return local date/time as ISO 8601 for API clients.
 
@@ -638,7 +647,7 @@ def get_datetime() -> dict[str, Optional[str]]:
     timezone = _resolve_timezone()
     try:
         now = datetime.now(ZoneInfo(timezone))
-    except Exception:
+    except ZoneInfoNotFoundError:
         timezone = "UTC"
         now = datetime.now(ZoneInfo("UTC"))
     result = {
@@ -656,6 +665,7 @@ def get_datetime() -> dict[str, Optional[str]]:
 
 
 def get_timezone() -> dict[str, str]:
+    """Return the current system timezone."""
     try:
         timezone = run_command(
             ["timedatectl", "show", "-p", "Timezone", "--value"], raise_on_fail=True
@@ -665,7 +675,7 @@ def get_timezone() -> dict[str, str]:
         tz_path = Path("/etc/timezone")
         if tz_path.exists():
             return {"timezone": tz_path.read_text().strip()}
-        raise ValidationError("Unable to determine timezone", status_code=503)
+        raise ValidationError("Unable to determine timezone", status_code=503) from None
 
 
 @lru_cache(maxsize=1)
@@ -677,7 +687,7 @@ def _timezone_names() -> tuple[str, ...]:
         ).stdout
         return tuple(line.strip() for line in output.splitlines() if line.strip())
     except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError):
-        raise ValidationError("Unable to list timezones", status_code=503)
+        raise ValidationError("Unable to list timezones", status_code=503) from None
 
 
 def list_timezones() -> dict[str, list[str]]:
@@ -686,6 +696,7 @@ def list_timezones() -> dict[str, list[str]]:
 
 
 def set_timezone(timezone: str) -> dict[str, str]:
+    """Set the system timezone."""
     timezone = timezone.strip()
     if not timezone:
         raise ValidationError("timezone is required", status_code=400)
@@ -709,7 +720,7 @@ def get_reg_domain() -> dict[str, Any]:
     Falls back to `iw reg get` when the script output is not a valid country code.
     """
     log.debug("get_reg_domain: reading regulatory domain")
-    raw: Optional[str] = None
+    raw: str | None = None
     source = "unknown"
 
     if Path(REG_DOMAIN_FILE).exists():
@@ -755,7 +766,7 @@ def get_reg_domain() -> dict[str, Any]:
             log.error("get_reg_domain: unable to read reg domain: %r", exc)
             raise ValidationError(
                 f"Unable to read regulatory domain: {exc}", status_code=503
-            )
+            ) from None
 
     country = _parse_reg_country(raw)
     reg_result = {"country": country, "raw": raw, "source": source}
@@ -766,6 +777,7 @@ def get_reg_domain() -> dict[str, Any]:
 
 
 def set_reg_domain(country: str) -> dict[str, Any]:
+    """Set the Wi-Fi regulatory domain country code."""
     country = country.strip().upper()
     if len(country) != 2 or not country.isalpha():
         raise ValidationError("country must be a 2-letter code", status_code=400)
@@ -784,6 +796,7 @@ def set_reg_domain(country: str) -> dict[str, Any]:
 
 
 def list_reg_domains() -> dict[str, Any]:
+    """Return the supported regulatory domain countries."""
     countries = reg_domain_country_entries()
     log.debug("list_reg_domains: returning %d countries", len(countries))
     return {"countries": countries}
@@ -849,6 +862,7 @@ def shutdown_system() -> dict[str, str]:
 
 
 def get_battery() -> dict[str, Any]:
+    """Return battery status if a power supply is present."""
     supply_root = Path("/sys/class/power_supply")
     if not supply_root.exists():
         return {"present": False}

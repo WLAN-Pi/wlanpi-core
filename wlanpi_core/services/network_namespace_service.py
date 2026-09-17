@@ -1,6 +1,8 @@
+"""Service managing network namespaces, interfaces, and apps."""
+
 import logging
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from wlanpi_core.adapters import discovery, interface, phy
 from wlanpi_core.connection.monitor import (
@@ -42,6 +44,8 @@ from wlanpi_core.wpa import supplicant as wpa_supplicant
 
 
 class NetworkNamespaceService:
+    """Manage network namespaces and their configuration."""
+
     def __init__(
         self,
         config_dir: str = DEFAULT_CONFIG_DIR,
@@ -66,11 +70,10 @@ class NetworkNamespaceService:
 
         # Connection monitoring is now handled by connection.monitor module
 
-    def _validate_config(
-        self, cfg: Union[NamespaceConfig, RootConfig]
-    ) -> tuple[bool, str]:
+    def _validate_config(self, cfg: NamespaceConfig | RootConfig) -> tuple[bool, str]:
         """
-        Comprehensive validation of config against schema before any state changes.
+        Perform comprehensive validation of config against schema before any state changes.
+
         Returns (is_valid, error_message)
         """
         errors = []
@@ -219,6 +222,7 @@ class NetworkNamespaceService:
         return True, ""
 
     def set_global_settings(self, settings: dict[str, Any]) -> None:
+        """Update the global wpa_supplicant settings."""
         self.log.info("Updating global settings: %s", settings)
         self.global_settings.update(settings)
 
@@ -237,9 +241,9 @@ class NetworkNamespaceService:
 
     def _monitor_connection_async(
         self,
-        cfg: Union[NamespaceConfig, RootConfig],
+        cfg: NamespaceConfig | RootConfig,
         iface: str,
-        namespace: Optional[str],
+        namespace: str | None,
         timeout: int = 15,
     ) -> None:
         """
@@ -250,7 +254,7 @@ class NetworkNamespaceService:
         """
         ConnectionMonitor.start_monitor(cfg, iface, namespace, timeout=timeout)
 
-    def stop_connection_monitor(self, namespace: Optional[str], iface: str) -> None:
+    def stop_connection_monitor(self, namespace: str | None, iface: str) -> None:
         """
         Stop a connection monitor for a specific interface/namespace.
 
@@ -266,12 +270,12 @@ class NetworkNamespaceService:
         """
         stop_all_connection_monitors()
 
-    def activate_config(
-        self, cfg: Union[NamespaceConfig, RootConfig]
-    ) -> NetworkSetupStatus:
+    def activate_config(self, cfg: NamespaceConfig | RootConfig) -> NetworkSetupStatus:
         """
-        Activate a network configuration. Returns NetworkSetupStatus.
-        Performs comprehensive validation before any state changes.
+        Activate a network configuration.
+
+        Returns a NetworkSetupStatus. Performs comprehensive validation before
+        any state changes.
         """
         # Validate config before any state changes
         is_valid, error_msg = self._validate_config(cfg)
@@ -441,7 +445,8 @@ class NetworkNamespaceService:
             input=cfg.__str__(),
         )
 
-    def deactivate_config(self, cfg: Union[NamespaceConfig, RootConfig]) -> None:
+    def deactivate_config(self, cfg: NamespaceConfig | RootConfig) -> None:
+        """Deactivate a network configuration and revert to root."""
         iface = cfg.iface_display_name or cfg.interface
         namespace = (
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
@@ -469,7 +474,8 @@ class NetworkNamespaceService:
 
         self.revert_to_root(cfg)
 
-    def remove_network(self, iface: str, namespace: Optional[str]) -> None:
+    def remove_network(self, iface: str, namespace: str | None) -> None:
+        """Remove a network configuration from a namespace."""
         namespace_display = namespace if namespace else "root"
         self.log.info("Removing network %s from namespace %s", iface, namespace_display)
 
@@ -481,13 +487,10 @@ class NetworkNamespaceService:
 
         # Add wlan<index>.conf if interface follows pattern
         if iface.startswith("wlan") and len(iface) > 4:
-            try:
-                index = iface[4:]
-                if index.isdigit():
-                    config_files_to_remove.append(self.config_dir / f"wlan{index}.conf")
-                    config_files_to_remove.append(self.dhcp_dir / f"wlan{index}.cfg")
-            except:
-                pass
+            index = iface[4:]
+            if index.isdigit():
+                config_files_to_remove.append(self.config_dir / f"wlan{index}.conf")
+                config_files_to_remove.append(self.dhcp_dir / f"wlan{index}.cfg")
 
         for config_file in config_files_to_remove:
             self._safe_unlink(config_file)
@@ -499,14 +502,15 @@ class NetworkNamespaceService:
 
     def revert_to_root(
         self,
-        cfg: Union[NamespaceConfig, RootConfig, None] = None,
+        cfg: NamespaceConfig | RootConfig | None = None,
         delete_namespace: bool = True,
     ) -> None:
+        """Move interfaces and PHYs back to the root namespace."""
         # If no cfg provided: scan all namespaces and move all interfaces/PHYs back to root
         if cfg is None:
             try:
                 namespace_names = ns_namespace.list_namespaces()
-            except Exception as e:
+            except ns_namespace.NetworkNamespaceError as e:
                 self.log.warning(f"Failed to list namespaces: {e}")
                 namespace_names = []
 
@@ -541,7 +545,7 @@ class NetworkNamespaceService:
                                     if info_line.startswith("wiphy "):
                                         try:
                                             phy_num = int(info_line.split()[1])
-                                        except Exception:
+                                        except ValueError:
                                             phy_num = None
                                         break
                                 # Best-effort cleanup of control interface socket
@@ -624,7 +628,7 @@ class NetworkNamespaceService:
         # For root namespace (None), we don't need to move things "back" - they're already there
         if namespace is None:
             self.log.debug(
-                f"Config is already in root namespace, minimal cleanup needed"
+                "Config is already in root namespace, minimal cleanup needed"
             )
             # Just clean up any processes/configs, but don't try to move things
             try:
@@ -741,10 +745,10 @@ class NetworkNamespaceService:
                     self.log.debug(
                         f"Namespace {namespace} does not exist, skipping deletion"
                     )
-            except Exception as e:
+            except ns_namespace.NetworkNamespaceError as e:
                 self.log.warning(f"Could not check namespace list before deletion: {e}")
 
-    def start_app_in_namespace(self, namespace: Optional[str], app_id: str) -> None:
+    def start_app_in_namespace(self, namespace: str | None, app_id: str) -> None:
         """
         Start an application in a namespace or root namespace.
 
@@ -752,7 +756,7 @@ class NetworkNamespaceService:
         """
         apps.start_app_in_namespace(namespace, app_id, pid_dir=self.pid_dir)
 
-    def stop_app_in_namespace(self, namespace: Optional[str]) -> None:
+    def stop_app_in_namespace(self, namespace: str | None) -> None:
         """
         Stop an application running in a namespace or root namespace.
 
@@ -760,7 +764,7 @@ class NetworkNamespaceService:
         """
         apps.stop_app_in_namespace(namespace, pid_dir=self.pid_dir)
 
-    def get_status(self, iface: str, namespace: Optional[str]) -> dict[str, Any]:
+    def get_status(self, iface: str, namespace: str | None) -> dict[str, Any]:
         """
         Get network status for an interface.
 
@@ -768,7 +772,7 @@ class NetworkNamespaceService:
         """
         return wpa_status.get_wpa_status(iface, namespace)
 
-    def _prepare_root(self, cfg: RootConfig) -> Optional[bool]:
+    def _prepare_root(self, cfg: RootConfig) -> bool | None:
         """
         Prepare root namespace for network configuration using the new modules.
 
@@ -822,7 +826,7 @@ class NetworkNamespaceService:
                         mode_value,
                     ],
                 )
-            except:
+            except (RunCommandError, OSError):
                 self.log.info(f"{iface} already exists")
 
             # Bring up the new interface
@@ -835,7 +839,7 @@ class NetworkNamespaceService:
             self.log.error(f"Root setup failed for {iface}: {e}")
             raise
 
-    def _prepare_namespace(self, cfg: NamespaceConfig) -> Optional[bool]:
+    def _prepare_namespace(self, cfg: NamespaceConfig) -> bool | None:
         namespace = cfg.namespace
         iface = cfg.interface
         if not namespace:
@@ -924,7 +928,7 @@ class NetworkNamespaceService:
             raise
 
     def _ns_exec(
-        self, cmd: list[str], namespace: Optional[str], no_output: bool = False
+        self, cmd: list[str], namespace: str | None, no_output: bool = False
     ) -> Any:
         """
         Execute a command in a namespace or root namespace.
@@ -952,7 +956,7 @@ class NetworkNamespaceService:
         if path.exists():
             path.unlink()
 
-    def _log_event(self, event: str, timestamp: Optional[str] = None) -> None:
+    def _log_event(self, event: str, timestamp: str | None = None) -> None:
         """
         Log a network event to the event log.
 

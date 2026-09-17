@@ -7,8 +7,9 @@ import logging
 import re
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -18,7 +19,7 @@ log = logging.getLogger(__name__)
 _SCAN_POLL_INTERVAL_SEC = 0.5
 _SCAN_POLL_ATTEMPTS = 8
 _VALID_DETAIL = frozenset({"short", "full"})
-_active_scans: set[tuple[Optional[str], str]] = set()
+_active_scans: set[tuple[str | None, str]] = set()
 _active_scans_lock = threading.Lock()
 
 
@@ -29,7 +30,7 @@ class ScanNotSupportedError(Exception):
 class ScanInProgressError(Exception):
     """Raised when the target interface is already running an active scan."""
 
-    def __init__(self, iface: str, namespace: Optional[str] = None):
+    def __init__(self, iface: str, namespace: str | None = None):
         self.iface = iface
         self.namespace = namespace
         super().__init__(
@@ -38,7 +39,7 @@ class ScanInProgressError(Exception):
 
 
 @contextmanager
-def _claim_scan(iface: str, namespace: Optional[str] = None) -> Iterator[None]:
+def _claim_scan(iface: str, namespace: str | None = None) -> Iterator[None]:
     """Claim a scan target without retaining an unbounded lock cache."""
     key = (namespace, iface)
     with _active_scans_lock:
@@ -53,13 +54,14 @@ def _claim_scan(iface: str, namespace: Optional[str] = None) -> Iterator[None]:
 
 
 def normalize_scan_detail(detail: str) -> str:
+    """Normalise the scan detail level to short or full."""
     detail = (detail or "short").strip().lower()
     if detail not in _VALID_DETAIL:
         raise ValueError(f"detail must be one of: {', '.join(sorted(_VALID_DETAIL))}")
     return detail
 
 
-def freq_to_channel(freq_mhz: int) -> Optional[int]:
+def freq_to_channel(freq_mhz: int) -> int | None:
     """Map centre frequency (MHz) to 802.11 channel number."""
     if freq_mhz == 2484:
         return 14
@@ -133,6 +135,7 @@ def parse_wpa_scan_results(
 
 
 def split_iw_bss_blocks(text: str) -> list[str]:
+    """Split iw scan output into per-BSS text blocks."""
     blocks: list[str] = []
     current: list[str] = []
     for line in text.splitlines():
@@ -147,7 +150,7 @@ def split_iw_bss_blocks(text: str) -> list[str]:
     return blocks
 
 
-def _parse_secondary_channel_offset(block: str) -> Optional[str]:
+def _parse_secondary_channel_offset(block: str) -> str | None:
     """Parse HT secondary channel offset from an iw BSS block."""
     for line in block.splitlines():
         stripped = line.strip()
@@ -163,7 +166,7 @@ def _parse_secondary_channel_offset(block: str) -> Optional[str]:
     return None
 
 
-def _parse_channel_width(block: str) -> Optional[int]:
+def _parse_channel_width(block: str) -> int | None:
     for line in block.splitlines():
         stripped = line.strip()
         match = re.search(r"channel width:\s*(\d+)\s*MHz", stripped, re.I)
@@ -176,7 +179,7 @@ def _parse_channel_width(block: str) -> Optional[int]:
     return None
 
 
-def _parse_bss_load(block: str) -> Optional[dict[str, Optional[int]]]:
+def _parse_bss_load(block: str) -> dict[str, int | None] | None:
     stations = None
     utilization = None
     for line in block.splitlines():
@@ -200,7 +203,7 @@ def _parse_bss_load(block: str) -> Optional[dict[str, Optional[int]]]:
     return {"stations": stations, "utilization": utilization}
 
 
-def _parse_iw_flags(block: str) -> Optional[str]:
+def _parse_iw_flags(block: str) -> str | None:
     for line in block.splitlines():
         stripped = line.strip()
         if stripped.startswith("capability:"):
@@ -227,7 +230,7 @@ def _detect_amendments(block: str) -> list[str]:
     return amendments
 
 
-def _parse_primary_channel(block: str, freq: int) -> Optional[int]:
+def _parse_primary_channel(block: str, freq: int) -> int | None:
     for line in block.splitlines():
         stripped = line.strip()
         if stripped.startswith("* primary channel:"):
@@ -240,7 +243,7 @@ def _parse_primary_channel(block: str, freq: int) -> Optional[int]:
 
 def parse_iw_bss_block(
     block: str, include_hidden: bool = True, detail: str = "short"
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Parse one ``iw dev <iface> scan`` BSS block."""
     match = re.match(r"BSS ([0-9a-f:]+)", block, re.IGNORECASE)
     if not match:
@@ -322,7 +325,7 @@ def parse_iw_scan_output(
     return networks
 
 
-def fetch_scan_results(iface: str, namespace: Optional[str] = None) -> str:
+def fetch_scan_results(iface: str, namespace: str | None = None) -> str:
     """Read cached ``wpa_cli scan_results`` without triggering a new scan."""
     return ns_exec(
         ["wpa_cli", "-i", iface, "scan_results"],
@@ -330,7 +333,7 @@ def fetch_scan_results(iface: str, namespace: Optional[str] = None) -> str:
     ).stdout.strip()
 
 
-def find_bss(networks: list[dict[str, Any]], bssid: str) -> Optional[dict[str, Any]]:
+def find_bss(networks: list[dict[str, Any]], bssid: str) -> dict[str, Any] | None:
     """Return the scan entry matching ``bssid``, if present."""
     target = bssid.lower()
     for network in networks:
@@ -339,7 +342,7 @@ def find_bss(networks: list[dict[str, Any]], bssid: str) -> Optional[dict[str, A
     return None
 
 
-def _interface_is_up(iface: str, namespace: Optional[str] = None) -> bool:
+def _interface_is_up(iface: str, namespace: str | None = None) -> bool:
     """Return the interface's administrative state."""
     result = ns_exec(
         ["ip", "-j", "link", "show", "dev", iface],
@@ -355,7 +358,7 @@ def _interface_is_up(iface: str, namespace: Optional[str] = None) -> bool:
     return "UP" in flags
 
 
-def _set_interface_state(iface: str, up: bool, namespace: Optional[str] = None) -> None:
+def _set_interface_state(iface: str, up: bool, namespace: str | None = None) -> None:
     """Set the interface's administrative state."""
     ns_exec(
         ["ip", "link", "set", iface, "up" if up else "down"],
@@ -363,7 +366,7 @@ def _set_interface_state(iface: str, up: bool, namespace: Optional[str] = None) 
     )
 
 
-def wpa_cli_available(iface: str, namespace: Optional[str] = None) -> bool:
+def wpa_cli_available(iface: str, namespace: str | None = None) -> bool:
     """Return True when ``wpa_cli`` can talk to a running supplicant."""
     result = ns_exec(
         ["wpa_cli", "-i", iface, "status"],
@@ -375,7 +378,7 @@ def wpa_cli_available(iface: str, namespace: Optional[str] = None) -> bool:
 
 def run_wpa_cli_scan(
     iface: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     include_hidden: bool = True,
     detail: str = "short",
 ) -> list[dict[str, Any]]:
@@ -383,7 +386,7 @@ def run_wpa_cli_scan(
     normalize_scan_detail(detail)
     ns_exec(["wpa_cli", "-i", iface, "scan"], namespace=namespace)
 
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
     for _ in range(_SCAN_POLL_ATTEMPTS):
         time.sleep(_SCAN_POLL_INTERVAL_SEC)
         try:
@@ -404,7 +407,7 @@ def run_wpa_cli_scan(
 
 def run_iw_scan(
     iface: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     include_hidden: bool = True,
     detail: str = "short",
 ) -> list[dict[str, Any]]:
@@ -434,9 +437,9 @@ def run_iw_scan(
 
 def run_interface_scan(
     iface: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     include_hidden: bool = True,
-    mode: Optional[str] = None,
+    mode: str | None = None,
     detail: str = "short",
 ) -> list[dict[str, Any]]:
     """

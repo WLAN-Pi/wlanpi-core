@@ -6,7 +6,7 @@ parsing status information.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -16,7 +16,7 @@ from wlanpi_core.wpa.scan import fetch_scan_results, find_bss, parse_wpa_scan_re
 log = logging.getLogger(__name__)
 
 
-def get_wpa_status(iface: str, namespace: Optional[str]) -> dict[str, Any]:
+def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
     """
     Get wpa_supplicant status for an interface.
 

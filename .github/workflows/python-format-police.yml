@@ -31,11 +31,10 @@ jobs:
       with:
         python-version: "3.13"
 
-    - name: Install depends
+    - name: Install tox
       run: |
         python -m ensurepip --upgrade
-        python -m pip install --upgrade pip setuptools wheel 
-        pip install tox coverage-badge
+        python -m pip install --upgrade "tox>=4"
     
     - name: Run format checker
       id: format-checker

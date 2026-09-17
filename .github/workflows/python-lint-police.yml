@@ -41,12 +41,11 @@ jobs:
           libglib2.0-dev \
           pkg-config
 
-    - name: Install depends
+    - name: Install tox
       run: |
         python -m ensurepip --upgrade
-        python -m pip install --upgrade pip setuptools wheel 
-        pip install tox coverage-badge
-    
+        python -m pip install --upgrade "tox>=4"
+
     - name: Run linter
       id: linter
       run: |

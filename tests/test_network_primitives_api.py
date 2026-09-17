@@ -1,4 +1,5 @@
 """API-level tests for P0 network primitive endpoints."""
+
 from __future__ import annotations
 
 import json

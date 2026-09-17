@@ -9,6 +9,59 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
   move-plus-change diffs. Soft cap ~400 changed lines for focused changes.
 - CI-only or docs-only changes do not bump `debian/changelog`. A version bump
   is a release; only package-content changes get one.
+- Keep `wlanpi_core/__version__.py` in sync with the deb version minus the
+  revision (e.g. `2.1.16` for `2.1.16-1`). The build/deploy checks fail if they
+  diverge.
+
+## Tooling and gates
+
+All checks run through tox and are wired into CI workflows:
+`python-lint-police.yml` (lint), `python-format-police.yml` (formatcheck),
+`test-python-package.yml` (tests).
+
+Before committing, run the gates that your change touches:
+
+- `tox -e lint` : `ruff check wlanpi_core tests` then `mypy wlanpi_core`
+- `tox -e formatcheck` : `ruff format --check wlanpi_core tests`
+- `tox` : the py313 test suite plus coverage
+
+`tox -e format` rewrites the tree with `ruff format` when the check fails.
+
+The lint and format gates must be green **on every commit**, not just at PR
+time. If a gate fails on a change, fix the cause in the same change rather
+than committing a red tree and planning to repair it later.
+
+### Rules that bite
+
+1. **mypy runs against the installed package.** The `lint` env deliberately
+   omits `skip_install` so tox installs the package and its runtime deps;
+   that is what lets mypy resolve `fastapi`, `sqlalchemy`, `dbus`, and so on.
+   Do not add `skip_install = true` to `[testenv:lint]`, or every import
+   becomes `import-not-found`.
+2. **No bare generic annotations.** `mypy.ini` sets
+   `disallow_any_generics`, so `dict`, `set`, `list`, and `tuple` need
+   explicit type arguments. Follow the existing convention: JSON payloads are
+   `dict[str, Any]`. Add `Any` to the existing `typing` import rather than a
+   new import line.
+3. **FastAPI endpoint docstrings are user-facing.** Each endpoint function's
+   `__doc__` becomes the OpenAPI `description` for that endpoint (the route
+   decorators do not set a `description=`). A missing, vague, or stale
+   docstring shows up directly in the API reference. ruff enforces
+   Google-convention docstrings (D100-D106 presence, D200/D205/D209/D401/D415
+   format) on `wlanpi_core`; `tests/**` is exempt from the presence rules
+   because test names self-describe.
+4. **Line length is owned by the formatter.** `E501` is disabled; let
+   `ruff format` wrap long lines. Do not hand-wrap to satisfy a linter that
+   is off.
+5. **Blind `except Exception` is allowed at API/service boundaries.**
+   `BLE001` is deliberately ignored (as the old gate's `B902` rule was):
+   endpoints catch `Exception`, log it, and return a 500/503 response rather
+   than crash the request. Do not narrow these to appease a linter; do narrow
+   an `except Exception` that wraps a single clearly-bounded operation.
+6. **Coverage artifacts are never committed.** `.coverage`, `coverage.xml`,
+   and `coverage.svg` regenerate on every `tox` run. Do not `git add` them.
+7. **Whitespace is handled by ruff** (W291/W293) and `ruff format`. There are
+   no whitespace scripts; do not reintroduce them.
 
 ## Writing tests
 
@@ -84,7 +137,8 @@ Reuse first, write second:
 - Stop and ask the human before: creating a new top-level module or router
   file, or when scope is ambiguous. Don't spend 20 tool calls on a decision a
   human answers in one message.
-- Verify before committing: `tox -e lint && tox -e formatcheck && tox -e py313`.
+- Verify before committing: run the gates in "Tooling and gates"
+  (`tox -e lint && tox -e formatcheck && tox -e py313`).
 
 ## Documentation
 

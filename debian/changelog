@@ -1,3 +1,15 @@
+wlanpi-core (2.1.17-1) unstable; urgency=medium
+
+  * Migrate style/lint/format tooling to ruff: replace the flake8 plugin
+    stack, black, isort, and autoflake with ruff check + ruff format;
+    wire mypy into the lint gate (the env installs the package so imports
+    resolve); drop the whitespace scripts and .flake8
+  * Add Google-convention docstring enforcement; FastAPI endpoint
+    docstrings become the OpenAPI descriptions and were missing across
+    the API surface
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:50:00 -0400
+
 wlanpi-core (2.1.16-1) unstable; urgency=medium
 
   * Fix VLAN listing returning 500 when no VLANs exist: iproute2 emits

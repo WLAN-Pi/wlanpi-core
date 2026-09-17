@@ -1,5 +1,7 @@
+"""Helpers for listing interfaces via ip addr show."""
+
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from wlanpi_core.schemas.network.network import IPInterface
 from wlanpi_core.schemas.network.types import IP_SHOW_TYPES, CustomIPInterfaceFilter
@@ -7,9 +9,10 @@ from wlanpi_core.utils.general import run_command
 
 
 def get_interfaces(
-    show_type: Optional[IP_SHOW_TYPES] = None,
-    custom_filter: Optional[CustomIPInterfaceFilter] = None,
+    show_type: IP_SHOW_TYPES | None = None,
+    custom_filter: CustomIPInterfaceFilter | None = None,
 ) -> list[IPInterface]:
+    """Return parsed interfaces from `ip --details -j addr show`."""
     cmd = ["ip", "--details", "-j", "addr", "show"]
     if show_type:
         cmd += ["type", show_type.lower()]
@@ -42,9 +45,10 @@ def get_interfaces(
 
 
 def get_interfaces_by_interface(
-    show_type: Optional[IP_SHOW_TYPES] = None,
-    custom_filter: Optional[CustomIPInterfaceFilter] = None,
+    show_type: IP_SHOW_TYPES | None = None,
+    custom_filter: CustomIPInterfaceFilter | None = None,
 ) -> dict[str, list[IPInterface]]:
+    """Return interfaces grouped by interface name."""
     out_dict = defaultdict(list)
     for interface in get_interfaces(show_type=show_type, custom_filter=custom_filter):
         out_dict[interface.ifname].append(interface)

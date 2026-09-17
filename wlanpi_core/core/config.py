@@ -1,3 +1,5 @@
+"""Application settings loaded from the environment."""
+
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +10,8 @@ from wlanpi_core.api.openapi_docs import OPENAPI_DESCRIPTION, OPENAPI_TAGS
 
 
 class Settings(BaseSettings):
+    """Application configuration settings."""
+
     API_DEFAULT_TIMEOUT: int = 20
 
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
