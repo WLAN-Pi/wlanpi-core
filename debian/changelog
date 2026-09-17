@@ -4,6 +4,7 @@ wlanpi-core (2.1.15-1) unstable; urgency=medium
     chroot-built images, where postinst skips cert generation)
   * Repair lint gate: annotate generics in network_info_service, replace
     deprecated pydantic Extra keyword
+  * getjwt: colorize output only on a TTY so piped JSON stays parseable
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 12:10:00 -0400
 

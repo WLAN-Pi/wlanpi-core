@@ -6,6 +6,7 @@ import hmac
 import json
 import re
 import socket
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -124,28 +125,30 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    use_color = not args.no_color and sys.stdout.isatty()
+
     try:
         client = DeviceAuthClient(args.device_id, args.port)
         token_response = client.get_token()
         json_str = json.dumps(token_response, indent=2)
-        if args.no_color:
+        if not use_color:
             print(json_str)
         else:
             print(colorize_json(json_str))
     except (FileNotFoundError, PermissionError) as e:
-        if args.no_color:
+        if not use_color:
             print(f"File Error: {str(e)}")
         else:
             print(f"{RED}File Error: {str(e)}{NC}")
         return 1
     except requests.RequestException as e:
-        if args.no_color:
+        if not use_color:
             print(f"API Error: {str(e)}")
         else:
             print(f"{RED}API Error: {str(e)}{NC}")
         return 1
     except Exception as e:
-        if args.no_color:
+        if not use_color:
             print(f"Unexpected Error: {str(e)}")
         else:
             print(f"{RED}Unexpected Error: {str(e)}{NC}")
