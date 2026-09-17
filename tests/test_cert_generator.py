@@ -66,13 +66,23 @@ def test_regenerates_when_renamed_local_san_missing(tmp_path):
     cert = nginx_dir / "self-signed-wlanpi.cert"
     subprocess.run(
         [
-            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256",
-            "-days", "3650", "-nodes",
-            "-keyout", str(key), "-out", str(cert),
-            "-subj", "/CN=wlanpi.local",
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-days",
+            "3650",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-subj",
+            "/CN=wlanpi.local",
             "-addext",
-            "subjectAltName=DNS:localhost,DNS:wlanpi.local,"
-            "IP:127.0.0.1,IP:198.18.42.1",
+            "subjectAltName=DNS:localhost,DNS:wlanpi.local,IP:127.0.0.1,IP:198.18.42.1",
         ],
         check=True,
     )
