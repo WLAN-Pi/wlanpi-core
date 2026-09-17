@@ -218,9 +218,6 @@ async def run_command_async(
         )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
-            # codeql[py/command-line-injection, py/path-injection]
-            # cmd is validated at every call site: run_command callers gate
-            # interface/namespace/config id through the validators first.
             cmd,
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
@@ -232,9 +229,6 @@ async def run_command_async(
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
         proc = await asyncio.subprocess.create_subprocess_exec(
-            # codeql[py/command-line-injection, py/path-injection]
-            # cmd is validated at every call site: run_command callers gate
-            # interface/namespace/config id through the validators first.
             cmd[0],
             *cmd[1:],
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
