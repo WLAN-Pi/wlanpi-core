@@ -5,12 +5,14 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError as PydanticValidationError
 
-from wlanpi_core.api.api_v1.endpoints.auth_api import generate_token
+from wlanpi_core.api.api_v1.endpoints.auth_api import generate_token, revoke_token
 from wlanpi_core.schemas.auth import TokenRequest
 
 
 def _request_with_token_manager(token_manager):
-    return MagicMock(app=SimpleNamespace(state=SimpleNamespace(token_manager=token_manager)))
+    return MagicMock(
+        app=SimpleNamespace(state=SimpleNamespace(token_manager=token_manager))
+    )
 
 
 @pytest.mark.asyncio
@@ -55,3 +57,17 @@ async def test_generate_token_maps_unexpected_error_to_500():
 def test_token_request_bounds_device_id():
     with pytest.raises(PydanticValidationError):
         TokenRequest(device_id="x" * 129)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("authorization", ["bearer jwt", "BEARER   jwt"])
+async def test_revoke_token_accepts_normalized_bearer_scheme(authorization):
+    token_manager = SimpleNamespace(
+        revoke_token=AsyncMock(return_value={"status": "success"})
+    )
+    request = _request_with_token_manager(token_manager)
+    request.headers = {"Authorization": authorization}
+
+    await revoke_token(request, TokenRequest(device_id="mcp-client"))
+
+    token_manager.revoke_token.assert_awaited_once_with("jwt")

@@ -1,3 +1,47 @@
+wlanpi-core (2.1.13-1) unstable; urgency=medium
+
+  * Require first-message JWT authentication for packet-capture WebSockets
+  * Add owned capture sessions with read-only subscribers
+  * Replay pcapng headers for late subscribers and isolate stalled clients
+  * Proxy capture WebSockets through the TLS-only nginx listener
+  * Support capture adapters in network namespaces and report iw failures
+  * Source LLDP/CDP neighbours from lldpd via lldpctl (previously unrecorded)
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 10:06:58 -0400
+
+wlanpi-core (2.1.12-1) unstable; urgency=medium
+
+  * Fail the ASGI lifespan on critical init failure (system readiness,
+    security, database) so systemd's restart policy engages instead of
+    serving half-initialized; token-manager failure stays non-fatal
+  * Fix undefined initial_retry_delay AttributeError in the security-init
+    retry path
+  * systemd: remove duplicate Type=notify; add bounded Restart=on-failure
+    policy (RestartSec=2, StartLimitIntervalSec=60, StartLimitBurst=5),
+    TimeoutStartSec=30, RequiresMountsFor, ExecStartPre writability probe
+  * Bind absolute /run/wlanpi_core.sock matching the socket unit and nginx
+    proxy_pass (was relative, resolving to a different socket)
+  * prerm: fix mount-unit name (var-log-wlanpi_core-debug.mount); add
+    #DEBHELPER# so the service and socket are stopped on removal
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 13:00:00 -0400
+
+wlanpi-core (2.1.11-1) unstable; urgency=medium
+
+  * Migrate production API port 31415 to TLS-only (HTTPS)
+  * Bind development server to loopback only
+  * Validate nginx configuration before reload; reload instead of restart
+  * Remove nginx stop from preinst; nginx stays live during upgrade
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 00:00:00 -0400
+
+wlanpi-core (2.1.10-4) unstable; urgency=medium
+
+  * Enforce boot-aware JWT lifetime and immediate revocation
+  * Dispatch authentication by presented credentials
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 16 Sep 2026 20:57:01 -0400
+
 wlanpi-core (2.1.10-3) unstable; urgency=medium
 
   * Rebuild to publish packages for Debian trixie to packagecloud

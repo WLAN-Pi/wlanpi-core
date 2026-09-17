@@ -1,4 +1,5 @@
 """Device mode checks for mode-specific API endpoints."""
+
 from __future__ import annotations
 
 from wlanpi_core.models.validation_error import ValidationError

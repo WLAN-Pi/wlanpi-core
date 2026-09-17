@@ -18,3 +18,5 @@ websockets
 # endpoint requires
 psutil
 dbus-python
+
+--extra-index-url https://www.piwheels.org/simple

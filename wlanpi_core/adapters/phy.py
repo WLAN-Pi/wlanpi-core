@@ -4,11 +4,11 @@ PHY (physical device) operations for wireless adapters.
 This module provides functions for managing wireless PHY devices, including
 moving them between namespaces and querying their state.
 """
+
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from wlanpi_core.constants import IW_FILE
-from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -59,7 +59,7 @@ def list_phys(namespace: Optional[str] = None) -> List[str]:
         raise
 
 
-def get_phy_info(phy: str, namespace: Optional[str] = None) -> Optional[dict]:
+def get_phy_info(phy: str, namespace: Optional[str] = None) -> Optional[dict[str, Any]]:
     """
     Get information about a specific PHY device.
 
@@ -95,7 +95,9 @@ def get_phy_info(phy: str, namespace: Optional[str] = None) -> Optional[dict]:
         if namespace is None:
             result = run_command([IW_FILE, "phy", phy, "info"], raise_on_fail=True)
         else:
-            result = ns_exec([IW_FILE, "phy", phy, "info"], namespace=namespace, no_output=True)
+            result = ns_exec(
+                [IW_FILE, "phy", phy, "info"], namespace=namespace, no_output=True
+            )
 
         info = {"name": phy, "exists": True}
 

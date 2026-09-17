@@ -1,4 +1,5 @@
 """AP-mode station parsing for hotspot endpoints."""
+
 from __future__ import annotations
 
 import re

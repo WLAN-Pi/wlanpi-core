@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Any
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from wlanpi_core import constants
 from wlanpi_core.api.openapi_docs import OPENAPI_DESCRIPTION, OPENAPI_TAGS
@@ -17,14 +18,14 @@ class Settings(BaseSettings):
 
     PROJECT_DESCRIPTION: str = OPENAPI_DESCRIPTION
 
-    TAGS_METADATA: list = OPENAPI_TAGS
+    TAGS_METADATA: list[Any] = OPENAPI_TAGS
 
-    class Config:
-        case_sensitive = True
-        base_dir: Path = None
+    base_dir: Path = Path(__file__).parent.parent.absolute()
+
+    model_config = SettingsConfigDict(case_sensitive=True)
 
 
 settings = Settings()
 
 # when app is created, endpoints will be stored here for api landing page
-endpoints = []
+endpoints: list[Any] = []

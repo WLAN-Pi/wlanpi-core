@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
@@ -35,7 +35,7 @@ async def reachability(
             "comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
         ),
     ),
-):
+) -> Any:
     """
     Runs reachability checks for gateway, internet, DNS, and optional custom targets.
     """
@@ -78,7 +78,7 @@ async def reachability(
     },
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def speedtest():
+async def speedtest() -> Any:
     """
       Run LibreSpeed CLI (typically **30–90 seconds**).
 
@@ -114,7 +114,7 @@ async def speedtest():
     response_model=utils.BlinkerActionResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def start_blinker(interface: str = "eth0"):
+async def start_blinker(interface: str = "eth0") -> Any:
     """Start the Ethernet port blinker (cable finder)."""
     try:
         return await asyncio.to_thread(utils_service.start_port_blinker, interface)
@@ -132,7 +132,7 @@ async def start_blinker(interface: str = "eth0"):
     response_model=utils.BlinkerActionResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def stop_blinker():
+async def stop_blinker() -> Any:
     """Stop the Ethernet port blinker."""
     try:
         return await asyncio.to_thread(utils_service.stop_port_blinker)
@@ -146,7 +146,7 @@ async def stop_blinker():
     response_model=utils.BlinkerStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def blinker_status():
+async def blinker_status() -> Any:
     """Return whether the port blinker is running."""
     try:
         return await asyncio.to_thread(utils_service.port_blinker_status)
@@ -165,8 +165,7 @@ async def blinker_status():
         409: {
             "model": utils.WlanScanErrorResponse,
             "description": (
-                "Selected adapter is already scanning "
-                "(`error`: `SCAN_IN_PROGRESS`)"
+                "Selected adapter is already scanning " "(`error`: `SCAN_IN_PROGRESS`)"
             ),
         },
         422: {
@@ -182,7 +181,7 @@ async def wlan_scan_endpoint(
     namespace: Optional[str] = None,
     hidden: bool = True,
     detail: str = "short",
-):
+) -> Any:
     """
     Namespace-aware WLAN scan with automatic monitor adapter selection.
 
@@ -235,7 +234,7 @@ async def wlan_scan_endpoint(
 @router.get(
     "/usb", response_model=utils.Usb, dependencies=[Depends(verify_auth_wrapper)]
 )
-async def usb_interfaces():
+async def usb_interfaces() -> Any:
     """
     Gets a list of usb interfaces and returns them.
     """
@@ -262,7 +261,7 @@ async def usb_interfaces():
 @router.get(
     "/ufw", response_model=utils.Ufw, dependencies=[Depends(verify_auth_wrapper)]
 )
-async def ufw_information():
+async def ufw_information() -> Any:
     """
     Returns the UFW information.
     """

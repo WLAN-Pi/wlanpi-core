@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, List, Optional, Union
 
-from pydantic import BaseModel, Extra, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from wlanpi_core.utils.validation import (
     validate_config_id,
@@ -27,7 +27,7 @@ class PublicIP(BaseModel):
     hostname: str = Field(examples=["d-192-168-1-50.paw.cpe.chicagoisp.net"])
 
 
-class IPInterfaceAddress(BaseModel, extra=Extra.allow):
+class IPInterfaceAddress(BaseModel, extra="allow"):
     family: str = Field(examples=["inet", "inet6"])
     local: Optional[str] = Field(examples=["10.0.0.1"], default=None)
     prefixlen: Optional[int] = Field(examples=[24, 32, 128], default=None)
@@ -61,7 +61,7 @@ class IPInterfaceAddress(BaseModel, extra=Extra.allow):
         return self
 
 
-class IPInterface(BaseModel, extra=Extra.allow):
+class IPInterface(BaseModel, extra="allow"):
     ifindex: int = Field(examples=[0])
     ifname: str = Field(examples=["eth0", "lo"])
     flags: list[str] = Field(examples=[["UP", "BROADCAST", "MULTICAST"], "LOOPBACK"])
@@ -79,7 +79,8 @@ class IPInterface(BaseModel, extra=Extra.allow):
 class NetworkModeEnum(str, Enum):
     managed = "managed"
     monitor = "monitor"
-    
+
+
 class SecurityTypes(str, Enum):
     wpa2 = "WPA2-PSK"
     wpa3 = "WPA3-PSK"
@@ -97,7 +98,9 @@ _SENSITIVE_SECURITY_FIELDS = (
 )
 
 
-def _redact_security_dict(security: Optional[dict]) -> Optional[dict]:
+def _redact_security_dict(
+    security: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
     """Return a copy of a security dict with credential fields masked."""
     if not security:
         return security
@@ -108,7 +111,7 @@ def _redact_security_dict(security: Optional[dict]) -> Optional[dict]:
     return redacted
 
 
-def _redact_root_config_dict(data: dict) -> dict:
+def _redact_root_config_dict(data: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(data)
     redacted["security"] = _redact_security_dict(redacted.get("security"))
     return redacted
@@ -140,7 +143,7 @@ class NetSecurity(BaseModel):
         "ca_cert",
     )
     @classmethod
-    def validate_wpa_text_field(cls, value: Optional[str], info) -> Optional[str]:
+    def validate_wpa_text_field(cls, value: Optional[str], info: Any) -> Optional[str]:
         if value is None:
             return None
         return validate_wpa_text(value, info.field_name)
@@ -215,12 +218,12 @@ class NetConfigUpdate(BaseModel):
 
 
 class ScanItem(BaseModel):
-    ssid: str = Field(example="A Network")
-    bssid: str = Field(example="11:22:33:44:55")
-    key_mgmt: str = Field(example="wpa-psk")
-    signal: int = Field(example=-65)
-    freq: int = Field(example=5650)
-    minrate: int = Field(example=1000000)
+    ssid: str = Field(json_schema_extra={"example": "A Network"})
+    bssid: str = Field(json_schema_extra={"example": "11:22:33:44:55"})
+    key_mgmt: str = Field(json_schema_extra={"example": "wpa-psk"})
+    signal: int = Field(json_schema_extra={"example": -65})
+    freq: int = Field(json_schema_extra={"example": 5650})
+    minrate: int = Field(json_schema_extra={"example": 1000000})
 
 
 class ScanResults(BaseModel):
@@ -228,7 +231,7 @@ class ScanResults(BaseModel):
 
 
 class WlanInterfaceSetup(BaseModel):
-    interface: str = Field(example="wlan0")
+    interface: str = Field(json_schema_extra={"example": "wlan0"})
     netConfig: NetConfig
     removeAllFirst: bool
 
@@ -239,7 +242,7 @@ class WlanInterfaceSetup(BaseModel):
 
 
 class WlanRevertRequest(BaseModel):
-    iface: str = Field(example="wlan0")
+    iface: str = Field(json_schema_extra={"example": "wlan0"})
     namespace: str
     delete_namespace: bool = True
 
@@ -255,34 +258,36 @@ class WlanRevertRequest(BaseModel):
 
 
 class NetworkEvent(BaseModel):
-    event: str = Field(example="authenticated")
-    time: str = Field(example="2024-09-01 03:52:31.232828")
+    event: str = Field(json_schema_extra={"example": "authenticated"})
+    time: str = Field(json_schema_extra={"example": "2024-09-01 03:52:31.232828"})
 
 
 class NetworkSetupLog(BaseModel):
-    selectErr: str = Field(example="fi.w1.wpa_supplicant1.NetworkUnknown")
+    selectErr: str = Field(
+        json_schema_extra={"example": "fi.w1.wpa_supplicant1.NetworkUnknown"}
+    )
     eventLog: List[NetworkEvent]
 
 
 class NetworkSetupStatus(BaseModel):
-    status: str = Field(example="connected")
+    status: str = Field(json_schema_extra={"example": "connected"})
     response: NetworkSetupLog
     connectedNet: Optional[ScanItem]
     input: str
 
 
 class ConnectedNetwork(BaseModel):
-    connectedStatus: bool = Field(example=True)
+    connectedStatus: bool = Field(json_schema_extra={"example": True})
     connectedNet: Union[ScanItem, None]
 
 
 class RevertNamespace(BaseModel):
-    success: bool = Field(example=True)
+    success: bool = Field(json_schema_extra={"example": True})
     message: str
 
 
 class Interface(BaseModel):
-    interface: str = Field(example="wlan0")
+    interface: str = Field(json_schema_extra={"example": "wlan0"})
 
 
 class Interfaces(BaseModel):
@@ -290,4 +295,4 @@ class Interfaces(BaseModel):
 
 
 class APIConfig(BaseModel):
-    timeout: int = Field(example=20)
+    timeout: int = Field(json_schema_extra={"example": 20})

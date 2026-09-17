@@ -1,17 +1,18 @@
 import asyncio
 import json
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
+from wlanpi_core import network as network_primitives
 from wlanpi_core.adapters.discovery import list_interfaces
 from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
-
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.schemas import network
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
@@ -19,16 +20,14 @@ from wlanpi_core.schemas.common.errors import (
 )
 from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
-from wlanpi_core import network as network_primitives
-from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.services import (
     network_ethernet_service,
     network_namespace_service,
 )
-from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
-from wlanpi_core.wpa.status import get_wpa_status
-from wlanpi_core.wpa.scan import ScanInProgressError
 from wlanpi_core.utils.validation import validate_vlan_id
+from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
+from wlanpi_core.wpa.scan import ScanInProgressError
+from wlanpi_core.wpa.status import get_wpa_status
 
 router = APIRouter()
 legacy_wlan_router = APIRouter()
@@ -38,7 +37,7 @@ from wlanpi_core.core.logging import get_logger
 log = get_logger(__name__)
 
 
-def _read_interface_link_stats(iface: str):
+def _read_interface_link_stats(iface: str) -> dict[str, Any]:
     """Resolve interface ownership and read link stats in one worker thread."""
     namespace = resolve_interface_namespace(iface)
     return network_primitives.get_link_stats(iface, namespace=namespace)
@@ -57,7 +56,9 @@ def _read_interface_link_stats(iface: str):
     response_model=dict[str, list[IPInterface]],
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_all_interfaces(interface: Optional[str] = None):
+async def show_all_interfaces(
+    interface: Optional[str] = None,
+) -> dict[str, list[IPInterface]] | Response:
     """
     Returns all network interfaces.
     """
@@ -84,7 +85,9 @@ async def show_all_interfaces(interface: Optional[str] = None):
     response_model=dict[str, list[IPInterface]],
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_all_ethernet_interfaces(interface: str):
+async def show_all_ethernet_interfaces(
+    interface: Optional[str] = None,
+) -> dict[str, list[IPInterface]] | Response:
     """
     Returns all ethernet interfaces.
     """
@@ -93,7 +96,7 @@ async def show_all_ethernet_interfaces(interface: str):
 
     try:
 
-        def filterfunc(i):
+        def filterfunc(i: IPInterface) -> bool:
             iface_obj = i.model_dump()
             # TODO: Naive approach, come up with a better one later, maybe IP command has a better way to filter?
             return (
@@ -142,7 +145,7 @@ async def show_all_ethernet_interfaces(interface: str):
 )
 async def show_all_ethernet_vlans(
     interface: Optional[str] = None, vlan: Optional[str] = None
-):
+) -> dict[str, list[IPInterface]] | Response:
     """
     Returns all VLANS for a given ethernet interface.
     """
@@ -157,12 +160,12 @@ async def show_all_ethernet_vlans(
         except ValueError as ex:
             return Response(content=str(ex), status_code=400)
 
-        def filterfunc(i):
-            return i.model_dump().get("linkinfo", {}).get(
-                "info_kind"
-            ) == "vlan" and i.model_dump().get("linkinfo", {}).get("info_data", {}).get(
-                "id"
-            ) == requested_vlan_id
+        def filterfunc(i: IPInterface) -> bool:
+            return (
+                i.model_dump().get("linkinfo", {}).get("info_kind") == "vlan"
+                and i.model_dump().get("linkinfo", {}).get("info_data", {}).get("id")
+                == requested_vlan_id
+            )
 
         custom_filter = filterfunc
     try:
@@ -186,7 +189,7 @@ async def show_all_ethernet_vlans(
 )
 async def create_ethernet_vlan(
     interface: str, vlan: Union[str, int], addresses: list[IPInterfaceAddress]
-):
+) -> NetworkConfigResponse | Response:
     """
     Creates (or replaces) a VLAN on the given interface.
     """
@@ -226,8 +229,8 @@ async def create_ethernet_vlan(
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_ethernet_vlan(
-    interface: str, vlan: Union[str, int], allow_missing=False
-):
+    interface: str, vlan: Union[str, int], allow_missing: bool = False
+) -> NetworkConfigResponse | Response:
     """
     Removes a VLAN from the given interface.
     """
@@ -257,6 +260,7 @@ async def delete_ethernet_vlan(
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
 
+
 ################################
 # Network primitives (P0)      #
 ################################
@@ -267,7 +271,7 @@ async def delete_ethernet_vlan(
     response_model=network.RoutingTable,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_routing_table(namespace: Optional[str] = None):
+async def show_routing_table(namespace: Optional[str] = None) -> Any:
     """Structured routing table from ``ip -j route show`` (root by default)."""
     try:
         return await asyncio.to_thread(
@@ -286,7 +290,7 @@ async def show_routing_table(namespace: Optional[str] = None):
     response_model=network.ConnectionsResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_tcp_connections(namespace: Optional[str] = None):
+async def show_tcp_connections(namespace: Optional[str] = None) -> Any:
     """Active TCP sockets from ``ss``."""
     try:
         return await asyncio.to_thread(
@@ -305,7 +309,7 @@ async def show_tcp_connections(namespace: Optional[str] = None):
     response_model=network.ConnectionsResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_udp_connections(namespace: Optional[str] = None):
+async def show_udp_connections(namespace: Optional[str] = None) -> Any:
     """Active UDP sockets from ``ss``."""
     try:
         return await asyncio.to_thread(
@@ -324,7 +328,7 @@ async def show_udp_connections(namespace: Optional[str] = None):
     response_model=network.DhcpLeasesResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_dhcp_leases():
+async def show_dhcp_leases() -> Any:
     """Parse dhclient lease files under ``/var/lib/dhcp``."""
     try:
         return await asyncio.to_thread(network_primitives.get_dhcp_leases)
@@ -338,7 +342,7 @@ async def show_dhcp_leases():
     response_model=network.LinkStats,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_interface_link_stats(iface: str):
+async def show_interface_link_stats(iface: str) -> Any:
     """Per-interface link statistics via ethtool."""
     try:
         return await asyncio.to_thread(_read_interface_link_stats, iface=iface)
@@ -370,7 +374,7 @@ async def show_interface_link_stats(iface: str):
     },
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def renew_interface_dhcp(iface: str):
+async def renew_interface_dhcp(iface: str) -> Any:
     """Renew DHCP for a systemd-networkd-managed root interface."""
     try:
         return await network_primitives.renew_interface_dhcp(iface)
@@ -400,7 +404,7 @@ async def renew_interface_dhcp(iface: str):
     response_model=network.WlanUsbDriversResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_wlan_usb_drivers():
+async def show_wlan_usb_drivers() -> Any:
     """
     USB-attached WLAN adapters and bound drivers.
 
@@ -420,7 +424,7 @@ async def show_wlan_usb_drivers():
     response_model=network.WlanPciDriversResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_wlan_pci_drivers():
+async def show_wlan_pci_drivers() -> Any:
     """
     PCI/platform wireless devices and bound WLAN interface drivers.
 
@@ -446,7 +450,9 @@ async def show_wlan_pci_drivers():
     deprecated=True,
     summary="[Deprecated] List wireless interfaces",
 )
-async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_TIMEOUT):
+async def get_a_systemd_network_interfaces(
+    timeout: int = settings.API_DEFAULT_TIMEOUT,
+) -> dict[str, Any] | Response:
     """
     **Deprecated** — prefer `GET /api/v1/network/config/status`.
 
@@ -470,11 +476,11 @@ async def get_a_systemd_network_interfaces(timeout: int = settings.API_DEFAULT_T
     dependencies=[Depends(verify_auth_wrapper)],
     deprecated=True,
     summary="[Deprecated] WLAN scan",
-    responses={**RESPONSES_SCAN},
+    responses=RESPONSES_SCAN,
 )
 async def get_a_systemd_network_scan(
     type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
-):
+) -> Any:
     """
     **Deprecated** — use `GET /api/v1/utils/wlan/scan`.
 
@@ -487,10 +493,10 @@ async def get_a_systemd_network_scan(
     try:
         result = await asyncio.to_thread(
             wlan_scan,
-            iface=interface or None,
-            namespace=None,
-            hidden=True,
-            detail="short",
+            interface or None,
+            None,
+            True,
+            "short",
         )
         if result.get("needsSelection"):
             return Response(
@@ -545,7 +551,7 @@ async def get_a_systemd_network_scan(
 )
 async def set_a_systemd_network_dbus(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
-):
+) -> DeprecatedEndpointResponse:
     """
     **Deprecated — returns 410 Gone.**
 
@@ -568,7 +574,7 @@ async def set_a_systemd_network_dbus(
 )
 async def set_a_systemd_network(
     setup: network.WlanInterfaceSetup, timeout: int = settings.API_DEFAULT_TIMEOUT
-):
+) -> DeprecatedEndpointResponse:
     """
     **Deprecated — returns 410 Gone.**
 
@@ -588,7 +594,7 @@ async def set_a_systemd_network(
 )
 async def revert_wlan_namespace(
     req: network.WlanRevertRequest, timeout: int = settings.API_DEFAULT_TIMEOUT
-):
+) -> Any:
     """
     Reverts the PHY and interface back to the root namespace.
     """
@@ -596,9 +602,8 @@ async def revert_wlan_namespace(
         namespace_service = network_namespace_service.NetworkNamespaceService()
         await asyncio.to_thread(
             namespace_service.revert_to_root,
-            iface=req.iface,
-            namespace=req.namespace,
-            delete_namespace=req.delete_namespace,
+            None,
+            req.delete_namespace,
         )
         return {
             "success": True,
@@ -620,7 +625,7 @@ async def revert_wlan_namespace(
 )
 async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
-):
+) -> Any:
     """
     **Deprecated** — prefer `GET /api/v1/network/config/status` plus wpa state.
 

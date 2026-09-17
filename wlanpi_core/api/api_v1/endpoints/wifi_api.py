@@ -1,10 +1,10 @@
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
+from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import wifi as wifi_schema
 from wlanpi_core.wlan.capabilities import get_wifi_capabilities
@@ -24,7 +24,7 @@ log = get_logger(__name__)
     summary="Show Wi-Fi capabilities",
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_wifi_capabilities():
+async def show_wifi_capabilities() -> Any:
     """Return ``iw phy`` capability dumps for each PHY."""
     try:
         return await asyncio.to_thread(get_wifi_capabilities)
@@ -41,7 +41,7 @@ async def show_wifi_capabilities():
     summary="Show Wi-Fi regulatory information",
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_wifi_regulatory():
+async def show_wifi_regulatory() -> Any:
     """Return Wi-Fi regulatory domain information."""
     try:
         return await asyncio.to_thread(get_wifi_regulatory)
@@ -59,7 +59,7 @@ async def show_wifi_regulatory():
     responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_hotspot_stations(iface: Optional[str] = None):
+async def show_hotspot_stations(iface: Optional[str] = None) -> Any:
     """
     Connected stations on the hotspot AP interface.
 
@@ -81,7 +81,7 @@ async def show_hotspot_stations(iface: Optional[str] = None):
     responses={**RESPONSES_MODE_CONFLICT},
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def show_hotspot_client_link(iface: Optional[str] = None):
+async def show_hotspot_client_link(iface: Optional[str] = None) -> Any:
     """
     Per-station link statistics for hotspot AP clients.
 
@@ -93,4 +93,6 @@ async def show_hotspot_client_link(iface: Optional[str] = None):
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
-        return Response(content="Unable to read hotspot client link stats", status_code=503)
+        return Response(
+            content="Unable to read hotspot client link stats", status_code=503
+        )

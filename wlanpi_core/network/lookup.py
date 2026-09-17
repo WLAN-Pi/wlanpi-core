@@ -1,4 +1,5 @@
 """Resolve which network namespace owns an interface."""
+
 from __future__ import annotations
 
 import logging
@@ -35,7 +36,11 @@ def resolve_interface_namespace(iface: str) -> Optional[str]:
         )
 
     root_status = status.get("root") or {}
-    if isinstance(root_status, dict) and "error" not in root_status and iface in root_status:
+    if (
+        isinstance(root_status, dict)
+        and "error" not in root_status
+        and iface in root_status
+    ):
         return None
 
     incomplete_status = not isinstance(root_status, dict) or "error" in root_status

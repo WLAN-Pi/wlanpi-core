@@ -24,7 +24,7 @@ async def renew_interface_dhcp(iface: str, timeout: int = 15) -> dict[str, Any]:
     """Renew DHCP only when ``iface`` is managed by systemd-networkd."""
     try:
         iface = validate_interface_name(iface)
-    except ValueError as error:
+    except ValueError:
         raise ValidationError("invalid interface name", status_code=400)
 
     status_result = await run_command_async(
@@ -92,7 +92,11 @@ def get_dhcp_leases(lease_dir: Path = DHCP_LEASE_DIR) -> dict[str, Any]:
     """Parse dhclient lease files under ``/var/lib/dhcp``."""
     log.debug("get_dhcp_leases dir=%s", lease_dir)
     if not lease_dir.exists():
-        return {"leases": [], "source": str(lease_dir), "error": "lease directory not found"}
+        return {
+            "leases": [],
+            "source": str(lease_dir),
+            "error": "lease directory not found",
+        }
 
     all_leases: list[dict[str, Any]] = []
     for path in sorted(lease_dir.glob(_DHCP_LEASE_FILE_GLOB)):

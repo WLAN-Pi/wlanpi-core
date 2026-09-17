@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pprint import pp
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from wlanpi_core.models.network import common
 from wlanpi_core.models.network.vlan.vlan_errors import (
@@ -14,7 +14,7 @@ from wlanpi_core.utils.general import run_command
 
 
 class LiveVLANs:
-    def __init__(self):
+    def __init__(self) -> None:
         self.vlan_interfaces_by_interface = self.get_vlan_interfaces_by_interface()
 
     @staticmethod
@@ -31,7 +31,7 @@ class LiveVLANs:
         for interface in common.get_interfaces(
             show_type="vlan", custom_filter=custom_filter
         ):
-            out_dict[interface.link].append(interface)
+            out_dict[interface.ifname].append(interface)
         return out_dict
 
     @staticmethod
@@ -66,8 +66,9 @@ class LiveVLANs:
         return res.success
 
     @staticmethod
-    # async def create_vlan(configuration: Vlan):
-    def create_vlan(if_name: str, vlan_id: int, addresses: List[IPInterfaceAddress]):
+    def create_vlan(
+        if_name: str, vlan_id: int, addresses: List[IPInterfaceAddress]
+    ) -> None:
         # Check if the VLAN already exists:
         if LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
             raise VLANExistsError(f"VLAN {vlan_id} already exists on {if_name}")
@@ -107,7 +108,7 @@ class LiveVLANs:
         # Add addresses to the VLAN
         for address in addresses:
             try:
-                extras = []
+                extras: list[Any] = []
                 pp(address)
                 if address.dynamic:
                     if address.scope:
@@ -133,7 +134,7 @@ class LiveVLANs:
                             *lifetimes,
                         ]
                     )
-                    ip_version = (None,)
+                    ip_version: Optional[str] = None
                     if address.family == "inet":
                         ip_version = "4"
                     if address.family == "inet6":
@@ -178,7 +179,7 @@ class LiveVLANs:
                 ) from e
 
     @staticmethod
-    def delete_vlan(if_name: str, vlan_id: int, allow_missing: False):
+    def delete_vlan(if_name: str, vlan_id: int, allow_missing: bool = False) -> None:
         if allow_missing and not LiveVLANs().check_if_vlan_exists(if_name, vlan_id):
             return
         # Try to down the interface

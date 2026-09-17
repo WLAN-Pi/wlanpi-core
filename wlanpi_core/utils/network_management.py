@@ -4,6 +4,7 @@ Network management utilities for DHCP and routing.
 This module provides functions for managing DHCP clients and network routes
 in namespaces.
 """
+
 import logging
 import time
 from pathlib import Path
@@ -49,7 +50,9 @@ def restart_dhcp_with_timeout(
         >>> restart_dhcp_with_timeout("wlan0", "test_ns", timeout=15)
     """
     namespace_display = namespace if namespace else "root"
-    log.info(f"Starting DHCP client for {iface} in namespace {namespace_display} with timeout {timeout}s")
+    log.info(
+        f"Starting DHCP client for {iface} in namespace {namespace_display} with timeout {timeout}s"
+    )
 
     try:
         # Clean up existing DHCP clients
@@ -73,12 +76,18 @@ def restart_dhcp_with_timeout(
             log.info(f"DHCP completed for {iface} in namespace {namespace_display}")
         except RunCommandError as e:
             if "timeout" in str(e).lower() or "124" in str(e):
-                log.info(f"DHCP timed out for {iface} in namespace {namespace_display} - trying alternative config")
+                log.info(
+                    f"DHCP timed out for {iface} in namespace {namespace_display} - trying alternative config"
+                )
             else:
-                log.warning(f"DHCP failed for {iface} in namespace {namespace_display}: {e}")
+                log.warning(
+                    f"DHCP failed for {iface} in namespace {namespace_display}: {e}"
+                )
 
     except Exception as e:
-        log.warning(f"DHCP setup had issues for {iface} in namespace {namespace_display}: {e}")
+        log.warning(
+            f"DHCP setup had issues for {iface} in namespace {namespace_display}: {e}"
+        )
 
 
 def set_default_route(
@@ -127,6 +136,10 @@ def set_default_route(
             log.info(f"Set default route for {iface} in namespace {namespace_display}")
         except RunCommandError as e:
             # Log and continue; route setup shouldn't fail activation
-            log.warning(f"Could not set default route for {iface} in namespace {namespace_display}: {e}")
+            log.warning(
+                f"Could not set default route for {iface} in namespace {namespace_display}: {e}"
+            )
     else:
-        log.debug(f"Default route already set for {iface} in namespace {namespace_display}")
+        log.debug(
+            f"Default route already set for {iface} in namespace {namespace_display}"
+        )

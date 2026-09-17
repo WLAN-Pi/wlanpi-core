@@ -1,4 +1,5 @@
 """Response models for GET /network/config/status (`iw dev` per namespace)."""
+
 from __future__ import annotations
 
 from typing import Dict, Optional, Union
@@ -29,9 +30,7 @@ class IwInterfaceStatus(BaseModel):
 NamespaceStatus = Union[Dict[str, IwInterfaceStatus], NamespaceStatusError]
 
 
-class NetworkConfigStatus(
-    RootModel[Dict[str, NamespaceStatus]]
-):
+class NetworkConfigStatus(RootModel[Dict[str, NamespaceStatus]]):
     """
     Per-namespace adapter layout from `iw dev`.
 

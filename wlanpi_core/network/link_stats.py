@@ -1,4 +1,5 @@
 """Per-interface link statistics via ethtool."""
+
 from __future__ import annotations
 
 import logging

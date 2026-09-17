@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional, TypeVar
 
@@ -58,10 +59,10 @@ class Base(AsyncAttrs, DeclarativeBase):
             ["_" + c.lower() if c.isupper() else c for c in cls.__name__]
         ).lstrip("_")
 
-    created_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[Optional[DateTime]] = mapped_column(
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, onupdate=func.now(), nullable=True
     )
 
@@ -131,7 +132,9 @@ class DatabaseManager:
             )
             raise
 
-    async def initialize_with_retry(self, max_retries=3, retry_delay=2):
+    async def initialize_with_retry(
+        self, max_retries: int = 3, retry_delay: float = 2
+    ) -> bool:
         """Initialize database with retry mechanism"""
         attempt = 0
         last_error = None
@@ -153,7 +156,7 @@ class DatabaseManager:
                     str(e),
                 )
                 if attempt < max_retries:
-                    self.log.info("Retrying in %d seconds...", retry_delay)
+                    log.info("Retrying in %d seconds...", retry_delay)
                     await asyncio.sleep(retry_delay)
                     retry_delay = min(retry_delay * 2, 5)
 
@@ -186,7 +189,7 @@ class DatabaseManager:
             finally:
                 await session.close()
 
-    async def initialize_models(self):
+    async def initialize_models(self) -> None:
         """
         Create all database tables defined in models
         """

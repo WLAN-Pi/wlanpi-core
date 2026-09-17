@@ -1,4 +1,5 @@
 """Reachability and ping helpers for utils API."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -90,6 +91,7 @@ async def ping_target(target: str) -> dict[str, Any]:
         ["jc", "ping", "-c1", "-W2", "-q", target],
         raise_on_fail=False,
     )
-    stats = ping_stats_from_jc(result.output_from_json())
+    parsed = result.output_from_json()
+    stats = ping_stats_from_jc(parsed if isinstance(parsed, dict) else None)
     stats["target"] = target
     return stats

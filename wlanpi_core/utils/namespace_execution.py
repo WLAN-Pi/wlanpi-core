@@ -5,6 +5,7 @@ This module provides reusable functions for executing commands in network namesp
 or in the root namespace. These utilities are used throughout the codebase for
 namespace-aware command execution.
 """
+
 import logging
 from typing import List, Optional
 
@@ -40,10 +41,10 @@ def ns_exec(
     Examples:
         >>> # Execute in a namespace
         >>> result = ns_exec(["ip", "addr", "show"], namespace="test_ns")
-        
+
         >>> # Execute in root namespace
         >>> result = ns_exec(["ip", "addr", "show"], namespace=None)
-        
+
         >>> # Execute with error handling
         >>> try:
         ...     result = ns_exec(["invalid", "cmd"], namespace="test_ns")
@@ -62,12 +63,12 @@ def ns_exec(
 
     try:
         result = run_command(full_cmd, raise_on_fail=raise_on_fail)
-        
+
         if not no_output:
             log.debug(f"stdout: {result.stdout}")
             log.debug(f"stderr: {result.stderr}")
             log.debug(f"return_code: {result.return_code}")
-        
+
         return result
     except RunCommandError as e:
         log.error(
@@ -106,9 +107,13 @@ def run_in_namespace(
         RunCommandError: If raise_on_fail=True and command fails
     """
     if namespace is None:
-        raise ValueError("namespace cannot be None for run_in_namespace. Use run_in_root() instead.")
-    
-    return ns_exec(cmd, namespace=namespace, no_output=no_output, raise_on_fail=raise_on_fail)
+        raise ValueError(
+            "namespace cannot be None for run_in_namespace. Use run_in_root() instead."
+        )
+
+    return ns_exec(
+        cmd, namespace=namespace, no_output=no_output, raise_on_fail=raise_on_fail
+    )
 
 
 def run_in_root(
@@ -130,4 +135,6 @@ def run_in_root(
     Raises:
         RunCommandError: If raise_on_fail=True and command fails
     """
-    return ns_exec(cmd, namespace=None, no_output=no_output, raise_on_fail=raise_on_fail)
+    return ns_exec(
+        cmd, namespace=None, no_output=no_output, raise_on_fail=raise_on_fail
+    )

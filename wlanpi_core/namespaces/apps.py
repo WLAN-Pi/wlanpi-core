@@ -4,6 +4,7 @@ Application lifecycle management within network namespaces.
 This module provides functions for starting, stopping, and managing applications
 that run within network namespaces.
 """
+
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class _OwnedAppProcess:
-    process: subprocess.Popen
+    process: subprocess.Popen[Any]
     namespace: Optional[str]
     app_id: str
 
@@ -186,7 +187,9 @@ def start_app_in_namespace(
         return False
 
     namespace_display = namespace if namespace else "root"
-    log.info(f"Starting app '{app_id}' in namespace '{namespace_display}' with command: {app_command}")
+    log.info(
+        f"Starting app '{app_id}' in namespace '{namespace_display}' with command: {app_command}"
+    )
 
     # Build command based on namespace
     if namespace is None:  # Root namespace
@@ -231,7 +234,9 @@ def start_app_in_namespace(
         terminate_process(proc)
         raise
 
-    log.info(f"Launched app '{app_id}' in namespace '{namespace_display}' with PID {proc.pid}")
+    log.info(
+        f"Launched app '{app_id}' in namespace '{namespace_display}' with PID {proc.pid}"
+    )
 
     # Wait a moment for process to start
     time.sleep(0.5)
@@ -242,7 +247,9 @@ def start_app_in_namespace(
             log.info(f"Process {proc.pid} is running (confirmed via poll())")
         else:
             returncode = proc.poll()
-            log.warning(f"Process {proc.pid} exited immediately with return code {returncode}")
+            log.warning(
+                f"Process {proc.pid} exited immediately with return code {returncode}"
+            )
             with _owned_app_processes_lock:
                 _owned_app_processes.pop(proc.pid, None)
             # Try to read some log output for diagnosis
@@ -261,11 +268,13 @@ def start_app_in_namespace(
     if namespace is not None:
         _verify_app_in_namespace(proc.pid, namespace, app_command)
 
-    log.info(f"App '{app_id}' startup verification complete. Monitor logs at /tmp/{app_id}.log")
+    log.info(
+        f"App '{app_id}' startup verification complete. Monitor logs at /tmp/{app_id}.log"
+    )
     return True
 
 
-def _verify_app_in_namespace(pid: int, namespace: str, app_command: str):
+def _verify_app_in_namespace(pid: int, namespace: str, app_command: str) -> None:
     """
     Verify that an app process is visible in a namespace.
 
@@ -277,7 +286,9 @@ def _verify_app_in_namespace(pid: int, namespace: str, app_command: str):
     try:
         ns_pids = processes.get_processes_in_namespace(namespace)
         if pid in ns_pids:
-            log.info(f"Process {pid} confirmed visible in namespace '{namespace}' (found in namespace PIDs)")
+            log.info(
+                f"Process {pid} confirmed visible in namespace '{namespace}' (found in namespace PIDs)"
+            )
         else:
             log.info(
                 f"Process {pid} not directly in namespace PIDs list (may be wrapper process). "
@@ -288,10 +299,18 @@ def _verify_app_in_namespace(pid: int, namespace: str, app_command: str):
                 cmd_parts = app_command.split()
                 if cmd_parts:
                     base_cmd = cmd_parts[0]
-                    ps_result = ns_exec(["ps", "aux"], namespace=namespace, no_output=True)
-                    matching_lines = [line for line in ps_result.stdout.splitlines() if base_cmd in line]
+                    ps_result = ns_exec(
+                        ["ps", "aux"], namespace=namespace, no_output=True
+                    )
+                    matching_lines = [
+                        line
+                        for line in ps_result.stdout.splitlines()
+                        if base_cmd in line
+                    ]
                     if matching_lines:
-                        log.info(f"Found {len(matching_lines)} process(es) matching '{base_cmd}' in namespace '{namespace}'")
+                        log.info(
+                            f"Found {len(matching_lines)} process(es) matching '{base_cmd}' in namespace '{namespace}'"
+                        )
                         for line in matching_lines[:3]:
                             log.debug(f"  {line.strip()}")
             except Exception as e:
@@ -377,7 +396,9 @@ def stop_app_in_namespace(
         return False
 
 
-def _stop_app_in_root(pid: Optional[int], app_command: str, namespace_display: str) -> bool:
+def _stop_app_in_root(
+    pid: Optional[int], app_command: str, namespace_display: str
+) -> bool:
     """Stop app in root namespace."""
     try:
         if pid:
@@ -390,7 +411,9 @@ def _stop_app_in_root(pid: Optional[int], app_command: str, namespace_display: s
             if cmd_parts:
                 base_cmd = cmd_parts[0]
                 run_command(["pkill", "-f", base_cmd], raise_on_fail=True)
-                log.info(f"Stopped app in {namespace_display} using pkill for {base_cmd}")
+                log.info(
+                    f"Stopped app in {namespace_display} using pkill for {base_cmd}"
+                )
                 return True
     except RunCommandError as e:
         log.warning(f"Failed to kill app in {namespace_display}: {e}")
@@ -419,7 +442,9 @@ def _stop_app_in_namespace_safe(
     verified_pid = None
     if pid:
         try:
-            identify_result = run_command(["ip", "netns", "identify", str(pid)], raise_on_fail=False)
+            identify_result = run_command(
+                ["ip", "netns", "identify", str(pid)], raise_on_fail=False
+            )
             if identify_result.return_code == 0 and namespace in identify_result.stdout:
                 verified_pid = pid
                 log.info(f"PID {pid} confirmed in namespace {namespace}")
@@ -451,7 +476,9 @@ def _stop_app_in_namespace_safe(
             # Also check if verified_pid is in the namespace PIDs list
             if verified_pid and verified_pid in ns_pids:
                 matching_pids.append(verified_pid)
-                log.info(f"PID {verified_pid} from file is in namespace and matches app")
+                log.info(
+                    f"PID {verified_pid} from file is in namespace and matches app"
+                )
 
             # Check other PIDs in namespace for command match
             for ns_pid in ns_pids:
@@ -461,13 +488,16 @@ def _stop_app_in_namespace_safe(
                 try:
                     # Check /proc/<pid>/cmdline to see if it matches our app
                     cmdline_result = run_command(
-                        ["cat", f"/proc/{ns_pid}/cmdline"], raise_on_fail=False, no_output=True
+                        ["cat", f"/proc/{ns_pid}/cmdline"],
+                        raise_on_fail=False,
                     )
                     if cmdline_result.return_code == 0:
-                        cmdline = cmdline_result.stdout.replace('\0', ' ')
+                        cmdline = cmdline_result.stdout.replace("\0", " ")
                         if base_cmd in cmdline:
                             matching_pids.append(ns_pid)
-                            log.debug(f"Found matching PID {ns_pid} in namespace: {cmdline.strip()}")
+                            log.debug(
+                                f"Found matching PID {ns_pid} in namespace: {cmdline.strip()}"
+                            )
                 except RunCommandError:
                     # Process may have exited, skip it
                     continue
@@ -482,12 +512,18 @@ def _stop_app_in_namespace_safe(
                 try:
                     run_command(["kill", str(match_pid)], raise_on_fail=True)
                     killed_count += 1
-                    log.info(f"Killed PID {match_pid} (app '{app_id}') in namespace {namespace}")
+                    log.info(
+                        f"Killed PID {match_pid} (app '{app_id}') in namespace {namespace}"
+                    )
                 except RunCommandError as e:
-                    log.warning(f"Failed to kill PID {match_pid} in namespace {namespace}: {e}")
+                    log.warning(
+                        f"Failed to kill PID {match_pid} in namespace {namespace}: {e}"
+                    )
 
             if killed_count > 0:
-                log.info(f"Successfully stopped {killed_count} process(es) in namespace {namespace}")
+                log.info(
+                    f"Successfully stopped {killed_count} process(es) in namespace {namespace}"
+                )
                 return True
         else:
             log.info(
@@ -501,10 +537,14 @@ def _stop_app_in_namespace_safe(
         if verified_pid:
             try:
                 run_command(["kill", str(verified_pid)], raise_on_fail=True)
-                log.info(f"Killed verified PID {verified_pid} in namespace {namespace} (fallback)")
+                log.info(
+                    f"Killed verified PID {verified_pid} in namespace {namespace} (fallback)"
+                )
                 return True
             except RunCommandError as kill_err:
-                log.warning(f"Fallback kill also failed for PID {verified_pid}: {kill_err}")
+                log.warning(
+                    f"Fallback kill also failed for PID {verified_pid}: {kill_err}"
+                )
     except Exception as e:
         log.error(f"Unexpected error getting PIDs from namespace {namespace}: {e}")
 

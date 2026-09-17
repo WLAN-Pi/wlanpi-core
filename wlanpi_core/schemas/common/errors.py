@@ -1,4 +1,5 @@
 """Shared error and status response models for OpenAPI."""
+
 from __future__ import annotations
 
 from typing import Any, Optional

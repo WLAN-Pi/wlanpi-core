@@ -19,7 +19,7 @@ class SecurityInitError(Exception):
 
 
 class SecurityManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.secrets_path = Path(SECRETS_DIR)
         self._fernet: Optional[Fernet] = None
         try:
@@ -85,7 +85,7 @@ class SecurityManager:
         log.error("Filesystem not ready after all retries")
         return False
 
-    def _setup_secrets_directory(self):
+    def _setup_secrets_directory(self) -> None:
         """Create and secure secrets directory"""
         try:
             self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -145,7 +145,7 @@ class SecurityManager:
             log.exception(f"Failed to setup shared secret: {e}")
             raise
 
-    def _setup_encryption_key(self):
+    def _setup_encryption_key(self) -> None:
         """Generate or load Fernet encryption key"""
         key_path = self.secrets_path / ENCRYPTION_KEY_FILE
 

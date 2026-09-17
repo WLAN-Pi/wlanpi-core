@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Optional
+from typing import Any, Optional
 
 from wlanpi_core.schemas.network.network import IPInterface
 from wlanpi_core.schemas.network.types import IP_SHOW_TYPES, CustomIPInterfaceFilter
@@ -13,7 +13,8 @@ def get_interfaces(
     cmd = ["ip", "--details", "-j", "addr", "show"]
     if show_type:
         cmd += ["type", show_type.lower()]
-    cmd_output: list[dict[str, any]] = run_command(cmd).output_from_json()
+    parsed = run_command(cmd).output_from_json()
+    cmd_output: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
 
     # Attach extra data, like link speed
     for interface in cmd_output:
