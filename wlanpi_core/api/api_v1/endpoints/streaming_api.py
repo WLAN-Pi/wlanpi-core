@@ -124,7 +124,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     `CAPTURE_STARTED` event. Any other authenticated connection may
     `{ "command": "subscribe", "session_id": … }` to receive the same binary
     stream read-only (`list_sessions` enumerates running captures); only the
-    owning connection can `configure`/`stop`. `unsubscribe` detaches.
+    owning connection can `configure`/`stop`. `unsubscribe` detaches. A session
+    accepts a limited number of concurrent subscribers; a further `subscribe`
+    gets a `SUBSCRIBER_LIMIT` error.
 
     **Long-running:** keep connection open for entire capture session; use `stop` before disconnect.
 
