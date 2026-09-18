@@ -1,3 +1,16 @@
+wlanpi-core (2.1.21-1) unstable; urgency=medium
+
+  * Raise the capture subscriber queue budget (128 to 1024 blocks) and send
+    timeout (1.0s to 5.0s) so a subscriber survives transient stalls on a
+    busy channel instead of being dropped. At the about 2800 packets/s
+    measured on a busy 5 GHz channel the new budget is about 0.37s, versus
+    about 46ms before.
+  * Cap concurrent subscribers per capture session at 4, so a handful of
+    stalled subscriber queues cannot pin their per-subscriber buffer as a
+    soft memory denial of service.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 17:54:00 -0400
+
 wlanpi-core (2.1.20-1) unstable; urgency=medium
 
   * Force IPv4 (-4) for reachability pings. Without it, hostnames resolve

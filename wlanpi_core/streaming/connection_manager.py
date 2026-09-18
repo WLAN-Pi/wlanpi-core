@@ -25,8 +25,18 @@ from wlanpi_core.wlan.scan import iter_adapters
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
-_SUBSCRIBER_SEND_TIMEOUT_SEC = 1.0
-_SUBSCRIBER_QUEUE_BLOCKS = 128
+# shortcut: fixed subscriber budget. 1024 blocks is ~0.37s at the ~2800
+# packets/s measured on a busy 5 GHz channel (ch40, ~2 MB/s) and ~2.3s at
+# ~450 packets/s on a quieter 2.4 GHz one (ch6). Tolerates bursts and
+# transient stalls before evicting; make it adaptive (e.g. per-consumer
+# drain rate) or drop-oldest if busy channels still evict.
+_SUBSCRIBER_SEND_TIMEOUT_SEC = 5.0
+_SUBSCRIBER_QUEUE_BLOCKS = 1024
+# Cap concurrent subscribers per session so N stalled queues cannot pin
+# _SUBSCRIBER_QUEUE_BLOCKS * block_size each. Any authenticated principal may
+# subscribe (device-open reads), so without this a handful of stalled
+# subscribers is a soft memory DoS.
+_MAX_SUBSCRIBERS_PER_SESSION = 4
 _SLOW_SUBSCRIBER_CLOSE_CODE = 1013
 _PCAPNG_SECTION_HEADER = b"\x0a\x0d\x0d\x0a"
 _PCAPNG_PACKET_BLOCK_TYPES = {0x00000002, 0x00000003, 0x00000006}
@@ -328,6 +338,14 @@ class ConnectionManager:
                 "error",
                 "SESSION_NOT_FOUND",
                 f"No running capture session: {session_id}",
+            )
+            return
+        if len(owner_client.get("subscribers", set())) >= _MAX_SUBSCRIBERS_PER_SESSION:
+            await self.send_message_event(
+                websocket,
+                "error",
+                "SUBSCRIBER_LIMIT",
+                "Session has reached its subscriber limit.",
             )
             return
 

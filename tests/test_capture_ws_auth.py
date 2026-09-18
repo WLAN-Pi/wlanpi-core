@@ -386,6 +386,37 @@ async def test_subscriber_disconnect_detaches_cleanly():
 
 
 @pytest.mark.asyncio
+async def test_subscriber_limit_rejects_extra_subscribers(monkeypatch):
+    from wlanpi_core.streaming import connection_manager
+    from wlanpi_core.streaming.connection_manager import ConnectionManager
+
+    monkeypatch.setattr(connection_manager, "_MAX_SUBSCRIBERS_PER_SESSION", 2)
+    mgr = ConnectionManager()
+    owner = await _connected(mgr, "owner-did")
+    client = _register_session(mgr, owner, "cap_test")
+    first = await _connected(mgr, "first-did")
+    second = await _connected(mgr, "second-did")
+    third = await _connected(mgr, "third-did")
+
+    await mgr.subscribe(first, "cap_test")
+    await mgr.subscribe(second, "cap_test")
+    await mgr.subscribe(third, "cap_test")
+
+    assert client["subscribers"] == {first, second}
+    assert mgr.clients[third]["subscribed_to"] is None
+    sent = [json.loads(call.args[0]) for call in third.send_text.await_args_list]
+    assert [e["code"] for e in sent] == ["SUBSCRIBER_LIMIT"]
+
+    for subscriber in (first, second):
+        task = mgr.clients[subscriber]["subscription_task"]
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_old_session_end_does_not_clear_new_subscription():
     from wlanpi_core.streaming.connection_manager import ConnectionManager
 

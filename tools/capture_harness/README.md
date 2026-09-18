@@ -134,6 +134,45 @@ external adapter with its own phy. Core retries a transiently-busy channel set
 once; a persistent failure appears as a `CHANNEL_SET_FAILED` event carrying the
 `iw` reason.
 
+Core sets the requested channel once at capture start, but does not hold it. If
+another monitor vif on the same phy is active (e.g. `wlan0mon` driven by the
+Kismet daemon, which channel-hops the shared radio continuously), that vif
+retunes the radio during the capture, so the stream may carry frames from
+whatever channel the phy currently holds rather than the configured one. This
+is expected shared-phy behavior, not a core bug.
+
+### Hold a fixed channel when Kismet is running
+
+Kismet's teardown removes the monitor vifs it manages, so stop it, then
+recreate the capture vif (`wlanpi0`), before starting the capture:
+
+```bash
+sudo systemctl stop kismet
+# Recreate the capture vif if Kismet's teardown removed it.
+sudo iw phy phy0 interface add wlanpi0 type monitor
+sudo ip link set wlanpi0 up
+# Cycle the vif if the phy was left wedged by the teardown
+# (iw reports "Device or resource busy" on the channel set otherwise).
+sudo ip link set wlanpi0 down && sudo ip link set wlanpi0 up
+```
+
+Run the capture as normal; the configured channel now holds and the stream
+carries frames from it. Restart Kismet when done:
+
+```bash
+sudo systemctl start kismet
+```
+
+Skipping the stop step means the radio follows Kismet's channel hops instead of
+the configured channel.
+
+## Subscriber buffering
+
+How long a subscriber survives before core evicts it with close code 1013, and
+how the queue budget and send timeout affect that, is covered in
+[`subscriber_buffering/`](subscriber_buffering/README.md). It includes a
+deterministic in-process test and a device test that stalls a live subscriber.
+
 ## Dissector scope
 
 Deliberately minimal: radiotap first-present-word fields (channel, signal, TX
