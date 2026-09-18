@@ -20,6 +20,6 @@ psutil
 dbus-python
 
 # PAM authentication broker (wlanpi-webui session login)
-python-pam
+pamela
 
 --extra-index-url https://www.piwheels.org/simple

@@ -1,3 +1,11 @@
 """Authentication schemas."""
 
-from .auth import KeyResponse, Token, TokenRequest, TokenRevokeResponse
+from .auth import (
+    KeyResponse,
+    PAMAuthRequest,
+    PAMAuthResponse,
+    PAMChangePasswordRequest,
+    Token,
+    TokenRequest,
+    TokenRevokeResponse,
+)

@@ -86,7 +86,7 @@ python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   pydantic-settings
-python-pam==2.1.0
+pamela==1.2.0
     # via -r requirements.in
 requests==2.34.2
     # via -r requirements.in

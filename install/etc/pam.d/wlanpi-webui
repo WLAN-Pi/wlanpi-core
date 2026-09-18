@@ -1,9 +1,9 @@
 #%PAM-1.0
-# PAM service for the wlanpi-webui session login.
-# Authenticates any local account; WebUI management access is limited to
-# members of the sudo group (same trust level as the device administrator).
-auth    optional    pam_faildelay.so delay=2000000
-auth    substack    common-auth
-account required    pam_nologin.so
-account required    pam_succeed_if.so user ingroup sudo
-account include     common-account
+# PAM service for the wlanpi-webui session login and expired-password change.
+# Sudo-group authorization is enforced by wlanpi-core (fails closed even if
+# this profile falls back to /etc/pam.d/other); this file only supplies the
+# standard authentication, account, and password-management stacks.
+auth     substack    common-auth
+account  required    pam_nologin.so
+account  include     common-account
+password include     common-password

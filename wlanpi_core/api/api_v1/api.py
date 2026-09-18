@@ -8,7 +8,6 @@ from wlanpi_core.api.api_v1.endpoints import (
     network_api,
     network_config_api,
     network_info_api,
-    pam_api,
     profiler_api,
     streaming_api,
     system_api,
@@ -19,7 +18,6 @@ from wlanpi_core.api.api_v1.endpoints import (
 api_router = APIRouter()
 
 api_router.include_router(auth_api.router, prefix="/auth", tags=["authentication"])
-api_router.include_router(pam_api.router, prefix="/auth", tags=["authentication"])
 
 api_router.include_router(bluetooth_api.router, prefix="/bluetooth", tags=["bluetooth"])
 

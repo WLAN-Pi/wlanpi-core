@@ -1,14 +1,16 @@
 wlanpi-core (2.1.19-1) unstable; urgency=medium
 
-  * Add internal localhost/HMAC-only PAM endpoint (POST /api/v1/auth/pam) that
-    verifies a local account password on behalf of wlanpi-webui, which runs
-    unprivileged and cannot use pam_unix itself. The wlanpi-webui PAM service
-    limits WebUI management access to the sudo group. No password is stored or
-    logged; no Core token is issued.
+  * Add internal localhost/HMAC-only PAM endpoints for wlanpi-webui session
+    login (POST /api/v1/auth/pam) and expired-password change
+    (POST /api/v1/auth/pam/change) via pamela (pam_chauthtok). WebUI runs
+    unprivileged and cannot use pam_unix itself, so the root-running core
+    brokers the PAM conversation. Management access is limited to the sudo
+    group, enforced by core (fails closed even if the PAM profile is absent).
+    Passwords are never persisted, logged, or exchanged for a Core token.
   * Stop logging nginx request bodies (credentials could pass through the
     reverse proxy during login).
-  * Add python-pam dependency and libpam0g/libpam-modules/libpam-runtime
-    package dependencies.
+  * Add pamela dependency and libpam0g/libpam-modules/libpam-runtime package
+    dependencies.
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 16:20:00 -0400
 
