@@ -49,6 +49,22 @@ def test_parse_targets_param_supports_comma_and_repeat():
     ]
 
 
+def test_get_default_gateways_extracts_interface_name():
+    from wlanpi_core.utils import network as network_utils
+
+    output = (
+        "default via 192.168.6.1 dev eth0 proto dhcp src 192.168.6.63 metric 100\n"
+        "default via 10.0.0.1 dev wlan0 proto dhcp metric 600\n"
+    )
+    with patch.object(
+        network_utils, "run_command", return_value=CommandResult(output, "", 0)
+    ):
+        assert network_utils.get_default_gateways() == {
+            "eth0": "192.168.6.1",
+            "wlan0": "10.0.0.1",
+        }
+
+
 def test_parse_targets_param_enforces_limit():
     with pytest.raises(ValueError, match="at most"):
         parse_targets_param([",".join(f"10.0.0.{i}" for i in range(1, 12))])

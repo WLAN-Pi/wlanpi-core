@@ -88,7 +88,10 @@ async def ping_target(target: str) -> dict[str, Any]:
     """Ping one target and return structured stats."""
     target = validate_ping_target(target)
     result = await run_command_async(
-        ["jc", "ping", "-c1", "-W2", "-q", target],
+        # ponytail: -4 because hostnames otherwise resolve to IPv6 first and
+        # fail on IPv4-only links (the old reachability.sh used -4 too).
+        # Ceiling: IPv6 targets unsupported. Upgrade: pick the family per target.
+        ["jc", "ping", "-c1", "-W2", "-q", "-4", target],
         raise_on_fail=False,
     )
     parsed = result.output_from_json()

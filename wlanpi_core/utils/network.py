@@ -22,7 +22,9 @@ def get_default_gateways() -> dict[str, str]:
     for line in output:
         if "default via" in line:  # This is the default gateway line
             res = line.split("via ")[1].split(" dev ")
-            gateways[res[1].strip()] = res[0].strip()
+            # res[1] is e.g. "eth0 proto dhcp src 192.168.6.63 metric 100";
+            # take just the interface name for callers like arping -I.
+            gateways[res[1].split()[0]] = res[0].strip()
     return gateways
 
 
