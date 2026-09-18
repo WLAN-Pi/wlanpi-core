@@ -1,3 +1,9 @@
+wlanpi-core (2.1.19-2) unstable; urgency=medium
+
+  * Sync wlanpi_core/__version__.py with debian/changelog (2.1.19).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 21:29:00 -0400
+
 wlanpi-core (2.1.19-1) unstable; urgency=medium
 
   * Add internal localhost/HMAC-only PAM endpoints for wlanpi-webui session
