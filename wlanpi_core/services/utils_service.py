@@ -79,7 +79,7 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
 
     ping_google_task = asyncio.create_task(
         run_command_async(
-            ["jc", "ping", "-c1", "-W2", "-q", "google.com"],
+            ["jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
             raise_on_fail=False,
         )
     )
@@ -92,7 +92,7 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
     )
     ping_gateway_task = asyncio.create_task(
         run_command_async(
-            ["jc", "ping", "-c1", "-W2", "-q", default_gateway],
+            ["jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
             raise_on_fail=False,
         )
     )

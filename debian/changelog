@@ -1,3 +1,14 @@
+wlanpi-core (2.1.20-1) unstable; urgency=medium
+
+  * Force IPv4 (-4) for reachability pings. Without it, hostnames resolve
+    to IPv6 first and the Ping Google and custom-target checks fail on
+    IPv4-only links (jc also mis-parses the IPv6 output).
+  * Fix get_default_gateways to return only the interface name, so the
+    Reachability card's arping -I no longer fails with trailing route
+    tokens (proto dhcp src ... metric ...).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 00:55:00 -0400
+
 wlanpi-core (2.1.19-2) unstable; urgency=medium
 
   * Sync wlanpi_core/__version__.py with debian/changelog (2.1.19).
