@@ -86,6 +86,8 @@ python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   pydantic-settings
+pamela==1.2.0
+    # via -r requirements.in
 requests==2.34.2
     # via -r requirements.in
 slowapi==0.1.9

@@ -1,6 +1,6 @@
 """Authentication and token schemas."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class KeyResponse(BaseModel):
@@ -34,4 +34,28 @@ class TokenRevokeResponse(BaseModel):
     message: str = Field(examples=["Token revoked"])
     device_id: str | None = Field(
         default=None, description="Present when a token record was matched"
+    )
+
+
+class PAMAuthRequest(BaseModel):
+    """Credentials to verify against the system PAM stack."""
+
+    username: str = Field(min_length=1, max_length=128)
+    password: SecretStr = Field(min_length=1, max_length=512)
+
+
+class PAMChangePasswordRequest(BaseModel):
+    """Credentials to change an expired password through PAM."""
+
+    username: str = Field(min_length=1, max_length=128)
+    current_password: SecretStr = Field(min_length=1, max_length=512)
+    new_password: SecretStr = Field(min_length=1, max_length=512)
+
+
+class PAMAuthResponse(BaseModel):
+    """Outcome of a PAM verification or password-change attempt."""
+
+    status: str = Field(
+        examples=["success", "failure", "password_change_required"],
+        description="success | failure | password_change_required",
     )
