@@ -58,9 +58,7 @@ than committing a red tree and planning to repair it later.
    endpoints catch `Exception`, log it, and return a 500/503 response rather
    than crash the request. Do not narrow these to appease a linter; do narrow
    an `except Exception` that wraps a single clearly-bounded operation.
-6. **Coverage artifacts are never committed.** `.coverage`, `coverage.xml`,
-   and `coverage.svg` regenerate on every `tox` run. Do not `git add` them.
-7. **Whitespace is handled by ruff** (W291/W293) and `ruff format`. There are
+6. **Whitespace is handled by ruff** (W291/W293) and `ruff format`. There are
    no whitespace scripts; do not reintroduce them.
 
 ## Writing tests
