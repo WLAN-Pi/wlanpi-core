@@ -16,6 +16,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 concurrency:
   group: openapi-reference-sync
@@ -25,6 +26,7 @@ jobs:
   regenerate:
     if: github.repository_owner == 'WLAN-Pi'
     runs-on: "${{ vars.RUNS_ON || 'ubuntu-26.04' }}"
+    timeout-minutes: 30
 
     steps:
       - name: Check out dev
@@ -57,6 +59,7 @@ jobs:
         run: python scripts/export_openapi.py
 
       - name: Open or update OpenAPI reference PR
+        id: cpr
         uses: peter-evans/create-pull-request@v8
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -72,6 +75,43 @@ jobs:
 
             This pull request is maintained automatically. wlanpi-core also
             serves the current schema at `/api/v1/openapi.json`.
+
+      # A PR created with GITHUB_TOKEN does not trigger the required
+      # workflows, so dispatch them against the automation branch. The
+      # workflow_dispatch event is an explicit exception to that suppression.
+      - name: Trigger required checks on the automation branch
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        run: |
+          for workflow in \
+            python-lint-police.yml \
+            python-format-police.yml \
+            test-python-package.yml; do
+            gh workflow run "$workflow" \
+              --ref automation/openapi-reference \
+              --repo "${{ github.repository }}"
+          done
+
+      # Merge only when the checks pass. A failed check leaves the PR open for
+      # review. No stored token is used: the run's GITHUB_TOKEN is ephemeral.
+      - name: Merge the OpenAPI reference PR when the checks pass
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        run: |
+          pr="${{ steps.cpr.outputs.pull-request-number }}"
+          repo="${{ github.repository }}"
+          for attempt in $(seq 1 30); do
+            count=$(gh pr view "$pr" --repo "$repo" \
+              --json statusCheckRollup -q '.statusCheckRollup | length')
+            if [ "$count" -gt 0 ]; then
+              break
+            fi
+            sleep 10
+          done
+          gh pr checks "$pr" --repo "$repo" --watch --fail-fast
+          gh pr merge "$pr" --repo "$repo" --squash --delete-branch
 
   slack-workflow-status:
     if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (! github.event.pull_request.head.repo.fork) }}
