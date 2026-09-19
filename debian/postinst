@@ -139,10 +139,6 @@ if ! ischroot; then
     if [ -f /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh ]; then
         /etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh
     fi
-else
-    if [ -f /lib/systemd/system/wlanpi-core-ufw-first-boot.service ]; then
-        systemctl enable wlanpi-core-ufw-first-boot.service
-    fi
 fi
 
 # Our lldpd drop-in enables CDP reception; reload and restart lldpd so it

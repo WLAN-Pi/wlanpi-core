@@ -1,3 +1,16 @@
+wlanpi-core (2.1.22-1) unstable; urgency=medium
+
+  * Manage wlanpi-core-ufw-first-boot.service with dh_installsystemd so it is
+    enabled on apt installs, not only on image builds, and its enable symlink
+    is removed on purge. The postinst no longer enables it by hand, so the
+    per-device TLS certificate and UFW rules are re-checked on boot.
+  * Document that the self-signed certificate covers the device's current
+    .local name and the eth0-MAC-derived wlanpi-<last3>.local name, and that
+    a hostname changed by other means is not kept in sync with the
+    certificate.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 22:07:00 -0400
+
 wlanpi-core (2.1.21-1) unstable; urgency=medium
 
   * Raise the capture subscriber queue budget (128 to 1024 blocks) and send

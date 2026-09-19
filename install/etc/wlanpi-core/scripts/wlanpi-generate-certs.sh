@@ -10,6 +10,10 @@
 # otherwise browsers/users hit hostname mismatch warnings (wlanpi-core#175).
 # Existing certificates that predate that SAN are regenerated.
 #
+# A hostname changed by any other means (not the eth0-MAC-derived name above)
+# is not tracked, so the certificate is not regenerated for it. Clients that
+# connect by such a name get a hostname mismatch.
+#
 # Test hooks: NGINX_SSL_DIR, COCKPIT_CERTS_DIR and WLANPI_ETH0_MAC override
 # the production paths/MAC so the script can be exercised without touching
 # the live system.

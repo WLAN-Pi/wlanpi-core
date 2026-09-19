@@ -226,7 +226,11 @@ Production uses
 `wss://<host>:31415/api/v1/streaming/capture`. nginx proxies the
 `Upgrade`/`Connection` headers with unbuffered, long-lived streaming. Clients
 must trust `/etc/nginx/ssl/self-signed-wlanpi.cert` and connect using a name or
-address in its SAN (`localhost`, `wlanpi.local`, `127.0.0.1`, or `198.18.42.1`).
+address in its SAN (`localhost`, `wlanpi.local`, the device's current
+`<hostname>.local` name, its eth0-MAC-derived `wlanpi-<last3>.local` name,
+`127.0.0.1`, or `198.18.42.1`). The common name is always `wlanpi.local`, and
+hostname verification uses the SAN. A hostname changed by other means is not
+kept in sync with the certificate; see the API integration guide.
 
 The development server remains available directly at
 `ws://127.0.0.1:8000/api/v1/streaming/capture` when you run it explicitly.

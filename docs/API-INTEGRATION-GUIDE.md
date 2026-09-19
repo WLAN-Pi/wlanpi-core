@@ -45,9 +45,11 @@ this file; it is both the leaf certificate and the trust anchor.
 
 On each connection the client checks three things: (1) the presented certificate
 matches the pinned file, (2) the connection target appears in the SANs
-(`localhost`, `wlanpi.local`, `127.0.0.1`, `198.18.42.1`), and (3) the current
-date is inside the validity window. Any failure kills the connection before API
-data flows.
+(`localhost`, `wlanpi.local`, the device's current `<hostname>.local` name, its
+eth0-MAC-derived `wlanpi-<last3>.local` name, `127.0.0.1`, and `198.18.42.1`),
+and (3) the current date is inside the validity window. Any failure kills the
+connection before API data flows. The common name is always `wlanpi.local`;
+hostname verification uses the SAN, so the common name does not need to match.
 
 **Per-client setup:**
 
@@ -56,15 +58,23 @@ data flows.
 | Python Requests | `verify="/etc/nginx/ssl/self-signed-wlanpi.cert"` |
 | curl | `--cacert /etc/nginx/ssl/self-signed-wlanpi.cert` |
 | HTTPX | explicit `ssl_context` or `SSL_CERT_FILE` environment variable |
-| Firefox on device | already imported by `wlanpi-firefox-setup` — no action needed |
+| Firefox on device | already imported by `wlanpi-firefox-setup`, no action needed |
 
 Never use `verify=False`, `curl -k`, or an automatic HTTP fallback in
 production.
 
 **Remote clients** must import the certificate once before connecting. A
-hostname or IP outside the four SANs produces a hostname mismatch error. A
-client that has not imported the certificate receives an untrusted error and
-cannot proceed without bypassing verification — which authenticates nothing.
+hostname or IP outside the SANs listed above produces a hostname mismatch
+error. A client that has not imported the certificate receives an untrusted
+error and cannot proceed without bypassing verification, which authenticates
+nothing.
+
+The certificate is generated on the device from the eth0 MAC address, and it
+tracks the `wlanpi-<last3>.local` name that `wlanpi-rename-at-startup` assigns.
+If you change the hostname by any other means, the certificate is not
+regenerated for the new name, and connecting by that name produces a hostname
+mismatch. Pinning still succeeds because the certificate file is unchanged. If
+you rely on the pinned certificate, do not change the hostname.
 
 ---
 
