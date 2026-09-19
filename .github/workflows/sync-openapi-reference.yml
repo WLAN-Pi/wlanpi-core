@@ -76,21 +76,29 @@ jobs:
             This pull request is maintained automatically. wlanpi-core also
             serves the current schema at `/api/v1/openapi.json`.
 
-      # A PR created with GITHUB_TOKEN does not trigger the required
-      # workflows, so dispatch them against the automation branch. The
-      # workflow_dispatch event is an explicit exception to that suppression.
-      - name: Trigger required checks on the automation branch
+      # A PR created with GITHUB_TOKEN gets its pull_request runs gated as
+      # action_required. Approve them so the required checks execute against
+      # the PR head. No stored token is used.
+      - name: Approve the required checks on the automation branch
         if: steps.cpr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         run: |
-          for workflow in \
-            python-lint-police.yml \
-            python-format-police.yml \
-            test-python-package.yml; do
-            gh workflow run "$workflow" \
-              --ref automation/openapi-reference \
-              --repo "${{ github.repository }}"
+          repo="${{ github.repository }}"
+          pr="${{ steps.cpr.outputs.pull-request-number }}"
+          sha=$(gh pr view "$pr" --repo "$repo" --json headRefOid -q .headRefOid)
+          for attempt in $(seq 1 30); do
+            pending=$(gh api "repos/$repo/actions/runs?head_sha=$sha&per_page=100" \
+              -q '[.workflow_runs[] | select(.conclusion == "action_required")] | length')
+            if [ "$pending" -gt 0 ]; then
+              break
+            fi
+            sleep 10
+          done
+          for id in $(gh api "repos/$repo/actions/runs?head_sha=$sha&per_page=100" \
+            -q '.workflow_runs[] | select(.conclusion == "action_required") | .id'); do
+            echo "Approving run $id"
+            gh api -X POST "repos/$repo/actions/runs/$id/approve"
           done
 
       # Merge only when the checks pass. A failed check leaves the PR open for
