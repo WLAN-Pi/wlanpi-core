@@ -39,7 +39,7 @@ CDP_NEIGHBOUR = {
 }
 
 
-def _mock_lldpctl(monkeypatch, interfaces):
+def _mock_lldpctl(monkeypatch, interfaces, carrier=True):
     payload = {"lldp": [{"interface": interfaces} if interfaces else {}]}
 
     def fake_run_command(cmd, **kwargs):
@@ -47,6 +47,7 @@ def _mock_lldpctl(monkeypatch, interfaces):
         return CommandResult(json.dumps(payload), "", 0)
 
     monkeypatch.setattr(network_info_service, "run_command", fake_run_command)
+    monkeypatch.setattr(network_info_service, "_has_carrier", lambda iface: carrier)
 
 
 def test_show_lldp_neighbour_renders_legacy_lines(monkeypatch):
@@ -137,6 +138,38 @@ def test_show_vlan_falls_back_to_cdp(monkeypatch):
 
 def test_show_vlan_reports_missing_vlan(monkeypatch):
     _mock_lldpctl(monkeypatch, [])
+
+    assert network_info_service.show_vlan() == {
+        "info": [],
+        "error": "No VLAN found",
+    }
+
+
+def test_has_carrier_reads_sysfs(monkeypatch, tmp_path):
+    iface_dir = tmp_path / "eth0"
+    iface_dir.mkdir()
+    carrier = iface_dir / "carrier"
+    monkeypatch.setattr(network_info_service, "SYSFS_NET", str(tmp_path))
+
+    carrier.write_text("1\n")
+    assert network_info_service._has_carrier("eth0") is True
+
+    carrier.write_text("0\n")
+    assert network_info_service._has_carrier("eth0") is False
+    assert network_info_service._has_carrier("missing0") is False
+
+
+def test_show_neighbour_empty_when_no_carrier(monkeypatch):
+    _mock_lldpctl(monkeypatch, [LLDP_NEIGHBOUR], carrier=False)
+
+    assert network_info_service.show_lldp_neighbour() == {
+        "info": [],
+        "error": "No neighbour",
+    }
+
+
+def test_show_vlan_empty_when_no_carrier(monkeypatch):
+    _mock_lldpctl(monkeypatch, [LLDP_NEIGHBOUR, CDP_NEIGHBOUR], carrier=False)
 
     assert network_info_service.show_vlan() == {
         "info": [],
