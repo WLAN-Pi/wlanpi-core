@@ -26,6 +26,7 @@ def test_api_reachability_default(client):
             "Ping Google": "5ms",
             "Browse Google": "OK",
             "Ping Gateway": "1ms",
+            "DNS Server 1 Resolution": "9.9.9.9: OK",
             "Arping Gateway": "1ms",
             "custom": [],
         }
@@ -38,6 +39,7 @@ def test_api_reachability_default(client):
     assert response.status_code == 200
     reach.assert_awaited_once_with(targets=None)
     assert response.json()["Ping Google"] == "5ms"
+    assert response.json()["DNS Server 1 Resolution"] == "9.9.9.9: OK"
     assert response.json()["custom"] == []
 
 

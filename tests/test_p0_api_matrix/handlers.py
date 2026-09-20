@@ -90,6 +90,7 @@ def handle_utils_reachability_live(client, auth_headers, scenario):
         "Ping Google": "1ms",
         "Browse Google": "OK",
         "Ping Gateway": "1ms",
+        "DNS Server 1 Resolution": "9.9.9.9: OK",
         "Arping Gateway": "1ms",
         "custom": [],
     }

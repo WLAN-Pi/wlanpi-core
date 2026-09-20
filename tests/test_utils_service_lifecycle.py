@@ -45,6 +45,37 @@ async def test_reachability_handles_invalid_ping_json(monkeypatch):
     assert result["results"]["Ping Gateway"] == "FAIL"
     assert result["results"]["Browse Google"] == "OK"
     assert result["results"]["Arping Gateway"] == "1.25ms"
+    assert result["results"]["DNS Server 1 Resolution"] == "1.1.1.1: OK"
+
+
+@pytest.mark.asyncio
+async def test_reachability_reports_dns_server_address(monkeypatch):
+    monkeypatch.setattr(
+        utils_service,
+        "get_default_gateways",
+        lambda: {"eth0": "192.0.2.1"},
+    )
+    monkeypatch.setattr(
+        utils_service, "_read_dns_servers", lambda: ["9.9.9.9", "1.1.1.1"]
+    )
+
+    async def run_command(cmd, **_kwargs):
+        if cmd[0] == "curl":
+            return CommandResult("google.com", "", 0)
+        if cmd[0] == "arping":
+            return CommandResult("1.25ms", "", 0)
+        if cmd[0] == "dig":
+            return CommandResult(
+                "ns1.example.test", "", 0 if cmd[4] == "@9.9.9.9" else 1
+            )
+        return CommandResult("not JSON", "", 0)
+
+    monkeypatch.setattr(utils_service, "run_command_async", run_command)
+
+    result = await utils_service.show_reachability()
+
+    assert result["results"]["DNS Server 1 Resolution"] == "9.9.9.9: OK"
+    assert result["results"]["DNS Server 2 Resolution"] == "1.1.1.1: FAIL"
 
 
 @pytest.mark.asyncio

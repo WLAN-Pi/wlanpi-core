@@ -161,9 +161,11 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
         "display"
     ]
 
-    for index, dns_result in enumerate(dns_results, start=1):
+    for index, (dns, dns_result) in enumerate(
+        zip(dns_servers[:3], dns_results, strict=True), start=1
+    ):
         output["results"][f"DNS Server {index} Resolution"] = (
-            "OK" if dns_result.success else "FAIL"
+            f"{dns}: {'OK' if dns_result.success else 'FAIL'}"
         )
 
     arping_rtt = re.search(r"\d+(?:\.\d+)?ms", arping_gateway.stdout)
