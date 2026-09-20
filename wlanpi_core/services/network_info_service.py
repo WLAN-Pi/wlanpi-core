@@ -20,9 +20,25 @@ from wlanpi_core.utils.general import run_command
 
 log = get_logger(__name__)
 
+SYSFS_NET = "/sys/class/net"
+
+
+def _has_carrier(iface: str) -> bool:
+    """Whether the kernel reports carrier on the interface."""
+    try:
+        with open(f"{SYSFS_NET}/{iface}/carrier") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
 
 def _lldpctl_neighbours() -> list[dict[str, Any]]:
-    """Query lldpd for the current neighbour table, one entry per interface."""
+    """Query lldpd for the current neighbour table, one entry per interface.
+
+    Entries whose interface has no carrier are dropped. lldpd keeps a neighbour
+    until its TTL expires, so an unplugged link would otherwise report stale
+    data for up to three minutes.
+    """
     result = run_command([LLDPCTL_FILE, "-f", "json0"], raise_on_fail=True)
     data = result.output_from_json()
     if not isinstance(data, dict):
@@ -30,7 +46,9 @@ def _lldpctl_neighbours() -> list[dict[str, Any]]:
 
     neighbours: list[dict[str, Any]] = []
     for entry in data.get("lldp") or []:
-        neighbours.extend(entry.get("interface") or [])
+        for interface in entry.get("interface") or []:
+            if _has_carrier(str(interface.get("name", ""))):
+                neighbours.append(interface)
     return neighbours
 
 
