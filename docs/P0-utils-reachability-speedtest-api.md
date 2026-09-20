@@ -45,7 +45,7 @@ Built-in checks use the **legacy display keys** (unchanged for fpms2 / existing 
   "Ping Google": "5.17ms",
   "Browse Google": "OK",
   "Ping Gateway": "1.12ms",
-  "DNS Server 1 Resolution": "OK",
+  "DNS Server 1 Resolution": "9.9.9.9: OK",
   "Arping Gateway": "2ms",
   "custom": [
     {
@@ -75,7 +75,7 @@ Built-in checks use the **legacy display keys** (unchanged for fpms2 / existing 
 | `Ping Google` | string | RTT like `5.17ms` or `FAIL` |
 | `Browse Google` | string | `OK` or `FAIL` |
 | `Ping Gateway` | string | RTT or `FAIL` |
-| `DNS Server N Resolution` | string \| omitted | `OK` or `FAIL` when resolver N exists |
+| `DNS Server N Resolution` | string \| omitted | `<resolver>: OK` or `<resolver>: FAIL` when resolver N exists, e.g. `9.9.9.9: OK` |
 | `Arping Gateway` | string | RTT like `2ms` or `FAIL` |
 | `custom` | array | Empty when `targets` omitted; structured ping stats per custom host |
 | `custom[].target` | string | Echo of requested host/IP |

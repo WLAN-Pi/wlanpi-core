@@ -33,13 +33,13 @@ class ReachabilityTest(BaseModel):
         alias="Ping Gateway", json_schema_extra={"example": "12.345ms"}
     )
     dns_server_1_resolution: str | None = Field(
-        None, examples=["OK", "FAIL"], alias="DNS Server 1 Resolution"
+        None, examples=["9.9.9.9: OK", "9.9.9.9: FAIL"], alias="DNS Server 1 Resolution"
     )
     dns_server_2_resolution: str | None = Field(
-        None, examples=["OK", "FAIL"], alias="DNS Server 2 Resolution"
+        None, examples=["9.9.9.9: OK", "9.9.9.9: FAIL"], alias="DNS Server 2 Resolution"
     )
     dns_server_3_resolution: str | None = Field(
-        None, examples=["OK", "FAIL"], alias="DNS Server 3 Resolution"
+        None, examples=["9.9.9.9: OK", "9.9.9.9: FAIL"], alias="DNS Server 3 Resolution"
     )
     arping_gateway: str = Field(
         alias="Arping Gateway", json_schema_extra={"example": "12.345ms"}
