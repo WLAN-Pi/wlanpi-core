@@ -87,7 +87,7 @@ jobs:
           repo="${{ github.repository }}"
           pr="${{ steps.cpr.outputs.pull-request-number }}"
           sha=$(gh pr view "$pr" --repo "$repo" --json headRefOid -q .headRefOid)
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             pending=$(gh api "repos/$repo/actions/runs?head_sha=$sha&per_page=100" \
               -q '[.workflow_runs[] | select(.conclusion == "action_required")] | length')
             if [ "$pending" -gt 0 ]; then
@@ -110,7 +110,7 @@ jobs:
         run: |
           pr="${{ steps.cpr.outputs.pull-request-number }}"
           repo="${{ github.repository }}"
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             count=$(gh pr view "$pr" --repo "$repo" \
               --json statusCheckRollup -q '.statusCheckRollup | length')
             if [ "$count" -gt 0 ]; then
