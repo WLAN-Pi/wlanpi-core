@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import os
 import re
 import socket
 import sys
@@ -102,6 +103,19 @@ def colorize_json(json_str: str) -> str:
     return json_str
 
 
+def _write_env_file(path: str, token: str) -> None:
+    """Write WLANPI_TOKEN to path, creating or tightening it to 0600."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            fd = -1  # fdopen owns the descriptor now
+            f.write(f"WLANPI_TOKEN={token}\n")
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
 def main() -> int:
     """Entry point for the JWT token generator."""
     parser = argparse.ArgumentParser(description="Generate JWT token for device")
@@ -118,6 +132,17 @@ def main() -> int:
         action="store_true",
         help="Disable colorized output",
     )
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument(
+        "--export",
+        action="store_true",
+        help="print 'export WLANPI_TOKEN=<jwt>' for eval on the client",
+    )
+    output.add_argument(
+        "--write-env",
+        metavar="FILE",
+        help="write 'WLANPI_TOKEN=<jwt>' to FILE with 0600 permissions",
+    )
 
     args = parser.parse_args()
 
@@ -126,11 +151,6 @@ def main() -> int:
     try:
         client = DeviceAuthClient(args.device_id, args.port)
         token_response = client.get_token()
-        json_str = json.dumps(token_response, indent=2)
-        if not use_color:
-            print(json_str)
-        else:
-            print(colorize_json(json_str))
     except (FileNotFoundError, PermissionError) as e:
         if not use_color:
             print(f"File Error: {e!s}")
@@ -149,6 +169,29 @@ def main() -> int:
         else:
             print(f"{RED}Unexpected Error: {e!s}{NC}")
         return 1
+
+    if args.export or args.write_env:
+        token = token_response.get("access_token")
+        if not isinstance(token, str) or not token:
+            print(
+                "API Error: response did not include an access_token", file=sys.stderr
+            )
+            return 1
+        if args.write_env:
+            try:
+                _write_env_file(args.write_env, token)
+            except OSError as e:
+                print(f"File Error: {e!s}", file=sys.stderr)
+                return 1
+            return 0
+        print(f"export WLANPI_TOKEN={token}")
+        return 0
+
+    json_str = json.dumps(token_response, indent=2)
+    if not use_color:
+        print(json_str)
+    else:
+        print(colorize_json(json_str))
 
     return 0
 

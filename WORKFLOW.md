@@ -132,6 +132,20 @@ getjwt my-device-123
 getjwt my-device-123 8000
 ```
 
+Keep tokens in the environment or a keychain on the client machine, not in an
+MCP client config file where they sit in cleartext. Run `getjwt` over SSH and
+load the token into the current shell:
+
+```bash
+eval "$(ssh wlanpi@wlanpi getjwt my-device-123 --export)"
+```
+
+Or write it to a `0600` env file the client sources:
+
+```bash
+ssh wlanpi@wlanpi getjwt my-device-123 --write-env ~/.config/wlanpi/mcp.env
+```
+
 ### Manual HMAC authentication test
 
 ```bash
