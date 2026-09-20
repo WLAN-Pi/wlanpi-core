@@ -1,7 +1,10 @@
 """Profiler beaconing status helpers."""
 
+import json
 import os
 from typing import Any
+
+INFO_FILE = "/run/wlanpi-profiler.info.json"
 
 
 def get_status() -> dict[str, Any]:
@@ -12,8 +15,24 @@ def get_status() -> dict[str, Any]:
     return {
         "running": running,
         "ssid": ssid,
-        "passphrase": "12345678" if running else None,
+        "passphrase": _profiler_passphrase() if running else None,
     }
+
+
+def _profiler_info() -> dict[str, Any]:
+    """Read the profiler info file, or an empty mapping when unavailable."""
+    try:
+        with open(INFO_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _profiler_passphrase() -> str | None:
+    """Return the passphrase the profiler is actually using, if any."""
+    value = _profiler_info().get("passphrase")
+    return value if isinstance(value, str) and value else None
 
 
 def profiler_beaconing() -> bool:
