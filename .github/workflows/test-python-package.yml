@@ -20,6 +20,10 @@ on:
       - .gitignore
       - LICENSE
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   python:
     name: Python Tests

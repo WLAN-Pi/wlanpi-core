@@ -17,6 +17,10 @@ on:
       - .gitignore
       - LICENSE
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   python-lint-police:
     name: Python Lint Police

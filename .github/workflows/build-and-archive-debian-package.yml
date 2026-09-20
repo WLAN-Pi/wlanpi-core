@@ -8,6 +8,10 @@ on:
       - .github/dependabot.yml
       - .gitignore
       - LICENSE
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   format:
     name: Get formatted version for filename

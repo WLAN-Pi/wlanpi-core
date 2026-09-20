@@ -17,6 +17,10 @@ on:
       - .gitignore
       - LICENSE
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   python-format-police:
     name: Python Format Police
