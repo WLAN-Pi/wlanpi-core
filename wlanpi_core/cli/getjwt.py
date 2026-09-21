@@ -31,6 +31,11 @@ YELLOW = "\033[0;33m"
 NC = "\033[0m"
 
 
+def _running_as_root() -> bool:
+    """Whether the current process can read the root-only shared secret."""
+    return os.geteuid() == 0
+
+
 class DeviceAuthClient:
     """Client for authenticating devices and obtaining JWT tokens via local API."""
 
@@ -54,13 +59,19 @@ class DeviceAuthClient:
                 "Please ensure wlanpi-core server is running."
             ) from None
 
-        if not self.secret_file.exists():
-            raise FileNotFoundError(f"Secret not found at {self.secret_file}")
-
+        unreadable = (
+            f"Secret at {self.secret_file} is not readable. Run getjwt with sudo."
+        )
         try:
             self.secret_file.read_bytes()
         except PermissionError:
-            raise PermissionError("Secret exists but is not readable") from None
+            raise PermissionError(unreadable) from None
+        except FileNotFoundError:
+            # The secrets directory is not traversable by non-root users, so a
+            # non-root caller cannot stat the file either.
+            if not _running_as_root():
+                raise PermissionError(unreadable) from None
+            raise FileNotFoundError(f"Secret not found at {self.secret_file}") from None
 
     def generate_signature(self, request_body: str) -> str:
         """Generate an HMAC signature for the request using SHA256."""
@@ -103,19 +114,6 @@ def colorize_json(json_str: str) -> str:
     return json_str
 
 
-def _write_env_file(path: str, token: str) -> None:
-    """Write WLANPI_TOKEN to path, creating or tightening it to 0600."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w") as f:
-            fd = -1  # fdopen owns the descriptor now
-            f.write(f"WLANPI_TOKEN={token}\n")
-    finally:
-        if fd != -1:
-            os.close(fd)
-
-
 def main() -> int:
     """Entry point for the JWT token generator."""
     parser = argparse.ArgumentParser(description="Generate JWT token for device")
@@ -132,16 +130,10 @@ def main() -> int:
         action="store_true",
         help="Disable colorized output",
     )
-    output = parser.add_mutually_exclusive_group()
-    output.add_argument(
+    parser.add_argument(
         "--export",
         action="store_true",
         help="print 'export WLANPI_TOKEN=<jwt>' for eval on the client",
-    )
-    output.add_argument(
-        "--write-env",
-        metavar="FILE",
-        help="write 'WLANPI_TOKEN=<jwt>' to FILE with 0600 permissions",
     )
 
     args = parser.parse_args()
@@ -170,20 +162,13 @@ def main() -> int:
             print(f"{RED}Unexpected Error: {e!s}{NC}")
         return 1
 
-    if args.export or args.write_env:
+    if args.export:
         token = token_response.get("access_token")
         if not isinstance(token, str) or not token:
             print(
                 "API Error: response did not include an access_token", file=sys.stderr
             )
             return 1
-        if args.write_env:
-            try:
-                _write_env_file(args.write_env, token)
-            except OSError as e:
-                print(f"File Error: {e!s}", file=sys.stderr)
-                return 1
-            return 0
         print(f"export WLANPI_TOKEN={token}")
         return 0
 
