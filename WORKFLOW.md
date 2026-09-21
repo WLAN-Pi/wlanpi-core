@@ -122,29 +122,28 @@ For testing with the exact production setup:
 
 ### Creating JWT tokens
 
-The `getjwt` helper script generates JSON Web Tokens (JWTs) for bootstrapping authentication:
+The `getjwt` helper script generates JSON Web Tokens (JWTs) for bootstrapping
+authentication. It signs the request with core's shared HMAC secret, which is
+root-only, so run it with `sudo`:
 
 ```bash
 # Basic usage
-getjwt my-device-123
+sudo getjwt my-device-123
 
 # With custom port
-getjwt my-device-123 8000
+sudo getjwt my-device-123 8000
 ```
 
 Keep tokens in the environment or a keychain on the client machine, not in an
-MCP client config file where they sit in cleartext. Run `getjwt` over SSH and
-load the token into the current shell:
+MCP client config file where they sit in cleartext. On the device, print an
+export line and copy it into the client shell:
 
 ```bash
-eval "$(ssh wlanpi@wlanpi getjwt my-device-123 --export)"
+sudo getjwt my-device-123 --export
 ```
 
-Or write it to a `0600` env file the client sources:
-
-```bash
-ssh wlanpi@wlanpi getjwt my-device-123 --write-env ~/.config/wlanpi/mcp.env
-```
+Do not pipe `sudo getjwt` over `ssh`: sudo needs a TTY, and `ssh -t` folds the
+password prompt into the captured output, so `eval "$(ssh ...)"` is unreliable.
 
 ### Manual HMAC authentication test
 

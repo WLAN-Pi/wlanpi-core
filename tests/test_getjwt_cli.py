@@ -1,7 +1,6 @@
-"""Tests for the getjwt CLI token-hygiene flags."""
+"""Tests for the getjwt CLI."""
 
-import os
-import stat
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,9 +18,19 @@ class FakeClient:
         return {"access_token": TOKEN, "token_type": "bearer"}
 
 
+class UnreadableSecret:
+    def read_bytes(self):
+        raise PermissionError("permission denied")
+
+
 @pytest.fixture
 def fake_client(monkeypatch):
     monkeypatch.setattr(getjwt, "DeviceAuthClient", FakeClient)
+
+
+@pytest.fixture
+def connected_socket(monkeypatch):
+    monkeypatch.setattr(getjwt.socket, "socket", lambda *a, **k: MagicMock())
 
 
 def _run(monkeypatch, argv):
@@ -33,32 +42,6 @@ def test_export_prints_eval_ready_line(monkeypatch, capsys, fake_client):
     assert _run(monkeypatch, ["pi", "--export"]) == 0
 
     assert capsys.readouterr().out == f"export WLANPI_TOKEN={TOKEN}\n"
-
-
-def test_write_env_creates_0600_file(monkeypatch, tmp_path, fake_client):
-    env_file = tmp_path / "wlanpi.env"
-
-    assert _run(monkeypatch, ["pi", "--write-env", str(env_file)]) == 0
-
-    assert env_file.read_text() == f"WLANPI_TOKEN={TOKEN}\n"
-    assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
-
-
-def test_write_env_tightens_existing_file(monkeypatch, tmp_path, fake_client):
-    env_file = tmp_path / "wlanpi.env"
-    env_file.write_text("old")
-    env_file.chmod(0o644)
-
-    assert _run(monkeypatch, ["pi", "--write-env", str(env_file)]) == 0
-
-    assert stat.S_IMODE(os.stat(env_file).st_mode) == 0o600
-
-
-def test_export_and_write_env_are_mutually_exclusive(monkeypatch, fake_client):
-    with pytest.raises(SystemExit) as exc:
-        _run(monkeypatch, ["pi", "--export", "--write-env", "/tmp/x"])
-
-    assert exc.value.code == 2
 
 
 def test_default_still_prints_json(monkeypatch, capsys, fake_client):
@@ -76,3 +59,31 @@ def test_export_without_access_token_fails(monkeypatch, capsys):
 
     assert _run(monkeypatch, ["pi", "--export"]) == 1
     assert "access_token" in capsys.readouterr().err
+
+
+def test_unreadable_secret_points_at_sudo(monkeypatch, connected_socket, tmp_path):
+    secret = tmp_path / "shared_secret.bin"
+    secret.write_bytes(b"secret")
+    monkeypatch.setattr(getjwt, "SECRET_PATH", str(secret))
+
+    client = getjwt.DeviceAuthClient("pi")
+    client.secret_file = UnreadableSecret()
+
+    with pytest.raises(PermissionError, match="Run getjwt with sudo"):
+        client.validate_setup()
+
+
+def test_unstattable_secret_points_at_sudo(monkeypatch, connected_socket):
+    monkeypatch.setattr(getjwt, "SECRET_PATH", "/nonexistent/shared_secret.bin")
+    monkeypatch.setattr(getjwt, "_running_as_root", lambda: False)
+
+    with pytest.raises(PermissionError, match="Run getjwt with sudo"):
+        getjwt.DeviceAuthClient("pi")
+
+
+def test_missing_secret_reported_when_root(monkeypatch, connected_socket):
+    monkeypatch.setattr(getjwt, "SECRET_PATH", "/nonexistent/shared_secret.bin")
+    monkeypatch.setattr(getjwt, "_running_as_root", lambda: True)
+
+    with pytest.raises(FileNotFoundError, match="Secret not found"):
+        getjwt.DeviceAuthClient("pi")
