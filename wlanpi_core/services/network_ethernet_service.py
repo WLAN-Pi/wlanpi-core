@@ -2,7 +2,6 @@
 
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
-from ..models.network.vlan.vlan_file import VLANFile
 from ..models.validation_error import ValidationError
 from ..schemas.network.network import IPInterface, IPInterfaceAddress
 from ..schemas.network.types import CustomIPInterfaceFilter
@@ -31,8 +30,6 @@ async def get_vlans(
     custom_filter: CustomIPInterfaceFilter | None = None,
 ) -> dict[str, list[IPInterface]]:
     """Return all VLANs configured on the system as objects."""
-    # vlan_file = VLANFile()
-    # return vlan_file.get_vlans(interface)
     if interface is None:
         return LiveVLANs.get_vlan_interfaces_by_interface(custom_filter=custom_filter)
     else:
@@ -48,9 +45,6 @@ async def create_vlan(
     interface: str, vlan_id: str | int, addresses: list[IPInterfaceAddress]
 ) -> None:
     """Create a VLAN definition for a given interface."""
-    # vlan_file = VLANFile()
-    # return vlan_file.create_update_vlan(configuration=configuration, require_existing_interface=require_existing_interface)
-
     return LiveVLANs.create_vlan(
         if_name=_validated_interface(interface),
         vlan_id=_validated_vlan_id(vlan_id),
@@ -62,7 +56,6 @@ async def remove_vlan(
     interface: str, vlan_id: str | int, allow_missing: bool = False
 ) -> None:
     """Remove a VLAN definition for a given interface."""
-    VLANFile()
     return LiveVLANs.delete_vlan(
         if_name=_validated_interface(interface),
         vlan_id=_validated_vlan_id(vlan_id),
