@@ -1,3 +1,19 @@
+wlanpi-core (2.1.24-1) unstable; urgency=medium
+
+  * Report the profiler passphrase actually in use, read from
+    /run/wlanpi-profiler.info.json, instead of a hardcoded value.
+  * Drop LLDP/CDP neighbours on interfaces without carrier, so an unplugged link
+    reports empty immediately instead of stale entries for up to three minutes.
+  * Add `getjwt --export` so a client can load a token into its shell without
+    pasting it into a config file, and report an actionable hint to run getjwt
+    with sudo when the shared HMAC secret is not readable.
+  * Create VLANs without the optional /etc/network/interfaces.d/vlans file, and
+    report the created VLAN under its parent interface.
+  * Parse the Wi-Fi scan frequency as a float, so newer iw output such as
+    "freq: 5560.0" no longer reports freq 0 and a null primary channel.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 11:42:01 -0400
+
 wlanpi-core (2.1.23-1) unstable; urgency=medium
 
   * Include the resolver address in each reachability DNS result, for example
