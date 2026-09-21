@@ -74,6 +74,21 @@ def test_parse_iw_scan_output_parses_bss():
     assert "raw" not in networks[0]
 
 
+@pytest.mark.parametrize("freq_text", ["5560", "5560.0"])
+def test_parse_iw_scan_output_accepts_int_and_float_freq(freq_text):
+    # Older iw prints "freq: 5560", newer prints "freq: 5560.0"; both must
+    # parse rather than silently falling back to 0.
+    block = f"""\
+BSS 00:3e:73:3e:38:32(on wlan0)
+\tfreq: {freq_text}
+\tsignal: -79.00 dBm
+\tSSID: FloatFreq
+"""
+    networks = parse_iw_scan_output(block)
+    assert networks[0]["freq"] == 5560
+    assert networks[0]["primaryChannel"] == 112
+
+
 def test_parse_iw_scan_output_full_includes_raw():
     networks = parse_iw_scan_output(SAMPLE_IW, detail="full")
     assert networks[0]["raw"] == SAMPLE_IW_FULL_BLOCK
