@@ -265,8 +265,9 @@ def parse_iw_bss_block(
             except (IndexError, ValueError):
                 pass
         elif stripped.startswith("freq:"):
+            # Newer iw prints the frequency as a float ("freq: 5560.0").
             try:
-                freq = int(stripped.split()[1])
+                freq = int(float(stripped.split()[1]))
             except (IndexError, ValueError):
                 pass
         elif stripped.startswith("RSN:") or stripped.startswith("WPA:"):
