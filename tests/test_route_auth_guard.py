@@ -14,7 +14,12 @@ from typing import Any
 from fastapi.routing import APIRoute
 
 from wlanpi_core.app import create_app
-from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
+from wlanpi_core.core.auth import (
+    verify_auth_wrapper,
+    verify_hmac,
+    verify_jwt_token,
+    verify_local_auth,
+)
 
 try:
     # FastAPI >= 0.141 wraps included routers lazily, so app.routes no longer
@@ -24,7 +29,12 @@ try:
 except ImportError:  # pragma: no cover - only on older FastAPI
     _iter_route_contexts: Any = None  # type: ignore[no-redef]
 
-AUTH_DEPENDENCIES = {verify_auth_wrapper, verify_hmac, verify_jwt_token}
+AUTH_DEPENDENCIES = {
+    verify_auth_wrapper,
+    verify_hmac,
+    verify_jwt_token,
+    verify_local_auth,
+}
 
 # Public HTML and redirect views. Intentionally reachable without a token.
 PUBLIC_ROUTES = frozenset({"/", "/api", "/api/v1", "/favicon.ico"})

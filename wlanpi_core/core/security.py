@@ -1,8 +1,6 @@
 """Security manager for encryption keys and shared secrets."""
 
-import grp
 import os
-import pwd
 import secrets
 import time
 from pathlib import Path
@@ -97,47 +95,47 @@ class SecurityManager:
             raise
 
     def _setup_shared_secret(self) -> bytes:
-        """Generate or load HMAC shared secret."""
+        """Generate or load the HMAC shared secret.
+
+        Root-only by design: only root (core itself, and the ``getjwt`` CLI)
+        may read it. Clients authenticate with a JWT minted via ``getjwt``.
+        """
         secret_path = self.secrets_path / SHARED_SECRET_FILE
         secrets_dir = self.secrets_path
 
         try:
             dir_stat = secrets_dir.stat()
-            dir_gid = grp.getgrnam("wlanpi").gr_gid
-
-            if dir_stat.st_gid != dir_gid or dir_stat.st_mode & 0o777 != 0o710:
-                os.chown(str(secrets_dir), 0, dir_gid)  # root:wlanpi
-                secrets_dir.chmod(0o710)  # rwx--x---
+            if (
+                dir_stat.st_uid != 0
+                or dir_stat.st_gid != 0
+                or dir_stat.st_mode & 0o777 != 0o700
+            ):
+                os.chown(str(secrets_dir), 0, 0)  # root:root
+                secrets_dir.chmod(0o700)  # rwx------
                 log.debug("Updated secrets directory permissions")
 
             if not secret_path.exists():
                 secret = secrets.token_bytes(32)
                 secret_path.write_bytes(secret)
-                # Set file ownership to root:wlanpi
-                uid = pwd.getpwnam("root").pw_uid
-                gid = grp.getgrnam("wlanpi").gr_gid
-                os.chown(str(secret_path), uid, gid)
-                # Set permissions to 0o640 - readable by owner (root) and group (wlanpi)
-                secret_path.chmod(0o640)
+                os.chown(str(secret_path), 0, 0)
+                secret_path.chmod(0o600)
                 log.debug("Generated new shared secret")
             else:
                 stat = secret_path.stat()
-                uid = pwd.getpwnam("root").pw_uid
-                gid = grp.getgrnam("wlanpi").gr_gid
-                if stat.st_uid != uid or stat.st_gid != gid:
-                    os.chown(str(secret_path), uid, gid)
-                    log.debug("Updated secret file ownership to root:wlanpi")
-                if stat.st_mode & 0o777 != 0o640:
-                    secret_path.chmod(0o640)
-                    log.debug("Updated secret file permissions to 0o640")
+                if stat.st_uid != 0 or stat.st_gid != 0:
+                    os.chown(str(secret_path), 0, 0)
+                    log.debug("Updated secret file ownership to root:root")
+                if stat.st_mode & 0o777 != 0o600:
+                    secret_path.chmod(0o600)
+                    log.debug("Updated secret file permissions to 0o600")
                 secret = secret_path.read_bytes()
                 if not secret:
                     # File exists but is empty - regenerate it
                     log.warning("Shared secret file is empty, regenerating...")
                     secret = secrets.token_bytes(32)
                     secret_path.write_bytes(secret)
-                    os.chown(str(secret_path), uid, gid)
-                    secret_path.chmod(0o640)
+                    os.chown(str(secret_path), 0, 0)
+                    secret_path.chmod(0o600)
                     log.debug("Regenerated shared secret")
                 else:
                     log.debug("Loaded existing shared secret")

@@ -1,3 +1,13 @@
+wlanpi-core (2.2.0-1) unstable; urgency=medium
+
+  * Make the shared HMAC secret root-only (root:root 0600, secrets directory
+    0700). On-device services authenticate with a JWT instead of reading the
+    secret.
+  * Accept a bearer JWT on the PAM endpoints in addition to the legacy
+    localhost HMAC. The endpoints stay localhost-only.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 15:00:00 -0400
+
 wlanpi-core (2.1.24-1) unstable; urgency=medium
 
   * Report the profiler passphrase actually in use, read from
