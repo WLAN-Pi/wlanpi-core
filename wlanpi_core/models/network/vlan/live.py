@@ -37,7 +37,10 @@ class LiveVLANs:
         for interface in common.get_interfaces(
             show_type="vlan", custom_filter=custom_filter
         ):
-            out_dict[interface.ifname].append(interface)
+            # `link` is the parent device (e.g. "eth0" for "eth0.50"); fall back
+            # to the name convention core uses to create VLANs.
+            parent = getattr(interface, "link", None) or interface.ifname.split(".")[0]
+            out_dict[parent].append(interface)
         return out_dict
 
     @staticmethod
