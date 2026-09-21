@@ -29,8 +29,9 @@ HTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, an
 
 | Caller | Header | How to obtain |
 |--------|--------|----------------|
-| Remote apps (mobile, WebUI) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |
-| On-device services (wlanpi-ui) | `X-Request-Signature: …` | HMAC with shared secret |
+| WebUI and other on-device services | `Authorization: Bearer <jwt>` | Mint a token on-device with `sudo getjwt <device-id>`. |
+| Remote apps (mobile) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |
+| Local bootstrap (`getjwt`, root) | `X-Request-Signature: …` | HMAC with the root-only shared secret; localhost only. |
 
 JWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic
 clock and is unaffected by wall-clock changes. After a reboot, Core evaluates

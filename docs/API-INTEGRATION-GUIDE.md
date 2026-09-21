@@ -82,12 +82,12 @@ you rely on the pinned certificate, do not change the hostname.
 
 ### 1.1 Issue a token
 
-On-device services (touch UI, wlanpi-ui) call this with **localhost HMAC** (`X-Request-Signature`). Remote apps receive a JWT from a device-local pairing flow; they do not bootstrap anonymously over the network.
+On-device services mint a token with `sudo getjwt <device-id>`, which signs this request with the root-only shared secret over localhost (`X-Request-Signature`). Remote apps receive a JWT from a device-local pairing flow; they do not bootstrap anonymously over the network.
 
 ```http
 POST /api/v1/auth/token
 Content-Type: application/json
-X-Request-Signature: <hmac-sha256-hex>   # on-device only
+X-Request-Signature: <hmac-sha256-hex>   # root-only bootstrap, localhost
 
 { "device_id": "my-app-install-id" }
 ```
