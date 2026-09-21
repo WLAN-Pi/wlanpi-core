@@ -111,7 +111,7 @@ if ! ischroot; then
         fi
         if ! deb-systemd-invoke restart wlanpi-core.service; then
             echo "Warning: wlanpi-core.service restart failed, continuing installation..." >&2
-            systemctl status wlanpi-core.service >&2 || true
+            systemctl --no-pager status wlanpi-core.service >&2 || true
         fi
         if which nginx >/dev/null 2>&1; then
             echo "Validating nginx configuration..."
