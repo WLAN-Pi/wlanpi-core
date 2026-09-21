@@ -15,7 +15,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
-from wlanpi_core.core.auth import verify_auth_wrapper, verify_hmac, verify_jwt_token
+from wlanpi_core.core.auth import (
+    verify_auth_wrapper,
+    verify_hmac,
+    verify_jwt_token,
+    verify_local_auth,
+)
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.schemas.auth import (
@@ -109,7 +114,7 @@ def _status_from_code(code: int) -> str:
     "/pam",
     response_model=PAMAuthResponse,
     include_in_schema=False,
-    dependencies=[Depends(verify_hmac)],
+    dependencies=[Depends(verify_local_auth)],
 )
 async def pam_authenticate(body: PAMAuthRequest) -> PAMAuthResponse:
     """Verify a local account password against PAM (HMAC-only, localhost)."""
@@ -127,7 +132,7 @@ async def pam_authenticate(body: PAMAuthRequest) -> PAMAuthResponse:
     "/pam/change",
     response_model=PAMAuthResponse,
     include_in_schema=False,
-    dependencies=[Depends(verify_hmac)],
+    dependencies=[Depends(verify_local_auth)],
 )
 async def pam_change_password(body: PAMChangePasswordRequest) -> PAMAuthResponse:
     """Change an expired password through PAM (HMAC-only, localhost).

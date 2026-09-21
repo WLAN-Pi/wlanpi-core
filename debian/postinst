@@ -102,6 +102,20 @@ else
     echo "Warning: source nginx site configuration at $SOURCE_CONF not found"
 fi
 
+# The shared HMAC secret used to be 0640 root:wlanpi, so any process running as
+# wlanpi could read it. Enforce 0600 root:root and 0700 on the secrets
+# directory on upgrade; clients authenticate with a JWT instead. Core enforces
+# the same at startup, so this only closes the window before it restarts.
+SECRETS_DIR=/home/wlanpi/.local/share/wlanpi-core/secrets
+if [ -d "$SECRETS_DIR" ]; then
+    chown root:root "$SECRETS_DIR" 2>/dev/null || true
+    chmod 0700 "$SECRETS_DIR" 2>/dev/null || true
+    if [ -f "$SECRETS_DIR/shared_secret.bin" ]; then
+        chown root:root "$SECRETS_DIR/shared_secret.bin" 2>/dev/null || true
+        chmod 0600 "$SECRETS_DIR/shared_secret.bin" 2>/dev/null || true
+    fi
+fi
+
 if ! ischroot; then
     if [ $CONF_CHANGED -eq 1 ]; then
         echo "Restarting wlanpi-core ..."

@@ -48,6 +48,24 @@ async def verify_auth_wrapper(
     )
 
 
+async def verify_local_auth(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
+) -> Any:
+    """Bearer or HMAC, localhost only.
+
+    For the password-handling PAM endpoints: accept a device JWT (so on-device
+    services do not need the shared secret) or the legacy localhost HMAC, but
+    never expose them off-device.
+    """
+    if not is_localhost_request(request):
+        raise HTTPException(
+            status_code=403,
+            detail="Access forbidden: endpoint available only on localhost",
+        )
+    return await verify_auth_wrapper(request, credentials)
+
+
 async def verify_jwt_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials = DEFAULT_SECURITY,
