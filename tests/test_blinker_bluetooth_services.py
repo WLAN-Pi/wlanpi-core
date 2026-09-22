@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.services import bluetooth_service, utils_service
 
 
@@ -234,3 +235,45 @@ async def test_bluetooth_pair_cancellation_releases_lock(mocker):
 
     assert bluetooth_service._pairing_lock.acquire(blocking=False)
     bluetooth_service._pairing_lock.release()
+
+
+def test_bluetooth_set_power_unblocks_rfkill_and_retries_busy(mocker, tmp_path):
+    mocker.patch.object(
+        bluetooth_service, "BLUETOOTH_STATE_FILE", str(tmp_path / "state")
+    )
+    power = mocker.patch.object(
+        bluetooth_service, "bluetooth_power", side_effect=["", "", "UP", "UP"]
+    )
+    run_command = mocker.patch.object(
+        bluetooth_service,
+        "run_command",
+        side_effect=[MagicMock(), RunCommandError("Busy", 1), MagicMock()],
+    )
+    mocker.patch.object(bluetooth_service.time, "sleep")
+
+    assert bluetooth_service.bluetooth_set_power(True) is True
+
+    assert run_command.call_args_list[0].args[0] == ["rfkill", "unblock", "bluetooth"]
+    assert run_command.call_count == 3
+    assert power.call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_ensure_bluetooth_powered_unblocks_rfkill(mocker, tmp_path):
+    mocker.patch.object(
+        bluetooth_service, "BLUETOOTH_STATE_FILE", str(tmp_path / "state")
+    )
+    mocker.patch.object(
+        bluetooth_service,
+        "_bluetooth_powered_async",
+        new=AsyncMock(side_effect=[False, True, True]),
+    )
+    run_command = mocker.patch.object(
+        bluetooth_service,
+        "run_command_async",
+        new=AsyncMock(return_value=MagicMock(success=True)),
+    )
+
+    await bluetooth_service._ensure_bluetooth_powered()
+
+    assert run_command.await_args_list[0].args[0] == ["rfkill", "unblock", "bluetooth"]
