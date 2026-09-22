@@ -53,6 +53,40 @@ API activate in non-classic: endpoint remains callable; document expected behavi
 
 Remote clients: login once, 7-day JWT, no refresh token in P0.
 
+## PHY / interface identity (do not conflate with adapter-count rows)
+
+`hw-absence` in the namespace matrix is "iface missing from discovery". Stale PHY is
+the opposite: iface exists, stored `phy` exists, they are the wrong pair.
+
+HTTP rows (service assertions live in the namespace matrix):
+
+| Row | Issue | HTTP | Extra assertion |
+|-----|-------|------|-----------------|
+| `network_config_activate_stale_phy_mismatch` | #236 | 200 | must not `iw phy phy1 interface add wlan1` |
+| `network_config_activate_default_single_radio` | #202 | 200 not 500 | single-radio `activate/default` |
+| `network_config_create_snapshots_mac` | #237 / Jake | 200 | GET config includes live MAC |
+
+They hard-fail until the production fix lands (same as every other matrix row).
+
+## WLAN_MANAGEMENT and overnight system APIs (#238 / #241)
+
+Josh shipped these outside the matrix (`test_wlan_management.py`,
+`test_system_ntp.py`, `test_system_api_async.py`). The HTTP contracts now live
+here. Pure Settings parse is the `wlan_management_settings_parse` unit row;
+service-level NTP/health parsers may still keep focused unit tests.
+
+| Row | Issue | HTTP | Assertion |
+|-----|-------|------|-----------|
+| `wlan_management_settings_parse` | #238 | n/a | default/manual/normalize/bogus→auto |
+| `system_device_info_wlan_management` | #238 / webui #123 | 200 | `wlan_management` present and reflects settings |
+| `wlan_management_manual_activate_409` | #238 | 409 | activate gated |
+| `wlan_management_manual_deactivate_409` | #238 | 409 | deactivate gated |
+| `wlan_management_manual_revert_409` | #238 | 409 | revert gated |
+| `system_ntp_get` / `system_ntp_set` | webui #124 | 200 | GET/POST `/system/ntp` |
+| `system_health` | #241 | 200 | health snapshot keys |
+| `system_services_failed` | #241 | 200 | failed units list |
+| `wlan_link` | #241 | 200 | `iw link` association |
+
 ## DBus legacy path repurposing
 
 Legacy `/network/wlan/*` routes must delegate to namespace/wpa_cli implementations.

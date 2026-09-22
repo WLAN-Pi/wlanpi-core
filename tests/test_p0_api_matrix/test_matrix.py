@@ -26,11 +26,11 @@ def _scenario_id(scenario: ApiScenario) -> str:
     load_api_scenarios(),
     ids=_scenario_id,
 )
-def test_p0_api_matrix_scenario(scenario, client, auth_headers):
+def test_p0_api_matrix_scenario(scenario, client, auth_headers, netcfg_env):
     """Execute one matrix row when a handler is registered."""
     if scenario.name not in HANDLERS:
         pytest.skip(f"Handler not yet implemented for {scenario.name}")
-    run_api_scenario(scenario, client, auth_headers)
+    run_api_scenario(scenario, client, auth_headers, netcfg_env)
 
 
 def test_p0_matrix_has_unique_scenarios():

@@ -6,9 +6,15 @@ stub run_command for CLI wrappers; keep FastAPI routing and auth real.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.conftest import (
+    JOSH_THREE_RADIO,
+    live_adapter_inventory_mocks,
+    write_json_config,
+)
 from tests.scenarios.p0_loader import ApiScenario
 
 # scenario name → handler(client, auth_headers, scenario)
@@ -383,6 +389,272 @@ def handle_scan_no_adapter(client, auth_headers, scenario):
     assert body["error"] == "NO_SCAN_ADAPTER"
 
 
+def handle_network_config_activate_stale_phy_mismatch(
+    client, auth_headers, scenario, netcfg_env
+):
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "stale_phy_cfg",
+        {
+            "id": "stale_phy_cfg",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan1",
+                    "phy": "phy1",
+                    "interface": "wlan1",
+                    "security": None,
+                    "mlo": False,
+                    "default_route": False,
+                    "autostart_app": None,
+                }
+            ],
+        },
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        response = client.post(
+            "/api/v1/network/config/activate/stale_phy_cfg",
+            params={"override_active": True},
+        )
+        added = inventory.added_phy("wlan1")
+    _expect_status(response, scenario.expected_http)
+    assert added in (None, "phy2"), (
+        f"#236: activate recreated wlan1 on {added}, expected live phy2 or no add"
+    )
+
+
+def handle_network_config_activate_default_single_radio(
+    client, auth_headers, scenario, netcfg_env
+):
+    single = {"wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"}}
+    with live_adapter_inventory_mocks(single):
+        response = client.post(
+            "/api/v1/network/config/activate/default",
+            params={"override_active": True},
+        )
+    _expect_status(response, scenario.expected_http)
+
+
+def handle_network_config_create_snapshots_mac(
+    client, auth_headers, scenario, netcfg_env
+):
+    payload = {
+        "id": "pin_wlan1",
+        "namespaces": [],
+        "roots": [
+            {
+                "mode": "managed",
+                "iface_display_name": "wlan1",
+                "phy": "phy1",
+                "interface": "wlan1",
+                "security": None,
+                "mlo": False,
+                "default_route": False,
+                "autostart_app": None,
+            }
+        ],
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        created = client.post("/api/v1/network/config/", json=payload)
+        fetched = client.get("/api/v1/network/config/pin_wlan1")
+    _expect_status(created, "200")
+    _expect_status(fetched, scenario.expected_http)
+    mac = fetched.json()["roots"][0].get("mac")
+    expected = JOSH_THREE_RADIO["wlan1"]["mac"]
+    assert mac == expected, (
+        f"#237: POST /network/config/ did not snapshot live MAC; "
+        f"got {mac!r}, expected {expected}"
+    )
+
+
+def handle_wlan_management_settings_parse(client, auth_headers, scenario):
+    from wlanpi_core.core.config import Settings
+
+    assert Settings().WLAN_MANAGEMENT == "auto"
+    assert Settings(WLAN_MANAGEMENT="manual").WLAN_MANAGEMENT == "manual"
+    assert Settings(WLAN_MANAGEMENT="  MANUAL ").WLAN_MANAGEMENT == "manual"
+    assert Settings(WLAN_MANAGEMENT="bogus").WLAN_MANAGEMENT == "auto"
+
+
+def handle_system_device_info_wlan_management(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+        response = client.get("/api/v1/system/device/info")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["wlan_management"] == "manual"
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "auto"):
+        response = client.get("/api/v1/system/device/info")
+    assert response.json()["wlan_management"] == "auto"
+
+
+def handle_wlan_management_manual_activate_409(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+        response = client.post("/api/v1/network/config/activate/lab_cfg")
+    _expect_status(response, scenario.expected_http)
+    detail = response.json().get("detail", "")
+    assert "WLAN_MANAGEMENT=manual" in detail
+
+
+def handle_wlan_management_manual_deactivate_409(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+        response = client.post("/api/v1/network/config/deactivate/lab_cfg")
+    _expect_status(response, scenario.expected_http)
+    detail = response.json().get("detail", "")
+    assert "WLAN_MANAGEMENT=manual" in detail
+
+
+def handle_wlan_management_manual_revert_409(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+        response = client.post(
+            "/api/v1/network/wlan/revert",
+            json={
+                "iface": "wlan0",
+                "namespace": "lab_ns",
+                "delete_namespace": True,
+            },
+        )
+    _expect_status(response, scenario.expected_http)
+    assert "WLAN_MANAGEMENT=manual" in response.text
+
+
+def handle_system_ntp_get(client, auth_headers, scenario):
+    payload = {
+        "synchronized": False,
+        "ntp_service": True,
+        "server_name": "2.debian.pool.ntp.org",
+        "server_address": "192.168.2.123",
+        "fallback_servers": ["0.debian.pool.ntp.org"],
+        "runtime_servers": [],
+        "poll_interval": "32s",
+        "frequency": -1234,
+        "source": "default",
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.system_api.system_service.get_ntp",
+        return_value=payload,
+    ):
+        response = client.get("/api/v1/system/ntp")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["ntp_service"] is True
+    assert body["source"] == "default"
+    assert body["server_name"] == "2.debian.pool.ntp.org"
+
+
+def handle_system_ntp_set(client, auth_headers, scenario):
+    payload = {
+        "synchronized": False,
+        "ntp_service": False,
+        "server_name": None,
+        "server_address": None,
+        "fallback_servers": [],
+        "runtime_servers": [],
+        "poll_interval": None,
+        "frequency": None,
+        "source": "unknown",
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.system_api.system_service.set_ntp_enabled",
+        return_value=payload,
+    ) as set_ntp:
+        response = client.post("/api/v1/system/ntp", json={"enabled": False})
+    _expect_status(response, scenario.expected_http)
+    set_ntp.assert_called_once_with(False)
+    assert response.json()["ntp_service"] is False
+
+
+def handle_system_health(client, auth_headers, scenario):
+    payload = {
+        "throttled": {
+            "raw": "throttled=0x0",
+            "undervoltage": False,
+            "frequency_capped": False,
+            "throttled": False,
+            "soft_temperature_limit": False,
+            "undervoltage_occurred": False,
+            "frequency_capped_occurred": False,
+            "throttled_occurred": False,
+            "soft_temperature_limit_occurred": False,
+        },
+        "temperatures": [{"name": "cpu_thermal", "label": None, "celsius": 60.0}],
+        "ntp": {"enabled": True, "synchronized": False},
+        "load": {"one": 0.1, "five": 0.2, "fifteen": 0.3},
+        "swap": {"used_mb": 1, "total_mb": 2},
+        "rfkill": [],
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.system_api.system_service.get_health",
+        return_value=payload,
+    ):
+        response = client.get("/api/v1/system/health")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["ntp"]["enabled"] is True
+    assert body["temperatures"][0]["celsius"] == 60.0
+    assert "throttled" in body
+    assert "load" in body
+    assert "swap" in body
+    assert "rfkill" in body
+
+
+def handle_system_services_failed(client, auth_headers, scenario):
+    payload = {
+        "units": [
+            {
+                "unit": "bt-agent.service",
+                "load": "loaded",
+                "active": "failed",
+                "sub": "failed",
+                "description": "Bluetooth Auth Agent",
+            }
+        ]
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.system_api.system_service.get_failed_services",
+        return_value=payload,
+    ):
+        response = client.get("/api/v1/system/services/failed")
+    _expect_status(response, scenario.expected_http)
+    assert response.json()["units"][0]["unit"] == "bt-agent.service"
+
+
+def handle_wlan_link(client, auth_headers, scenario):
+    payload = {
+        "interface": "wlan0",
+        "namespace": None,
+        "connected": True,
+        "ssid": "PurpleDove",
+        "bssid": "68:51:34:7c:32:13",
+        "freq_mhz": 5200.0,
+        "signal_dbm": -48.0,
+        "rx_bitrate": "286.7 MBit/s HE-MCS 11",
+        "tx_bitrate": "286.7 MBit/s HE-MCS 11",
+        "rx_bytes": 2112666,
+        "tx_bytes": 104496501,
+        "raw": "",
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.resolve_interface_namespace",
+        return_value=None,
+    ):
+        with patch("wlanpi_core.network.get_wlan_link", return_value=payload):
+            response = client.get("/api/v1/network/interfaces/wlan0/wlan-link")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["connected"] is True
+    assert body["ssid"] == "PurpleDove"
+
+
 HANDLERS.update(
     {
         "service_restart_orb": handle_service_restart_orb,
@@ -407,12 +679,30 @@ HANDLERS.update(
         "scan_explicit_iface_namespace": handle_scan_explicit_iface_namespace,
         "scan_fallback_managed_root": handle_scan_fallback_managed_root,
         "scan_no_adapter": handle_scan_no_adapter,
+        "network_config_activate_stale_phy_mismatch": handle_network_config_activate_stale_phy_mismatch,
+        "network_config_activate_default_single_radio": handle_network_config_activate_default_single_radio,
+        "network_config_create_snapshots_mac": handle_network_config_create_snapshots_mac,
+        "wlan_management_settings_parse": handle_wlan_management_settings_parse,
+        "system_device_info_wlan_management": handle_system_device_info_wlan_management,
+        "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,
+        "wlan_management_manual_deactivate_409": handle_wlan_management_manual_deactivate_409,
+        "wlan_management_manual_revert_409": handle_wlan_management_manual_revert_409,
+        "system_ntp_get": handle_system_ntp_get,
+        "system_ntp_set": handle_system_ntp_set,
+        "system_health": handle_system_health,
+        "system_services_failed": handle_system_services_failed,
+        "wlan_link": handle_wlan_link,
     }
 )
 
 
-def run_api_scenario(scenario: ApiScenario, client, auth_headers) -> None:
+def run_api_scenario(
+    scenario: ApiScenario, client, auth_headers, netcfg_env=None
+) -> None:
     handler = HANDLERS.get(scenario.name)
     if handler is None:
         raise KeyError(f"No handler for {scenario.name}")
-    handler(client, auth_headers, scenario)
+    kwargs = {}
+    if "netcfg_env" in inspect.signature(handler).parameters:
+        kwargs["netcfg_env"] = netcfg_env
+    handler(client, auth_headers, scenario, **kwargs)
