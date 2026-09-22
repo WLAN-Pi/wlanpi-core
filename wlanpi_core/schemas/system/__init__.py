@@ -13,6 +13,7 @@ from .system import (
     HotspotCredentials,
     LoadAverage,
     NtpAutoInfo,
+    NtpInfo,
     NtpStatus,
     PowerActionResponse,
     RegDomainInfo,
