@@ -24,6 +24,8 @@ Before committing, run the gates that your change touches:
 - `tox -e lint` : `ruff check wlanpi_core tests` then `mypy wlanpi_core`
 - `tox -e formatcheck` : `ruff format --check wlanpi_core tests`
 - `tox` : the py313 test suite plus coverage
+- `tox -e openapicheck` : fails if `docs/openapi.json` is stale (see OpenAPI
+  docs below); touched `wlanpi_core/**`? run this before committing.
 
 `tox -e format` rewrites the tree with `ruff format` when the check fails.
 
@@ -102,10 +104,21 @@ deterministic and warning-clean. Hard rules, each one from a real failure:
 `docs/openapi.json` is generated (`scripts/export_openapi.py`) and maintained
 by the sync workflow, which keeps a `chore: update generated OpenAPI
 reference` PR open against `dev`. Never hand-edit it; fix the source
-docstrings or `openapi_docs.py` on `dev`. Release PRs to `main` are gated on
-freshness: if the OpenAPI Reference Check workflow fails, merge the
-automation PR into `dev` first. Placeholders like `<jwt>` in descriptions
-must sit inside backticks or Swagger UI swallows them as HTML tags.
+docstrings or `openapi_docs.py` on `dev`. PRs into both `dev` and `main` are
+gated on freshness (the OpenAPI Reference Check workflow, required on both
+branches): if it fails on a PR into `dev`, regenerate and commit the result
+in that PR; if it fails on a PR into `main`, merge the automation PR into
+`dev` first. Placeholders like `<jwt>` in descriptions must sit inside
+backticks or Swagger UI swallows them as HTML tags.
+
+Regenerate with `tox -e openapi` (writes the file) or `tox -e openapicheck`
+(fails on any diff, writes nothing) rather than running
+`scripts/export_openapi.py` directly against whatever's in your venv.
+`pyproject.toml`'s own dependencies are unpinned, so an ordinary install
+pulls the newest fastapi/pydantic on PyPI; pydantic's JSON-schema output is
+version-sensitive, so that can produce a `docs/openapi.json` that looks
+right locally but still fails CI's diff against `requirements.txt`'s pinned
+versions. Both tox envs install from `requirements.txt` to match CI exactly.
 
 ## Before you write
 
