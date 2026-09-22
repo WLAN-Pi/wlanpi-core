@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+import subprocess
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -97,12 +98,10 @@ def mock_namespace_execution():
             return_value=_DEFAULT_WPA_STATUS.copy(),
         ),
     ]
-    started = [p.start() for p in patches]
-    try:
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
         yield
-    finally:
-        for p in reversed(started):
-            p.stop()
 
 
 @pytest.fixture(autouse=True)
@@ -147,6 +146,39 @@ def netcfg_env(tmp_path, monkeypatch):
 @pytest.fixture
 def namespace_service(netcfg_env):
     return netcfg_env["service"]
+
+
+def _service_side_effect_patches() -> list[Any]:
+    """Patches for the non-adapter side effects of activate/deactivate.
+
+    WPA/DHCP config writes, supplicant control, apps, and the connection
+    monitor. Adapter and namespace commands are left to the caller.
+    """
+    return [
+        patch(
+            "wlanpi_core.services.network_namespace_service.wpa_config.write_wpa_config",
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.write_dhcp_config",
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.wpa_supplicant.start_or_restart_supplicant",
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.wpa_supplicant.kill_all_supplicants",
+        ),
+        patch.object(
+            NetworkNamespaceService,
+            "_monitor_connection_async",
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.apps.start_app_in_namespace",
+            return_value=True,
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.apps.stop_app_in_namespace",
+        ),
+    ]
 
 
 @contextmanager
@@ -203,62 +235,375 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
         patch(
             "wlanpi_core.services.network_namespace_service.phy.move_phy_to_root",
         ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.wpa_config.write_wpa_config",
-        ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.write_dhcp_config",
-        ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.wpa_supplicant.start_or_restart_supplicant",
-        ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.wpa_supplicant.kill_all_supplicants",
-        ),
-        patch.object(
-            NetworkNamespaceService,
-            "_monitor_connection_async",
-        ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.apps.start_app_in_namespace",
-            return_value=True,
-        ),
-        patch(
-            "wlanpi_core.services.network_namespace_service.apps.stop_app_in_namespace",
-        ),
+        *_service_side_effect_patches(),
         patch(
             "wlanpi_core.services.network_namespace_service.run_command",
             return_value=CommandResult(stdout="phy0\nphy1", stderr="", return_code=0),
         ),
     ]
 
-    started = [p.start() for p in patches]
-    try:
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
         yield
-    finally:
-        for p in reversed(started):
-            p.stop()
+
+
+# Every module that binds `run_command` at import and is reached by
+# activate/deactivate/revert. The inventory fake replaces each of them.
+_RUN_COMMAND_SITES = (
+    "wlanpi_core.services.network_namespace_service.run_command",
+    "wlanpi_core.utils.network_config.run_command",
+    "wlanpi_core.utils.namespace_execution.run_command",
+    "wlanpi_core.adapters.discovery.run_command",
+    "wlanpi_core.adapters.interface.run_command",
+    "wlanpi_core.adapters.phy.run_command",
+    "wlanpi_core.namespaces.namespace.run_command",
+)
+
+# Commands with no inventory effect that prepare/revert issue as cleanup.
+_NOOP_COMMANDS = {"pkill", "rm", "dhclient"}
+
+
+@dataclass
+class Iface:
+    """One live wireless netdev."""
+
+    phy: str
+    netns: str | None = None
+    type: str = "managed"
+    # Kernel ifindex: survives a netns move; newer netdevs get higher ones.
+    ifindex: int = 0
 
 
 @dataclass
 class InventoryRecorder:
-    """Live iface→phy→MAC map plus recorded prepare mutations."""
+    """Stateful fake of `iw` and `ip netns` across namespaces.
 
-    adapters: dict[str, dict[str, str]]
+    State is phys (name -> netns, MAC) and ifaces keyed by (netns, name).
+    Deleting an iface removes it, `interface add` creates it on a visible phy,
+    and a phy move takes its ifaces with it, as the kernel does. Mutations
+    are recorded in order so rows can assert the exact sequence.
+
+    Output order, error strings, and move semantics were checked against
+    iw 6.17 on a WLAN Pi with three radios: dumps list phys highest index
+    first and a phy's ifaces newest first; deleting a netns returns its phys
+    to root; a travelling iface whose name is taken is renamed `wlan%d`.
+    """
+
+    phy_netns: dict[str, str | None]
+    phy_mac: dict[str, str]
+    ifaces: dict[tuple[str | None, str], Iface]
+    netns: set[str]
+    faults: dict[tuple[str | None, tuple[str, ...]], str] = field(default_factory=dict)
     deleted: list[tuple[str, str | None]] = field(default_factory=list)
-    adds: list[tuple[str, str]] = field(default_factory=list)
-    phy_moves: list[tuple[str, str]] = field(default_factory=list)
-    commands: list[list[str]] = field(default_factory=list)
+    adds: list[tuple[str, str, str | None]] = field(default_factory=list)
+    phy_moves: list[tuple[str, str | None]] = field(default_factory=list)
+    commands: list[tuple[str | None, list[str]]] = field(default_factory=list)
+    unrecognised: list[tuple[str | None, list[str]]] = field(default_factory=list)
+    next_ifindex: int = 3
 
-    def phys(self) -> list[str]:
-        return sorted({meta["phy"] for meta in self.adapters.values()})
+    @classmethod
+    def from_adapters(
+        cls,
+        adapters: dict[str, dict[str, str]],
+        faults: dict[tuple[str | None, tuple[str, ...]], str] | None = None,
+    ) -> InventoryRecorder:
+        phy_netns: dict[str, str | None] = {}
+        phy_mac: dict[str, str] = {}
+        ifaces: dict[tuple[str | None, str], Iface] = {}
+        # Adapters are created in dict order, so later entries are newer.
+        for ifindex, (name, meta) in enumerate(adapters.items(), start=3):
+            netns = meta.get("netns")
+            phy_netns[meta["phy"]] = netns
+            phy_mac[meta["phy"]] = meta["mac"]
+            ifaces[(netns, name)] = Iface(
+                phy=meta["phy"],
+                netns=netns,
+                type=meta.get("type", "managed"),
+                ifindex=ifindex,
+            )
+        netns_set = {ns for ns in phy_netns.values() if ns is not None}
+        return cls(
+            phy_netns=phy_netns,
+            phy_mac=phy_mac,
+            ifaces=ifaces,
+            netns=netns_set,
+            faults=dict(faults or {}),
+            next_ifindex=3 + len(adapters),
+        )
+
+    # --- views for assertions ---
+
+    def live(self) -> dict[str, tuple[str, str | None, str]]:
+        """Return {iface: (phy, netns, type)} for every live netdev."""
+        return {
+            name: (meta.phy, netns, meta.type)
+            for (netns, name), meta in sorted(
+                self.ifaces.items(), key=lambda kv: (kv[0][0] or "", kv[0][1])
+            )
+        }
 
     def added_phy(self, iface: str) -> str | None:
-        matches = [phy for phy, name in self.adds if name == iface]
+        matches = [phy for phy, name, _ns in self.adds if name == iface]
         return matches[-1] if matches else None
 
     def last_moved_phy(self) -> str | None:
         return self.phy_moves[-1][0] if self.phy_moves else None
+
+    # --- fake command dispatch ---
+
+    def run_command(
+        self, cmd: list[str], raise_on_fail: bool = True, **kwargs: Any
+    ) -> CommandResult:
+        parts = [str(item) for item in cmd]
+        if parts[:1] == ["sudo"]:
+            parts = parts[1:]
+        netns: str | None = None
+        if parts[:3] == ["ip", "netns", "exec"] and len(parts) > 4:
+            netns = parts[3]
+            parts = parts[4:]
+            if netns not in self.netns:
+                return self._fail(
+                    f'Cannot open network namespace "{netns}": '
+                    "No such file or directory\n",
+                    255,
+                    raise_on_fail,
+                )
+        if parts[:1] == ["/sbin/iw"]:
+            parts = ["iw", *parts[1:]]
+        self.commands.append((netns, parts))
+
+        fault = self.faults.get((netns, tuple(parts)))
+        if fault is not None:
+            return self._fail(fault, 1, raise_on_fail)
+
+        if parts[:1] == ["iw"]:
+            return self._iw(netns, parts[1:], raise_on_fail)
+        if parts[:1] == ["ip"]:
+            return self._ip(netns, parts[1:], raise_on_fail)
+        if parts[:1] and parts[0] in _NOOP_COMMANDS:
+            return self._ok()
+        return self._unrecognised(netns, parts)
+
+    def _ok(self, stdout: str = "") -> CommandResult:
+        return CommandResult(stdout=stdout, stderr="", return_code=0)
+
+    def _fail(self, stderr: str, code: int, raise_on_fail: bool) -> CommandResult:
+        if raise_on_fail:
+            raise RunCommandError(stderr, code)
+        return CommandResult(stdout="", stderr=stderr, return_code=code)
+
+    def _unrecognised(self, netns: str | None, parts: list[str]) -> CommandResult:
+        # Recorded as well as raised: production code wraps many calls in a
+        # blind `except Exception`, so the context manager re-checks on exit.
+        self.unrecognised.append((netns, parts))
+        raise AssertionError(f"inventory fake: unrecognised command {parts} in {netns}")
+
+    def _visible_phys(self, netns: str | None) -> list[str]:
+        # Highest index first, as `iw dev` and `iw phy` dump them.
+        return sorted(
+            (phy for phy, ns in self.phy_netns.items() if ns == netns),
+            key=lambda name: int(name.removeprefix("phy")),
+            reverse=True,
+        )
+
+    def _netns_ifaces(self, netns: str | None) -> list[tuple[str, Iface]]:
+        return sorted(
+            ((name, meta) for (ns, name), meta in self.ifaces.items() if ns == netns),
+            key=lambda item: item[1].ifindex,
+        )
+
+    def _iw(
+        self, netns: str | None, args: list[str], raise_on_fail: bool
+    ) -> CommandResult:
+        no_device = "command failed: No such device (-19)\n"
+        if args == ["dev"]:
+            return self._ok(self._iw_dev_dump(netns))
+        if len(args) == 3 and args[0] == "dev":
+            name, action = args[1], args[2]
+            meta = self.ifaces.get((netns, name))
+            if action == "info":
+                if meta is None:
+                    return self._fail(no_device, 237, raise_on_fail)
+                return self._ok(self._iw_dev_info(name, meta))
+            if action == "del":
+                if meta is None:
+                    return self._fail(no_device, 237, raise_on_fail)
+                del self.ifaces[(netns, name)]
+                self.deleted.append((name, netns))
+                return self._ok()
+        if args == ["phy"]:
+            stdout = "".join(
+                f"Wiphy {phy}\n\twiphy index: {phy.removeprefix('phy')}\n"
+                for phy in self._visible_phys(netns)
+            )
+            return self._ok(stdout)
+
+        # `iw phy <name> ...` or `iw phy#<index> ...`
+        if args[:1] == ["phy"] and len(args) >= 2:
+            phy_name = args[1]
+            rest = args[2:]
+            visible = phy_name in self._visible_phys(netns)
+            if not visible:
+                return self._fail(
+                    "command failed: No such file or directory (-2)\n",
+                    254,
+                    raise_on_fail,
+                )
+        elif args[:1] and args[0].startswith("phy#"):
+            phy_name = f"phy{args[0].removeprefix('phy#')}"
+            rest = args[1:]
+            if phy_name not in self._visible_phys(netns):
+                # Real iw filters its dump by index: unknown index prints
+                # nothing and exits 0.
+                return self._ok()
+        else:
+            return self._unrecognised(netns, ["iw", *args])
+
+        return self._iw_phy(netns, phy_name, rest, raise_on_fail)
+
+    def _iw_phy(
+        self, netns: str | None, phy_name: str, rest: list[str], raise_on_fail: bool
+    ) -> CommandResult:
+        if rest == ["info"]:
+            # Real `iw phy <x> info` has no `addr` line.
+            index = phy_name.removeprefix("phy")
+            return self._ok(f"Wiphy {phy_name}\n\twiphy index: {index}\n")
+        if len(rest) == 5 and rest[:2] == ["interface", "add"] and rest[3] == "type":
+            name, iface_type = rest[2], rest[4]
+            if (netns, name) in self.ifaces:
+                # What the kernel really returns for a taken name (ENFILE).
+                return self._fail(
+                    "command failed: Too many open files in system (-23)\n",
+                    233,
+                    raise_on_fail,
+                )
+            self.ifaces[(netns, name)] = Iface(
+                phy=phy_name, netns=netns, type=iface_type, ifindex=self.next_ifindex
+            )
+            self.next_ifindex += 1
+            self.adds.append((phy_name, name, netns))
+            return self._ok()
+        if rest[:2] == ["set", "netns"]:
+            if rest[2:3] == ["name"] and len(rest) == 4:
+                target: str | None = rest[3]
+                if target not in self.netns:
+                    return self._fail(
+                        "command failed: No such file or directory (-2)\n",
+                        254,
+                        raise_on_fail,
+                    )
+            elif rest[2:] == ["1"]:
+                target = None
+            else:
+                return self._unrecognised(netns, ["iw", "phy", phy_name, *rest])
+            self._move_phy(phy_name, target)
+            return self._ok()
+        return self._unrecognised(netns, ["iw", "phy", phy_name, *rest])
+
+    def _move_phy(self, phy_name: str, target: str | None) -> None:
+        source = self.phy_netns[phy_name]
+        travelling = sorted(
+            (key for key, meta in self.ifaces.items() if meta.phy == phy_name),
+            key=lambda key: self.ifaces[key].ifindex,
+        )
+        for key in travelling:
+            meta = self.ifaces.pop(key)
+            meta.netns = target
+            name = key[1]
+            if (target, name) in self.ifaces:
+                # The kernel does not refuse the move; it renames the
+                # travelling iface to the lowest free wlan%d in the target.
+                index = 0
+                while (target, f"wlan{index}") in self.ifaces:
+                    index += 1
+                name = f"wlan{index}"
+            self.ifaces[(target, name)] = meta
+        self.phy_netns[phy_name] = target
+        if source != target:
+            self.phy_moves.append((phy_name, target))
+
+    def _iw_dev_dump(self, netns: str | None) -> str:
+        # Bare `iw dev` groups by `phy#N` and prints no `wiphy N` line.
+        lines: list[str] = []
+        for phy_name in self._visible_phys(netns):
+            # A phy's ifaces print newest first.
+            on_phy = [
+                (name, meta)
+                for name, meta in reversed(self._netns_ifaces(netns))
+                if meta.phy == phy_name
+            ]
+            if not on_phy:
+                continue
+            lines.append(f"phy#{phy_name.removeprefix('phy')}")
+            for name, meta in on_phy:
+                lines += [
+                    f"\tInterface {name}",
+                    f"\t\taddr {self.phy_mac[phy_name]}",
+                    f"\t\ttype {meta.type}",
+                ]
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def _iw_dev_info(self, name: str, meta: Iface) -> str:
+        return (
+            f"Interface {name}\n"
+            f"\taddr {self.phy_mac[meta.phy]}\n"
+            f"\ttype {meta.type}\n"
+            f"\twiphy {meta.phy.removeprefix('phy')}\n"
+        )
+
+    def _ip(
+        self, netns: str | None, args: list[str], raise_on_fail: bool
+    ) -> CommandResult:
+        if netns is None and args[:1] == ["netns"]:
+            return self._ip_netns(args[1:], raise_on_fail)
+        if args == ["-o", "link", "show"]:
+            stdout = "1: lo: <LOOPBACK> mtu 65536\n" + "".join(
+                f"{meta.ifindex}: {name}: <BROADCAST,MULTICAST> mtu 1500\n"
+                for name, meta in self._netns_ifaces(netns)
+            )
+            return self._ok(stdout)
+        if len(args) == 4 and args[:2] == ["link", "set"] and args[3] in {"up", "down"}:
+            if (netns, args[2]) not in self.ifaces:
+                return self._fail(f'Cannot find device "{args[2]}"\n', 1, raise_on_fail)
+            return self._ok()
+        if len(args) == 5 and args[:2] == ["link", "set"] and args[3] == "netns":
+            # Wireless netdevs are netns-local; only the phy can move.
+            return self._fail(
+                "Error: The interface netns is immutable.\n", 2, raise_on_fail
+            )
+        return self._unrecognised(netns, ["ip", *args])
+
+    def _ip_netns(self, args: list[str], raise_on_fail: bool) -> CommandResult:
+        if args == ["list"]:
+            stdout = "".join(
+                f"{name} (id: {i})\n" for i, name in enumerate(sorted(self.netns))
+            )
+            return self._ok(stdout)
+        if len(args) == 2 and args[0] == "add":
+            if args[1] in self.netns:
+                return self._fail(
+                    f'Cannot create namespace file "/run/netns/{args[1]}": File exists\n',
+                    1,
+                    raise_on_fail,
+                )
+            self.netns.add(args[1])
+            return self._ok()
+        if len(args) == 2 and args[0] == "delete":
+            name = args[1]
+            if name not in self.netns:
+                return self._fail(
+                    f'Cannot remove namespace file "/run/netns/{name}": '
+                    "No such file or directory\n",
+                    1,
+                    raise_on_fail,
+                )
+            # Destroying a netns returns its phys (and their ifaces) to root.
+            for phy_name in self._visible_phys(name):
+                self._move_phy(phy_name, None)
+            self.netns.discard(name)
+            return self._ok()
+        return self._unrecognised(None, ["ip", "netns", *args])
 
 
 # Josh's 3-radio boot (#236): BE200 phy0/wlan0, mt7921u phy1/wlan2, MT7612U phy2/wlan1.
@@ -270,110 +615,63 @@ JOSH_THREE_RADIO: dict[str, dict[str, str]] = {
 
 
 @contextmanager
-def live_adapter_inventory_mocks(adapters: dict[str, dict[str, str]] | None = None):
-    """Stub a live iface/phy/MAC inventory and record delete, add, and phy move.
+def live_adapter_inventory_mocks(
+    adapters: dict[str, dict[str, str]] | None = None,
+    faults: dict[tuple[str | None, tuple[str, ...]], str] | None = None,
+):
+    """Run activation against a stateful fake of the live radio inventory.
 
-    Unlike hardware_success_mocks, this exposes which PHY received
-    `iw phy <phy> interface add <iface>` so identity-mismatch rows can assert
-    the mapping instead of only `activate_config is True`.
+    Each adapter is `{iface: {"phy", "mac", optional "netns", optional "type"}}`.
+    Every `run_command` import site on the activate/deactivate/revert path is
+    routed to InventoryRecorder, so the real adapter, discovery, and namespace
+    parsers run against realistic `iw`/`ip` output. `faults` maps
+    `(netns, command_tuple)` to the stderr that command fails with.
+
+    Unrecognised commands fail the test on exit even if production code
+    swallowed the exception.
     """
-    adapters = adapters or dict(JOSH_THREE_RADIO)
-    recorder = InventoryRecorder(adapters=adapters)
+    recorder = InventoryRecorder.from_adapters(
+        adapters if adapters is not None else JOSH_THREE_RADIO, faults
+    )
+    patches = [
+        *(patch(site, side_effect=recorder.run_command) for site in _RUN_COMMAND_SITES),
+        *_service_side_effect_patches(),
+    ]
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        yield recorder
+    assert not recorder.unrecognised, (
+        f"inventory fake saw unrecognised commands: {recorder.unrecognised}"
+    )
 
-    def _move_phy(phy_name: str, namespace: str) -> None:
-        recorder.phy_moves.append((phy_name, namespace))
-        if phy_name not in recorder.phys():
-            raise RunCommandError(f"{phy_name} does not exist", 1)
-        return None
 
-    def _delete(iface: str, namespace: str | None = None) -> None:
-        recorder.deleted.append((iface, namespace))
-        return None
+class _RealCommandGuard:
+    """Stand-in for `subprocess` inside utils.general that refuses to spawn."""
 
-    def _run_command(
-        cmd: list[str], raise_on_fail: bool = True, **kwargs: Any
-    ) -> CommandResult:
-        parts = [str(item) for item in cmd]
-        recorder.commands.append(parts)
-        joined = parts[1:] if parts and parts[0] == "sudo" else parts
+    def __init__(self) -> None:
+        self.calls: list[Any] = []
 
-        if joined == ["iw", "phy"]:
-            stdout = "\n".join(f"Wiphy {phy}" for phy in recorder.phys()) + "\n"
-            return CommandResult(stdout=stdout, stderr="", return_code=0)
+    def __getattr__(self, name: str) -> Any:
+        return getattr(subprocess, name)
 
-        if (
-            len(joined) >= 6
-            and joined[0:2] == ["iw", "phy"]
-            and joined[3:5] == ["interface", "add"]
-        ):
-            recorder.adds.append((joined[2], joined[5]))
-            return CommandResult(stdout="", stderr="", return_code=0)
+    def Popen(self, cmd: Any, *args: Any, **kwargs: Any) -> Any:
+        self.calls.append(cmd)
+        raise AssertionError(f"real command reached run_command: {cmd}")
 
-        if "set" in joined and "netns" in joined:
-            try:
-                phy_name = joined[joined.index("phy") + 1]
-            except (ValueError, IndexError):
-                phy_name = ""
-            if phy_name not in recorder.phys():
-                raise RunCommandError(f"{phy_name} does not exist", 1)
-            return CommandResult(stdout="", stderr="", return_code=0)
 
-        if len(joined) >= 4 and joined[0:2] == ["iw", "dev"] and joined[-1] == "info":
-            iface = joined[2]
-            meta = recorder.adapters.get(iface)
-            if meta is None:
-                raise RunCommandError("No such device", 1)
-            wiphy = meta["phy"].removeprefix("phy")
-            stdout = (
-                f"Interface {iface}\n"
-                f"\taddr {meta['mac']}\n"
-                f"\ttype managed\n"
-                f"\twiphy {wiphy}\n"
-            )
-            return CommandResult(stdout=stdout, stderr="", return_code=0)
+@pytest.fixture
+def no_real_run_command(monkeypatch):
+    """Fail the test if anything reaches a real `utils.general.run_command`.
 
-        if len(joined) >= 4 and joined[0:2] == ["iw", "phy"] and joined[-1] == "info":
-            phy_name = joined[2]
-            mac = next(
-                (
-                    meta["mac"]
-                    for meta in recorder.adapters.values()
-                    if meta["phy"] == phy_name
-                ),
-                None,
-            )
-            if mac is None:
-                raise RunCommandError("No such device", 1)
-            stdout = f"Wiphy {phy_name}\n\taddr {mac}\n"
-            return CommandResult(stdout=stdout, stderr="", return_code=0)
-
-        return CommandResult(stdout="", stderr="", return_code=0)
-
-    with hardware_success_mocks(
-        interfaces=list(adapters),
-        phy_move_side_effect=_move_phy,
-    ):
-        with patch(
-            "wlanpi_core.services.network_namespace_service.interface.delete_interface",
-            side_effect=_delete,
-        ):
-            with patch(
-                "wlanpi_core.services.network_namespace_service.phy.list_phys",
-                side_effect=lambda namespace=None: (
-                    recorder.phys()
-                    if namespace is None
-                    else [
-                        phy_name
-                        for phy_name, ns_name in recorder.phy_moves
-                        if ns_name == namespace
-                    ]
-                ),
-            ):
-                with patch(
-                    "wlanpi_core.services.network_namespace_service.run_command",
-                    side_effect=_run_command,
-                ):
-                    yield recorder
+    Replaces only the `subprocess` name inside utils.general, so stdlib
+    subprocess is untouched elsewhere. Calls are recorded as well as raised
+    because production code often wraps them in a blind `except Exception`.
+    """
+    guard = _RealCommandGuard()
+    monkeypatch.setattr("wlanpi_core.utils.general.subprocess", guard)
+    yield guard
+    assert not guard.calls, f"real run_command calls: {guard.calls}"
 
 
 def write_json_config(cfg_dir: Path, cfg_id: str, payload: dict) -> Path:

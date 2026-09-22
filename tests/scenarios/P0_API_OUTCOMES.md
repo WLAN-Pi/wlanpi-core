@@ -66,7 +66,10 @@ HTTP rows (service assertions live in the namespace matrix):
 | `network_config_activate_default_single_radio` | #202 | 200 not 500 | single-radio `activate/default` |
 | `network_config_create_snapshots_mac` | #237 / Jake | 200 | GET config includes live MAC |
 
-They hard-fail until the production fix lands (same as every other matrix row).
+They run as `xfail(strict=True)` through `KNOWN_BUGS` in
+`tests/test_p0_api_matrix/test_matrix.py`, and assert the response body,
+`current.txt`, and the fake inventory's final state as well as the status
+code. The fix for each bug must delete its entries.
 
 ## WLAN_MANAGEMENT and overnight system APIs (#238 / #241)
 

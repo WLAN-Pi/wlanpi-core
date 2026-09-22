@@ -81,8 +81,22 @@ def handle_timezone_get_set(client, auth_headers, scenario):
     assert set_resp.json()["timezone"] == "Europe/London"
 
 
+def _static_device_info():
+    """Stub the cached model/hostname lookup, which runs wlanpi-model and hostname."""
+    return patch(
+        "wlanpi_core.api.api_v1.endpoints.system_api._read_static_device_info",
+        return_value={
+            "model": "WLAN Pi R4",
+            "hostname": "wlanpi-test.local",
+            "name": "wlanpi-test",
+            "software_version": "3.0.0",
+        },
+    )
+
+
 def handle_system_device_info_any_mode(client, auth_headers, scenario):
-    response = client.get("/api/v1/system/device/info")
+    with _static_device_info():
+        response = client.get("/api/v1/system/device/info")
     _expect_status(response, scenario.expected_http)
     body = response.json()
     assert "mode" in body
@@ -400,7 +414,7 @@ def handle_network_config_activate_stale_phy_mismatch(
             "namespaces": [],
             "roots": [
                 {
-                    "mode": "managed",
+                    "mode": "monitor",
                     "iface_display_name": "wlan1",
                     "phy": "phy1",
                     "interface": "wlan1",
@@ -417,23 +431,36 @@ def handle_network_config_activate_stale_phy_mismatch(
             "/api/v1/network/config/activate/stale_phy_cfg",
             params={"override_active": True},
         )
-        added = inventory.added_phy("wlan1")
     _expect_status(response, scenario.expected_http)
-    assert added in (None, "phy2"), (
-        f"#236: activate recreated wlan1 on {added}, expected live phy2 or no add"
-    )
+    assert response.json() == {
+        "id": "stale_phy_cfg",
+        "message": "Configuration activated successfully",
+    }
+    assert inventory.adds == [("phy2", "wlan1", None)]
+    assert inventory.live() == {
+        "wlan0": ("phy0", None, "managed"),
+        "wlan1": ("phy2", None, "monitor"),
+        "wlan2": ("phy1", None, "managed"),
+    }
+    assert netcfg_env["ccf"].read_text().strip() == "stale_phy_cfg"
 
 
 def handle_network_config_activate_default_single_radio(
     client, auth_headers, scenario, netcfg_env
 ):
     single = {"wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"}}
-    with live_adapter_inventory_mocks(single):
+    with live_adapter_inventory_mocks(single) as inventory:
         response = client.post(
             "/api/v1/network/config/activate/default",
             params={"override_active": True},
         )
     _expect_status(response, scenario.expected_http)
+    assert response.json() == {
+        "id": "default",
+        "message": "Configuration activated successfully",
+    }
+    assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
+    assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
 def handle_network_config_create_snapshots_mac(
@@ -480,14 +507,15 @@ def handle_wlan_management_settings_parse(client, auth_headers, scenario):
 def handle_system_device_info_wlan_management(client, auth_headers, scenario):
     from wlanpi_core.core.config import settings
 
-    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
-        response = client.get("/api/v1/system/device/info")
-    _expect_status(response, scenario.expected_http)
-    body = response.json()
-    assert body["wlan_management"] == "manual"
+    with _static_device_info():
+        with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+            response = client.get("/api/v1/system/device/info")
+        _expect_status(response, scenario.expected_http)
+        body = response.json()
+        assert body["wlan_management"] == "manual"
 
-    with patch.object(settings, "WLAN_MANAGEMENT", "auto"):
-        response = client.get("/api/v1/system/device/info")
+        with patch.object(settings, "WLAN_MANAGEMENT", "auto"):
+            response = client.get("/api/v1/system/device/info")
     assert response.json()["wlan_management"] == "auto"
 
 

@@ -67,6 +67,37 @@ def _ns(namespace: str, **kwargs) -> NamespaceConfig:
     return NamespaceConfig(namespace=namespace, **root.model_dump())
 
 
+# JOSH_THREE_RADIO as InventoryRecorder.live() reports it: all in root, managed.
+JOSH_LIVE: dict[str, tuple[str, str | None, str]] = {
+    name: (meta["phy"], None, "managed") for name, meta in JOSH_THREE_RADIO.items()
+}
+
+
+class _MonitorClock:
+    """Fake `time` for connection.monitor only; sleep advances the clock.
+
+    Patching the monitor module's `time.sleep` attribute patches stdlib time
+    for every thread (AGENTS.md rule 7). Replacing the module's `time` name
+    does not.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._now = 0.0
+
+    def time(self) -> float:
+        with self._lock:
+            return self._now
+
+    def sleep(self, seconds: float) -> None:
+        with self._lock:
+            self._now += seconds
+
+
+def _patch_monitor_clock():
+    return patch("wlanpi_core.connection.monitor.time", _MonitorClock())
+
+
 # --- validation ---
 
 
@@ -338,22 +369,34 @@ def handle_files_all_configs_deleted(namespace_service, netcfg_env, scenario: Sc
 def handle_default_created_when_missing(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """#237: missing default.json must follow live iface→phy, not phy0/phy1 parity."""
+    """#202: missing default.json is built from the live iface→phy map."""
     assert not (netcfg_env["cfg_dir"] / "default.json").exists()
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
         loaded = nc.get_config("default")
         ok = nc.activate_config("default", override_active=True)
-        added = inventory.added_phy("wlan1")
     assert (netcfg_env["cfg_dir"] / "default.json").exists()
-    live_phy = {iface: meta["phy"] for iface, meta in JOSH_THREE_RADIO.items()}
-    for root in loaded.roots or []:
-        if root.interface in live_phy:
-            assert root.phy == live_phy[root.interface], (
-                f"{root.interface} mapped to {root.phy}, live is "
-                f"{live_phy[root.interface]}"
-            )
+    assert loaded.namespaces == []
+    assert {root.interface: root.phy for root in loaded.roots or []} == {
+        "wlan0": "phy0",
+        "wlan1": "phy2",
+        "wlan2": "phy1",
+    }
+    assert all(root.security is None for root in loaded.roots or []), (
+        "#202: default must not carry WPA2 without a psk"
+    )
     assert ok is True
-    assert added in (None, "phy2"), f"wlan1 recreated on wrong radio: {added}"
+    assert sorted(inventory.deleted) == [
+        ("wlan0", None),
+        ("wlan1", None),
+        ("wlan2", None),
+    ]
+    assert sorted(inventory.adds) == [
+        ("phy0", "wlan0", None),
+        ("phy1", "wlan2", None),
+        ("phy2", "wlan1", None),
+    ]
+    assert inventory.phy_moves == []
+    assert inventory.live() == JOSH_LIVE
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
@@ -815,7 +858,7 @@ def handle_ssid_delayed_connect_within_monitor(
     with patch(
         "wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_side_effect
     ):
-        with patch("wlanpi_core.connection.monitor.time.sleep"):
+        with _patch_monitor_clock():
             with patch(
                 "wlanpi_core.connection.monitor.restart_dhcp_with_timeout"
             ) as dhcp:
@@ -847,16 +890,19 @@ def handle_ssid_delayed_beyond_monitor_timeout(
     with patch(
         "wlanpi_core.connection.monitor.get_wpa_status",
         return_value={"wpa_status": {"wpa_state": "SCANNING"}},
-    ):
+    ) as wpa:
         with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout") as dhcp:
             with patch(
                 "wlanpi_core.namespaces.apps.start_app_in_namespace"
             ) as start_app:
-                with patch("wlanpi_core.connection.monitor.time.sleep"):
+                with _patch_monitor_clock():
                     ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
-                    time.sleep(0.1)
-                    stop_all_connection_monitors()
+                    # No stop request: the monitor must exit through its own
+                    # timeout branch. Raises if the thread never finishes.
                     _wait_for_monitors_idle()
+    # One poll per fake second for 15 s proves the timeout path ran, not the
+    # stop-event path.
+    assert wpa.call_count == 15
     dhcp.assert_not_called()
     start_app.assert_not_called()
 
@@ -915,7 +961,7 @@ def handle_files_apps_json_missing_orb(
                     "wlanpi_core.namespaces.apps.start_app_in_namespace",
                     side_effect=missing_app,
                 ) as start_app:
-                    with patch("wlanpi_core.connection.monitor.time.sleep"):
+                    with _patch_monitor_clock():
                         ConnectionMonitor.start_monitor(
                             cfg, "wlan1", "orb_ns", timeout=5
                         )
@@ -928,6 +974,15 @@ def handle_files_apps_json_missing_orb(
     start_app.assert_called_once_with("orb_ns", "orb")
 
 
+# --- identity: live iface→phy map vs stored cfg.phy ---
+#
+# Expected sequences are the contract for the #236 fix: resolve the live
+# (phy, netns) of the iface first, delete it where it lives, move the live phy
+# if needed, then re-add the iface there with the configured mode. Stale rows
+# configure mode=monitor over a managed live iface so a prepare that does
+# nothing cannot pass.
+
+
 def handle_stale_phy_iface_on_other_radio(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -936,17 +991,19 @@ def handle_stale_phy_iface_on_other_radio(
         netcfg_env,
         "stale_phy_cfg",
         roots=[
-            _root(interface="wlan1", phy="phy1", iface_display_name="wlan1").model_dump(
-                mode="json"
-            )
+            _root(
+                interface="wlan1", phy="phy1", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        assert nc.activate_config("stale_phy_cfg", override_active=True) is True
-        added = inventory.added_phy("wlan1")
-    assert added in (None, "phy2"), (
-        f"#236: _prepare_root created wlan1 on {added}, expected live phy2 or no add"
-    )
+        ok = nc.activate_config("stale_phy_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan1", None)]
+    assert inventory.adds == [("phy2", "wlan1", None)]
+    assert inventory.phy_moves == []
+    assert inventory.live() == {**JOSH_LIVE, "wlan1": ("phy2", None, "monitor")}
+    assert netcfg_env["ccf"].read_text().strip() == "stale_phy_cfg"
 
 
 def handle_phy_index_neq_iface_index(namespace_service, netcfg_env, scenario: Scenario):
@@ -955,21 +1012,22 @@ def handle_phy_index_neq_iface_index(namespace_service, netcfg_env, scenario: Sc
         netcfg_env,
         "live_map_cfg",
         roots=[
-            _root(interface="wlan0", phy="phy0", iface_display_name="wlan0").model_dump(
-                mode="json"
-            ),
-            _root(interface="wlan1", phy="phy2", iface_display_name="wlan1").model_dump(
-                mode="json"
-            ),
-            _root(interface="wlan2", phy="phy1", iface_display_name="wlan2").model_dump(
-                mode="json"
-            ),
+            _root(interface=name, phy=meta["phy"]).model_dump(mode="json")
+            for name, meta in JOSH_THREE_RADIO.items()
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        assert nc.activate_config("live_map_cfg", override_active=True) is True
-        assert inventory.added_phy("wlan1") != "phy1"
-        assert inventory.added_phy("wlan2") != "phy2"
+        ok = nc.activate_config("live_map_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan0", None), ("wlan1", None), ("wlan2", None)]
+    assert inventory.adds == [
+        ("phy0", "wlan0", None),
+        ("phy2", "wlan1", None),
+        ("phy1", "wlan2", None),
+    ]
+    assert inventory.phy_moves == []
+    assert inventory.live() == JOSH_LIVE
+    assert netcfg_env["ccf"].read_text().strip() == "live_map_cfg"
 
 
 def handle_prepare_missing_phy_after_delete(
@@ -980,24 +1038,24 @@ def handle_prepare_missing_phy_after_delete(
         netcfg_env,
         "missing_phy_cfg",
         roots=[
-            _root(interface="wlan1", phy="phy9", iface_display_name="wlan1").model_dump(
-                mode="json"
-            )
+            _root(
+                interface="wlan1", phy="phy9", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        nc.activate_config("missing_phy_cfg", override_active=True)
-        deleted = any(name == "wlan1" for name, _ns in inventory.deleted)
-        restored = inventory.added_phy("wlan1") == "phy2"
-    assert not deleted or restored, (
-        "#236: deleted wlan1 before validating phy9 and did not restore on live phy2"
-    )
+        ok = nc.activate_config("missing_phy_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan1", None)]
+    assert inventory.adds == [("phy2", "wlan1", None)]
+    assert inventory.phy_moves == []
+    assert inventory.live() == {**JOSH_LIVE, "wlan1": ("phy2", None, "monitor")}
 
 
 def handle_stale_phy_namespace_wrong_radio(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """#236 namespace twin: do not move phy1 when wlan1 lives on phy2."""
+    """#236 namespace twin: move phy2 (live wlan1), not the stored phy1."""
     _write_netconfig(
         netcfg_env,
         "stale_ns_cfg",
@@ -1006,16 +1064,17 @@ def handle_stale_phy_namespace_wrong_radio(
                 "lab_ns",
                 interface="wlan1",
                 phy="phy1",
-                iface_display_name="wlan1",
+                mode=NetworkModeEnum.monitor,
             ).model_dump(mode="json")
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        assert nc.activate_config("stale_ns_cfg", override_active=True) is True
-        moved = inventory.last_moved_phy()
-    assert moved == "phy2", (
-        f"#236: _prepare_namespace moved {moved}, expected live phy2"
-    )
+        ok = nc.activate_config("stale_ns_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan1", None)]
+    assert inventory.phy_moves == [("phy2", "lab_ns")]
+    assert inventory.adds == [("phy2", "wlan1", "lab_ns")]
+    assert inventory.live() == {**JOSH_LIVE, "wlan1": ("phy2", "lab_ns", "monitor")}
 
 
 def handle_default_single_radio_no_500(
@@ -1023,12 +1082,17 @@ def handle_default_single_radio_no_500(
 ):
     """#202: activate default on a single-radio device must persist, not fail."""
     single = {"wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"}}
-    with live_adapter_inventory_mocks(single):
+    with live_adapter_inventory_mocks(single) as inventory:
         ok = nc.activate_config("default", override_active=True)
     assert ok is True, (
         "#202: activate default returned False on single-radio "
         "(hardcoded wlan1 and/or fake WPA2)"
     )
+    default = json.loads((netcfg_env["cfg_dir"] / "default.json").read_text())
+    assert [(r["interface"], r["phy"]) for r in default["roots"]] == [("wlan0", "phy0")]
+    assert inventory.deleted == [("wlan0", None)]
+    assert inventory.adds == [("phy0", "wlan0", None)]
+    assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
@@ -1052,6 +1116,160 @@ def handle_create_profile_snapshots_mac(
     assert mac == expected, (
         f"#237: add_config did not snapshot live MAC; got {mac!r}, expected {expected}"
     )
+
+
+def handle_iface_already_in_netns_at_activation(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236: a root cfg for an iface left in another netns brings it home."""
+    adapters = {
+        **JOSH_THREE_RADIO,
+        "wlan1": {**JOSH_THREE_RADIO["wlan1"], "netns": "old_ns"},
+    }
+    _write_netconfig(
+        netcfg_env,
+        "home_cfg",
+        roots=[_root(interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        ok = nc.activate_config("home_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan1", "old_ns")]
+    assert inventory.phy_moves == [("phy2", None)]
+    assert inventory.adds == [("phy2", "wlan1", None)]
+    assert inventory.live() == JOSH_LIVE
+
+
+def handle_phy10_vs_phy1_substring(namespace_service, netcfg_env, scenario: Scenario):
+    """#236: phy1 outside root must not look present because phy10 is."""
+    adapters = {
+        "wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"},
+        "wlan1": {"phy": "phy1", "mac": "00:11:22:33:44:01", "netns": "old_ns"},
+        "wlan10": {"phy": "phy10", "mac": "00:11:22:33:44:10"},
+    }
+    _write_netconfig(
+        netcfg_env,
+        "phy1_cfg",
+        roots=[_root(interface="wlan1", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        ok = nc.activate_config("phy1_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("wlan1", "old_ns")]
+    assert inventory.phy_moves == [("phy1", None)]
+    assert inventory.adds == [("phy1", "wlan1", None)]
+    assert inventory.live() == {
+        "wlan0": ("phy0", None, "managed"),
+        "wlan1": ("phy1", None, "managed"),
+        "wlan10": ("phy10", None, "managed"),
+    }
+
+
+def handle_iface_display_name_differs(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236: re-activating finds the iface by iface_display_name too."""
+    adapters = {
+        "wlan0": JOSH_THREE_RADIO["wlan0"],
+        "lab1": JOSH_THREE_RADIO["wlan1"],
+        "wlan2": JOSH_THREE_RADIO["wlan2"],
+    }
+    _write_netconfig(
+        netcfg_env,
+        "renamed_cfg",
+        roots=[
+            _root(
+                interface="wlan1",
+                iface_display_name="lab1",
+                phy="phy2",
+                mode=NetworkModeEnum.monitor,
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        ok = nc.activate_config("renamed_cfg", override_active=True)
+    assert ok is True
+    assert inventory.deleted == [("lab1", None)]
+    assert inventory.adds == [("phy2", "lab1", None)]
+    assert inventory.live() == {
+        "lab1": ("phy2", None, "monitor"),
+        "wlan0": ("phy0", None, "managed"),
+        "wlan2": ("phy1", None, "managed"),
+    }
+
+
+# Layout captured from a WLAN Pi with two MT7921AU USB adapters: onboard phy0
+# carries the managed wlan0 plus the wlanpi0 monitor iface on the same MAC.
+# MACs are placeholders.
+SHARED_PHY_THREE_RADIO: dict[str, dict[str, str]] = {
+    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:55:00"},
+    "wlanpi0": {"phy": "phy0", "mac": "00:11:22:33:55:00", "type": "monitor"},
+    "wlan1": {"phy": "phy1", "mac": "00:11:22:33:55:01"},
+    "wlan2": {"phy": "phy2", "mac": "00:11:22:33:55:02"},
+}
+
+
+def handle_shared_phy_monitor_iface_round_trip(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Bring wlanpi0 back with wlan0 when phy0 round-trips through a netns."""
+    _write_netconfig(
+        netcfg_env,
+        "shared_cfg",
+        namespaces=[
+            _ns("lab_ns", interface="wlan0", phy="phy0").model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(SHARED_PHY_THREE_RADIO) as inventory:
+        # Same order as real `iw dev`: phys high to low, newest iface first.
+        assert namespace_service.get_interfaces() == [
+            "wlan2",
+            "wlan1",
+            "wlanpi0",
+            "wlan0",
+        ]
+        assert nc.activate_config("shared_cfg", override_active=True) is True
+        after_activate = inventory.live()
+        assert nc.deactivate_config("shared_cfg") is True
+    assert after_activate == {
+        "wlan1": ("phy1", None, "managed"),
+        "wlan2": ("phy2", None, "managed"),
+        "wlan0": ("phy0", "lab_ns", "managed"),
+        "wlanpi0": ("phy0", "lab_ns", "monitor"),
+    }
+    assert inventory.live() == {
+        name: (meta["phy"], None, meta.get("type", "managed"))
+        for name, meta in SHARED_PHY_THREE_RADIO.items()
+    }
+    assert not any(name == "wlanpi0" for name, _ns in inventory.deleted)
+    assert not any(name == "wlanpi0" for _phy, name, _ns in inventory.adds)
+    assert "lab_ns" not in inventory.netns
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_rollback_after_partial_prepare(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236: a prepare that fails after moving its phy is rolled back with the rest."""
+    _write_netconfig(
+        netcfg_env,
+        "partial_cfg",
+        namespaces=[
+            _ns("good_ns", interface="wlan0", phy="phy0").model_dump(mode="json"),
+            _ns("bad_ns", interface="wlan1", phy="phy2").model_dump(mode="json"),
+        ],
+    )
+    faults = {
+        ("bad_ns", ("ip", "link", "set", "wlan1", "up")): (
+            "RTNETLINK answers: Operation not possible due to RF-kill\n"
+        )
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults) as inventory:
+        with pytest.raises(RunCommandError):
+            nc.activate_config("partial_cfg", override_active=True)
+    assert inventory.live() == JOSH_LIVE
+    assert not inventory.netns & {"good_ns", "bad_ns"}
+    assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
 HANDLERS = {
@@ -1102,6 +1320,11 @@ HANDLERS = {
     "stale_phy_namespace_wrong_radio": handle_stale_phy_namespace_wrong_radio,
     "default_single_radio_no_500": handle_default_single_radio_no_500,
     "create_profile_snapshots_mac": handle_create_profile_snapshots_mac,
+    "iface_already_in_netns_at_activation": handle_iface_already_in_netns_at_activation,
+    "phy10_vs_phy1_substring": handle_phy10_vs_phy1_substring,
+    "iface_display_name_differs": handle_iface_display_name_differs,
+    "rollback_after_partial_prepare": handle_rollback_after_partial_prepare,
+    "shared_phy_monitor_iface_round_trip": handle_shared_phy_monitor_iface_round_trip,
 }
 
 
