@@ -330,7 +330,7 @@ async def show_udp_connections(namespace: str | None = None) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_dhcp_leases() -> Any:
-    """Parse dhclient lease files under ``/var/lib/dhcp``."""
+    """Return current DHCP leases from NetworkManager or legacy dhclient files."""
     try:
         return await asyncio.to_thread(network_primitives.get_dhcp_leases)
     except Exception as ex:
