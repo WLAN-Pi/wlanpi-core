@@ -17,15 +17,17 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 
 All checks run through tox and are wired into CI workflows:
 `python-lint-police.yml` (lint), `python-format-police.yml` (formatcheck),
-`test-python-package.yml` (tests).
+`test-python-package.yml` (tests, which includes the OpenAPI freshness
+check -- see `envlist` in `tox.ini`).
 
 Before committing, run the gates that your change touches:
 
 - `tox -e lint` : `ruff check wlanpi_core tests` then `mypy wlanpi_core`
 - `tox -e formatcheck` : `ruff format --check wlanpi_core tests`
-- `tox` : the py313 test suite plus coverage
-- `tox -e openapicheck` : fails if `docs/openapi.json` is stale (see OpenAPI
-  docs below); touched `wlanpi_core/**`? run this before committing.
+- `tox` : `envlist` runs both `py313` (the test suite plus coverage) and
+  `openapicheck` (fails if `docs/openapi.json` is stale; see OpenAPI docs
+  below). It's a normal env in `envlist`, not a conditional step someone has
+  to remember to run -- a gate that's opt-in is a gate that gets skipped.
 
 `tox -e format` rewrites the tree with `ruff format` when the check fails.
 
@@ -149,7 +151,7 @@ Reuse first, write second:
   file, or when scope is ambiguous. Don't spend 20 tool calls on a decision a
   human answers in one message.
 - Verify before committing: run the gates in "Tooling and gates"
-  (`tox -e lint && tox -e formatcheck && tox -e py313`).
+  (`tox -e lint && tox -e formatcheck && tox`).
 
 ## Documentation
 
