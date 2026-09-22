@@ -308,6 +308,22 @@ async def show_ntp() -> Any:
         return Response(content="Internal Server Error", status_code=500)
 
 
+@router.post(
+    "/ntp",
+    response_model=system.NtpInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def set_ntp(body: system.NtpSetRequest) -> Any:
+    """Enable or disable NTP time synchronization."""
+    try:
+        return await asyncio.to_thread(system_service.set_ntp_enabled, body.enabled)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to set NTP", status_code=503)
+
+
 @router.get(
     "/reg-domain/list",
     response_model=system.RegDomainList,

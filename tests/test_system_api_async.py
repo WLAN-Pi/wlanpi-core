@@ -152,3 +152,34 @@ def test_api_failed_services_serializes():
 
     assert response.status_code == 200
     assert response.json()["units"][0]["unit"] == "bt-agent.service"
+
+
+def test_api_set_ntp_disables():
+    async def _allow():
+        return True
+
+    payload = {
+        "synchronized": False,
+        "ntp_service": False,
+        "server_name": None,
+        "server_address": None,
+        "fallback_servers": [],
+        "runtime_servers": [],
+        "poll_interval": None,
+        "frequency": None,
+        "source": "unknown",
+    }
+
+    app.dependency_overrides[verify_auth_wrapper] = _allow
+    try:
+        with TestClient(app) as client:
+            with patch.object(
+                system_api.system_service, "set_ntp_enabled", return_value=payload
+            ) as set_ntp:
+                response = client.post("/api/v1/system/ntp", json={"enabled": False})
+    finally:
+        app.dependency_overrides.pop(verify_auth_wrapper, None)
+
+    assert response.status_code == 200
+    set_ntp.assert_called_once_with(False)
+    assert response.json()["ntp_service"] is False

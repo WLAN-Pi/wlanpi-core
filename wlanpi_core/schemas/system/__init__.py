@@ -14,6 +14,7 @@ from .system import (
     LoadAverage,
     NtpAutoInfo,
     NtpInfo,
+    NtpSetRequest,
     NtpStatus,
     PowerActionResponse,
     RegDomainInfo,

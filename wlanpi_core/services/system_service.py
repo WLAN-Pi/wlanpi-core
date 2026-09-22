@@ -581,12 +581,30 @@ async def restart_systemd_service(name: str) -> dict[str, Any]:
 
 
 def _resolve_timezone() -> str:
-    """Return best-effort IANA timezone name."""
-    tz_path = Path("/etc/timezone")
-    if tz_path.exists():
-        tz = tz_path.read_text().strip()
-        if tz and "/" in tz:
+    """Return the system IANA timezone name.
+
+    Prefer ``timedatectl`` (the authoritative systemd value): on some images
+    ``timedatectl set-timezone`` updates ``/etc/localtime`` but leaves
+    ``/etc/timezone`` stale, so that file is only a fallback.
+    """
+    try:
+        tz = run_command(
+            ["timedatectl", "show", "-p", "Timezone", "--value"],
+            raise_on_fail=False,
+        ).stdout.strip()
+        if tz:
             return tz
+    except (RunCommandError, FileNotFoundError):
+        pass
+
+    tz_path = Path("/etc/timezone")
+    try:
+        if tz_path.exists():
+            tz = tz_path.read_text().strip()
+            if tz:
+                return tz
+    except OSError:
+        pass
 
     try:
         localtime = Path("/etc/localtime")
@@ -597,19 +615,6 @@ def _resolve_timezone() -> str:
                 idx = parts.index("zoneinfo")
                 return "/".join(parts[idx + 1 :])
     except OSError:
-        pass
-
-    try:
-        tz = run_command(
-            ["timedatectl", "show", "-p", "Timezone", "--value"],
-            raise_on_fail=False,
-        ).stdout.strip()
-        if tz and "/" in tz:
-            return tz
-        if tz:
-            log.debug("timedatectl Timezone is non-IANA (%r); prefer /etc/timezone", tz)
-            return tz
-    except (RunCommandError, FileNotFoundError):
         pass
 
     return "UTC"
@@ -949,6 +954,15 @@ def enable_timezone_auto() -> dict[str, Any]:
     ).stdout.strip()
     timezone = get_timezone()["timezone"]
     return {"ntp": ntp.lower() in ("yes", "1", "true"), "timezone": timezone}
+
+
+def set_ntp_enabled(enabled: bool) -> dict[str, Any]:
+    """Enable or disable NTP time synchronization via timedatectl."""
+    run_command(
+        ["timedatectl", "set-ntp", "true" if enabled else "false"],
+        raise_on_fail=True,
+    )
+    return get_ntp()
 
 
 def reboot_system() -> dict[str, str]:

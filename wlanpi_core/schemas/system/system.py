@@ -205,6 +205,12 @@ class NtpAutoInfo(BaseModel):
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
 
 
+class NtpSetRequest(BaseModel):
+    """Request to enable or disable NTP time synchronization."""
+
+    enabled: bool = Field(description="True to enable NTP, false to disable it")
+
+
 class PowerActionResponse(BaseModel):
     """Result of a device power action."""
 

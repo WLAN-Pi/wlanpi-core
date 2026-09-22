@@ -136,6 +136,16 @@ def test_read_cpu_temperature_converts_millidegrees(mocker):
     assert system_service._read_cpu_temperature() == "52.1C"
 
 
+def test_resolve_timezone_prefers_timedatectl(monkeypatch):
+    monkeypatch.setattr(
+        system_service,
+        "run_command",
+        lambda *a, **k: CommandResult("America/Chicago\n", "", 0),
+    )
+
+    assert system_service._resolve_timezone() == "America/Chicago"
+
+
 def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):
     tz_file = tmp_path / "timezone"
     tz_file.write_text("Europe/London\n")
@@ -147,6 +157,10 @@ def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):
         return real_path(value)
 
     monkeypatch.setattr(system_service, "Path", path_factory)
+    # timedatectl unavailable: fall back to /etc/timezone.
+    monkeypatch.setattr(
+        system_service, "run_command", lambda *a, **k: CommandResult("", "", 1)
+    )
 
     assert system_service._resolve_timezone() == "Europe/London"
 
@@ -511,3 +525,21 @@ def test_get_failed_services_handles_garbage(monkeypatch):
     )
 
     assert system_service.get_failed_services() == {"units": []}
+
+
+def test_set_ntp_enabled_runs_timedatectl(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return CommandResult("", "", 0)
+
+    monkeypatch.setattr(system_service, "run_command", fake_run)
+    monkeypatch.setattr(
+        system_service, "get_ntp", lambda: {"ntp_service": True, "synchronized": True}
+    )
+
+    result = system_service.set_ntp_enabled(False)
+
+    assert ["timedatectl", "set-ntp", "false"] in calls
+    assert result == {"ntp_service": True, "synchronized": True}
