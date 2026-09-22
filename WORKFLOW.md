@@ -293,7 +293,7 @@ tox -e format
 # Lint code
 tox -e lint
 
-# Run tests
+# Run tests (also checks docs/openapi.json is current -- see tox.ini's envlist)
 tox
 ```
 
