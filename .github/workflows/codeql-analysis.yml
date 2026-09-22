@@ -13,6 +13,9 @@ name: "CodeQL Advanced"
 
 on:
   push:
+    branches:
+      - dev
+      - main
     paths-ignore: # ignore files that don't change build output
       - '**.md'
       - .github/dependabot.yml
