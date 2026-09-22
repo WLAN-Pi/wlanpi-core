@@ -99,6 +99,14 @@ check_prerequisites() {
     fi
 }
 
+# Generate the per-device TLS certs nginx, wlanpi-webui, and cockpit use.
+# postinst skips this inside image-build chroots (unique key per device), so
+# first real boot must produce them; also self-heals a device that lost them
+# or predates the renamed-.local SAN (wlanpi-core#175).
+generate_self_signed_certs() {
+    /etc/wlanpi-core/scripts/wlanpi-generate-certs.sh
+}
+
 apply_ufw_rules() {
     local current_version
     local installed_version
@@ -145,6 +153,7 @@ apply_ufw_rules() {
 main() {
     trap cleanup EXIT
     check_root
+    generate_self_signed_certs
     check_prerequisites
     apply_ufw_rules
 }

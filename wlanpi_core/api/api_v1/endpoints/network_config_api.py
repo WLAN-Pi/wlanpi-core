@@ -1,10 +1,19 @@
-from typing import Optional, Union
+"""Network configuration CRUD and activation endpoints."""
+
+import asyncio
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
-from wlanpi_core.models.network_config_errors import ConfigActiveError, ConfigMalformedError
+from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.mode_guard import require_wlan_management_enabled
+from wlanpi_core.models.network_config_errors import (
+    ConfigActiveError,
+    ConfigMalformedError,
+)
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
     NetConfig,
     NetConfigUpdate,
@@ -13,27 +22,28 @@ from wlanpi_core.utils import network_config
 
 router = APIRouter()
 
-from wlanpi_core.core.logging import get_logger
-
 log = get_logger(__name__)
 
 
 @router.get(
     "/status",
-    response_model=dict,
+    response_model=NetworkConfigStatus,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_status():
+async def get_status() -> Any:
     """
-    Get the status of network configurations.
+    Per-namespace `iw dev` adapter layout (`root` plus each netns).
+
+    Namespace values are interface maps or `{ "error": "…" }` when a netns could
+    not be queried.
     """
     try:
-        status = network_config.status()
+        status = await asyncio.to_thread(network_config.status)
         log.info("Network configuration status retrieved successfully")
         return status
     except Exception as ex:
         log.error(f"Error retrieving network configuration status: {ex}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.get(
@@ -42,20 +52,17 @@ async def get_status():
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_configs():
-    """
-    Get all network configuration ids.
-    """
+async def get_configs() -> Any:
+    """Get all network configuration ids."""
     try:
-
-        configs = network_config.list_configs()
+        configs = await asyncio.to_thread(network_config.list_configs)
         log.info("Retrieved all configurations")
         return configs
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.get(
@@ -64,25 +71,23 @@ async def get_configs():
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def get_config_by_id(id: str):
-    """
-    Get a specific network configuration by ID.
-    """
+async def get_config_by_id(id: str) -> Any:
+    """Get a specific network configuration by ID."""
     try:
         config = network_config.get_config(id)
         log.info(f"Retrieved configuration: {config.id}")
         return config
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except ConfigMalformedError as cme:
         log.error(f"Configuration is malformed: {cme}")
-        raise HTTPException(status_code=422, detail=cme.message)
+        raise HTTPException(status_code=422, detail=cme.message) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.post(
@@ -91,10 +96,8 @@ async def get_config_by_id(id: str):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def create_config(config: NetConfig):
-    """
-    Create a new network configuration.
-    """
+async def create_config(config: NetConfig) -> Any:
+    """Create a new network configuration."""
     try:
         if config.id in ["root", "default"]:
             raise ValidationError(
@@ -109,24 +112,22 @@ async def create_config(config: NetConfig):
         return {"id": config.id, "message": "Configuration added successfully"}
     except FileExistsError as e:
         log.error(f"Configuration already exists: {e}")
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.patch(
     "/{id}",
-    response_model=dict[str, Union[NetConfig, str]],
+    response_model=dict[str, NetConfig | str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def update_config(id: str, config_update: NetConfigUpdate):
-    """
-    Update an existing network configuration.
-    """
+async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
+    """Update an existing network configuration."""
     try:
         config = network_config.edit_config(id, config_update)
         if not config:
@@ -142,15 +143,15 @@ async def update_config(id: str, config_update: NetConfigUpdate):
         }
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be updated: {cae}")
-        raise HTTPException(status_code=409, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae)) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.delete(
@@ -159,10 +160,8 @@ async def update_config(id: str, config_update: NetConfigUpdate):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def delete_config(id: str, force: Optional[bool] = False):
-    """
-    Delete a network configuration by ID.
-    """
+async def delete_config(id: str, force: bool = False) -> Any:
+    """Delete a network configuration by ID."""
     try:
         success = network_config.delete_config(id, force)
         if not success:
@@ -174,15 +173,15 @@ async def delete_config(id: str, force: Optional[bool] = False):
         return {"id": id, "message": "Configuration deleted successfully"}
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be deleted: {cae}")
-        raise HTTPException(status_code=409, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae)) from None
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.post(
@@ -191,12 +190,13 @@ async def delete_config(id: str, force: Optional[bool] = False):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def activate_config(id: str, override_active: Optional[bool] = False):
-    """
-    Activate a network configuration by ID.
-    """
+async def activate_config(id: str, override_active: bool = False) -> Any:
+    """Activate a network configuration by ID."""
     try:
-        success = network_config.activate_config(id, override_active)
+        require_wlan_management_enabled()
+        success = await asyncio.to_thread(
+            network_config.activate_config, id, override_active
+        )
         if not success:
             log.error(f"Failed to activate configuration: {id}")
             raise HTTPException(
@@ -206,18 +206,18 @@ async def activate_config(id: str, override_active: Optional[bool] = False):
         return {"id": id, "message": "Configuration activated successfully"}
     except ConfigActiveError as cae:
         log.error(f"Configuration already active: {cae}")
-        raise HTTPException(status_code=409, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae)) from None
     except ConfigMalformedError as cme:
         log.error(f"Configuration is malformed: {cme}")
-        raise HTTPException(status_code=422, detail=cme.message)
+        raise HTTPException(status_code=422, detail=cme.message) from None
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
 
 
 @router.post(
@@ -226,13 +226,14 @@ async def activate_config(id: str, override_active: Optional[bool] = False):
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
-async def deactivate_config(id: str, override_active: Optional[bool] = False):
-    """
-    Deactivate a network configuration by ID.
-    """
+async def deactivate_config(id: str, override_active: bool = False) -> Any:
+    """Deactivate a network configuration by ID."""
     try:
-        success = network_config.deactivate_config(
-            id, override_active=override_active if override_active else False
+        require_wlan_management_enabled()
+        success = await asyncio.to_thread(
+            network_config.deactivate_config,
+            id,
+            override_active=override_active if override_active else False,
         )
         if not success:
             log.error(f"Failed to deactivate configuration: {id}")
@@ -243,12 +244,12 @@ async def deactivate_config(id: str, override_active: Optional[bool] = False):
         return {"id": id, "message": "Configuration deactivated successfully"}
     except ConfigActiveError as cae:
         log.error(f"Configuration not active: {cae}")
-        raise HTTPException(status_code=409, detail=str(cae))
+        raise HTTPException(status_code=409, detail=str(cae)) from None
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except ValidationError as ve:
-        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg)
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
         log.error(ex)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None

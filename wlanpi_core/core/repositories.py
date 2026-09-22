@@ -1,9 +1,11 @@
+"""Data access repositories for the core database."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Union
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,16 +23,14 @@ log = get_logger(__name__)
 
 
 class TokenRepository(BaseRepository):
-    """
-    Repository for managing authentication tokens
-    """
+    """Repository for managing authentication tokens."""
 
     def __init__(self, session: AsyncSession):
         super().__init__(session)
 
-    async def get_token_by_value(self, token_value: str) -> Optional[Token]:
+    async def get_token_by_value(self, token_value: str) -> Token | None:
         """
-        Retrieve a token by its string value
+        Retrieve a token by its string value.
 
         Args:
             token_value: The token string to search for
@@ -48,9 +48,9 @@ class TokenRepository(BaseRepository):
 
     async def get_active_tokens_for_device(
         self, device_id: str, include_revoked: bool = False
-    ) -> List[Token]:
+    ) -> list[Token]:
         """
-        Retrieve active tokens for a specific device
+        Retrieve active tokens for a specific device.
 
         Args:
             device_id: Device identifier
@@ -67,36 +67,19 @@ class TokenRepository(BaseRepository):
 
         if not include_revoked:
             query = query.where(
-                Token.revoked == False, Token.expires_at > datetime.now(timezone.utc)
+                Token.revoked.is_(False), Token.expires_at > datetime.now(UTC)
             )
 
         result = await self._session.execute(query)
-        return result.scalars().all()
-
-    async def purge_expired_tokens(self) -> int:
-        """
-        Remove expired and revoked tokens
-
-        Returns:
-            Number of tokens deleted
-        """
-        delete_query = delete(Token).where(
-            Token.revoked == True, Token.expires_at < datetime.now(timezone.utc)
-        )
-
-        result = await self._session.execute(delete_query)
-
-        return result.rowcount
+        return list(result.scalars().all())
 
 
 class DeviceRepository(BaseRepository):
-    """
-    Repository for managing device-related operations
-    """
+    """Repository for managing device-related operations."""
 
     async def get_or_create_device(self, device_id: str) -> APIDevice:
         """
-        Retrieve an existing device or create a new one
+        Retrieve an existing device or create a new one.
 
         Args:
             device_id: Unique device identifier
@@ -113,11 +96,12 @@ class DeviceRepository(BaseRepository):
             self._session.add(device)
             await self._session.flush()
 
-        device.last_seen = datetime.now(timezone.utc)
+        device.last_seen = datetime.now(UTC)
 
         return device
 
-    async def get_device_stats(self, device_id: str) -> Optional[Dict]:
+    async def get_device_stats(self, device_id: str) -> dict[str, Any] | None:
+        """Return statistics for a device."""
         query = (
             select(APIDeviceStats)
             .join(APIDevice)
@@ -132,11 +116,11 @@ class DeviceRepository(BaseRepository):
 
         token_query = (
             select(Token)
-            .where(Token.device_id == device_id, Token.revoked == False)
+            .where(Token.device_id == device_id, Token.revoked.is_(False))
             .order_by(Token.created_at.desc())
         )
-        result = await self._session.execute(token_query)
-        token = result.scalar_one_or_none()
+        token_result = await self._session.execute(token_query)
+        token = token_result.scalar_one_or_none()
 
         return {
             "token_created": token.created_at if token else None,
@@ -150,9 +134,9 @@ class DeviceRepository(BaseRepository):
 
     async def update_device_stats(
         self, device_id: str, increment_requests: int = 1, increment_errors: int = 0
-    ):
+    ) -> APIDeviceStats:
         """
-        Update device statistics
+        Update device statistics.
 
         Args:
             device_id: Device identifier
@@ -170,19 +154,19 @@ class DeviceRepository(BaseRepository):
                 device_id=device_id,
                 request_count=increment_requests,
                 error_count=increment_errors,
-                last_activity=datetime.now(timezone.utc),
+                last_activity=datetime.now(UTC),
             )
-            self.add(stats)
+            await self.add(stats)
         else:
             stats.request_count += increment_requests
             stats.error_count += increment_errors
-            stats.last_activity = datetime.now(timezone.utc)
+            stats.last_activity = datetime.now(UTC)
 
         return stats
 
 
 class ActivityRepository(BaseRepository):
-    """Repository for managing device activities"""
+    """Repository for managing device activities."""
 
     async def create_activity(
         self,
@@ -190,9 +174,9 @@ class ActivityRepository(BaseRepository):
         endpoint: str,
         status_code: int,
         activity_type: str = "recent",
-    ) -> Union[APIDeviceActivity, APIDeviceActivityRecent]:
+    ) -> APIDeviceActivity | APIDeviceActivityRecent:
         """
-        Create a new activity record
+        Create a new activity record.
 
         Args:
             device_id: Device identifier
@@ -228,10 +212,10 @@ class ActivityRepository(BaseRepository):
         return activity
 
     async def get_activities(
-        self, device_id: Optional[str] = None, limit: int = 100, recent: bool = True
-    ) -> List[Union[APIDeviceActivity, APIDeviceActivityRecent]]:
+        self, device_id: str | None = None, limit: int = 100, recent: bool = True
+    ) -> list[APIDeviceActivity | APIDeviceActivityRecent]:
         """
-        Retrieve activity records for a device
+        Retrieve activity records for a device.
 
         Args:
             device_id: ID of the device to filter activities (optional)
@@ -249,13 +233,17 @@ class ActivityRepository(BaseRepository):
         query = query.limit(limit)
 
         result = await self._session.execute(query)
-        return result.scalars().all()
+        return [
+            row
+            for row in result.scalars().all()
+            if isinstance(row, (APIDeviceActivity, APIDeviceActivityRecent))
+        ]
 
     async def bulk_create_activities(
-        self, activities: List[Dict], activity_type: str = "recent"
-    ) -> List[Union[APIDeviceActivity, APIDeviceActivityRecent]]:
+        self, activities: list[dict[str, Any]], activity_type: str = "recent"
+    ) -> list[APIDeviceActivity | APIDeviceActivityRecent]:
         """
-        Bulk create activity records
+        Bulk create activity records.
 
         Args:
             activities: List of activity dictionaries
@@ -287,11 +275,11 @@ class ActivityRepository(BaseRepository):
 
 
 class StatsRepository(BaseRepository):
-    """Repository for managing device statistics"""
+    """Repository for managing device statistics."""
 
-    async def get_stats(self, device_id: str) -> Optional[APIDeviceStats]:
+    async def get_stats(self, device_id: str) -> APIDeviceStats | None:
         """
-        Get statistics for a device
+        Get statistics for a device.
 
         Args:
             device_id: Device identifier
@@ -308,10 +296,10 @@ class StatsRepository(BaseRepository):
         device_id: str,
         requests: int = 0,
         errors: int = 0,
-        endpoints: Optional[Set[str]] = None,
+        endpoints: set[str] | None = None,
     ) -> APIDeviceStats:
         """
-        Update statistics for a device
+        Update statistics for a device.
 
         Args:
             device_id: Device identifier
@@ -326,7 +314,7 @@ class StatsRepository(BaseRepository):
         result = await self._session.execute(query)
         stats = result.scalar_one_or_none()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if stats:
             stats.request_count += requests
@@ -347,7 +335,8 @@ class StatsRepository(BaseRepository):
         await self._session.flush()
         return stats
 
-    async def get_device_stats(self, device_id: str) -> Optional[Dict]:
+    async def get_device_stats(self, device_id: str) -> dict[str, Any] | None:
+        """Return statistics for a device."""
         query = select(APIDeviceStats).where(APIDeviceStats.device_id == device_id)
         result = await self._session.execute(query)
         stats = result.scalar_one_or_none()
@@ -371,18 +360,18 @@ class StatsRepository(BaseRepository):
             "last_activity": stats.last_activity,
         }
 
-    async def get_active_devices(self) -> List[Dict]:
+    async def get_active_devices(self) -> list[dict[str, Any]]:
         """
-        Get statistics for all active devices
+        Get statistics for all active devices.
 
         Returns:
             List of device statistics
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         query = (
             select(Token, APIDeviceStats)
             .join(APIDeviceStats, Token.device_id == APIDeviceStats.device_id)
-            .where(Token.expires_at > now, Token.revoked == False)
+            .where(Token.expires_at > now, Token.revoked.is_(False))
         )
 
         result = await self._session.execute(query)

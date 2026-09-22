@@ -24,7 +24,7 @@ class TestGeneralUtils(unittest.TestCase):
 
     def test_get_current_unix_timestamp(self):
         # Get current Unix timestamp in milliseconds
-        ms = int(round(time.time() * 1000))
+        ms = round(time.time() * 1000)
 
         # Call function and get its result
         func_ms = general.get_current_unix_timestamp()

@@ -8,6 +8,10 @@ on:
       - .github/dependabot.yml
       - .gitignore
       - LICENSE
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   format:
     name: Get formatted version for filename
@@ -25,7 +29,7 @@ jobs:
     name: Post Workflow Status to Slack
     needs:
       - sbuild
-    runs-on: "${{ vars.RUNS_ON || 'ubuntu-22.04' }}"
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-26.04' }}"
     steps:
       - name: Slack Workflow Notification
         uses: Gamesight/slack-workflow-status@master

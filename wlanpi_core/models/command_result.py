@@ -1,20 +1,25 @@
+"""Result object for executed commands."""
+
 import json
 import re
 from json import JSONDecodeError
 from re import RegexFlag
-from typing import Union
+from typing import Any
 
 
 class CommandResult:
-    """Returned by run_command"""
+    """Returned by run_command."""
 
-    def __init__(self, stdout: str, stderr: str, return_code: int):
+    def __init__(self, stdout: str, stderr: str, return_code: int) -> None:
         self.stdout = stdout
         self.stderr = stderr
         self.return_code = return_code
         self.success = self.return_code == 0
 
-    def output_from_json(self) -> Union[dict, list, int, float, str, None]:
+    def output_from_json(
+        self,
+    ) -> dict[str, Any] | list[Any] | int | float | str | None:
+        """Parse stdout as JSON, or return None on failure."""
         try:
             return json.loads(self.stdout)
         except JSONDecodeError:
@@ -22,7 +27,8 @@ class CommandResult:
 
     def grep_stdout_for_string(
         self, string: str, negate: bool = False, split: bool = False
-    ) -> Union[str, list[str]]:
+    ) -> str | list[str]:
+        """Filter stdout lines by substring match."""
         if negate:
             filtered = list(filter(lambda x: string not in x, self.stdout.split("\n")))
         else:
@@ -31,11 +37,12 @@ class CommandResult:
 
     def grep_stdout_for_pattern(
         self,
-        pattern: Union[re.Pattern[str], str],
-        flags: Union[int, RegexFlag] = 0,
+        pattern: re.Pattern[str] | str,
+        flags: int | RegexFlag = 0,
         negate: bool = False,
         split: bool = False,
-    ) -> Union[str, list[str]]:
+    ) -> str | list[str]:
+        """Filter stdout lines by regex match."""
         if negate:
             filtered = list(
                 filter(

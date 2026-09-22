@@ -1,1 +1,31 @@
-from .system import DeviceInfo, DeviceModel, DeviceStats, ServiceRunning, ServiceStatus
+"""System schemas."""
+
+from .system import (
+    BatteryInfo,
+    DateTimeInfo,
+    DeviceInfo,
+    DeviceModel,
+    DeviceStats,
+    FailedService,
+    FailedServices,
+    Health,
+    HotspotClients,
+    HotspotCredentials,
+    LoadAverage,
+    NtpAutoInfo,
+    NtpInfo,
+    NtpStatus,
+    PowerActionResponse,
+    RegDomainInfo,
+    RegDomainList,
+    RegDomainSetRequest,
+    RfkillState,
+    ServiceRunning,
+    ServiceStatus,
+    SwapUsage,
+    TemperatureReading,
+    ThrottleInfo,
+    TimezoneInfo,
+    TimezoneList,
+    TimezoneSetRequest,
+)

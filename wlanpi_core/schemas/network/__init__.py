@@ -1,3 +1,5 @@
+"""Network schemas."""
+
 from .network import (
     APIConfig,
     ConnectedNetwork,
@@ -9,7 +11,18 @@ from .network import (
     NetworkSetupStatus,
     PublicIP,
     RevertNamespace,
+    ScanItem,
     ScanResults,
     WlanInterfaceSetup,
     WlanRevertRequest,
+)
+from .primitives import (
+    ConnectionsResponse,
+    DhcpLeasesResponse,
+    DhcpRenewResponse,
+    LinkStats,
+    RoutingTable,
+    WlanLink,
+    WlanPciDriversResponse,
+    WlanUsbDriversResponse,
 )

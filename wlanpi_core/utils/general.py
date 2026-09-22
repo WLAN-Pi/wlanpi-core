@@ -1,14 +1,19 @@
+"""General helpers for running commands and process management."""
+
 import asyncio.subprocess
 import logging
+import os
 import shlex
+import signal
 import subprocess
 import threading
 import time
 from asyncio.subprocess import Process
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import StringIO
-from typing import Any, Dict, Generic, Optional, TextIO, Type, TypeVar, Union
+from typing import Any, ClassVar, TextIO, TypeVar
 
+from wlanpi_core.constants import COMMAND_TIMEOUT_SEC
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -16,16 +21,69 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 log = get_logger(__name__)
 
 T = TypeVar("T")
+_PROCESS_TERMINATE_GRACE_SEC = 1.0
+
+
+def _signal_process_group(
+    proc: subprocess.Popen[Any] | Process, sig: signal.Signals
+) -> None:
+    """Signal the isolated process group, falling back to the direct child."""
+    pid = getattr(proc, "pid", None)
+    if isinstance(pid, int):
+        try:
+            os.killpg(pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+
+    action = proc.terminate if sig == signal.SIGTERM else proc.kill
+    try:
+        action()
+    except ProcessLookupError:
+        pass
+
+
+def terminate_process(proc: subprocess.Popen[Any]) -> None:
+    """Terminate, force-kill when needed, and reap a synchronous child group."""
+    if proc.poll() is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        proc.communicate(timeout=_PROCESS_TERMINATE_GRACE_SEC)
+    except subprocess.TimeoutExpired:
+        _signal_process_group(proc, signal.SIGKILL)
+        proc.communicate()
+
+
+async def terminate_process_async(proc: Process) -> None:
+    """Terminate, force-kill when needed, and reap an asyncio child group."""
+    if proc.returncode is not None:
+        return
+
+    _signal_process_group(proc, signal.SIGTERM)
+    try:
+        await asyncio.wait_for(
+            proc.wait(),
+            timeout=_PROCESS_TERMINATE_GRACE_SEC,
+        )
+    except TimeoutError:
+        if proc.returncode is None:
+            _signal_process_group(proc, signal.SIGKILL)
+        await proc.wait()
 
 
 def run_command(
-    cmd: Union[list, str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+    cmd: list[str] | str,
+    input: str | None = None,
+    stdin: TextIO | None = None,
+    shell: bool = False,
+    raise_on_fail: bool = True,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output"""
+    """Run a single CLI command with subprocess and returns the output."""
     """
     This function executes a single CLI command using the the built-in subprocess module.
 
@@ -41,6 +99,7 @@ def run_command(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -61,25 +120,22 @@ def run_command(
     if shell:
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
-            cmd: list
-            cmd: str = shlex.join(cmd)
-        cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
+            cmd = shlex.join(cmd)
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
         )
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
-            cmd: str
-            cmd: list[str] = shlex.split(cmd)
-        cmd: list[str]
+            cmd = shlex.split(cmd)
     with subprocess.Popen(
         cmd,
         shell=shell,
         stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     ) as proc:
         if input:
             input_data = input.encode()
@@ -87,7 +143,14 @@ def run_command(
             input_data = stdin.read().encode()
         else:
             input_data = None
-        stdout, stderr = proc.communicate(input=input_data)
+        try:
+            stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
+        except BaseException:
+            log.warning(
+                "Command did not complete normally; terminating its process group"
+            )
+            terminate_process(proc)
+            raise
 
         if raise_on_fail and proc.returncode != 0:
             raise RunCommandError(stderr.decode(), proc.returncode)
@@ -95,13 +158,14 @@ def run_command(
 
 
 async def run_command_async(
-    cmd: Union[list, str],
-    input: Optional[str] = None,
-    stdin: Optional[TextIO] = None,
-    shell=False,
-    raise_on_fail=True,
+    cmd: list[str] | str,
+    input: str | None = None,
+    stdin: TextIO | None = None,
+    shell: bool = False,
+    raise_on_fail: bool = True,
+    timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output"""
+    """Run a single CLI command with subprocess and returns the output."""
     """
     This function executes a single CLI command using the the built-in subprocess module.
 
@@ -117,6 +181,7 @@ async def run_command_async(
                If True, then the entire command string will be executed in a shell.
                Otherwise, the command and its arguments are executed separately.
         raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
+        timeout: Maximum seconds to wait before terminating the entire process group.
 
     Returns:
         A CommandResult object containing the output of the command, along with a boolean indicating
@@ -148,12 +213,10 @@ async def run_command_async(
     if shell:
         # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
-            cmd: list
-            cmd: str = shlex.join(cmd)
-        cmd: str
-        logging.getLogger().warning(
-            f"Command {cmd} being run as a shell script. This could present "
-            f"an injection vulnerability. Consider whether you really need to do this."
+            cmd = shlex.join(cmd)
+        logging.getLogger(__name__).warning(
+            "Executing a command with shell=True; verify that no "
+            "user-controlled input reaches the shell"
         )
 
         proc = await asyncio.subprocess.create_subprocess_shell(
@@ -161,32 +224,40 @@ async def run_command_async(
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
-        proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
     else:
         # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
-            cmd: str
-            cmd: list[str] = shlex.split(cmd)
-        cmd: list[str]
+            cmd = shlex.split(cmd)
         proc = await asyncio.subprocess.create_subprocess_exec(
             cmd[0],
             *cmd[1:],
             stdin=subprocess.PIPE if input or isinstance(stdin, StringIO) else stdin,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
-        proc: Process
-        stdout, stderr = await proc.communicate(input=input_data)
+
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=input_data), timeout=timeout
+        )
+    except BaseException:
+        log.warning("Command did not complete normally; terminating its process group")
+        await terminate_process_async(proc)
+        raise
 
     if raise_on_fail and proc.returncode != 0:
-        raise RunCommandError(error_msg=stderr.decode(), return_code=proc.returncode)
-    return CommandResult(stdout.decode(), stderr.decode(), proc.returncode)
+        raise RunCommandError(
+            error_msg=stderr.decode(), return_code=proc.returncode or 0
+        )
+    return CommandResult(stdout.decode(), stderr.decode(), proc.returncode or 0)
 
 
 def get_model_info() -> dict[str, str]:
-    """Uses wlanpi-model cli command to get model info
+    """Get model info using the wlanpi-model CLI command.
+
     Returns:
         dictionary of model info
     Raises:
@@ -201,8 +272,9 @@ def get_model_info() -> dict[str, str]:
     return model_dict
 
 
-def get_uptime() -> dict[str, str]:
-    """Gets the system uptime using jc and the uptime command.
+def get_uptime() -> dict[str, Any] | list[Any] | int | float | str | None:
+    """Get the system uptime using jc and the uptime command.
+
     Returns:
         dictionary of uptime info
     Raises:
@@ -213,7 +285,8 @@ def get_uptime() -> dict[str, str]:
 
 
 def get_hostname() -> str:
-    """Gets the system hostname using hostname command.
+    """Get the system hostname using the hostname command.
+
     Returns:
         The system hostname as a string
     Raises:
@@ -223,7 +296,8 @@ def get_hostname() -> str:
 
 
 def get_current_unix_timestamp() -> float:
-    """Gets the current unix timestamp in milliseconds
+    """Get the current unix timestamp in milliseconds.
+
     Returns:
         The current unix timestamp in milliseconds
     """
@@ -231,9 +305,9 @@ def get_current_unix_timestamp() -> float:
     return time.mktime(ms.timetuple()) * 1000
 
 
-def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int]:
+def to_timestamp(dt: datetime | str | int | float | None) -> int | None:
     """
-    Convert various datetime formats to Unix timestamp
+    Convert various datetime formats to Unix timestamp.
 
     Args:
         dt: Input datetime (can be datetime object, ISO string, or timestamp)
@@ -252,7 +326,7 @@ def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int
 
         if isinstance(dt, datetime):
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return int(dt.timestamp())
 
         raise ValueError(f"Unsupported datetime format: {type(dt)}")
@@ -261,9 +335,9 @@ def to_timestamp(dt: Optional[Union[datetime, str, int, float]]) -> Optional[int
         return None
 
 
-def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
+def from_timestamp(ts: int | float | str | None) -> datetime | None:
     """
-    Convert Unix timestamp to UTC datetime
+    Convert Unix timestamp to UTC datetime.
 
     Args:
         ts: Unix timestamp (seconds since epoch)
@@ -277,17 +351,20 @@ def from_timestamp(ts: Optional[Union[int, float, str]]) -> Optional[datetime]:
     try:
         if isinstance(ts, str):
             ts = float(ts)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(ts, tz=UTC)
     except Exception:
-        log.exception(f"Failed to convert from timestamp")
+        log.exception("Failed to convert from timestamp")
         return None
 
 
-class SingletonMeta(type, Generic[T]):
-    _instances: Dict[Type[Any], Any] = {}
+class SingletonMeta[T](type):
+    """Metaclass enforcing a single instance per class."""
+
+    _instances: ClassVar[dict[type[Any], Any]] = {}
     _lock = threading.Lock()
 
     def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        """Return the existing instance, creating it on first call."""
         if cls not in cls._instances:
             with cls._lock:
                 if cls not in cls._instances:
@@ -295,7 +372,7 @@ class SingletonMeta(type, Generic[T]):
         return cls._instances[cls]
 
     @classmethod
-    def reset_instance(cls, singleton_cls: Type[T]) -> None:
+    def reset_instance(cls, singleton_cls: type[T]) -> None:
         """Reset the singleton instance for the given class."""
         with cls._lock:
             if singleton_cls in cls._instances:

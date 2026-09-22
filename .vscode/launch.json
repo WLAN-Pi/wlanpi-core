@@ -14,9 +14,9 @@
                 "wlanpi_core.asgi:app",
                 "--reload",
                 "--host",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--port",
-                "31415"
+                "8000"
             ],
             "jinja": true,
             "sudo": true

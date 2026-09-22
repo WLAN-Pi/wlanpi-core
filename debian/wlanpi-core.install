@@ -4,9 +4,13 @@
 /install/etc/wlanpi-core/nginx/wlanpi_core.conf /etc/wlanpi-core/nginx/sites-enabled
 /install/etc/wlanpi-core/nginx/link.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/nginx/unlink.sh /etc/wlanpi-core/scripts
+/install/etc/wlanpi-core/scripts/wlanpi-generate-certs.sh /etc/wlanpi-core/scripts
 /install/etc/wlanpi-core/ufw/wlanpi-core-ufw-rules-setup.sh /etc/wlanpi-core/ufw
 /install/etc/wlanpi-core/ufw/wlanpi-core.rules /etc/wlanpi-core/ufw
 /install/lib/systemd/system/wlanpi-core-ufw-first-boot.service /lib/systemd/system
+/install/lib/systemd/system/lldpd.service.d/wlanpi-core.conf /lib/systemd/system/lldpd.service.d
 /install/etc/wlanpi-core/ufw/current-rules-version /etc/wlanpi-core/ufw
+/install/etc/pam.d/wlanpi-webui /etc/pam.d
 /install/etc/wpa_supplicant/wpa_supplicant-wlan0.conf /etc/wpa_supplicant
 /install/usr/bin/lhapitest /usr/bin
+/install/usr/bin/wlanpi-core-preflight /usr/bin

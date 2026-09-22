@@ -1,3 +1,7 @@
+"""ASGI middleware for the wlanpi-core application."""
+
+from typing import Any
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -9,10 +13,13 @@ log = get_logger(__name__)
 
 
 class ActivityMiddleware(BaseHTTPMiddleware):
+    """Record API activity for authenticated requests."""
+
     def __init__(self, app: ASGIApp):
         super().__init__(app)
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        """Record activity for valid tokens and pass the request through."""
         token = None
         if "Authorization" in request.headers:
             auth = request.headers["Authorization"]

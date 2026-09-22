@@ -1,1 +1,3 @@
-from .bluetooth import BluetoothStatus, PowerState
+"""Bluetooth schemas."""
+
+from .bluetooth import BluetoothPairResponse, BluetoothStatus, PowerState

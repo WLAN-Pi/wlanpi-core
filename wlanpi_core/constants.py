@@ -1,3 +1,8 @@
+"""Core configuration constants for the wlanpi-core API."""
+
+import os
+from pathlib import Path
+
 # Core config
 API_V1_STR: str = "/api/v1"
 PROJECT_NAME: str = "wlanpi-core"
@@ -5,7 +10,9 @@ PROJECT_DESCRIPTION: str = (
     "The wlanpi-core API offers endpoints for WLAN Pi apps to get and share data. 🚀"
 )
 
-SECRETS_DIR = "/home/wlanpi/.local/share/wlanpi-core/secrets"
+HOME_DIR = Path(os.environ.get("WLANPI_CORE_HOME_DIR", "/home/wlanpi")).expanduser()
+HOME = str(HOME_DIR)
+SECRETS_DIR = str(HOME_DIR / ".local/share/wlanpi-core/secrets")
 ENCRYPTION_KEY_FILE = "fernet_key.b64"
 SHARED_SECRET_FILE = "shared_secret.bin"
 DATABASE_PATH = f"{SECRETS_DIR}/tokens.db"
@@ -17,6 +24,7 @@ IP_FILE: str = "/usr/sbin/ip"
 UFW_FILE: str = "/usr/sbin/ufw"
 ETHTOOL_FILE: str = "/sbin/ethtool"
 DUMPCAP_FILE: str = "/usr/bin/dumpcap"
+LLDPCTL_FILE: str = "/usr/sbin/lldpctl"
 
 # Mode changer scripts
 MODE_FILE: str = "/etc/wlanpi-state"
@@ -54,10 +62,10 @@ SUPPORTED_MODELS = ["M4", "M4+", "R4"]
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
 DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
 DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
-CONFIG_DIR = "/home/wlanpi/.local/share/wlanpi-core/netcfg/configs"
-CURRENT_CONFIG_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/current.txt"
-PID_DIR = "/home/wlanpi/.local/share/wlanpi-core/netcfg/pids"
-APPS_FILE = "/home/wlanpi/.local/share/wlanpi-core/netcfg/apps.json"
+CONFIG_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/configs")
+CURRENT_CONFIG_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/current.txt")
+PID_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/pids")
+APPS_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/apps.json")
 WPA_LOG_FILE = "/tmp/wpa.log"
 CREATE_MONITOR_PAIRS_DEFAULT = True
 CREATE_MONITOR_PAIRS_UNINIT = True
@@ -65,10 +73,13 @@ CREATE_MONITOR_PAIRS_UNINIT = True
 #### Paths below here are relative to script dir or /tmp fixed paths ###
 
 # Networkinfo data file names
-LLDPNEIGH_FILE: str = "/tmp/lldpneigh.txt"
-CDPNEIGH_FILE: str = "/tmp/cdpneigh.txt"
-IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh 2>/dev/null"
+IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh"
 REACHABILITY_FILE: str = "/opt/wlanpi-common/networkinfo/reachability.sh"
+REACHABILITY_MAX_CUSTOM_TARGETS: int = 10
+LIBRESPEED_CLI: str = "/usr/bin/librespeed-cli"
+SPEEDTEST_TIMEOUT_SEC: int = 120
+COMMAND_TIMEOUT_SEC: int = 30
 PUBLICIP_CMD: str = "/opt/wlanpi-common/networkinfo/publicip.sh"
 PUBLICIP6_CMD: str = "/opt/wlanpi-common/networkinfo/publicip6.sh"
 BLINKER_FILE: str = "/opt/wlanpi-common/networkinfo/portblinker.sh"
+HOSTAPD_CONF_FILE: str = "/etc/hostapd/hostapd.conf"

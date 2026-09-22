@@ -1,7 +1,10 @@
+"""Errors raised when working with network configurations."""
+
+
 class ConfigActiveError(Exception):
     """Raised when trying to delete an active configuration."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
 
@@ -9,7 +12,7 @@ class ConfigActiveError(Exception):
 class ConfigMalformedError(Exception):
     """Raised when a configuration file is malformed or invalid."""
 
-    def __init__(self, message: str, cfg_id: str = None):
+    def __init__(self, message: str, cfg_id: str | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.cfg_id = cfg_id

@@ -1,48 +1,212 @@
-import os
+"""Service layer aggregating network information for the API."""
+
+from __future__ import annotations
+
 import re
-import subprocess
+from typing import Any
 
 from wlanpi_core.constants import (
-    CDPNEIGH_FILE,
     ETHTOOL_FILE,
     IFCONFIG_FILE,
     IPCONFIG_FILE,
     IW_FILE,
-    LLDPNEIGH_FILE,
+    LLDPCTL_FILE,
     PUBLICIP6_CMD,
     PUBLICIP_CMD,
 )
+from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 
+log = get_logger(__name__)
 
-def show_info():
-    output = {}
+SYSFS_NET = "/sys/class/net"
+
+
+def _has_carrier(iface: str) -> bool:
+    """Whether the kernel reports carrier on the interface."""
+    try:
+        with open(f"{SYSFS_NET}/{iface}/carrier") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def _lldpctl_neighbours() -> list[dict[str, Any]]:
+    """Query lldpd for the current neighbour table, one entry per interface.
+
+    Entries whose interface has no carrier are dropped. lldpd keeps a neighbour
+    until its TTL expires, so an unplugged link would otherwise report stale
+    data for up to three minutes.
+    """
+    result = run_command([LLDPCTL_FILE, "-f", "json0"], raise_on_fail=True)
+    data = result.output_from_json()
+    if not isinstance(data, dict):
+        raise OSError("unexpected lldpctl json0 output")
+
+    neighbours: list[dict[str, Any]] = []
+    for entry in data.get("lldp") or []:
+        for interface in entry.get("interface") or []:
+            if _has_carrier(str(interface.get("name", ""))):
+                neighbours.append(interface)
+    return neighbours
+
+
+def _first_group(pattern: str, text: str) -> str:
+    """First capture group from a regex match, or empty string."""
+    match = re.search(pattern, text)
+    return match.group(1) if match else ""
+
+
+def _json0_value(field: Any) -> str | None:
+    """First value of a json0 field (each field is a list of dicts)."""
+    if field and isinstance(field, list):
+        return field[0].get("value")
+    return None
+
+
+def _neighbour_matches(interface: dict[str, Any], protocol: str) -> bool:
+    # lldpd reports the source protocol as e.g. "LLDP", "CDPv1", "CDPv2"
+    return str(interface.get("via", "")).upper().startswith(protocol)
+
+
+def _render_neighbour(interface: dict[str, Any]) -> list[str]:
+    """Flatten one lldpctl interface entry into legacy networkinfo lines."""
+    chassis = (interface.get("chassis") or [{}])[0]
+    port = (interface.get("port") or [{}])[0]
+
+    lines = []
+    name = _json0_value(chassis.get("name"))
+    if name:
+        lines.append(f"Name: {name}")
+    port_id = _json0_value(port.get("id"))
+    if port_id:
+        lines.append(f"Port: {port_id}")
+    port_descr = _json0_value(port.get("descr"))
+    if port_descr:
+        lines.append(f"Desc: {port_descr}")
+    mgmt_ip = _json0_value(chassis.get("mgmt-ip"))
+    if mgmt_ip:
+        lines.append(f"IP: {mgmt_ip}")
+    pvid = next(
+        (
+            vlan.get("vlan-id")
+            for vlan in interface.get("vlan") or []
+            if vlan.get("pvid")
+        ),
+        None,
+    )
+    if pvid:
+        lines.append(f"Native VLAN: {pvid}")
+    model = _json0_value(chassis.get("descr"))
+    if model:
+        lines.append(f"Model: {model.splitlines()[0]}")
+    return lines
+
+
+def _show_neighbour(protocol: str) -> dict[str, Any]:
+    response: dict[str, Any] = {"info": []}
+
+    try:
+        neighbours = _lldpctl_neighbours()
+    except (RunCommandError, OSError) as exc:
+        log.warning("Unable to get %s neighbour data from lldpd: %s", protocol, exc)
+        response["error"] = f"Issue getting {protocol} neighbour"
+        return response
+
+    matches = [n for n in neighbours if _neighbour_matches(n, protocol)]
+    for interface in matches:
+        if len(matches) > 1:
+            response["info"].append(f"Interface: {interface.get('name', '?')}")
+        response["info"].extend(_render_neighbour(interface))
+
+    if not response["info"]:
+        response["error"] = "No neighbour"
+    return response
+
+
+def _section_debug_label(section: str, value: Any) -> dict[str, Any]:
+    """Compact shape summary for debug logs (helps UI parsing issues)."""
+    if not isinstance(value, dict):
+        return {"type": type(value).__name__, "value": repr(value)[:200]}
+    label: dict[str, Any] = {"keys": list(value.keys())}
+    if "error" in value:
+        label["error"] = value["error"]
+    if "info" in value and isinstance(value["info"], list):
+        label["info_count"] = len(value["info"])
+    if section == "interfaces":
+        label["interface_count"] = len([k for k in value.keys() if k != "error"])
+        label["interface_names"] = [name for name in value if name != "error"][:8]
+    if section == "wlan_interfaces":
+        label["wlan_count"] = len(value)
+        label["wlan"] = {
+            name: {k: type(v).__name__ for k, v in fields.items()}
+            for name, fields in list(value.items())[:8]
+        }
+    return label
+
+
+def show_info() -> dict[str, Any]:
+    """Return the aggregated network information."""
+    log.debug("show_info: building network info aggregate")
+    output: dict[str, Any] = {}
 
     output["interfaces"] = show_interfaces()
+    log.debug(
+        "show_info: interfaces %s",
+        _section_debug_label("interfaces", output["interfaces"]),
+    )
+
     output["wlan_interfaces"] = show_wlan_interfaces()
+    log.debug(
+        "show_info: wlan_interfaces %s",
+        _section_debug_label("wlan_interfaces", output["wlan_interfaces"]),
+    )
+
     output["eth0_ipconfig_info"] = show_eth0_ipconfig()
+    log.debug(
+        "show_info: eth0_ipconfig_info %s",
+        _section_debug_label("eth0_ipconfig_info", output["eth0_ipconfig_info"]),
+    )
+
     output["vlan_info"] = show_vlan()
+    log.debug(
+        "show_info: vlan_info %s",
+        _section_debug_label("vlan_info", output["vlan_info"]),
+    )
+
     output["lldp_neighbour_info"] = show_lldp_neighbour()
+    log.debug(
+        "show_info: lldp_neighbour_info %s",
+        _section_debug_label("lldp_neighbour_info", output["lldp_neighbour_info"]),
+    )
+
     output["cdp_neighbour_info"] = show_cdp_neighbour()
+    log.debug(
+        "show_info: cdp_neighbour_info %s",
+        _section_debug_label("cdp_neighbour_info", output["cdp_neighbour_info"]),
+    )
+
     output["public_ip"] = show_publicip()
+    log.debug(
+        "show_info: public_ip %s",
+        _section_debug_label("public_ip", output["public_ip"]),
+    )
 
     return output
 
 
-def show_interfaces():
-    """
-    Return the list of network interfaces with IP address (if available)
-    """
+def show_interfaces() -> dict[str, Any]:
+    """Return the list of network interfaces with IP address (if available)."""
 
     ifconfig_file = IFCONFIG_FILE
     iw_file = IW_FILE
 
-    interfaces = {}
+    interfaces: dict[str, Any] = {}
 
     try:
-        ifconfig_info = run_command(f"{ifconfig_file} -a", raise_on_fail=True).stdout
-    except Exception as ex:
+        ifconfig_info = run_command([ifconfig_file, "-a"], raise_on_fail=True).stdout
+    except (RunCommandError, OSError) as ex:
         interfaces["error"] = "ifconfig error" + str(ex)
         return interfaces
 
@@ -79,13 +243,13 @@ def show_interfaces():
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
                         iw_info = run_command(
-                            "{} {} info".format(iw_file, interface_name),
+                            [iw_file, interface_name, "info"],
                             raise_on_fail=True,
                         ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
-                    except:
+                    except (RunCommandError, OSError):
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
@@ -97,61 +261,54 @@ def show_interfaces():
     return interfaces
 
 
-def channel_lookup(freq_mhz):
-    """
-    Converts frequency (MHz) to channel number
-    """
+def channel_lookup(freq_mhz: int) -> int | None:
+    """Convert frequency (MHz) to a channel number."""
     if freq_mhz == 2484:
         return 14
-    elif freq_mhz >= 2412 and freq_mhz <= 2484:
+    elif 2412 <= freq_mhz <= 2484:
         return int(((freq_mhz - 2412) / 5) + 1)
-    elif freq_mhz >= 5160 and freq_mhz <= 5885:
+    elif 5160 <= freq_mhz <= 5885:
         return int(((freq_mhz - 5180) / 5) + 36)
-    elif freq_mhz >= 5955 and freq_mhz <= 7115:
+    elif 5955 <= freq_mhz <= 7115:
         return int(((freq_mhz - 5955) / 5) + 1)
 
     return None
 
 
-def show_wlan_interfaces():
-    """
-    Create pages to summarise WLAN interface info
-    """
+def show_wlan_interfaces() -> dict[str, Any]:
+    """Create pages to summarise WLAN interface info."""
 
-    interfaces = []
-    output = {}
+    interfaces: list[Any] = []
+    output: dict[str, Any] = {}
 
     try:
-        interfaces = run_command(
-            f"{IW_FILE} dev 2>&1", shell=True
-        ).grep_stdout_for_pattern(r"interface", flags=re.I, split=True)
-        interfaces = map(lambda x: x.strip().split(" ")[1], interfaces)
-    except Exception as e:
-        print(e)
+        iw_dev_output = run_command([IW_FILE, "dev"]).stdout
+        interfaces = []
+        for line in iw_dev_output.splitlines():
+            fields = line.strip().split()
+            if len(fields) >= 2 and fields[0].lower() == "interface":
+                interfaces.append(fields[1])
+    except (RunCommandError, OSError):
+        log.debug("Unable to enumerate WLAN interfaces", exc_info=True)
 
     for interface in interfaces:
         output[interface] = {}
 
         # Driver
         try:
-            ethtool_output = run_command(
-                f"{ETHTOOL_FILE} -i {interface}"
-            ).stdout.strip()
-            driver = re.search(".*driver:\s+(.*)", ethtool_output).group(1)
+            ethtool_output = run_command([ETHTOOL_FILE, "-i", interface]).stdout.strip()
+            driver = _first_group(r".*driver:\s+(.*)", ethtool_output)
             output[interface]["driver"] = driver
-        except Exception:
+        except (RunCommandError, OSError):
             pass
 
         # Addr, SSID, Mode, Channel
         try:
-            iw_output = run_command(f"{IW_FILE} {interface} info").stdout.strip()
+            iw_output = run_command([IW_FILE, interface, "info"]).stdout.strip()
             # Addr
             try:
                 addr = (
-                    re.search(".*addr\s+(.*)", iw_output)
-                    .group(1)
-                    .replace(":", "")
-                    .upper()
+                    _first_group(r".*addr\s+(.*)", iw_output).replace(":", "").upper()
                 )
                 output[interface]["addr"] = addr
             except Exception:
@@ -159,57 +316,51 @@ def show_wlan_interfaces():
 
             # Mode
             try:
-                mode = re.search(".*type\s+(.*)", iw_output).group(1)
-                output[interface]["mode"] = {
+                mode = _first_group(r".*type\s+(.*)", iw_output)
+                output[interface]["mode"] = (
                     mode.capitalize() if not mode.isupper() else mode
-                }
+                )
             except Exception:
                 pass
 
             # SSID
             try:
-                ssid = re.search(".*ssid\s+(.*)", iw_output).group(1)
+                ssid = _first_group(r".*ssid\s+(.*)", iw_output)
                 output[interface]["ssid"] = ssid
             except Exception:
                 pass
 
             # Frequency
             try:
-                freq = int(re.search(".*\(([0-9]+)\s+MHz\).*", iw_output).group(1))
+                freq = int(_first_group(r".*\(([0-9]+)\s+MHz\).*", iw_output))
                 channel = channel_lookup(freq)
                 output[interface]["freq"] = freq
                 output[interface]["channel"] = channel
-            except Exception:
+            except ValueError:
                 pass
 
-        except Exception as e:
-            print(e)
+        except (RunCommandError, OSError):
+            log.debug("Unable to inspect WLAN interface %s", interface, exc_info=True)
 
     return output
 
 
-def show_eth0_ipconfig():
-    """
-    Return IP configuration of eth0 including IP, default gateway, DNS servers
-    """
+def show_eth0_ipconfig() -> dict[str, Any]:
+    """Return IP configuration of eth0 including IP, default gateway, DNS servers."""
     ipconfig_file = IPCONFIG_FILE
 
-    eth0_ipconfig_info = {}
+    eth0_ipconfig_info: dict[str, Any] = {"info": []}
 
     try:
-        # Currently, ipconfig_file is a constant with a shell redirect in it, so need shell=True until it can be refactored
-        ipconfig_info = (
-            run_command(ipconfig_file, shell=True).stdout.strip().split("\n")
-        )
+        ipconfig_info = run_command([ipconfig_file]).stdout.strip().split("\n")
 
     except RunCommandError as exc:
         eth0_ipconfig_info["error"] = (
             f"Issue getting ipconfig ({exc.return_code}): {exc.error_msg}"
         )
         return eth0_ipconfig_info
-    except subprocess.CalledProcessError as exc:
-        output = exc.output.decode()
-        eth0_ipconfig_info["error"] = "Issue getting ipconfig" + str(output)
+    except OSError as exc:
+        eth0_ipconfig_info["error"] = f"Issue getting ipconfig: {exc}"
         return eth0_ipconfig_info
 
     eth0_ipconfig_info["info"] = []
@@ -226,108 +377,59 @@ def show_eth0_ipconfig():
     return eth0_ipconfig_info
 
 
-def show_vlan():
+def show_vlan() -> dict[str, Any]:
     """
-    Display untagged VLAN number on eth0
+    Display the untagged VLAN number reported by the LLDP/CDP neighbour.
+
     Todo: Add tagged VLAN info
     """
-    lldpneigh_file = LLDPNEIGH_FILE
-    cdpneigh_file = CDPNEIGH_FILE
+    vlan_info: dict[str, Any] = {"info": []}
 
-    vlan_info = {"info": []}
+    try:
+        neighbours = _lldpctl_neighbours()
+    except (RunCommandError, OSError) as exc:
+        log.warning("Unable to read neighbour VLAN data: %s", exc)
+        neighbours = []
 
-    vlan_cmd = (
-        "sudo grep -a VLAN " + lldpneigh_file + " || grep -a VLAN " + cdpneigh_file
-    )
+    for protocol in ("LLDP", "CDP"):
+        vlan_info["info"] = [
+            line
+            for interface in neighbours
+            if _neighbour_matches(interface, protocol)
+            for line in _render_neighbour(interface)
+            if "VLAN" in line
+        ]
+        if vlan_info["info"]:
+            return vlan_info
 
-    if os.path.exists(lldpneigh_file):
-        try:
-            vlan_output = run_command(vlan_cmd, shell=True).stdout.strip().split("\n")
-            for line in vlan_output:
-                vlan_info["info"].append(line)
-
-            if len(vlan_info) == 0:
-                vlan_info["error"] = "No VLAN found"
-
-        except:
-            vlan_info["error"] = "No VLAN found"
-
+    vlan_info["error"] = "No VLAN found"
     return vlan_info
 
 
-def show_lldp_neighbour():
-    """
-    Display LLDP neighbour on eth0
-    """
-    lldpneigh_file = LLDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + lldpneigh_file
-
-    if os.path.exists(lldpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting LLDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting LLDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+def show_lldp_neighbour() -> dict[str, Any]:
+    """Display LLDP neighbours reported by lldpd."""
+    return _show_neighbour("LLDP")
 
 
-def show_cdp_neighbour():
-    """
-    Display CDP neighbour on eth0
-    """
-    cdpneigh_file = CDPNEIGH_FILE
-
-    neighbour_info = {"info": []}
-    neighbour_cmd = "sudo cat " + cdpneigh_file
-
-    if os.path.exists(cdpneigh_file):
-        try:
-            neighbour_output = run_command(neighbour_cmd).stdout.strip().split("\n")
-            for line in neighbour_output:
-                neighbour_info["info"].append(line)
-
-        except RunCommandError as exc:
-            neighbour_info["error"] = (
-                f"Issue getting CDP neighbour ({exc.return_code}): {exc.error_msg}"
-            )
-            return neighbour_info
-        except subprocess.CalledProcessError as exc:
-            neighbour_info["error"] = "Issue getting CDP neighbour"
-            return neighbour_info
-
-    if len(neighbour_info) == 0:
-        neighbour_info["error"] = "No neighbour"
-
-    return neighbour_info
+def show_cdp_neighbour() -> dict[str, Any]:
+    """Display CDP neighbours reported by lldpd (requires CDP enabled via -c)."""
+    return _show_neighbour("CDP")
 
 
-def show_publicip(ip_version=4):
-    """
-    Shows public IP address and related details, works with any interface with internet connectivity
+def show_publicip(ip_version: int = 4) -> dict[str, Any]:
+    """Show the public IP address and related details.
+
+    Works with any interface that has internet connectivity.
     """
 
-    publicip_info = {"info": []}
+    publicip_info: dict[str, Any] = {"info": []}
     cmd = PUBLICIP6_CMD if ip_version == 6 else PUBLICIP_CMD
 
     try:
         publicip_output = run_command(cmd).stdout.strip().split("\n")
         for line in publicip_output:
             publicip_info["info"].append(line)
-    except subprocess.CalledProcessError:
+    except (RunCommandError, OSError):
         publicip_info["error"] = "Failed to detect public IP address"
         return publicip_info
 

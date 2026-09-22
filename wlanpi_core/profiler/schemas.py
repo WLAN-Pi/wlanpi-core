@@ -1,17 +1,29 @@
-from typing import Optional
+"""Response schemas for the profiler endpoints."""
 
 from pydantic import BaseModel, Field
 
 
 class Status(BaseModel):
-    running: bool = Field(examples=["true", "false"])
-    ssid: Optional[str] = Field(example="Profiler 193")
-    passphrase: str = Field(example="12345678")
+    """Profiler status and beaconing credentials."""
+
+    running: bool = Field(examples=[True, False])
+    ssid: str | None = Field(
+        default=None, json_schema_extra={"example": "Profiler 193"}
+    )
+    passphrase: str | None = Field(
+        default=None,
+        json_schema_extra={"example": "12345678"},
+        description="Present when profiler AP is running; omitted when idle",
+    )
 
 
 class Start(BaseModel):
-    success: bool = Field(examples=["true", "false"])
+    """Result of starting the profiler."""
+
+    success: bool = Field(examples=[True, False])
 
 
 class Stop(BaseModel):
-    success: bool = Field(examples=["true", "false"])
+    """Result of stopping the profiler."""
+
+    success: bool = Field(examples=[True, False])

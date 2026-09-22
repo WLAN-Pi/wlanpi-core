@@ -1,3 +1,5 @@
+"""Version and package metadata for wlanpi-core."""
+
 #           _                   _
 # __      _| | __ _ _ __  _ __ (_)       ___ ___  _ __ ___
 # \ \ /\ / / |/ _` | '_ \| '_ \| |_____ / __/ _ \| '__/ _ \
@@ -10,7 +12,7 @@ __description__ = "backend services for the WLAN Pi"
 __url__ = "https://github.com/wlan-pi/wlanpi-core"
 __author__ = "Josh Schmelzle"
 __author_email__ = "josh@joshschmelzle.com"
-__version__ = "2.1.10"
+__version__ = "2.3.2"
 __status__ = "beta"
 __license__ = "BSD-3-Clause"
 __license_url__ = "https://opensource.org/licenses/BSD-3-Clause"

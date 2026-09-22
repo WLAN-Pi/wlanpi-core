@@ -3,9 +3,10 @@ set -e
 
 case "$1" in
     remove|upgrade|deconfigure)
-        # Try to unmount gracefully first
-        if systemctl is-active wlanpi-core-debug.mount >/dev/null 2>&1; then
-            systemctl stop wlanpi-core-debug.mount || true
+        # Try to unmount gracefully first (correct unit name is
+        # var-log-wlanpi_core-debug.mount, not wlanpi-core-debug.mount)
+        if systemctl is-active var-log-wlanpi_core-debug.mount >/dev/null 2>&1; then
+            systemctl stop var-log-wlanpi_core-debug.mount || true
         fi
         # Force unmount if still mounted
         if mountpoint -q /var/log/wlanpi_core/debug; then
@@ -19,5 +20,10 @@ case "$1" in
         exit 1
     ;;
 esac
+
+# dh_installsystemd injects the systemctl stop/disable for wlanpi-core.service
+# and wlanpi-core.socket here. Without this token the units were never stopped
+# on removal.
+#DEBHELPER#
 
 exit 0

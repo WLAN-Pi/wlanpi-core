@@ -1,3 +1,5 @@
+"""Structured JSON logging setup for wlanpi-core."""
+
 import json
 import logging
 import os
@@ -5,7 +7,7 @@ import pathlib
 import sys
 import tempfile
 import traceback
-from typing import Dict, Optional
+from typing import Any
 
 LOG_LEVELS = {
     "DEBUG": 10,
@@ -16,17 +18,13 @@ LOG_LEVELS = {
 }
 
 
-def create_contextual_log_record():
-    """
-    Create ContextualLogRecord class dynamically to avoid circular import
-    """
+def create_contextual_log_record() -> type:
+    """Create ContextualLogRecord class dynamically to avoid circular import."""
 
     class ContextualLogRecord(logging.LogRecord):
-        """
-        Custom LogRecord that captures additional context information
-        """
+        """Custom LogRecord that captures additional context information."""
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
 
             if not self.exc_info and sys.exc_info()[0] is not None:
@@ -34,7 +32,7 @@ def create_contextual_log_record():
 
             if self.levelno >= logging.ERROR and self.exc_info:
                 try:
-                    exc_type, exc_value, exc_traceback = self.exc_info
+                    _, _, exc_traceback = self.exc_info
                     tb = traceback.extract_tb(exc_traceback)
                     if tb:
                         last_frame = tb[-1]
@@ -77,11 +75,10 @@ def create_contextual_log_record():
 
 
 class ContextFilter(logging.Filter):
-    """
-    A logging filter that ensures contextual information is added to log records
-    """
+    """A logging filter that ensures contextual information is added to log records."""
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Populate contextual fields on log records."""
         if not hasattr(record, "source_file"):
             record.source_file = "Unknown"
         if not hasattr(record, "line_number"):
@@ -92,12 +89,12 @@ class ContextFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
-    """JSON log formatter"""
+    """JSON log formatter."""
 
     def __init__(
         self,
         *,
-        fmt_keys: Optional[Dict[str, str]] = None,
+        fmt_keys: dict[str, str] | None = None,
     ):
         super().__init__()
         self.fmt_keys = (
@@ -117,6 +114,7 @@ class JsonFormatter(logging.Formatter):
         )
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format the record as JSON with the configured keys."""
         if record.args:
             record.message = record.msg % record.args
         else:
@@ -138,29 +136,32 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             exc_type, exc_value, _ = record.exc_info
             message["exc_info"] = self.formatException(record.exc_info)
-            if not hasattr(record, "extra_fields"):
-                record.extra_fields = {}
-            if "error" not in record.extra_fields:
-                record.extra_fields["error"] = str(exc_value)
-            if "error_type" not in record.extra_fields:
-                record.extra_fields["error_type"] = exc_type.__name__
+            extra_fields = getattr(record, "extra_fields", None)
+            if extra_fields is None:
+                extra_fields = {}
+                record.extra_fields = extra_fields
+            if "error" not in extra_fields:
+                extra_fields["error"] = str(exc_value)
+            if "error_type" not in extra_fields:
+                extra_fields["error_type"] = (
+                    exc_type.__name__ if exc_type else "Unknown"
+                )
 
-        if hasattr(record, "extra_fields"):
-            message.update(record.extra_fields)
+        extra_fields = getattr(record, "extra_fields", None)
+        if extra_fields:
+            message.update(extra_fields)
 
         return json.dumps(message)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get a logger with the specified name
-    """
+    """Get a logger with the specified name."""
     return logging.getLogger(f"{name}")
 
 
-def configure_logging(debug_mode: bool = False):
+def configure_logging(debug_mode: bool = False) -> None:
     """
-    Configure logging with console and file handlers
+    Configure logging with console and file handlers.
 
     Args:
         debug_mode: Whether to force DEBUG level logging
@@ -172,6 +173,8 @@ def configure_logging(debug_mode: bool = False):
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
 
     context_filter = ContextFilter()
     console_stream_handler = logging.StreamHandler()
@@ -179,8 +182,8 @@ def configure_logging(debug_mode: bool = False):
     try:
         debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
         debug_log_dir.mkdir(parents=True, exist_ok=True)
-        app_log_path = "/var/log/wlanpi_core/app.log"
-        debug_log_path = "/var/log/wlanpi_core/debug/debug.log"
+        app_log_path: Any = "/var/log/wlanpi_core/app.log"
+        debug_log_path: Any = "/var/log/wlanpi_core/debug/debug.log"
         app_file_handler = logging.FileHandler(app_log_path)
         debug_file_handler = logging.FileHandler(debug_log_path)
     except PermissionError:
@@ -219,8 +222,8 @@ def configure_logging(debug_mode: bool = False):
     root_logger.addHandler(debug_file_handler)
 
 
-def test_logging_levels() -> Dict[str, str]:
-    """Test function to verify logging levels are working"""
+def test_logging_levels() -> dict[str, str]:
+    """Test function to verify logging levels are working."""
     logger = get_logger("test")
 
     test_messages = {

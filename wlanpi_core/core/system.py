@@ -1,45 +1,66 @@
+"""System-level helpers for interface monitoring."""
+
 import subprocess
 import time
-
 from threading import Thread
+from typing import Any
 
 from wlanpi_core.constants import ETHTOOL_FILE, IP_FILE, IW_FILE
 from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
+_SYSTEM_COMMAND_TIMEOUT_SEC = 10
 
 
 class SystemManager:
-    def __init__(self, iface_name: str = "wlanpi", exclusions: list[str] = []):
+    """Manage system processes and monitor interfaces."""
+
+    def __init__(
+        self, iface_name: str = "wlanpi", exclusions: list[str] | None = None
+    ) -> None:
         self.iface_name = iface_name
-        self.exclusions = exclusions
+        self.exclusions = exclusions if exclusions is not None else []
         self.sync_monitor_interfaces()
 
-    def _run(self, cmd, capture_output=False, suppress_output=False):
+    def _run(
+        self,
+        cmd: list[str],
+        capture_output: bool = False,
+        suppress_output: bool = False,
+    ) -> Any | None:
         try:
             if capture_output:
                 return (
-                    subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+                    subprocess.check_output(
+                        cmd,
+                        stderr=subprocess.DEVNULL,
+                        timeout=_SYSTEM_COMMAND_TIMEOUT_SEC,
+                    )
                     .decode()
                     .strip()
                 )
             elif suppress_output:
                 subprocess.check_call(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=_SYSTEM_COMMAND_TIMEOUT_SEC,
                 )
             else:
-                subprocess.check_call(cmd)
+                subprocess.check_call(cmd, timeout=_SYSTEM_COMMAND_TIMEOUT_SEC)
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            if isinstance(error, subprocess.TimeoutExpired):
+                log.warning("System command timed out")
             return None if capture_output else False
 
-    def _iface_up(self, name):
+    def _iface_up(self, name: str) -> Any | None:
         return self._run([IP_FILE, "link", "set", name, "up"])
 
-    def _iface_down(self, name):
+    def _iface_down(self, name: str) -> Any | None:
         return self._run([IP_FILE, "link", "set", name, "down"])
 
-    def _get_driver(self, name):
+    def _get_driver(self, name: str) -> str | None:
         output = self._run([ETHTOOL_FILE, "-i", name], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -47,7 +68,7 @@ class SystemManager:
                     return line.split(":")[1].strip()
         return None
 
-    def _get_wiphy_index(self, name):
+    def _get_wiphy_index(self, name: str) -> str | None:
         output = self._run([IW_FILE, "dev", name, "info"], capture_output=True)
         if output:
             for line in output.splitlines():
@@ -55,10 +76,10 @@ class SystemManager:
                     return "".join(filter(str.isdigit, line))
         return None
 
-    def _get_interfaces_by_type(self):
+    def _get_interfaces_by_type(self) -> dict[str, str]:
         output = self._run([IW_FILE, "dev"], capture_output=True)
-        interfaces = {}
-        current_iface = None
+        interfaces: dict[str, str] = {}
+        current_iface: str | None = None
         if not output:
             return interfaces
 
@@ -70,10 +91,10 @@ class SystemManager:
                 if current_iface not in self.exclusions:
                     interfaces[current_iface] = iface_type
                     current_iface = None
-                    
+
         return interfaces
 
-    def _create_monitor(self, name, index):
+    def _create_monitor(self, name: str, index: str) -> str | None:
         mon = f"{self.iface_name}{index}"
         self._run(
             [
@@ -95,18 +116,21 @@ class SystemManager:
             log.error(f"Failed to create monitor interface {mon}")
             return None
 
-    def sync_monitor_interfaces(self):
+    def sync_monitor_interfaces(self) -> None:
+        """Sync monitor interfaces with their managed counterparts."""
         interfaces = self._get_interfaces_by_type()
-        managed = {
-            name: self._get_wiphy_index(name)
-            for name, typ in interfaces.items()
-            if typ == "managed"
-        }
-        monitor = {
-            name: self._get_wiphy_index(name)
-            for name, typ in interfaces.items()
-            if typ == "monitor"
-        }
+        managed: dict[str, str] = {}
+        for name, typ in interfaces.items():
+            if typ == "managed":
+                index = self._get_wiphy_index(name)
+                if index is not None:
+                    managed[name] = index
+        monitor: dict[str, str] = {}
+        for name, typ in interfaces.items():
+            if typ == "monitor":
+                index = self._get_wiphy_index(name)
+                if index is not None:
+                    monitor[name] = index
 
         # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
@@ -128,20 +152,22 @@ class SystemManager:
                 if driver == "iwlwifi":
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
-                    def background_scan_with_timeout():
+
+                    def background_scan_with_timeout(iface: str = iface) -> None:
                         time.sleep(1)
                         try:
                             subprocess.run(
                                 [IW_FILE, iface, "scan"],
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
-                                timeout=10
+                                timeout=10,
                             )
                             log.info(f"Scan on {iface} done")
-                            
+
                             self._iface_down(iface)
                         except subprocess.TimeoutExpired:
                             log.warning(f"Scan on {iface} timed out after 10s")
+
                     Thread(target=background_scan_with_timeout, daemon=True).start()
                 else:
                     self._iface_down(iface)

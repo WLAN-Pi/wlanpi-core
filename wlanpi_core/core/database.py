@@ -1,9 +1,13 @@
+"""Async database management with SQLAlchemy."""
+
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Optional, TypeVar
+from typing import TypeVar
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.ext.asyncio import (
@@ -22,7 +26,7 @@ log = get_logger(__name__)
 
 
 class DatabaseError(Exception):
-    """Base class for database errors"""
+    """Base class for database errors."""
 
 
 # Naming convention for database constraints to support migrations
@@ -38,7 +42,7 @@ metadata = MetaData(naming_convention=convention)
 
 class Base(AsyncAttrs, DeclarativeBase):
     """
-    Base class for SQLAlchemy models with additional helper methods
+    Base class for SQLAlchemy models with additional helper methods.
 
     Provides:
     - Automatic table naming (snake_case)
@@ -51,17 +55,18 @@ class Base(AsyncAttrs, DeclarativeBase):
     @declared_attr.directive
     def __tablename__(cls) -> str:
         """
-        Convert CamelCase class names to snake_case table names
+        Convert CamelCase class names to snake_case table names.
+
         e.g. DeviceActivity -> device_activity
         """
         return "".join(
             ["_" + c.lower() if c.isupper() else c for c in cls.__name__]
         ).lstrip("_")
 
-    created_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[Optional[DateTime]] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, onupdate=func.now(), nullable=True
     )
 
@@ -71,7 +76,7 @@ ModelType = TypeVar("ModelType", bound=Base)
 
 class DatabaseManager:
     """
-    Async database management class with connection pooling and session handling
+    Async database management class with connection pooling and session handling.
 
     Supports:
     - Async engine creation
@@ -82,12 +87,12 @@ class DatabaseManager:
 
     def __init__(
         self,
-        database_url: Optional[str] = None,
+        database_url: str | None = None,
         echo: bool = False,
         pool_recycle: int = 1800,
     ):
         """
-        Initialize async database engine and session factory
+        Initialize async database engine and session factory.
 
         Args:
             database_url: Database connection URL (defaults to sqlite+aiosqlite)
@@ -131,8 +136,10 @@ class DatabaseManager:
             )
             raise
 
-    async def initialize_with_retry(self, max_retries=3, retry_delay=2):
-        """Initialize database with retry mechanism"""
+    async def initialize_with_retry(
+        self, max_retries: int = 3, retry_delay: float = 2
+    ) -> bool:
+        """Initialize database with retry mechanism."""
         attempt = 0
         last_error = None
 
@@ -153,7 +160,7 @@ class DatabaseManager:
                     str(e),
                 )
                 if attempt < max_retries:
-                    self.log.info("Retrying in %d seconds...", retry_delay)
+                    log.info("Retrying in %d seconds...", retry_delay)
                     await asyncio.sleep(retry_delay)
                     retry_delay = min(retry_delay * 2, 5)
 
@@ -166,12 +173,13 @@ class DatabaseManager:
 
     @property
     def engine(self) -> AsyncEngine:
+        """Return the async engine."""
         return self._engine
 
     @asynccontextmanager
-    async def session(self) -> AsyncGenerator[AsyncSession, None]:
+    async def session(self) -> AsyncGenerator[AsyncSession]:
         """
-        Async context manager for database sessions
+        Async context manager for database sessions.
 
         Yields:
             An async database session
@@ -186,10 +194,8 @@ class DatabaseManager:
             finally:
                 await session.close()
 
-    async def initialize_models(self):
-        """
-        Create all database tables defined in models
-        """
+    async def initialize_models(self) -> None:
+        """Create all database tables defined in models."""
         async with self._lock:
             if self._initialized:
                 return
@@ -217,7 +223,7 @@ class DatabaseManager:
                 raise
 
     async def cleanup(self) -> None:
-        """Cleanup database connections"""
+        """Cleanup database connections."""
         if self._engine:
             await self._engine.dispose()
             log.debug("Database connections cleaned up")
@@ -225,7 +231,7 @@ class DatabaseManager:
 
 class BaseRepository:
     """
-    Generic async repository with common CRUD operations
+    Generic async repository with common CRUD operations.
 
     Can be inherited by specific model repositories
     """
@@ -234,24 +240,24 @@ class BaseRepository:
         self._session = session
 
     async def add(self, model: ModelType) -> ModelType:
-        """Add a new model instance to the database"""
+        """Add a new model instance to the database."""
         self._session.add(model)
         await self._session.flush()
         return model
 
     async def add_all(self, models: list[ModelType]) -> list[ModelType]:
-        """Add multiple model instances to the database"""
+        """Add multiple model instances to the database."""
         self._session.add_all(models)
         await self._session.flush()
         return models
 
     async def delete(self, model: ModelType) -> None:
-        """Delete a model instance from the database"""
+        """Delete a model instance from the database."""
         await self._session.delete(model)
         await self._session.flush()
 
     async def merge(self, model: ModelType) -> ModelType:
-        """Update an existing model instance"""
+        """Update an existing model instance."""
         model = await self._session.merge(model)
         await self._session.flush()
         return model

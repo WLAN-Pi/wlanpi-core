@@ -1,110 +1,193 @@
+"""Utility services: reachability, speedtest, blinker, and firewall info."""
+
+import asyncio
 import os
 import re
+import signal
+import subprocess
+import threading
+import time
+from typing import Any
 
-from wlanpi_core.constants import UFW_FILE
+from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
+from wlanpi_core.core.logging import get_logger
 
+from ..models.command_result import CommandResult
 from ..models.runcommand_error import RunCommandError
-from ..utils.general import run_command_async
+from ..utils.general import run_command_async, terminate_process
 from ..utils.network import get_default_gateways
+from ..utils.reachability import parse_targets_param, ping_stats_from_jc, ping_target
+from ..utils.speedtest import run_speedtest
+from ..utils.validation import validate_interface_name
+
+log = get_logger(__name__)
 
 
-async def show_reachability():
+def _as_dict(result: CommandResult) -> dict[str, Any] | None:
+    """JSON output of a command as a dict, or None on failure/non-dict output."""
+    if not result.success:
+        return None
+    parsed = result.output_from_json()
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _read_dns_servers(path: str = "/etc/resolv.conf") -> list[str]:
+    """Read well-formed nameserver entries without leaking a file handle."""
+    servers: list[str] = []
+    with open(path, encoding="utf-8") as resolv_conf:
+        for line in resolv_conf:
+            fields = line.split()
+            if len(fields) >= 2 and fields[0] == "nameserver":
+                servers.append(fields[1])
+    return servers
+
+
+async def _cancel_tasks(tasks: list[asyncio.Task[Any]]) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
     """
-    Check if default gateway, internet and DNS are reachable and working
+    Check if default gateway, internet and DNS are reachable and working.
+
+    Optionally ping additional ``targets`` (hostnames or IPs) in parallel.
     """
 
-    output = {"results": {}}
+    output: dict[str, Any] = {"results": {}}
 
     # --- Variables ---
     try:
-        gateways = get_default_gateways()
+        gateways = await asyncio.to_thread(get_default_gateways)
         if not gateways:
             return {"error": "No default gateway found"}
 
-        dg_interface, default_gateway = list(gateways.items())[0]
-
-        dns_servers = [
-            line.split()[1]
-            for line in open("/etc/resolv.conf")
-            if line.startswith("nameserver")
-        ]
+        dg_interface, default_gateway = next(iter(gateways.items()))
+        dns_servers = await asyncio.to_thread(_read_dns_servers)
+        custom_targets = parse_targets_param(targets)
+    except ValueError as err:
+        return {"error": str(err)}
     except RunCommandError as err:
-        return {"error": "Failed to determine network configuration: {}".format(err)}
+        return {"error": f"Failed to determine network configuration: {err}"}
 
     # --- Checks ---
     if not default_gateway:
         return {"error": "No default gateway"}
 
-    # Start executing tests in the background
-    ping_google_cr = run_command_async(
-        "jc ping -c1 -W2 -q google.com", raise_on_fail=False
-    )
-    browse_google_result_cr = run_command_async(
-        "timeout 2 curl -s -L www.google.com", raise_on_fail=False
-    )
-    ping_gateway_cr = run_command_async(
-        f"jc ping -c1 -W2 -q {default_gateway}", raise_on_fail=False
-    )
-    arping_gateway_cr = run_command_async(
-        f"timeout 2 arping -c1 -w2 -I {dg_interface} {default_gateway}",
-        raise_on_fail=False,
-    )
-    dns_res_crs = [
-        (
-            i,
-            run_command_async(
-                f"dig +short +time=2 +tries=1 @{dns} NS google.com", raise_on_fail=False
-            ),
+    ping_google_task = asyncio.create_task(
+        run_command_async(
+            ["jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
+            raise_on_fail=False,
         )
-        for i, dns in enumerate(dns_servers[:3], start=1)
+    )
+    browse_google_task = asyncio.create_task(
+        run_command_async(
+            ["curl", "-s", "-L", "www.google.com"],
+            raise_on_fail=False,
+            timeout=2,
+        )
+    )
+    ping_gateway_task = asyncio.create_task(
+        run_command_async(
+            ["jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
+            raise_on_fail=False,
+        )
+    )
+    arping_gateway_task = asyncio.create_task(
+        run_command_async(
+            ["arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
+            raise_on_fail=False,
+            timeout=2,
+        )
+    )
+    dns_tasks = [
+        asyncio.create_task(
+            run_command_async(
+                [
+                    "dig",
+                    "+short",
+                    "+time=2",
+                    "+tries=1",
+                    f"@{dns}",
+                    "NS",
+                    "google.com",
+                ],
+                raise_on_fail=False,
+            )
+        )
+        for dns in dns_servers[:3]
+    ]
+    custom_tasks = [
+        asyncio.create_task(ping_target(target)) for target in custom_targets
+    ]
+    all_tasks = [
+        ping_google_task,
+        browse_google_task,
+        ping_gateway_task,
+        arping_gateway_task,
+        *dns_tasks,
+        *custom_tasks,
     ]
 
-    # Ping Google
-    ping_google = await ping_google_cr
-    output["results"]["Ping Google"] = (
-        f"{ping_google.output_from_json()['round_trip_ms_avg']}ms"
-        if ping_google.success
-        else "FAIL"
-    )
+    try:
+        ping_google, browse_google, ping_gateway, arping_gateway = await asyncio.gather(
+            ping_google_task,
+            browse_google_task,
+            ping_gateway_task,
+            arping_gateway_task,
+        )
+        dns_results = await asyncio.gather(*dns_tasks)
+        custom_results = await asyncio.gather(*custom_tasks)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.warning("Reachability check failed: %r", exc)
+        return {"error": "Reachability check failed"}
+    finally:
+        await _cancel_tasks(all_tasks)
 
-    # Browse Google.com
-    browse_google_result = await browse_google_result_cr
+    output["results"]["Ping Google"] = ping_stats_from_jc(_as_dict(ping_google))[
+        "display"
+    ]
     output["results"]["Browse Google"] = (
         "OK"
-        if (
-            browse_google_result.success and "google.com" in browse_google_result.stdout
-        )
+        if browse_google.success and "google.com" in browse_google.stdout
         else "FAIL"
     )
+    output["results"]["Ping Gateway"] = ping_stats_from_jc(_as_dict(ping_gateway))[
+        "display"
+    ]
 
-    # Ping default gateway
-    ping_gateway = await ping_gateway_cr
-    output["results"]["Ping Gateway"] = (
-        f"{ping_gateway.output_from_json()['round_trip_ms_avg']}ms"
-        if ping_gateway.success
-        else "FAIL"
-    )
-
-    # DNS resolution checks
-    for i, cr in dns_res_crs:
-        dns_res = await cr
-        output["results"][f"DNS Server {i} Resolution"] = (
-            "OK" if dns_res.success else "FAIL"
+    for index, (dns, dns_result) in enumerate(
+        zip(dns_servers[:3], dns_results, strict=True), start=1
+    ):
+        output["results"][f"DNS Server {index} Resolution"] = (
+            f"{dns}: {'OK' if dns_result.success else 'FAIL'}"
         )
 
-    # ARPing default gateway
-    arping_gateway = (await arping_gateway_cr).stdout
-    arping_rtt = re.search(r"\d+ms", arping_gateway)
+    arping_rtt = re.search(r"\d+(?:\.\d+)?ms", arping_gateway.stdout)
     output["results"]["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
+    output["results"]["custom"] = custom_results
 
     return output
 
 
-async def show_usb():
-    """
-    Return a list of non-Linux USB interfaces found with the lsusb command
-    """
-    interfaces = {}
+async def show_speedtest() -> dict[str, Any]:
+    """Run LibreSpeed CLI speedtest and return parsed results."""
+    try:
+        return {"results": await run_speedtest()}
+    except RuntimeError as err:
+        return {"error": str(err)}
+    except ValueError as err:
+        return {"error": str(err)}
+
+
+async def show_usb() -> dict[str, Any]:
+    """Return a list of non-Linux USB interfaces found with the lsusb command."""
+    interfaces: dict[str, Any] = {}
 
     try:
         lsusb_output = (
@@ -117,7 +200,7 @@ async def show_usb():
         ]
     except RunCommandError as err:
         error_descr = "Issue getting usb info using lsusb command"
-        interfaces["error"] = {"error": {error_descr + ": " + err.error_msg}}
+        interfaces["error"] = {"error": error_descr + ": " + err.error_msg}
         return interfaces
 
     interfaces["interfaces"] = []
@@ -125,16 +208,14 @@ async def show_usb():
     for result in (result for result in lsusb_info if result != ""):
         interfaces["interfaces"].append(result)
 
-    if len(interfaces) == 0:
+    if not interfaces["interfaces"]:
         interfaces["interfaces"].append("No devices detected")
 
     return interfaces
 
 
-def parse_ufw(output):
-    """
-    Parses the output of the UFW file into readable json for the api.
-    """
+def parse_ufw(output: str) -> dict[str, Any]:
+    """Parse the output of the UFW file into readable json for the api."""
 
     lines = output.strip().split("\n")
 
@@ -144,7 +225,7 @@ def parse_ufw(output):
     # Check if there are at least 3 lines (status + headers + at least one rule)
     if len(lines) <= 3:
         # No rules present in the output
-        parsed_rules = []
+        parsed_rules: list[Any] = []
     else:
         rules = lines[3:]
         parsed_rules = []
@@ -171,14 +252,12 @@ def parse_ufw(output):
     return final_output
 
 
-async def show_ufw():
-    """
-    Return a list ufw ports
-    """
+async def show_ufw() -> dict[str, Any]:
+    """Return a list ufw ports."""
     ufw_file = UFW_FILE
-    ufw_info = []
+    ufw_info: Any = []
 
-    response = {}
+    response: dict[str, Any] = {}
 
     # check ufw is available
     if not os.path.isfile(ufw_file):
@@ -188,19 +267,153 @@ async def show_ufw():
 
     try:
         ufw_output = (
-            await run_command_async(
-                "sudo {} status".format(ufw_file), raise_on_fail=True
-            )
+            await run_command_async([ufw_file, "status"], raise_on_fail=True)
         ).stdout
         ufw_info = parse_ufw(ufw_output)
 
-    except:
+    except (RunCommandError, OSError) as exc:
+        log.warning("Unable to read UFW status: %r", exc)
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
-        return
+        return response
 
     # Add in status line
 
     response = ufw_info
 
     return response
+
+
+async def show_pci() -> dict[str, Any]:
+    """Return PCI devices found with the lspci command."""
+    devices: dict[str, Any] = {}
+
+    try:
+        lspci_output = (
+            await run_command_async("/usr/bin/lspci", raise_on_fail=True)
+        ).stdout.splitlines()
+    except RunCommandError as err:
+        error_descr = "Issue getting pci info using lspci command"
+        devices["error"] = {"error": error_descr + ": " + err.error_msg}
+        return devices
+
+    devices["devices"] = []
+    for line in lspci_output:
+        if not line.strip():
+            continue
+        pci_id, _, description = line.partition(" ")
+        devices["devices"].append(
+            {"pci_id": pci_id.strip(), "description": description.strip()}
+        )
+
+    return devices
+
+
+_blinker_process: subprocess.Popen[Any] | None = None
+_blinker_lock = threading.Lock()
+_BLINKER_CONTROL_TIMEOUT_SEC = 3
+_BLINKER_TERMINATE_GRACE_SEC = 1
+
+
+def _blinker_script_pids() -> list[int]:
+    result = subprocess.run(
+        ["pidof", "-x", "portblinker.sh"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=_BLINKER_CONTROL_TIMEOUT_SEC,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+    return [int(pid) for pid in result.stdout.split() if pid.isdecimal()]
+
+
+def _blinker_script_running() -> bool:
+    return bool(_blinker_script_pids())
+
+
+def _signal_unowned_blinker(signal_name: str) -> None:
+    signal_number = {"TERM": signal.SIGTERM, "KILL": signal.SIGKILL}[signal_name]
+    for pid in _blinker_script_pids():
+        try:
+            os.kill(pid, signal_number)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            log.warning("Unable to signal port blinker PID %s: %s", pid, exc)
+
+
+def _stop_unowned_blinker() -> None:
+    """Stop a blinker inherited from another worker or service instance."""
+    _signal_unowned_blinker("TERM")
+    deadline = time.monotonic() + _BLINKER_TERMINATE_GRACE_SEC
+    while time.monotonic() < deadline:
+        if not _blinker_script_running():
+            return
+        time.sleep(0.1)
+
+    _signal_unowned_blinker("KILL")
+    if _blinker_script_running():
+        raise RuntimeError("Port blinker did not stop after SIGKILL")
+
+
+def start_port_blinker(interface: str = "eth0") -> dict[str, Any]:
+    """Start the port blinker script (runs until stopped)."""
+    global _blinker_process
+    interface = validate_interface_name(interface)
+
+    with _blinker_lock:
+        if not os.path.isfile(BLINKER_FILE):
+            raise FileNotFoundError(f"Port blinker script not found: {BLINKER_FILE}")
+
+        if _blinker_process and _blinker_process.poll() is None:
+            return {
+                "active": True,
+                "status": "already_running",
+                "interface": interface,
+            }
+
+        if _blinker_script_running():
+            return {
+                "active": True,
+                "status": "already_running",
+                "interface": interface,
+            }
+
+        cmd = [BLINKER_FILE, "-i", interface, "--no-color"]
+        _blinker_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return {"active": True, "status": "started", "interface": interface}
+
+
+def stop_port_blinker() -> dict[str, Any]:
+    """Stop a running port blinker process."""
+    global _blinker_process
+    with _blinker_lock:
+        stopped = False
+
+        if _blinker_process and _blinker_process.poll() is None:
+            terminate_process(_blinker_process)
+            stopped = True
+        _blinker_process = None
+
+        if _blinker_script_running():
+            _stop_unowned_blinker()
+            stopped = True
+
+        return {"active": False, "status": "stopped" if stopped else "not_running"}
+
+
+def port_blinker_status() -> dict[str, Any]:
+    """Return whether the port blinker script is running."""
+    global _blinker_process
+    with _blinker_lock:
+        active = _blinker_script_running()
+        if not active and _blinker_process and _blinker_process.poll() is not None:
+            _blinker_process.wait()
+            _blinker_process = None
+        return {"active": active}

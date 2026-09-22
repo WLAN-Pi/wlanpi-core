@@ -3,7 +3,7 @@
 [Unit]
 Description=wlanpi-core ufw first boot setup
 After=network.target ufw.service wlanpi-first-boot.service
-Before=wlanpi-core.service
+Before=nginx.service wlanpi-core.service
 
 [Service]
 Type=oneshot

@@ -1,10 +1,9 @@
-import grp
+"""Security manager for encryption keys and shared secrets."""
+
 import os
-import pwd
 import secrets
 import time
 from pathlib import Path
-from typing import Optional
 
 from cryptography.fernet import Fernet
 
@@ -15,13 +14,15 @@ log = get_logger(__name__)
 
 
 class SecurityInitError(Exception):
-    pass
+    """Raised when security initialization fails."""
 
 
 class SecurityManager:
-    def __init__(self):
+    """Manage encryption keys and shared secrets on disk."""
+
+    def __init__(self) -> None:
         self.secrets_path = Path(SECRETS_DIR)
-        self._fernet: Optional[Fernet] = None
+        self._fernet: Fernet | None = None
         try:
             # Wait for filesystem to be ready before proceeding
             if not self._wait_for_filesystem_ready():
@@ -33,12 +34,12 @@ class SecurityManager:
             log.debug("Security initialization complete")
         except Exception as e:
             log.exception(f"Security initialization failed: {e}")
-            raise SecurityInitError(f"Failed to initialize security: {e}")
+            raise SecurityInitError(f"Failed to initialize security: {e}") from None
 
     def _wait_for_filesystem_ready(
         self, max_retries: int = 5, retry_delay: float = 2.0
     ) -> bool:
-        """Wait for filesystem to be ready for write operations"""
+        """Wait for filesystem to be ready for write operations."""
         for attempt in range(max_retries):
             try:
                 self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -56,7 +57,7 @@ class SecurityManager:
                     # Always try to clean up, even if the test fails
                     try:
                         test_file.unlink()
-                    except:
+                    except OSError:
                         pass
 
                     if read_data == test_data:
@@ -67,7 +68,7 @@ class SecurityManager:
                     try:
                         if test_file.exists():
                             test_file.unlink()
-                    except:
+                    except OSError:
                         pass
                     log.debug(f"Write test failed: {e}")
 
@@ -85,8 +86,8 @@ class SecurityManager:
         log.error("Filesystem not ready after all retries")
         return False
 
-    def _setup_secrets_directory(self):
-        """Create and secure secrets directory"""
+    def _setup_secrets_directory(self) -> None:
+        """Create and secure secrets directory."""
         try:
             self.secrets_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         except Exception as e:
@@ -94,47 +95,47 @@ class SecurityManager:
             raise
 
     def _setup_shared_secret(self) -> bytes:
-        """Generate or load HMAC shared secret"""
+        """Generate or load the HMAC shared secret.
+
+        Root-only by design: only root (core itself, and the ``getjwt`` CLI)
+        may read it. Clients authenticate with a JWT minted via ``getjwt``.
+        """
         secret_path = self.secrets_path / SHARED_SECRET_FILE
         secrets_dir = self.secrets_path
 
         try:
             dir_stat = secrets_dir.stat()
-            dir_gid = grp.getgrnam("wlanpi").gr_gid
-
-            if dir_stat.st_gid != dir_gid or dir_stat.st_mode & 0o777 != 0o710:
-                os.chown(str(secrets_dir), 0, dir_gid)  # root:wlanpi
-                secrets_dir.chmod(0o710)  # rwx--x---
+            if (
+                dir_stat.st_uid != 0
+                or dir_stat.st_gid != 0
+                or dir_stat.st_mode & 0o777 != 0o700
+            ):
+                os.chown(str(secrets_dir), 0, 0)  # root:root
+                secrets_dir.chmod(0o700)  # rwx------
                 log.debug("Updated secrets directory permissions")
 
             if not secret_path.exists():
                 secret = secrets.token_bytes(32)
                 secret_path.write_bytes(secret)
-                # Set file ownership to root:wlanpi
-                uid = pwd.getpwnam("root").pw_uid
-                gid = grp.getgrnam("wlanpi").gr_gid
-                os.chown(str(secret_path), uid, gid)
-                # Set permissions to 0o640 - readable by owner (root) and group (wlanpi)
-                secret_path.chmod(0o640)
+                os.chown(str(secret_path), 0, 0)
+                secret_path.chmod(0o600)
                 log.debug("Generated new shared secret")
             else:
                 stat = secret_path.stat()
-                uid = pwd.getpwnam("root").pw_uid
-                gid = grp.getgrnam("wlanpi").gr_gid
-                if stat.st_uid != uid or stat.st_gid != gid:
-                    os.chown(str(secret_path), uid, gid)
-                    log.debug("Updated secret file ownership to root:wlanpi")
-                if stat.st_mode & 0o777 != 0o640:
-                    secret_path.chmod(0o640)
-                    log.debug("Updated secret file permissions to 0o640")
+                if stat.st_uid != 0 or stat.st_gid != 0:
+                    os.chown(str(secret_path), 0, 0)
+                    log.debug("Updated secret file ownership to root:root")
+                if stat.st_mode & 0o777 != 0o600:
+                    secret_path.chmod(0o600)
+                    log.debug("Updated secret file permissions to 0o600")
                 secret = secret_path.read_bytes()
                 if not secret:
                     # File exists but is empty - regenerate it
                     log.warning("Shared secret file is empty, regenerating...")
                     secret = secrets.token_bytes(32)
                     secret_path.write_bytes(secret)
-                    os.chown(str(secret_path), uid, gid)
-                    secret_path.chmod(0o640)
+                    os.chown(str(secret_path), 0, 0)
+                    secret_path.chmod(0o600)
                     log.debug("Regenerated shared secret")
                 else:
                     log.debug("Loaded existing shared secret")
@@ -145,8 +146,8 @@ class SecurityManager:
             log.exception(f"Failed to setup shared secret: {e}")
             raise
 
-    def _setup_encryption_key(self):
-        """Generate or load Fernet encryption key"""
+    def _setup_encryption_key(self) -> None:
+        """Generate or load Fernet encryption key."""
         key_path = self.secrets_path / ENCRYPTION_KEY_FILE
 
         try:
@@ -187,15 +188,15 @@ class SecurityManager:
 
     @property
     def fernet(self) -> Fernet:
-        """Get initialized Fernet instance"""
+        """Get initialized Fernet instance."""
         if not self._fernet:
             raise SecurityInitError("Fernet not initialized")
         return self._fernet
 
     def encrypt(self, data: bytes) -> bytes:
-        """Encrypt data using Fernet"""
+        """Encrypt data using Fernet."""
         return self.fernet.encrypt(data)
 
     def decrypt(self, data: bytes) -> bytes:
-        """Decrypt data using Fernet"""
+        """Decrypt data using Fernet."""
         return self.fernet.decrypt(data)

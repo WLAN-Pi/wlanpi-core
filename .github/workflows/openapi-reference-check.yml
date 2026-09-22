@@ -1,0 +1,63 @@
+name: OpenAPI Reference Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    if: github.repository_owner == 'WLAN-Pi'
+    name: OpenAPI reference is current
+    runs-on: "${{ vars.RUNS_ON || 'ubuntu-26.04' }}"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            libdbus-1-dev \
+            libdbus-glib-1-dev \
+            libglib2.0-dev \
+            pkg-config
+
+      - name: Install locked Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --requirement requirements.txt
+
+      - name: Verify docs/openapi.json matches the generated schema
+        run: |
+          python scripts/export_openapi.py
+          if ! git diff --exit-code docs/openapi.json; then
+            echo "::error::docs/openapi.json is stale. Merge the open 'chore: update generated OpenAPI reference' PR into dev, or run scripts/export_openapi.py on dev and commit the result."
+            exit 1
+          fi
+
+  slack-workflow-status:
+    if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (! github.event.pull_request.head.repo.fork) }}
+    name: Post Workflow Status to Slack
+    needs:
+      - check
+    runs-on: 'ubuntu-26.04'
+    steps:
+      - name: Slack Workflow Notification
+        uses: Gamesight/slack-workflow-status@master
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

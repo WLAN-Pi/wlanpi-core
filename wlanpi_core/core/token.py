@@ -1,20 +1,21 @@
-import asyncio
+"""JWT token issuance, validation, and signing key management."""
+
 import base64
+import binascii
 import json
+import math
 import secrets
+import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
-from authlib.jose import jwt
-from fastapi import HTTPException
-from sqlalchemy import Integer
+from authlib.jose import JoseError, jwt
+from sqlalchemy import Integer, func, select, text, update
 from sqlalchemy import exc as sqlalchemy_exc
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from wlanpi_core.core.cache import SKeyCache, TokenCache
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.models import SigningKey, Token
@@ -23,32 +24,49 @@ from wlanpi_core.services import system_service
 
 log = get_logger(__name__)
 
+AUTH_CLOCK_NOT_SET = "AUTH_CLOCK_NOT_SET"
+CLOCK_SKEW_TOLERANCE_SEC = 30
 
-class TokenError(Exception):
-    pass
+
+def current_boot_id() -> str:
+    """Kernel boot id; changes on every reboot."""
+    boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    if not boot_id:
+        raise RuntimeError("Kernel boot ID is empty")
+    return boot_id
+
+
+def current_boottime() -> float:
+    """Seconds since boot, including suspend time."""
+    return time.clock_gettime(time.CLOCK_BOOTTIME)
+
+
+def current_wall_time() -> float:
+    """Return the current Unix timestamp in UTC."""
+    return datetime.now(UTC).timestamp()
 
 
 class SKeyError(Exception):
-    pass
+    """Raised on signing key errors."""
 
 
 class JWTError(Exception):
-    pass
+    """Raised on JWT errors."""
 
 
 @dataclass
 class TokenValidationResult:
-    """Result of token validation containing validation status and metadata"""
+    """Result of token validation containing validation status and metadata."""
 
     is_valid: bool
-    payload: Optional[dict] = None
-    error: Optional[str] = None
-    token: Optional[str] = None
-    device_id: Optional[str] = None
-    key_id: Optional[int] = None
+    payload: dict[str, Any] | None = None
+    error: str | None = None
+    token: str | None = None
+    device_id: str | None = None
+    key_id: int | None = None
 
     def __post_init__(self) -> None:
-        """Validate required fields based on validation status"""
+        """Validate required fields based on validation status."""
         if self.is_valid:
             if not self.token:
                 raise ValueError("Valid tokens must have a token value")
@@ -63,41 +81,41 @@ class TokenValidationResult:
                 raise ValueError("Invalid tokens must have an error message")
 
     @property
-    def exp(self) -> Optional[datetime]:
-        """Get expiration time if payload exists"""
+    def exp(self) -> datetime | None:
+        """Get expiration time if payload exists."""
         if not self.payload or "exp" not in self.payload:
             return None
         try:
-            return datetime.fromtimestamp(self.payload["exp"], tz=timezone.utc)
+            return datetime.fromtimestamp(self.payload["exp"], tz=UTC)
         except (TypeError, ValueError):
             return None
 
     @property
-    def iat(self) -> Optional[datetime]:
-        """Get issued-at time if payload exists"""
+    def iat(self) -> datetime | None:
+        """Get issued-at time if payload exists."""
         if not self.payload or "iat" not in self.payload:
             return None
         try:
-            return datetime.fromtimestamp(self.payload["iat"], tz=timezone.utc)
+            return datetime.fromtimestamp(self.payload["iat"], tz=UTC)
         except (TypeError, ValueError):
             return None
 
     @property
     def is_expired(self) -> bool:
-        """Check if token is expired"""
+        """Check if token is expired."""
         # if not self.exp:
         #     return True
         # return self.exp <= datetime.now(timezone.utc)
         return False
 
     def __str__(self) -> str:
-        """Human readable representation"""
+        """Human readable representation."""
         if self.is_valid:
             return f"Valid token for device {self.device_id} (expires {self.exp})"
         return f"Invalid token: {self.error}"
 
-    def to_dict(self) -> dict:
-        """Convert to dictionary for API responses"""
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
         return {
             "valid": self.is_valid,
             "error": self.error if not self.is_valid else None,
@@ -108,61 +126,52 @@ class TokenValidationResult:
 
 
 class TokenManager:
-    def __init__(self, app_state):
+    """Manage token issuance, validation, and signing key rotation."""
+
+    def __init__(self, app_state: Any) -> None:
         """
-        Initialize TokenManager with application state
+        Initialize TokenManager with application state.
 
         Args:
             app_state: Application state containing database manager
         """
         self.app_state = app_state
-        self.token_cache = TokenCache()
-        self.skey_cache = SKeyCache()
-        self.time_validation_enabled = False
 
-    def _normalize_token(self, token: Union[str, bytes]) -> str:
-        """Normalize and validate JWT token format"""
-        # Basic normalization
+    def _normalize_token(self, token: str | bytes) -> str:
+        """Normalize and validate JWT token format."""
         if isinstance(token, bytes):
-            token = token.decode("utf-8")
-        token = token.strip("b'\"")
+            try:
+                token = token.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise JWTError("Invalid token encoding") from exc
+        token = token.strip()
+        if token.startswith(("b'", 'b"')) and token.endswith(token[1]):
+            token = token[2:-1]
 
-        # Split and validate parts
         parts = token.split(".")
         if len(parts) != 3:
             raise JWTError(f"Invalid JWT format - expected 3 parts, got {len(parts)}")
 
-        # Pad each part
-        padded_parts = []
-        for part in parts:
-            try:
-                unpadded = part.rstrip("=")
-                padding_needed = (4 - len(unpadded) % 4) % 4
-                padded = unpadded + ("=" * padding_needed)
-                padded_parts.append(padded)
-            except Exception:
-                log.exception("Base64 padding error")
-                raise JWTError("Base64 padding error")
-
-        # Validate header
+        header_b64 = parts[0].rstrip("=")
+        header_b64 += "=" * ((4 - len(header_b64) % 4) % 4)
         try:
-            header_b64 = padded_parts[0]
-            std_b64 = header_b64.replace("-", "+").replace("_", "/")
-            header_json = base64.b64decode(std_b64).decode("utf-8")
-            header = json.loads(header_json)
+            header = json.loads(base64.urlsafe_b64decode(header_b64).decode("utf-8"))
+        except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise JWTError("Header validation failed") from exc
 
-            if not header.get("alg") or not header.get("typ", "JWT").upper() == "JWT":
-                raise JWTError("Invalid token header")
-        except Exception:
-            raise JWTError("Header validation failed")
+        token_type = header.get("typ", "JWT") if isinstance(header, dict) else None
+        if (
+            not isinstance(token_type, str)
+            or token_type.upper() != "JWT"
+            or header.get("alg") != "HS256"
+        ):
+            raise JWTError("Invalid token header")
 
         return token
 
-    async def _get_or_create_signing_key(
-        self, session: AsyncSession, in_transaction: bool = False
-    ) -> SigningKey:
+    async def _get_or_create_signing_key(self, session: AsyncSession) -> SigningKey:
         """
-        Retrieve an existing active signing key or create a new one
+        Retrieve an existing active signing key or create a new one.
 
         Args:
             session: Database session
@@ -170,37 +179,16 @@ class TokenManager:
         Returns:
             Active SigningKey instance
         """
-        # 1. check cache
-        active_key = self.skey_cache.active_key
-        if active_key:
-            merged_key = await self._safely_merge_cached_key(session, active_key.id)
-            if merged_key is not None:
-                log.debug(
-                    "Got active signing key from cache", extra={"key_id": merged_key.id}
-                )
-                return merged_key
-
-            log.debug("Cached active key invalid, checking database")
-
-        # 2. check database
-        query = select(SigningKey).where(SigningKey.active == True)
+        query = select(SigningKey).where(SigningKey.active.is_(True))
         result = await session.execute(query)
         skey = result.scalar_one_or_none()
 
         if skey:
-            self.skey_cache.cache_key(skey)
             log.debug("Got active signing key from database", extra={"key_id": skey.id})
             return skey
 
-        # 3. not in cache? not in database?
-        # Tasks:
-        #  - Make sure old keys are not active
-        #  - Create new key
-        #  - Invalidate cache
-        #  - Invalidate tokens with old keys
-
         deactivate_keys = (
-            update(SigningKey).where(SigningKey.active == True).values(active=False)
+            update(SigningKey).where(SigningKey.active.is_(True)).values(active=False)
         )
         await session.execute(deactivate_keys)
 
@@ -214,22 +202,12 @@ class TokenManager:
             update(Token)
             .where(
                 Token.key_id != new_key.id,
-                Token.revoked == False,
+                Token.revoked.is_(False),
                 # Token.expires_at > datetime.now(timezone.utc),
             )
             .values(revoked=True)
         )
         await session.execute(revoke_tokens)
-        if in_transaction:
-            await session.flush()
-        else:
-            await session.commit()
-
-        self.skey_cache.clear()
-        self.token_cache.clear()
-
-        # add key to cache
-        self.skey_cache.cache_key(new_key)
 
         log.debug(
             "Created new signing key",
@@ -242,49 +220,11 @@ class TokenManager:
 
         return new_key
 
-    async def _safely_merge_cached_key(
-        self, session: AsyncSession, key_id: int
-    ) -> Optional[SigningKey]:
-        """
-        Safely merge a cached signing key with the current session.
-        Returns None if key cannot be merged or doesn't exist.
-        """
-        cached_key = self.skey_cache.get_key(key_id)
-        if cached_key is not None:
-            try:
-                merged_key = await session.merge(cached_key)
-                if merged_key is None:
-                    log.warning("Merge returned None for key")
-                    return None
-                log.debug(
-                    "Successfully merged cached key",
-                    extra={"key_id": key_id, "active": merged_key.active},
-                )
-                return merged_key
-            except Exception as e:
-                log.warning(
-                    "Failed to merge cached key",
-                    extra={
-                        "key_id": key_id,
-                        "error": str(e),
-                        "type": "cache_merge_error",
-                    },
-                )
-                self.skey_cache._cache.pop(key_id, None)
-                if self.skey_cache._active_key_id == key_id:
-                    log.info(
-                        "Clearing active key reference after merge failure",
-                        extra={"key_id": key_id},
-                    )
-                    self.skey_cache._active_key_id = None
-
-        return None
-
     async def create_token(
-        self, device_id: str, expires_delta: Optional[timedelta] = None
+        self, device_id: str, expires_delta: timedelta | None = None
     ) -> str:
         """
-        Create a new JWT token for a specific device
+        Create a new JWT token for a specific device.
 
         Args:
             device_id: Device identifier
@@ -293,6 +233,13 @@ class TokenManager:
         Returns:
             JWT token string
         """
+        lifetime = expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+        lifetime_seconds = lifetime.total_seconds()
+        wall_now = current_wall_time()
+        expires = datetime.fromtimestamp(wall_now + lifetime_seconds, UTC)
+        boot_id = current_boot_id()
+        boot_expires = current_boottime() + lifetime_seconds
+
         max_retries = 3
         retry_count = 0
 
@@ -300,52 +247,44 @@ class TokenManager:
             async with self.app_state.db_manager.session() as session:
                 try:
                     async with session.begin():
+                        # Serialize active-key selection with key rotation.
+                        await session.execute(text("BEGIN IMMEDIATE"))
                         device_repo = DeviceRepository(session)
                         await device_repo.get_or_create_device(device_id)
-                        signing_key = await self._get_or_create_signing_key(
-                            session, in_transaction=True
+                        signing_key = await self._get_or_create_signing_key(session)
+
+                        claims = {
+                            "sub": system_service.get_hostname(),
+                            "iss": "wlanpi-core",
+                            "did": device_id,
+                            "exp": int(expires.timestamp()),
+                            "iat": int(wall_now),
+                            "kid": str(signing_key.id),
+                            "jti": secrets.token_hex(8),
+                            "bid": boot_id,
+                            "bexp": boot_expires,
+                        }
+
+                        jwt_token = jwt.encode(
+                            header={"alg": "HS256", "kid": str(signing_key.id)},
+                            payload=claims,
+                            key=signing_key.key,
+                        ).decode("utf-8")
+
+                        token_model = Token(
+                            token=jwt_token,
+                            device_id=device_id,
+                            key_id=signing_key.id,
+                            expires_at=expires,
                         )
-
-                    now = datetime.now(timezone.utc)
-                    expires = now + (
-                        expires_delta
-                        or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
-                    )
-
-                    claims = {
-                        "sub": system_service.get_hostname(),
-                        "iss": "wlanpi-core",
-                        "did": device_id,
-                        "exp": int(expires.timestamp()),
-                        "iat": int(now.timestamp()),
-                        "kid": str(signing_key.id),
-                        "jti": secrets.token_hex(8),
-                    }
-
-                    jwt_token = jwt.encode(
-                        header={"alg": "HS256", "kid": str(signing_key.id)},
-                        payload=claims,
-                        key=signing_key.key,
-                    ).decode("utf-8")
-
-                    token_model = Token(
-                        token=jwt_token,
-                        device_id=device_id,
-                        key_id=signing_key.id,
-                        expires_at=expires,
-                    )
-                    session.add(token_model)
-                    await session.commit()
+                        session.add(token_model)
 
                     log.debug(token_model)
                     log.debug(vars(token_model))
 
-                    self.token_cache.cache_token(jwt_token, claims)
-
                     return jwt_token
 
                 except sqlalchemy_exc.IntegrityError as e:
-                    await session.rollback()
                     retry_count += 1
                     if retry_count >= max_retries:
                         log.exception(
@@ -358,10 +297,9 @@ class TokenManager:
                                 "retries": retry_count,
                             },
                         )
-                        raise HTTPException(status_code=500, detail=str(e))
+                        raise
                     continue
                 except Exception as e:
-                    await session.rollback()
                     log.exception(
                         "Token creation failed",
                         extra={
@@ -371,124 +309,107 @@ class TokenManager:
                             "error": str(e),
                         },
                     )
-                    raise HTTPException(status_code=500, detail=str(e))
+                    raise
+
+        raise RuntimeError("Token creation retry loop exited unexpectedly")
+
+    @staticmethod
+    def _numeric_claim(payload: dict[str, Any], name: str) -> int | float:
+        value = payload.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise JWTError(f"Invalid {name} claim")
+        try:
+            if not math.isfinite(value):
+                raise JWTError(f"Invalid {name} claim")
+        except OverflowError as exc:
+            raise JWTError(f"Invalid {name} claim") from exc
+        return value
+
+    @classmethod
+    def _validate_lifetime(cls, payload: Any) -> None:
+        iat = cls._numeric_claim(payload, "iat")
+        exp = cls._numeric_claim(payload, "exp")
+        if exp <= iat:
+            raise JWTError("Invalid token lifetime")
+
+        has_bid = "bid" in payload
+        has_bexp = "bexp" in payload
+        if has_bid != has_bexp:
+            raise JWTError("Invalid boot lifetime claims")
+
+        if has_bid:
+            bid = payload["bid"]
+            if not isinstance(bid, str) or not bid:
+                raise JWTError("Invalid bid claim")
+            bexp = cls._numeric_claim(payload, "bexp")
+            if bexp < 0:
+                raise JWTError("Invalid bexp claim")
+            if bid == current_boot_id():
+                if current_boottime() >= bexp:
+                    raise JWTError("Token expired")
+                return
+
+        now = current_wall_time()
+        if now + CLOCK_SKEW_TOLERANCE_SEC < iat:
+            raise JWTError(AUTH_CLOCK_NOT_SET)
+        payload.validate_iat(now, leeway=CLOCK_SKEW_TOLERANCE_SEC)
+        payload.validate_exp(now, leeway=0)
+        if now >= exp:
+            raise JWTError("Token expired")
 
     async def verify_token(self, token: str) -> TokenValidationResult:
-        """Verify JWT token and return validation result"""
+        """Verify JWT token and return validation result."""
+        masked_token = token[:20] + "..." + token[-20:] if len(token) > 40 else token
+        log.debug("Verifying token: %s", masked_token)
+
         try:
-            masked_token = (
-                token[:20] + "..." + token[-20:] if len(token) > 40 else token
+            normalized_token = self._normalize_token(token)
+        except JWTError as exc:
+            return TokenValidationResult(is_valid=False, error=str(exc))
+
+        # ponytail: verify local SQLite on every request; add a token cache only
+        # if profiling shows this path is a bottleneck.
+        async with self.app_state.db_manager.session() as session:
+            token_model = await TokenRepository(session).get_token_by_value(
+                normalized_token
             )
-            log.debug("Verifying token: %s", masked_token)
+            if not token_model:
+                return TokenValidationResult(is_valid=False, error="Token not found")
+            if token_model.revoked:
+                return TokenValidationResult(is_valid=False, error="Token revoked")
+
+            signing_key = token_model.signing_key
+            if not signing_key or not signing_key.active:
+                return TokenValidationResult(
+                    is_valid=False, error="Invalid signing key"
+                )
 
             try:
-                normalized_token = self._normalize_token(token)
-            except JWTError as e:
-                log.exception("Token validation failed during normalization/validation")
-                return TokenValidationResult(is_valid=False, error=str(e))
+                payload = jwt.decode(normalized_token, signing_key.key)
+                for claim in ("sub", "iss", "did", "kid", "jti", "iat", "exp"):
+                    if claim not in payload:
+                        raise JWTError(f"Missing required claim: {claim}")
+                if payload["iss"] != "wlanpi-core":
+                    raise JWTError("Invalid issuer")
+                if not payload["did"]:
+                    raise JWTError("Invalid device ID")
+                if str(payload["kid"]) != str(token_model.key_id):
+                    raise JWTError("Invalid signing key claim")
+                self._validate_lifetime(payload)
+            except (JoseError, JWTError) as exc:
+                return TokenValidationResult(is_valid=False, error=str(exc))
 
-            cached = self.token_cache.get_cached_token(normalized_token)
-            if cached:
-                log.debug("Token found in cache")
-                if (
-                    not self.time_validation_enabled
-                    or not self.token_cache._is_token_expired(cached)
-                ):
-                    return TokenValidationResult(
-                        is_valid=True, payload=cached, token=normalized_token
-                    )
-
-            log.debug(
-                "Cache miss - reading from database",
-                extra={
-                    "component": "auth",
-                    "action": "db_read",
-                    "operation": "token_verification",
-                },
-            )
-
-            async with self.app_state.db_manager.session() as session:
-                token_query = (
-                    select(Token)
-                    .options(selectinload(Token.signing_key))
-                    .where(Token.token == normalized_token)
-                )
-                result = await session.execute(token_query)
-                token_model = result.scalar_one_or_none()
-
-                if not token_model:
-                    return TokenValidationResult(
-                        is_valid=False, error="Token not found"
-                    )
-
-                if token_model.revoked:
-                    log.debug(f"Token is revoked for device {token_model.device_id}")
-                    return TokenValidationResult(is_valid=False, error="Token revoked")
-
-                signing_key = self.skey_cache.get_key(token_model.key_id)
-                if signing_key:
-                    signing_key = await self._safely_merge_cached_key(
-                        session, token_model.key_id
-                    )
-                    if signing_key is None:
-                        log.warning(
-                            "Failed to validate signing key",
-                            extra={"key_id": token_model.key_id},
-                        )
-                        return TokenValidationResult(
-                            is_valid=False, error="Failed to validate signing key"
-                        )
-                else:
-                    skey_query = select(SigningKey).where(
-                        SigningKey.id == token_model.key_id
-                    )
-                    result = await session.execute(skey_query)
-                    signing_key = result.scalar_one_or_none()
-                    if signing_key:
-                        self.skey_cache.cache_key(signing_key)
-                    else:
-                        return TokenValidationResult(
-                            is_valid=False, error="Invalid signing key"
-                        )
-
-                try:
-                    payload = jwt.decode(token, signing_key.key)
-                    if self.time_validation_enabled:
-                        payload.validate()
-                    else:
-                        # Validated JWT payload without time-based claims
-                        required_claims = ["sub", "iss", "did", "kid", "jti"]
-                        for claim in required_claims:
-                            if claim not in payload:
-                                raise JWTError(f"Missing required claim: {claim}")
-
-                        if payload.get("iss") != "wlanpi-core":
-                            raise JWTError("Invalid issuer")
-
-                        if not payload.get("did"):
-                            raise JWTError("Invalid device ID")
-
-                    self.token_cache.cache_token(token, payload)
-                    return TokenValidationResult(
-                        is_valid=True,
-                        payload=payload,
-                        token=token,
-                        device_id=token_model.device_id,
-                        key_id=token_model.key_id,
-                    )
-                except (TokenError, JWTError) as e:
-                    log.exception("Token validation failed")
-                    return TokenValidationResult(is_valid=False, error=str(e))
-
-        except Exception as e:
-            log.exception("Unexpected error during token verification")
             return TokenValidationResult(
-                is_valid=False, error=f"Validation failed: {str(e)}"
+                is_valid=True,
+                payload=payload,
+                token=normalized_token,
+                device_id=token_model.device_id,
+                key_id=token_model.key_id,
             )
 
-    async def revoke_token(self, token: str) -> Dict[str, Any]:
+    async def revoke_token(self, token: str) -> dict[str, Any]:
         """
-        Revoke a specific token
+        Revoke a specific token.
 
         Args:
             token: JWT token string
@@ -534,60 +455,10 @@ class TokenManager:
                 )
                 raise
 
-    async def purge_expired_tokens(self) -> None:
+    async def rotate_key(self) -> tuple[int, str]:
         """
-        Background task to purge expired tokens
-        """
-        while True:
-            try:
-                async with self.app_state.db_manager.session() as session:
-                    affected_key_ids = set()
-                    expired_query = select(Token).where(
-                        Token.expires_at < datetime.now(timezone.utc)
-                    )
-                    result = await session.execute(expired_query)
-                    expired_tokens = result.scalars().all()
+        Rotate the signing keys.
 
-                    for token in expired_tokens:
-                        affected_key_ids.add(token.key_id)
-
-                    deleted_count = await TokenRepository(
-                        session
-                    ).purge_expired_tokens()
-
-                    if deleted_count > 0:
-                        log.debug(
-                            f"Purged {deleted_count} expired tokens",
-                            extra={"component": "auth", "action": "token_purge"},
-                        )
-
-                        for key_id in affected_key_ids:
-                            merged_key = await self._safely_merge_cached_key(
-                                session, key_id
-                            )
-                            if merged_key is None:
-                                log.debug(
-                                    "Removing key from cache after token purge",
-                                    extra={"key_id": key_id},
-                                )
-
-                        self.token_cache.clear()
-
-            except Exception as e:
-                log.exception(
-                    "Failed to purge tokens",
-                    extra={
-                        "component": "auth",
-                        "action": "token_purge_error",
-                        "error": str(e),
-                    },
-                )
-            finally:
-                await asyncio.sleep(3600)
-
-    async def rotate_key(self) -> Tuple[int, str]:
-        """
-        Rotate signing keys:
         1. Create a new active key
         2. Deactivate all previous keys
         3. Revoke tokens associated with old keys
@@ -602,7 +473,7 @@ class TokenManager:
                 # deactivate active keys
                 deactivate_keys = (
                     update(SigningKey)
-                    .where(SigningKey.active == True)
+                    .where(SigningKey.active.is_(True))
                     .values(active=False)
                 )
                 await session.execute(deactivate_keys)
@@ -621,7 +492,7 @@ class TokenManager:
                     update(Token)
                     .where(
                         Token.key_id != new_key.id,
-                        Token.revoked == False,
+                        Token.revoked.is_(False),
                         # Token.expires_at > datetime.now(timezone.utc),
                     )
                     .values(revoked=True)
@@ -629,12 +500,6 @@ class TokenManager:
                 await session.execute(revoke_tokens)
 
                 await session.commit()
-
-                self.skey_cache.clear()
-                self.token_cache.clear()
-
-                # update cache
-                self.skey_cache.cache_key(new_key)
 
                 log.debug(
                     "Rotated signing key",
@@ -657,9 +522,9 @@ class TokenManager:
                 )
                 raise
 
-    async def get_active_keys(self) -> List[Dict[str, Any]]:
+    async def get_active_keys(self) -> list[dict[str, Any]]:
         """
-        Retrieve all signing keys with their metadata
+        Retrieve all signing keys with their metadata.
 
         Returns:
             List of dictionaries containing key information
@@ -697,7 +562,7 @@ class TokenManager:
 
     async def _count_tokens_for_key(self, session: AsyncSession, key_id: int) -> int:
         """
-        Count the number of tokens associated with a specific signing key
+        Count the number of tokens associated with a specific signing key.
 
         Args:
             session: Database session
@@ -711,70 +576,14 @@ class TokenManager:
             .select_from(Token)
             .where(
                 Token.key_id == key_id,
-                Token.revoked == False,
+                Token.revoked.is_(False),
                 # Token.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await session.execute(query)
         return result.scalar_one()
 
-    async def verify_cache_state(self, token: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Verify the cache state, optionally for a specific token
-
-        Args:
-            token: Optional token to check specifically
-
-        Returns:
-            dict: Cache state information
-        """
-        cache_info = {
-            "active_key_id": self.skey_cache._active_key_id,
-            "cached_keys": [],
-            "errors": [],
-        }
-
-        async with self.app_state.db_manager.session() as session:
-            for key_id in list(self.skey_cache._cache.keys()):
-                merged_key = await self._safely_merge_cached_key(session, key_id)
-                if merged_key is not None:
-                    cache_info["cached_keys"].append(key_id)
-                else:
-                    error_info = {"key_id": key_id, "type": "cache_merge_error"}
-                    cache_info["errors"].append(error_info)
-
-            if token:
-                token_state = {
-                    "in_cache": False,
-                    "cache_payload": self.token_cache.get_cached_token(
-                        token
-                    ),  # Add cache info
-                }
-                try:
-                    token_repo = TokenRepository(session)
-                    token_model = await token_repo.get_token_by_value(token)
-                    if token_model:
-                        signing_key = self.skey_cache.get_key(token_model.key_id)
-                        if signing_key is not None:
-                            signing_key = await session.merge(signing_key)
-                        token_state.update(
-                            {
-                                "in_database": True,
-                                "key_in_cache": signing_key is not None,
-                                "key_id": token_model.key_id,
-                                "revoked": token_model.revoked,
-                                "expires_at": token_model.expires_at.isoformat(),
-                            }
-                        )
-                    else:
-                        token_state["in_database"] = False
-                except Exception as e:
-                    token_state["error"] = str(e)
-                cache_info["token_state"] = token_state
-            cache_info["validation_time"] = datetime.now(timezone.utc).isoformat()
-        return cache_info
-
-    async def verify_db_state(self) -> dict:
+    async def verify_db_state(self) -> dict[str, Any]:
         """
         Verify the current state of tokens in the database.
 
@@ -783,7 +592,7 @@ class TokenManager:
         """
         try:
             async with self.app_state.db_manager.session() as session:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
 
                 stats_query = select(
                     func.count().label("total"),
@@ -804,7 +613,7 @@ class TokenManager:
                         Token.revoked,
                     )
                     .where(
-                        Token.revoked == False,
+                        Token.revoked.is_(False),
                         # Token.expires_at > now,
                     )
                     .order_by(Token.expires_at.desc())

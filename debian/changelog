@@ -1,4 +1,230 @@
-wlanpi-core (2.1.10-1) unstable; urgency=medium
+wlanpi-core (2.3.2-1) unstable; urgency=medium
+
+  * Report the Bluetooth adapter's rfkill blocked state as blocked in GET
+    /bluetooth/status. Power-on and pairing run `rfkill unblock bluetooth`
+    first and retry while BlueZ reports the adapter Busy, so the USB
+    Bluetooth adapter on the M4+ powers on instead of failing with
+    PowerState off-blocked.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 00:57:39 -0400
+
+wlanpi-core (2.3.1-1) unstable; urgency=medium
+
+  * Add WLAN_MANAGEMENT=auto|manual and GET /system/ntp.
+    WLAN_MANAGEMENT lets operators and automation tell core to stop
+    managing Wi-Fi interfaces: startup skips network namespace
+    initialization and monitor pairs, and activate/deactivate/revert
+    return 409. Invalid values fall back to auto so startup is never
+    broken.  GET /system/ntp reports systemd-timesyncd clock state
+    (synchronized, service, server and source, fallback/runtime servers,
+    poll interval).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 00:21:34 -0400
+
+wlanpi-core (2.3.0-1) unstable; urgency=medium
+
+  * Add /utils/pci to list PCI devices from lspci.
+  * Add /system/health with Raspberry Pi throttling and under-voltage flags,
+    temperature readings, NTP synchronisation, load average, swap usage, and
+    rfkill switch state.
+  * Add /system/services/failed for systemd units in the failed state.
+  * Add /network/interfaces/{iface}/wlan-link for the wireless association
+    (iw link): SSID, BSSID, frequency, signal, and rx/tx bitrate.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 23:00:00 -0400
+
+wlanpi-core (2.2.0-1) unstable; urgency=medium
+
+  * Make the shared HMAC secret root-only (root:root 0600, secrets directory
+    0700), enforced at startup and by the postinst on upgrade. On-device
+    services authenticate with a JWT instead of reading the secret.
+  * Accept a bearer JWT on the PAM endpoints in addition to the legacy
+    localhost HMAC. The endpoints stay localhost-only.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 15:00:00 -0400
+
+wlanpi-core (2.1.24-1) unstable; urgency=medium
+
+  * Report the profiler passphrase actually in use, read from
+    /run/wlanpi-profiler.info.json, instead of a hardcoded value.
+  * Drop LLDP/CDP neighbours on interfaces without carrier, so an unplugged link
+    reports empty immediately instead of stale entries for up to three minutes.
+  * Add `getjwt --export` so a client can load a token into its shell without
+    pasting it into a config file, and report an actionable hint to run getjwt
+    with sudo when the shared HMAC secret is not readable.
+  * Create VLANs without the optional /etc/network/interfaces.d/vlans file, and
+    report the created VLAN under its parent interface.
+  * Parse the Wi-Fi scan frequency as a float, so newer iw output such as
+    "freq: 5560.0" no longer reports freq 0 and a null primary channel.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 11:42:01 -0400
+
+wlanpi-core (2.1.23-1) unstable; urgency=medium
+
+  * Include the resolver address in each reachability DNS result, for example
+    "9.9.9.9: OK" instead of "OK", so UIs can show which server was tested
+    without reading /etc/resolv.conf themselves.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 20 Sep 2026 10:19:17 -0400
+
+wlanpi-core (2.1.22-1) unstable; urgency=medium
+
+  * Manage wlanpi-core-ufw-first-boot.service with dh_installsystemd so it is
+    enabled on apt installs, not only on image builds, and its enable symlink
+    is removed on purge. The postinst no longer enables it by hand, so the
+    per-device TLS certificate and UFW rules are re-checked on boot.
+  * Document that the self-signed certificate covers the device's current
+    .local name and the eth0-MAC-derived wlanpi-<last3>.local name, and that
+    a hostname changed by other means is not kept in sync with the
+    certificate.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 22:07:00 -0400
+
+wlanpi-core (2.1.21-1) unstable; urgency=medium
+
+  * Raise the capture subscriber queue budget (128 to 1024 blocks) and send
+    timeout (1.0s to 5.0s) so a subscriber survives transient stalls on a
+    busy channel instead of being dropped. At the about 2800 packets/s
+    measured on a busy 5 GHz channel the new budget is about 0.37s, versus
+    about 46ms before.
+  * Cap concurrent subscribers per capture session at 4, so a handful of
+    stalled subscriber queues cannot pin their per-subscriber buffer as a
+    soft memory denial of service.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 17:54:00 -0400
+
+wlanpi-core (2.1.20-1) unstable; urgency=medium
+
+  * Force IPv4 (-4) for reachability pings. Without it, hostnames resolve
+    to IPv6 first and the Ping Google and custom-target checks fail on
+    IPv4-only links (jc also mis-parses the IPv6 output).
+  * Fix get_default_gateways to return only the interface name, so the
+    Reachability card's arping -I no longer fails with trailing route
+    tokens (proto dhcp src ... metric ...).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 18 Sep 2026 00:55:00 -0400
+
+wlanpi-core (2.1.19-2) unstable; urgency=medium
+
+  * Sync wlanpi_core/__version__.py with debian/changelog (2.1.19).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 21:29:00 -0400
+
+wlanpi-core (2.1.19-1) unstable; urgency=medium
+
+  * Add internal localhost/HMAC-only PAM endpoints for wlanpi-webui session
+    login (POST /api/v1/auth/pam) and expired-password change
+    (POST /api/v1/auth/pam/change) via pamela (pam_chauthtok). WebUI runs
+    unprivileged and cannot use pam_unix itself, so the root-running core
+    brokers the PAM conversation. Management access is limited to the sudo
+    group, enforced by core (fails closed even if the PAM profile is absent).
+    Passwords are never persisted, logged, or exchanged for a Core token.
+  * Stop logging nginx request bodies (credentials could pass through the
+    reverse proxy during login).
+  * Add pamela dependency and libpam0g/libpam-modules/libpam-runtime package
+    dependencies.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 16:20:00 -0400
+
+wlanpi-core (2.1.18-1) unstable; urgency=medium
+
+  * Self-signed TLS certs cover the renamed .local hostname
+    (wlanpi-<mac-suffix>.local) and regenerate when an existing cert predates
+    it (fixes hostname mismatch warnings for nginx, WebUI, Grafana, Cockpit).
+    Cert generation is extracted into a shared script used by postinst and the
+    first-boot UFW setup. (#175)
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:55:00 -0400
+
+wlanpi-core (2.1.17-1) unstable; urgency=medium
+
+  * Migrate style/lint/format tooling to ruff: replace the flake8 plugin
+    stack, black, isort, and autoflake with ruff check + ruff format;
+    wire mypy into the lint gate (the env installs the package so imports
+    resolve); drop the whitespace scripts and .flake8
+  * Add Google-convention docstring enforcement; FastAPI endpoint
+    docstrings become the OpenAPI descriptions and were missing across
+    the API surface
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:50:00 -0400
+
+wlanpi-core (2.1.16-1) unstable; urgency=medium
+
+  * Fix VLAN listing returning 500 when no VLANs exist: iproute2 emits
+    empty objects for filtered link types, which crashed get_interfaces
+  * Fix link-stats returning 404 for root ethernet interfaces: the
+    namespace lookup only saw wireless interfaces, so resolve real root
+    links before declaring them missing
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 15:26:12 -0400
+
+wlanpi-core (2.1.15-1) unstable; urgency=medium
+
+  * Generate self-signed TLS certs on first real boot (fixes nginx on
+    chroot-built images, where postinst skips cert generation)
+  * Repair lint gate: annotate generics in network_info_service, replace
+    deprecated pydantic Extra keyword
+  * getjwt: colorize output only on a TTY so piped JSON stays parseable
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 12:10:00 -0400
+
+wlanpi-core (2.1.14-1) unstable; urgency=medium
+
+  * Add wlanpi-techsupport CLI diagnostic utility
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 11:25:36 -0400
+
+wlanpi-core (2.1.13-1) unstable; urgency=medium
+
+  * Require first-message JWT authentication for packet-capture WebSockets
+  * Add owned capture sessions with read-only subscribers
+  * Replay pcapng headers for late subscribers and isolate stalled clients
+  * Proxy capture WebSockets through the TLS-only nginx listener
+  * Support capture adapters in network namespaces and report iw failures
+  * Source LLDP/CDP neighbours from lldpd via lldpctl (previously unrecorded)
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 10:06:58 -0400
+
+wlanpi-core (2.1.12-1) unstable; urgency=medium
+
+  * Fail the ASGI lifespan on critical init failure (system readiness,
+    security, database) so systemd's restart policy engages instead of
+    serving half-initialized; token-manager failure stays non-fatal
+  * Fix undefined initial_retry_delay AttributeError in the security-init
+    retry path
+  * systemd: remove duplicate Type=notify; add bounded Restart=on-failure
+    policy (RestartSec=2, StartLimitIntervalSec=60, StartLimitBurst=5),
+    TimeoutStartSec=30, RequiresMountsFor, ExecStartPre writability probe
+  * Bind absolute /run/wlanpi_core.sock matching the socket unit and nginx
+    proxy_pass (was relative, resolving to a different socket)
+  * prerm: fix mount-unit name (var-log-wlanpi_core-debug.mount); add
+    #DEBHELPER# so the service and socket are stopped on removal
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 13:00:00 -0400
+
+wlanpi-core (2.1.11-1) unstable; urgency=medium
+
+  * Migrate production API port 31415 to TLS-only (HTTPS)
+  * Bind development server to loopback only
+  * Validate nginx configuration before reload; reload instead of restart
+  * Remove nginx stop from preinst; nginx stays live during upgrade
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 17 Sep 2026 00:00:00 -0400
+
+wlanpi-core (2.1.10-4) unstable; urgency=medium
+
+  * Enforce boot-aware JWT lifetime and immediate revocation
+  * Dispatch authentication by presented credentials
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 16 Sep 2026 20:57:01 -0400
+
+wlanpi-core (2.1.10-3) unstable; urgency=medium
+
+  * Rebuild to publish packages for Debian trixie to packagecloud
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 09 Jul 2026 23:01:44 -0400
+
+wlanpi-core (2.1.10-2) unstable; urgency=medium
 
   * Hardening namespaces functionality for robustness and reliability
   * docs: add troubleshooting for version collisions and branch divergence
