@@ -1,3 +1,13 @@
+wlanpi-core (2.3.2-1) unstable; urgency=medium
+
+  * Report the Bluetooth adapter's rfkill blocked state as blocked in GET
+    /bluetooth/status. Power-on and pairing run `rfkill unblock bluetooth`
+    first and retry while BlueZ reports the adapter Busy, so the USB
+    Bluetooth adapter on the M4+ powers on instead of failing with
+    PowerState off-blocked.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 00:57:39 -0400
+
 wlanpi-core (2.3.1-1) unstable; urgency=medium
 
   * Add WLAN_MANAGEMENT=auto|manual and GET /system/ntp.

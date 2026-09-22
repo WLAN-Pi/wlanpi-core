@@ -14,6 +14,7 @@ async def test_bluetooth_status_offloads_sync_worker(mocker):
         "alias": "wlanpi",
         "addr": "00:11:22:33:44:55",
         "power": "On",
+        "blocked": False,
         "paired_devices": [],
     }
     to_thread = mocker.patch.object(

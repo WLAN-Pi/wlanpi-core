@@ -4,6 +4,7 @@ import asyncio
 import re
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from wlanpi_core.constants import BT_ADAPTER
@@ -17,6 +18,7 @@ BLUETOOTH_COMMAND_TIMEOUT_SEC = 5
 BLUETOOTH_UNPAIR_TIMEOUT_SEC = 30
 BLUETOOTH_PAIRING_START_TIMEOUT_SEC = 10
 BLUETOOTH_STATE_FILE = "/etc/wlanpi-bluetooth/state"
+BLUETOOTH_POWER_ON_TIMEOUT_SEC = 10
 
 _pairing_lock = threading.Lock()
 _PAIRED_DEVICE_RE = re.compile(
@@ -86,28 +88,57 @@ def bluetooth_power() -> str:
     return filtered[0].strip() if filtered else ""
 
 
+def _bluetooth_rfkill_blocked() -> bool:
+    """Return True if any bluetooth rfkill switch is soft- or hard-blocked."""
+    for entry in Path("/sys/class/rfkill").glob("rfkill*"):
+        try:
+            if (entry / "type").read_text().strip() != "bluetooth":
+                continue
+            if (entry / "soft").read_text().strip() == "1":
+                return True
+            if (entry / "hard").read_text().strip() == "1":
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def bluetooth_set_power(power: bool) -> bool:
     """Set the adapter power state and persist it."""
-    bluetooth_is_on = bluetooth_power()
-
     if power:
-        if bluetooth_is_on:
+        if bluetooth_power():
             return True
-        cmd = f"bt-adapter -a {BT_ADAPTER} --set Powered 1"
+        # The USB BT adapter ships rfkill soft-blocked; unblock before powering on.
+        run_command(["rfkill", "unblock", "bluetooth"], raise_on_fail=False)
+        deadline = time.monotonic() + BLUETOOTH_POWER_ON_TIMEOUT_SEC
+        while time.monotonic() < deadline:
+            try:
+                run_command(
+                    f"bt-adapter -a {BT_ADAPTER} --set Powered 1",
+                    shell=True,
+                    raise_on_fail=True,
+                )
+            except RunCommandError:
+                pass  # org.bluez.Error.Busy while the adapter is enabling
+            if bluetooth_power():
+                break
+            time.sleep(0.5)
+        if not bluetooth_power():
+            return False
         bt_state = 1
     else:
-        if not bluetooth_is_on:
+        if not bluetooth_power():
             return True
-        cmd = f"bt-adapter -a {BT_ADAPTER} --set Powered 0"
+        run_command(
+            f"bt-adapter -a {BT_ADAPTER} --set Powered 0",
+            shell=True,
+            raise_on_fail=True,
+        )
         bt_state = 0
-    result = run_command(cmd, shell=True, raise_on_fail=True).stdout
-    with open("/etc/wlanpi-bluetooth/state", "w") as bt_state_file:
-        bt_state_file.write(str(bt_state))
 
-    if result:
-        return True
-    else:
-        return False
+    with open(BLUETOOTH_STATE_FILE, "w") as bt_state_file:
+        bt_state_file.write(str(bt_state))
+    return True
 
 
 def bluetooth_paired_devices() -> dict[str, str] | None:
@@ -142,6 +173,8 @@ def bluetooth_status() -> Any:
     if paired_devices:
         for mac in paired_devices:
             status["paired_devices"].append({"name": paired_devices[mac], "addr": mac})
+
+    status["blocked"] = _bluetooth_rfkill_blocked()
 
     return status
 
@@ -187,10 +220,25 @@ async def _ensure_bluetooth_powered() -> None:
         return
 
     await run_command_async(
-        ["bt-adapter", "-a", BT_ADAPTER, "--set", "Powered", "1"],
-        raise_on_fail=True,
+        ["rfkill", "unblock", "bluetooth"],
+        raise_on_fail=False,
         timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
     )
+    deadline = time.monotonic() + BLUETOOTH_POWER_ON_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        try:
+            await run_command_async(
+                ["bt-adapter", "-a", BT_ADAPTER, "--set", "Powered", "1"],
+                raise_on_fail=True,
+                timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
+            )
+        except RunCommandError:
+            pass  # org.bluez.Error.Busy while the adapter is enabling
+        if await _bluetooth_powered_async():
+            break
+        await asyncio.sleep(0.5)
+    if not await _bluetooth_powered_async():
+        raise BluetoothPairingError("Bluetooth did not power on")
     with open(BLUETOOTH_STATE_FILE, "w") as bt_state_file:
         bt_state_file.write("1")
 

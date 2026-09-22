@@ -12,6 +12,7 @@ class BluetoothStatus(BaseModel):
     alias: str = Field(json_schema_extra={"example": "wlanpi-bc2"})
     addr: str = Field(json_schema_extra={"example": "00:00:00:00:00:00"})
     power: str = Field(examples=["On", "Off"])
+    blocked: bool = Field(default=False, json_schema_extra={"example": False})
     paired_devices: list[dict[str, Any]] = Field(
         json_schema_extra={"example": [{"name": "device", "addr": "00:00:00:00:00:00"}]}
     )
