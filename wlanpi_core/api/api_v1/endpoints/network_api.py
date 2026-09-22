@@ -44,6 +44,12 @@ def _read_interface_link_stats(iface: str) -> dict[str, Any]:
     return network_primitives.get_link_stats(iface, namespace=namespace)
 
 
+def _read_interface_wlan_link(iface: str) -> dict[str, Any]:
+    """Resolve interface ownership and read the wireless link in one thread."""
+    namespace = resolve_interface_namespace(iface)
+    return network_primitives.get_wlan_link(iface, namespace=namespace)
+
+
 ################################
 # General Network Management   #
 ################################
@@ -347,6 +353,29 @@ async def show_interface_link_stats(iface: str) -> Any:
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to read link statistics", status_code=503)
+
+
+@router.get(
+    "/interfaces/{iface}/wlan-link",
+    response_model=network.WlanLink,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_interface_wlan_link(iface: str) -> Any:
+    """
+    Wireless association for an interface, from ``iw dev <iface> link``.
+
+    Companion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the
+    SSID, BSSID, frequency, signal, and rx/tx bitrate when connected.
+    """
+    try:
+        return await asyncio.to_thread(_read_interface_wlan_link, iface=iface)
+    except ValidationError as ex:
+        return Response(content=ex.error_msg, status_code=ex.status_code)
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read wireless link", status_code=503)
 
 
 @router.post(

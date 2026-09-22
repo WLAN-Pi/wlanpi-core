@@ -284,6 +284,31 @@ async def show_ufw() -> dict[str, Any]:
     return response
 
 
+async def show_pci() -> dict[str, Any]:
+    """Return PCI devices found with the lspci command."""
+    devices: dict[str, Any] = {}
+
+    try:
+        lspci_output = (
+            await run_command_async("/usr/bin/lspci", raise_on_fail=True)
+        ).stdout.splitlines()
+    except RunCommandError as err:
+        error_descr = "Issue getting pci info using lspci command"
+        devices["error"] = {"error": error_descr + ": " + err.error_msg}
+        return devices
+
+    devices["devices"] = []
+    for line in lspci_output:
+        if not line.strip():
+            continue
+        pci_id, _, description = line.partition(" ")
+        devices["devices"].append(
+            {"pci_id": pci_id.strip(), "description": description.strip()}
+        )
+
+    return devices
+
+
 _blinker_process: subprocess.Popen[Any] | None = None
 _blinker_lock = threading.Lock()
 _BLINKER_CONTROL_TIMEOUT_SEC = 3

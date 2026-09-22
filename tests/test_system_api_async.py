@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from wlanpi_core.api.api_v1.endpoints import system_api
+from wlanpi_core.asgi import app
+from wlanpi_core.core.auth import verify_auth_wrapper
 
 
 def test_device_info_caches_static_fields_but_not_mode(mocker):
@@ -80,3 +84,71 @@ async def test_device_stats_does_not_block_event_loop(mocker):
         release.set()
 
     assert await task == expected
+
+
+def test_api_health_serializes():
+    async def _allow():
+        return True
+
+    payload = {
+        "throttled": {
+            "raw": "throttled=0x0",
+            "undervoltage": False,
+            "frequency_capped": False,
+            "throttled": False,
+            "soft_temperature_limit": False,
+            "undervoltage_occurred": False,
+            "frequency_capped_occurred": False,
+            "throttled_occurred": False,
+            "soft_temperature_limit_occurred": False,
+        },
+        "temperatures": [{"name": "cpu_thermal", "label": None, "celsius": 60.0}],
+        "ntp": {"enabled": True, "synchronized": False},
+        "load": {"one": 0.1, "five": 0.2, "fifteen": 0.3},
+        "swap": {"used_mb": 1, "total_mb": 2},
+        "rfkill": [],
+    }
+
+    app.dependency_overrides[verify_auth_wrapper] = _allow
+    try:
+        with TestClient(app) as client:
+            with patch.object(
+                system_api.system_service, "get_health", return_value=payload
+            ):
+                response = client.get("/api/v1/system/health")
+    finally:
+        app.dependency_overrides.pop(verify_auth_wrapper, None)
+
+    assert response.status_code == 200
+    assert response.json()["ntp"] == {"enabled": True, "synchronized": False}
+    assert response.json()["temperatures"][0]["celsius"] == 60.0
+
+
+def test_api_failed_services_serializes():
+    async def _allow():
+        return True
+
+    payload = {
+        "units": [
+            {
+                "unit": "bt-agent.service",
+                "load": "loaded",
+                "active": "failed",
+                "sub": "failed",
+                "description": "Bluetooth Auth Agent",
+            }
+        ]
+    }
+
+    app.dependency_overrides[verify_auth_wrapper] = _allow
+    try:
+        with TestClient(app) as client:
+            with patch.object(
+                system_api.system_service, "get_failed_services", return_value=payload
+            ):
+                response = client.get("/api/v1/system/services/failed")
+    finally:
+        app.dependency_overrides.pop(verify_auth_wrapper, None)
+
+    assert response.status_code == 200
+    assert response.json()["units"][0]["unit"] == "bt-agent.service"

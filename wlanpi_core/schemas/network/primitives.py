@@ -114,3 +114,29 @@ class WlanPciDriversResponse(BaseModel):
         default=0,
         description="Wireless interfaces enumerated via iw dev before bus filtering",
     )
+
+
+class WlanLink(BaseModel):
+    """Wireless association state for one interface (from ``iw link``)."""
+
+    interface: str
+    namespace: str | None = None
+    connected: bool = Field(description="Whether the interface is associated")
+    ssid: str | None = Field(default=None, json_schema_extra={"example": "HomeNet"})
+    bssid: str | None = Field(
+        default=None, json_schema_extra={"example": "68:51:34:7c:32:13"}
+    )
+    freq_mhz: float | None = Field(default=None, json_schema_extra={"example": 5200.0})
+    signal_dbm: float | None = Field(default=None, json_schema_extra={"example": -48.0})
+    rx_bitrate: str | None = Field(
+        default=None, json_schema_extra={"example": "286.7 MBit/s HE-MCS 11"}
+    )
+    tx_bitrate: str | None = Field(
+        default=None, json_schema_extra={"example": "286.7 MBit/s HE-MCS 11"}
+    )
+    rx_bytes: int | None = Field(default=None, json_schema_extra={"example": 2112666})
+    tx_bytes: int | None = Field(default=None, json_schema_extra={"example": 104496501})
+    raw: str | None = Field(
+        default=None,
+        description="Raw iw link output for diagnostics; do not parse",
+    )

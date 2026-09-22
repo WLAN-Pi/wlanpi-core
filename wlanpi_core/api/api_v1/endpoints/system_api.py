@@ -110,6 +110,49 @@ async def show_device_model() -> Any:
 
 
 @router.get(
+    "/health",
+    response_model=system.Health,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_health() -> Any:
+    """
+    Return a device health snapshot.
+
+    Covers Raspberry Pi throttling and under-voltage flags, temperature
+    readings, NTP synchronisation, load average, swap usage, and rfkill switch
+    state.
+    """
+    try:
+        return await asyncio.to_thread(system_service.get_health)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/services/failed",
+    response_model=system.FailedServices,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_failed_services() -> Any:
+    """
+    Return the systemd units currently in the failed state.
+
+    Uses ``systemctl --failed --output=json``; returns an empty list when
+    nothing has failed.
+    """
+    try:
+        return await asyncio.to_thread(system_service.get_failed_services)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
     "/service/status",
     response_model=system.ServiceStatus,
     dependencies=[Depends(verify_auth_wrapper)],

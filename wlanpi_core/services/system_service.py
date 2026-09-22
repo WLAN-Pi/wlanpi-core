@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import psutil
 from dbus import Interface, SystemBus
 from dbus.exceptions import DBusException
 
@@ -891,3 +892,169 @@ def get_battery() -> dict[str, Any]:
             "source": entry.name,
         }
     return {"present": False}
+
+
+def _parse_throttled(raw: str) -> dict[str, Any]:
+    """Decode ``vcgencmd get_throttled`` into named flags."""
+    text = raw.strip()
+    if "=" in text:
+        text = text.split("=", 1)[1].strip()
+    try:
+        value = int(text, 16)
+    except ValueError:
+        value = 0
+    return {
+        "raw": raw.strip(),
+        "undervoltage": bool(value & (1 << 0)),
+        "frequency_capped": bool(value & (1 << 1)),
+        "throttled": bool(value & (1 << 2)),
+        "soft_temperature_limit": bool(value & (1 << 3)),
+        "undervoltage_occurred": bool(value & (1 << 16)),
+        "frequency_capped_occurred": bool(value & (1 << 17)),
+        "throttled_occurred": bool(value & (1 << 18)),
+        "soft_temperature_limit_occurred": bool(value & (1 << 19)),
+    }
+
+
+def _get_throttled() -> dict[str, Any]:
+    """Return the decoded throttling state, or an all-clear if unavailable."""
+    try:
+        result = run_command(
+            ["/usr/bin/vcgencmd", "get_throttled"], raise_on_fail=False
+        )
+        raw = result.stdout.strip() or "throttled=0x0"
+    except (RunCommandError, OSError):
+        raw = "unavailable"
+    return _parse_throttled(raw)
+
+
+def _get_temperatures() -> list[dict[str, Any]]:
+    """Return every hwmon/thermal temperature reading psutil can find."""
+    readings: list[dict[str, Any]] = []
+    try:
+        sensors = psutil.sensors_temperatures()
+    except Exception:
+        return readings
+    for name, entries in sensors.items():
+        for entry in entries:
+            readings.append(
+                {
+                    "name": name,
+                    "label": entry.label or None,
+                    "celsius": (
+                        round(entry.current, 1) if entry.current is not None else None
+                    ),
+                }
+            )
+    return readings
+
+
+def _get_ntp() -> dict[str, bool]:
+    """Return whether NTP is enabled and the clock is synchronised."""
+    try:
+        result = run_command(
+            ["timedatectl", "show", "-p", "NTP", "-p", "NTPSynchronized"],
+            raise_on_fail=False,
+        )
+    except (RunCommandError, OSError):
+        return {"enabled": False, "synchronized": False}
+    return {
+        "enabled": "NTP=yes" in result.stdout,
+        "synchronized": "NTPSynchronized=yes" in result.stdout,
+    }
+
+
+def _get_load() -> dict[str, float]:
+    """Return the 1/5/15 minute load averages."""
+    try:
+        one, five, fifteen = os.getloadavg()
+    except OSError:
+        return {"one": 0.0, "five": 0.0, "fifteen": 0.0}
+    return {
+        "one": round(one, 2),
+        "five": round(five, 2),
+        "fifteen": round(fifteen, 2),
+    }
+
+
+def _get_swap() -> dict[str, int]:
+    """Return swap usage in mebibytes."""
+    try:
+        swap = psutil.swap_memory()
+    except Exception:
+        return {"used_mb": 0, "total_mb": 0}
+    mib = 1024 * 1024
+    return {"used_mb": swap.used // mib, "total_mb": swap.total // mib}
+
+
+def _get_rfkill() -> list[dict[str, Any]]:
+    """Return the rfkill switches from sysfs."""
+    entries: list[dict[str, Any]] = []
+    root = Path("/sys/class/rfkill")
+    if not root.exists():
+        return entries
+    for entry in sorted(root.iterdir()):
+        try:
+            name = (entry / "name").read_text(encoding="utf-8").strip()
+            rtype = (entry / "type").read_text(encoding="utf-8").strip()
+            soft = (entry / "soft").read_text(encoding="utf-8").strip() == "1"
+            hard = (entry / "hard").read_text(encoding="utf-8").strip() == "1"
+        except OSError:
+            continue
+        entries.append(
+            {
+                "name": name,
+                "type": rtype,
+                "soft_blocked": soft,
+                "hard_blocked": hard,
+            }
+        )
+    return entries
+
+
+def get_health() -> dict[str, Any]:
+    """Return a device health snapshot.
+
+    Covers throttling/under-voltage, temperatures, NTP sync, load average,
+    swap usage, and rfkill switch state.
+    """
+    return {
+        "throttled": _get_throttled(),
+        "temperatures": _get_temperatures(),
+        "ntp": _get_ntp(),
+        "load": _get_load(),
+        "swap": _get_swap(),
+        "rfkill": _get_rfkill(),
+    }
+
+
+def get_failed_services() -> dict[str, Any]:
+    """Return the systemd units currently in the failed state."""
+    try:
+        result = run_command(
+            ["systemctl", "--failed", "--output=json", "--no-pager"],
+            raise_on_fail=False,
+        )
+    except (RunCommandError, OSError):
+        return {"units": []}
+
+    try:
+        parsed = json.loads(result.stdout or "[]")
+    except ValueError:
+        return {"units": []}
+    if not isinstance(parsed, list):
+        return {"units": []}
+
+    return {
+        "units": [
+            {
+                "unit": str(item.get("unit", "")),
+                "load": str(item.get("load", "")),
+                "active": str(item.get("active", "")),
+                "sub": str(item.get("sub", "")),
+                "description": str(item.get("description", "")),
+            }
+            for item in parsed
+            if isinstance(item, dict)
+        ]
+    }

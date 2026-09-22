@@ -5,6 +5,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.link_stats import get_link_stats
+from wlanpi_core.network.wlan_link import get_wlan_link
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
     NetConfig,
@@ -99,6 +100,15 @@ def test_link_stats_rejects_option_like_interface_before_command(mocker):
 
     with pytest.raises(ValueError):
         get_link_stats("--help")
+
+    execute.assert_not_called()
+
+
+def test_wlan_link_rejects_option_like_interface_before_command(mocker):
+    execute = mocker.patch("wlanpi_core.network.wlan_link.ns_exec")
+
+    with pytest.raises(ValueError):
+        get_wlan_link("--help")
 
     execute.assert_not_called()
 

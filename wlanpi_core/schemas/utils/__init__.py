@@ -3,6 +3,8 @@
 from .utils import (
     BlinkerActionResponse,
     BlinkerStatus,
+    Pci,
+    PciDevice,
     PingTargetResult,
     ReachabilityTest,
     SpeedTest,

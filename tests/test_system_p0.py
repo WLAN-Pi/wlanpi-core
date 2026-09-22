@@ -1,5 +1,6 @@
 """Tests for P0 system API additions."""
 
+import json
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock, call
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from wlanpi_core.data import reg_domain_countries
+from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services import system_service
@@ -366,3 +368,146 @@ def test_get_battery_absent(tmp_path, monkeypatch):
     monkeypatch.setattr(system_service, "Path", _path_factory(supply_root))
 
     assert system_service.get_battery() == {"present": False}
+
+
+def _rfkill_path_factory(root):
+    real_path = Path
+
+    def factory(value):
+        if value == "/sys/class/rfkill":
+            return root
+        return real_path(value)
+
+    return factory
+
+
+def test_parse_throttled_decodes_bits():
+    parsed = system_service._parse_throttled("throttled=0x50005")
+
+    assert parsed["undervoltage"] is True
+    assert parsed["throttled"] is True
+    assert parsed["undervoltage_occurred"] is True
+    assert parsed["throttled_occurred"] is True
+    assert parsed["frequency_capped"] is False
+    assert parsed["soft_temperature_limit"] is False
+
+
+def test_parse_throttled_handles_garbage():
+    parsed = system_service._parse_throttled("unavailable")
+
+    assert parsed["raw"] == "unavailable"
+    assert parsed["throttled"] is False
+
+
+def test_get_throttled_parses_vcgencmd(monkeypatch):
+    monkeypatch.setattr(
+        system_service,
+        "run_command",
+        lambda *a, **k: CommandResult("throttled=0x0\n", "", 0),
+    )
+
+    result = system_service._get_throttled()
+
+    assert result["raw"] == "throttled=0x0"
+    assert result["throttled"] is False
+
+
+def test_get_throttled_handles_missing_vcgencmd(monkeypatch):
+    def boom(*args, **kwargs):
+        raise OSError("no vcgencmd")
+
+    monkeypatch.setattr(system_service, "run_command", boom)
+
+    result = system_service._get_throttled()
+
+    assert result["raw"] == "unavailable"
+    assert result["undervoltage"] is False
+
+
+def test_get_ntp_parses_timedatectl(monkeypatch):
+    monkeypatch.setattr(
+        system_service,
+        "run_command",
+        lambda *a, **k: CommandResult("NTP=yes\nNTPSynchronized=no\n", "", 0),
+    )
+
+    assert system_service._get_ntp() == {"enabled": True, "synchronized": False}
+
+
+def test_get_rfkill_reads_sysfs(tmp_path, monkeypatch):
+    root = tmp_path / "rfkill"
+    phy = root / "rfkill0"
+    phy.mkdir(parents=True)
+    (phy / "name").write_text("phy0\n")
+    (phy / "type").write_text("wlan\n")
+    (phy / "soft").write_text("0\n")
+    (phy / "hard").write_text("0\n")
+    monkeypatch.setattr(system_service, "Path", _rfkill_path_factory(root))
+
+    assert system_service._get_rfkill() == [
+        {"name": "phy0", "type": "wlan", "soft_blocked": False, "hard_blocked": False}
+    ]
+
+
+def test_get_health_aggregates(monkeypatch):
+    monkeypatch.setattr(system_service, "_get_throttled", lambda: {"throttled": False})
+    monkeypatch.setattr(
+        system_service,
+        "_get_temperatures",
+        lambda: [{"name": "cpu_thermal", "label": None, "celsius": 60.0}],
+    )
+    monkeypatch.setattr(
+        system_service, "_get_ntp", lambda: {"enabled": True, "synchronized": True}
+    )
+    monkeypatch.setattr(
+        system_service, "_get_load", lambda: {"one": 0.1, "five": 0.2, "fifteen": 0.3}
+    )
+    monkeypatch.setattr(
+        system_service, "_get_swap", lambda: {"used_mb": 1, "total_mb": 2}
+    )
+    monkeypatch.setattr(system_service, "_get_rfkill", lambda: [])
+
+    health = system_service.get_health()
+
+    assert health["ntp"] == {"enabled": True, "synchronized": True}
+    assert health["temperatures"][0]["celsius"] == 60.0
+    assert health["swap"] == {"used_mb": 1, "total_mb": 2}
+
+
+def test_get_failed_services_parses_json(monkeypatch):
+    payload = json.dumps(
+        [
+            {
+                "unit": "bt-agent.service",
+                "load": "loaded",
+                "active": "failed",
+                "sub": "failed",
+                "description": "Bluetooth Auth Agent",
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        system_service, "run_command", lambda *a, **k: CommandResult(payload, "", 0)
+    )
+
+    result = system_service.get_failed_services()
+
+    assert result["units"] == [
+        {
+            "unit": "bt-agent.service",
+            "load": "loaded",
+            "active": "failed",
+            "sub": "failed",
+            "description": "Bluetooth Auth Agent",
+        }
+    ]
+
+
+def test_get_failed_services_handles_garbage(monkeypatch):
+    monkeypatch.setattr(
+        system_service,
+        "run_command",
+        lambda *a, **k: CommandResult("not json", "", 0),
+    )
+
+    assert system_service.get_failed_services() == {"units": []}
