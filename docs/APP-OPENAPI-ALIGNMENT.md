@@ -3,7 +3,7 @@
 **Purpose:** Reconcile the wlanpi-ui / touch-panel implementation with `docs/openapi.json` (exported from wlanpi-core on `feature/new-apis`).  
 **Audience:** App authors, core maintainers, MCP tool builders.
 
-> **Important:** Several items in early app reviews were checked against an **outdated** OpenAPI export (~15 paths). The current export has **68 path entries** and documents most P0 workers the touch panel uses. Gaps that remain are **planned-but-not-built** endpoints (mode switch, cloud-test, freeradius, touch-ui manifest, REST capture), not documentation omissions.
+> **Important:** Several items in early app reviews were checked against an **outdated** OpenAPI export (~15 paths). The current export has **68 path entries** and documents most core workers the touch panel uses. Gaps that remain are **planned-but-not-built** endpoints (mode switch, cloud-test, freeradius, touch-ui manifest, REST capture), not documentation omissions.
 
 Regenerate after core changes:
 
@@ -41,9 +41,9 @@ These touch-panel usages match live core + OpenAPI:
 | NetConfig | `/network/config/*` | `network_config_service.dart` | |
 | **WLAN scan** | `GET /utils/wlan/scan` | `wlanScanEndpoint` | **Canonical** — enriched `networks[]`, `selectedAdapter`, `needsSelection`. |
 | **Speedtest** | `GET /utils/speedtest` | `speedtestEndpoint` | Present in OpenAPI (`SpeedTest` schema). |
-| Network primitives | `/network/routing`, `/connections/*`, `/dhcp/leases`, link-stats, renew, wlan drivers | capabilities P0 | All in current export. |
-| System control | reboot, shutdown, datetime, timezone/*, reg-domain/*, hotspot reads | capabilities P0 | In export; hotspot routes document **409** outside hotspot mode. |
-| Wi-Fi | `/wifi/capabilities`, `/regulatory`, `/hotspot/stations`, `/hotspot/link` | capabilities P0 | In export. |
+| Network primitives | `/network/routing`, `/connections/*`, `/dhcp/leases`, link-stats, renew, wlan drivers | core capabilities | All in current export. |
+| System control | reboot, shutdown, datetime, timezone/*, reg-domain/*, hotspot reads | core capabilities | In export; hotspot routes document **409** outside hotspot mode. |
+| Wi-Fi | `/wifi/capabilities`, `/regulatory`, `/hotspot/stations`, `/hotspot/link` | core capabilities | In export. |
 | Utils | blinker start/stop/status | capabilities | In export. |
 
 ---
@@ -129,13 +129,13 @@ These appear in `docs/touch_ui_backend_development_plan.md` / `capabilities.app.
 
 | Endpoint | Status |
 |----------|--------|
-| `POST /system/mode/switch` | Planned P0 — 409 when namespace config active unless `force` |
-| `GET /utils/cloud-test/{vendor}` | Planned P0 |
-| `POST /utils/freeradius/test` | Planned P0 |
+| `POST /system/mode/switch` | Planned — 409 when namespace config active unless `force` |
+| `GET /utils/cloud-test/{vendor}` | Planned |
+| `POST /utils/freeradius/test` | Planned |
 | `/touch-ui/menu`, `/touch-ui/capabilities/shared`, `/touch-ui/manifest` | **By design in wlanpi-ui**, not core |
 | REST scanner PCAP/CSV/files | Planned — WebSocket `/streaming/capture` exists today |
 
-Do not treat absence from OpenAPI as “app wrong” for these — core work is still open. See [p0-api-gap-matrix.csv](./p0-api-gap-matrix.csv).
+Do not treat absence from OpenAPI as “app wrong” for these — core work is still open. See [api-gap-matrix.csv](./api-gap-matrix.csv).
 
 ---
 
@@ -175,5 +175,5 @@ Remaining known limitations:
 
 - [API-INTEGRATION-GUIDE.md](./API-INTEGRATION-GUIDE.md) — worked HTTP examples
 - [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md) — legacy WLAN migration
-- [P0-utils-wlan-scan-api.md](./P0-utils-wlan-scan-api.md) — scan field reference
-- [P0-utils-reachability-speedtest-api.md](./P0-utils-reachability-speedtest-api.md) — reachability & speedtest
+- [wlan-scan.md](./api/wlan-scan.md) — scan field reference
+- [reachability-speedtest.md](./api/reachability-speedtest.md) — reachability & speedtest

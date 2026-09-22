@@ -5,9 +5,9 @@
 - `GET /api/v1/utils/speedtest`
 
 **Auth:** Bearer JWT (remote) or localhost HMAC (`X-Request-Signature`) for on-device services  
-**Status:** Live (P0)
+**Status:** Live
 
-**Related:** [P0 core worker API](./P0-core-worker-api.md) §4 Stream C, [gap matrix](./p0-api-gap-matrix.csv)
+**Related:** [Core worker API](../core-worker-api.md) §4 Stream C, [gap matrix](../api-gap-matrix.csv)
 
 ---
 

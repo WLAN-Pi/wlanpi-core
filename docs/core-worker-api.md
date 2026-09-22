@@ -1,18 +1,18 @@
-# P0: Core worker API and UI platform foundations
+# Core worker API and UI platform foundations
 
 **Status:** Active — implementation starting  
 **Version:** 2026.06.6  
-**Related:** [UI platform architecture](/home/wlanpi/docs/UI-plan.md), [API integration guide](./API-INTEGRATION-GUIDE.md), [deprecated endpoints](./API-DEPRECATED-ENDPOINTS.md), [gap matrix](./p0-api-gap-matrix.csv), [API test matrix](./P0-api-test-matrix.md), [datetime API guide](./P0-system-datetime-api.md), [reg-domain API guide](./P0-system-reg-domain-api.md), [WLAN scan API guide](./P0-utils-wlan-scan-api.md), [WLAN drivers API guide](./P0-network-wlan-drivers-api.md), [reachability & speedtest guide](./P0-utils-reachability-speedtest-api.md), [Wi-Fi capture API design](./P0-wifi-capture-api.md), [Wi-Fi capture consumer guide](./P0-wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
+**Related:** [API integration guide](./API-INTEGRATION-GUIDE.md), [deprecated endpoints](./API-DEPRECATED-ENDPOINTS.md), [gap matrix](./api-gap-matrix.csv), [API test matrix](./api-test-matrix.md), [datetime API guide](./api/system-datetime.md), [reg-domain API guide](./api/system-reg-domain.md), [WLAN scan API guide](./api/wlan-scan.md), [WLAN drivers API guide](./api/network-wlan-drivers.md), [reachability & speedtest guide](./api/reachability-speedtest.md), [Wi-Fi capture API design](./api/wifi-capture.md), [Wi-Fi capture consumer guide](./api/wifi-capture-consumer-guide.md), [NETWORK_CONFIG.md](../NETWORK_CONFIG.md)
 
 ---
 
 ## 1. Purpose
 
-P0 delivers the minimum **core worker primitives** and documents the **wlanpi-ui helper layer** needed so every UI surface (panel, TUI, mobile, WebUI) can drive the same capabilities — without duplicating shell scripts or exposing raw namespace internals.
+This effort delivers the minimum **core worker primitives** and documents the **wlanpi-ui helper layer** needed so every UI surface (panel, TUI, mobile, WebUI) can drive the same capabilities — without duplicating shell scripts or exposing raw namespace internals.
 
-**Spreadsheet:** [`docs/p0-api-gap-matrix.csv`](./p0-api-gap-matrix.csv) — verified against `wlanpi-core` on branch `dev` (OpenAPI at `/docs`).
+**Spreadsheet:** [`docs/api-gap-matrix.csv`](./api-gap-matrix.csv) — verified against `wlanpi-core` on branch `dev` (OpenAPI at `/docs`).
 
-### P0 counts (from gap matrix)
+### Counts (from gap matrix)
 
 | Status | Core endpoints | Action |
 |--------|----------------|--------|
@@ -35,7 +35,7 @@ P0 delivers the minimum **core worker primitives** and documents the **wlanpi-ui
 
 **Principle:** An authenticated user must not re-authenticate for routine operations. JWT on the UI platform boundary is sufficient for remote clients. Core validates the token on each request but that is invisible to the user.
 
-Capture WebSocket (`/streaming/capture`) currently has **no auth** — add HMAC or JWT before UI platform exposes capture jobs in P0.
+Capture WebSocket (`/streaming/capture`) currently has **no auth** — add HMAC or JWT before the UI platform exposes capture jobs.
 
 ### 2.2 Device mode vs API availability
 
@@ -91,7 +91,7 @@ GET /api/v1/utils/wlan/scan
 }
 ```
 
-**UI platform:** wraps as job with `freshnessSec: 30`. Job WS streams BSS lines for TUI/panel; session WS stays small. See [WLAN scan integration guide](./P0-utils-wlan-scan-api.md).
+**UI platform:** wraps as job with `freshnessSec: 30`. Job WS streams BSS lines for TUI/panel; session WS stays small. See [WLAN scan integration guide](./api/wlan-scan.md).
 
 #### 2.4.1 Scan architecture — snapshot vs continuous
 
@@ -135,7 +135,7 @@ The **web-app** already builds `NetConfig` JSON and calls core `/network/config/
 
 This belongs in **wlanpi-ui**, not core. Core keeps structured primitives; wlanpi-ui translates.
 
-#### wlanpi-ui endpoints (P0)
+#### wlanpi-ui endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -145,7 +145,7 @@ This belongs in **wlanpi-ui**, not core. Core keeps structured primitives; wlanp
 | POST | `/ui/network/config/activate` | Wrapper: `{ id, confirm?: true }` → core activate |
 | POST | `/ui/network/config/deactivate` | Wrapper → core deactivate |
 
-#### Adapter summary — composition (no new core API required for P0)
+#### Adapter summary — composition (no new core API required for this effort)
 
 wlanpi-ui `GET /ui/adapters/summary` calls:
 
@@ -168,11 +168,11 @@ P1 adds `GET /network/adapters/{iface}/connection` in core for precise `wpa_stat
 
 ### 2.6 DBus — what is legacy and what stays
 
-**Confirmed:** The P0 plan supersedes **wpa_supplicant DBus** (`fi.w1.wpa_supplicant1`) for all Wi-Fi operations. That stack in `network_service.py` is **legacy** — root-namespace only, no namespace awareness, polling-based, and parallel to the namespace/wpa_cli path the project is standardising on.
+**Confirmed:** This plan supersedes **wpa_supplicant DBus** (`fi.w1.wpa_supplicant1`) for all Wi-Fi operations. That stack in `network_service.py` is **legacy** — root-namespace only, no namespace awareness, polling-based, and parallel to the namespace/wpa_cli path the project is standardising on.
 
-**Not superseded:** **systemd DBus** (`org.freedesktop.systemd1`) in `system_service.py` remains the implementation for service start/stop/status (and P0 `restart`). That is a different bus, different purpose, and stays unless we explicitly choose a `systemctl` subprocess refactor later.
+**Not superseded:** **systemd DBus** (`org.freedesktop.systemd1`) in `system_service.py` remains the implementation for service start/stop/status (and the `restart` route). That is a different bus, different purpose, and stays unless we explicitly choose a `systemctl` subprocess refactor later.
 
-| DBus stack | Status under P0 | Rationale |
+| DBus stack | Status | Rationale |
 |------------|-----------------|-----------|
 | `fi.w1.wpa_supplicant1` (scan, connect, getConnected, getInterfaces) | **Legacy — deprecate** | Replaced by namespace config + `wpa_cli` + `iw` |
 | `org.freedesktop.systemd1` (service control) | **Keep** | Allowed-service gate + live today; not Wi-Fi-related |
@@ -180,9 +180,9 @@ P1 adds `GET /network/adapters/{iface}/connection` in core for precise `wpa_stat
 
 #### Legacy endpoints — deprecate and repurpose paths
 
-These routes keep their URLs through P0 for backward compatibility but must **not** receive new features. Implementations re-point to the namespace stack; OpenAPI marks them deprecated.
+These routes keep their URLs for backward compatibility but must **not** receive new features. Implementations re-point to the namespace stack; OpenAPI marks them deprecated.
 
-| Legacy endpoint | Current impl | P0 replacement | Repurpose plan |
+| Legacy endpoint | Current impl | Replacement | Repurpose plan |
 |-----------------|--------------|----------------|----------------|
 | `GET /network/wlan/scan` | wpa_supplicant DBus scan | `GET /utils/wlan/scan` | Thin wrapper → new impl, then remove DBus |
 | `POST /network/wlan/set-dbus` | DBus AddNetwork | `POST /network/config/` + `POST /network/config/activate/{id}` | Deprecate; remove in P1 |
@@ -191,7 +191,7 @@ These routes keep their URLs through P0 for backward compatibility but must **no
 | `GET /network/wlan/getInterfaces` | DBus interface list | `GET /network/config/status` or `adapters/discovery` | Reimplement via `iw dev` |
 | `POST /network/wlan/revert` | Namespace service (valid) | `POST /network/config/deactivate/{id}` | Keep logic; align with config deactivate |
 
-**New implementation stack** (already in core, P0 extends):
+**New implementation stack** (already in core, this effort extends):
 
 ```
 API endpoint
@@ -201,7 +201,7 @@ API endpoint
   → namespaces/*, connection/monitor.py               (namespace ops, async connect)
 ```
 
-**`network_service.py`:** Wi-Fi DBus code becomes dead after migration. Remove in P1 once consumers are off legacy paths. **Do not** build new P0 features on `AsyncDBusManager` or `setup_DBus_Supplicant_Access`.
+**`network_service.py`:** Wi-Fi DBus code becomes dead after migration. Remove later once consumers are off legacy paths. **Do not** build new features on `AsyncDBusManager` or `setup_DBus_Supplicant_Access`.
 
 **Consumer migration:** wlanpi-ui capability bindings and mobile app must target new paths only. Legacy paths exist solely for transitional compatibility.
 
@@ -219,7 +219,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 
 ---
 
-## 4. P0 core implementation workstreams
+## 4. Core implementation workstreams
 
 ### Stream A — System primitives (priority 1)
 
@@ -273,7 +273,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 
 ### Stream D — Capture REST bridge (priority 4)
 
-**Design:** [P0-wifi-capture-api.md](./P0-wifi-capture-api.md) (core) · [P0-wifi-capture-consumer-guide.md](./P0-wifi-capture-consumer-guide.md) (app developers)
+**Design:** [wifi-capture.md](./api/wifi-capture.md) (core) · [wifi-capture-consumer-guide.md](./api/wifi-capture-consumer-guide.md) (app developers)
 
 Session-based capture wrapping `streaming/connection_manager.py`:
 
@@ -292,7 +292,7 @@ Secure by default: subscribers require token; `subscriberAccess: public` is expl
 
 ---
 
-## 5. P0 wlanpi-ui work (separate repo / fpms2 evolution)
+## 5. wlanpi-ui work (separate repo / fpms2 evolution)
 
 | Deliverable | Depends on |
 |-------------|------------|
@@ -320,20 +320,20 @@ First action for UI team: update capability bindings and remove `onUnavailable` 
 
 ---
 
-## 7. Testing P0
+## 7. Testing
 
 ### 7.1 Matrix approach (confirmed)
 
-Continue the **`namespace_test_matrix` pattern** for P0 APIs. It worked well: positive and negative cases stay visible in a spreadsheet, permutations are explicit, and each row documents what is stubbed.
+Continue the **`namespace_test_matrix` pattern** for the API. It worked well: positive and negative cases stay visible in a spreadsheet, permutations are explicit, and each row documents what is stubbed.
 
 | Asset | Location |
 |-------|----------|
 | Scenario spreadsheet | [`tests/scenarios/p0_api_test_matrix.csv`](../tests/scenarios/p0_api_test_matrix.csv) |
 | Outcome semantics | [`tests/scenarios/P0_API_OUTCOMES.md`](../tests/scenarios/P0_API_OUTCOMES.md) |
-| How-to / mocking policy | [`docs/P0-api-test-matrix.md`](./P0-api-test-matrix.md) |
+| How-to / mocking policy | [`docs/api-test-matrix.md`](./api-test-matrix.md) |
 | Parametrized runner | [`tests/test_p0_api_matrix/`](../tests/test_p0_api_matrix/) |
 
-Handlers are added per endpoint as P0 ships. Rows without handlers skip until implemented.
+Handlers are added per endpoint as endpoints ship. Rows without handlers skip until implemented.
 
 ### 7.2 Mocking policy
 
@@ -354,7 +354,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 | **positive** | JWT issue, device info any mode, config status, scan auto-select, mode switch force, timezone, reg-domain, service restart |
 | **negative** | Auth missing, mode switch 409 with active config, scan no adapter, disallowed service |
 | **deprecate** | Legacy `/network/wlan/*` repurposed off DBus |
-| **integration** | fpms2 P0 smoke list |
+| **integration** | fpms2 smoke list |
 | **ui-helper** | wlanpi-ui adapter summary translation |
 
 ### 7.4 Additional checks
@@ -373,7 +373,7 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 1. **Week 1:** ~~`service/restart`; `publicip6`~~ **Done** (see gap matrix `Live` rows)
 2. **Week 2:** ~~System primitives (datetime, timezone, reg-domain, battery)~~ **Done** except `timezone/auto`
 3. **Network primitives:** ~~routing, tcp/udp, renew, leases, link-stats, wlan drivers~~ **Done**
-4. **Wi-Fi/utils workers:** ~~`/utils/wlan/scan`~~ **Done**; ~~speedtest~~ **Done**; cloud-test; **capture** (design: [capture API](./P0-wifi-capture-api.md), [consumer guide](./P0-wifi-capture-consumer-guide.md))
+4. **Wi-Fi/utils workers:** ~~`/utils/wlan/scan`~~ **Done**; ~~speedtest~~ **Done**; cloud-test; **capture** (design: [capture API](./api/wifi-capture.md), [consumer guide](./api/wifi-capture-consumer-guide.md))
 5. **Utils misc:** Blinker, freeradius test, bluetooth pair
 6. **System control (last):** Reboot, shutdown, mode switch (with config guard); clients, ssid-passphrase; `timezone/auto`
 
@@ -385,11 +385,11 @@ On-device integration and fpms2 smoke tests use minimal stubbing.
 |---|----------|------------|
 | 1 | Scan with 0 monitor adapters | **Try managed in root first; 422 `NO_SCAN_ADAPTER` if none suitable** |
 | 2 | `force: true` on mode switch | **Yes — auto-deactivate all active configs first; audit log each step** |
-| 3 | JWT expiry for panel/mobile | **7 days (existing `ACCESS_TOKEN_EXPIRE_DAYS`); no refresh token in P0** |
+| 3 | JWT expiry for panel/mobile | **7 days (existing `ACCESS_TOKEN_EXPIRE_DAYS`); no refresh token** |
 | 4 | wlanpi-ui packaging | **Separate package/repo evolved from fpms2**; shared `wlanpi_touch_ui` assets |
-| 5 | P0 test approach | **CSV matrix** (`p0_api_test_matrix.csv`); stub **adapter layout only** for hardware permutations |
+| 5 | Test approach | **CSV matrix** (`p0_api_test_matrix.csv`); stub **adapter layout only** for hardware permutations |
 | 6 | DBus Wi-Fi stack | **Legacy — deprecate**; repurpose `/network/wlan/*` paths; keep systemd DBus for services |
 
 ---
 
-*Update `p0-api-gap-matrix.csv` when endpoints ship. Change `verified_status` from `Gap` → `Live` and `p0_action` from `build` → `bind`. Add matrix rows to `p0_api_test_matrix.csv` and handlers in `tests/test_p0_api_matrix/handlers.py`.*
+*Update `api-gap-matrix.csv` when endpoints ship. Change `verified_status` from `Gap` → `Live` and `action` from `build` → `bind`. Add matrix rows to `p0_api_test_matrix.csv` and handlers in `tests/test_p0_api_matrix/handlers.py`.*

@@ -1,4 +1,4 @@
-priority,domain,method,core_path,capability_ids,verified_status,owner,p0_action,job_freshness_sec,notes
+priority,domain,method,core_path,capability_ids,verified_status,owner,action,job_freshness_sec,notes
 P0,auth,POST,/auth/token,,Live,Core,bind,,JWT issuance; login once then Bearer on all requests. 7-day default expiry.
 P0,auth,DELETE,/auth/token,,Live,Core,bind,,Revoke token.
 P0,system,GET,/system/device/info,"sys.about; system.about",Live,Core,bind,,Returns model hostname software_version mode.
