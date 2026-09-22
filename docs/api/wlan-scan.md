@@ -2,10 +2,10 @@
 
 **Endpoint:** `GET /api/v1/utils/wlan/scan`  
 **Auth:** Bearer JWT (remote) or localhost HMAC (`X-Request-Signature`) for on-device services  
-**Status:** Live (P0)  
+**Status:** Live  
 **Supersedes:** `GET /api/v1/network/wlan/scan` (legacy DBus path — do not use for new UI work)
 
-**Related:** [P0 core worker API](./P0-core-worker-api.md) §2.4, [gap matrix](./p0-api-gap-matrix.csv), [OpenAPI `/docs`](../wlanpi_core/asgi.py)
+**Related:** [Core worker API](../core-worker-api.md) §2.4, [gap matrix](../api-gap-matrix.csv), [OpenAPI `/docs`](../../wlanpi_core/asgi.py)
 
 ---
 
@@ -201,7 +201,7 @@ Core uses the same adapter layout as `GET /api/v1/network/config/status` (`iw de
 
 ## 5. Capability bindings
 
-From [gap matrix](./p0-api-gap-matrix.csv):
+From [gap matrix](../api-gap-matrix.csv):
 
 | Legacy / UI capability | Endpoint | Notes |
 |------------------------|----------|-------|
@@ -254,7 +254,7 @@ Core remains stateless. Throttle client-side (≥15–30s) to avoid hammering `w
 ### 6.4 Third-party HTTP clients
 
 - Stable schema: OpenAPI at `/docs` tag **device utils**.
-- Auth: JWT as documented in [P0 core worker API](./P0-core-worker-api.md) §2.1.
+- Auth: JWT as documented in [Core worker API](../core-worker-api.md) §2.1.
 - Idempotent read: safe to retry on 503.
 
 ---

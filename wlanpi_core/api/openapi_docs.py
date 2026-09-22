@@ -66,11 +66,11 @@ All documented routes require auth unless noted.
 
 | Topic | Document |
 |-------|----------|
-| WLAN scan | `docs/P0-utils-wlan-scan-api.md` |
-| Speedtest / reachability | `docs/P0-utils-reachability-speedtest-api.md` |
-| WLAN USB/PCI drivers | `docs/P0-network-wlan-drivers-api.md` |
-| Date/time | `docs/P0-system-datetime-api.md` |
-| Reg domain | `docs/P0-system-reg-domain-api.md` |
+| WLAN scan | `docs/api/wlan-scan.md` |
+| Speedtest / reachability | `docs/api/reachability-speedtest.md` |
+| WLAN USB/PCI drivers | `docs/api/network-wlan-drivers.md` |
+| Date/time | `docs/api/system-datetime.md` |
+| Reg domain | `docs/api/system-reg-domain.md` |
 | Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |
 """
 

@@ -4,7 +4,7 @@
 **OpenAPI:** `/docs` · `/api/v1/openapi.json`  
 **Machine export:** `python scripts/export_openapi.py` → `docs/openapi.json`
 
-**Touch-panel alignment:** [APP-OPENAPI-ALIGNMENT.md](./APP-OPENAPI-ALIGNMENT.md) — app vs spec review, pushback on client bugs, missing P0 endpoints.
+**Touch-panel alignment:** [APP-OPENAPI-ALIGNMENT.md](./APP-OPENAPI-ALIGNMENT.md) — app vs spec review, pushback on client bugs, missing core endpoints.
 
 This guide is a **progressive tutorial**. Each lesson builds on the previous one and includes exact HTTP examples, response fields to parse, and common mistakes.
 
@@ -24,11 +24,11 @@ This guide is a **progressive tutorial**. Each lesson builds on the previous one
 
 | Topic | Document |
 |-------|----------|
-| WLAN scan | [P0-utils-wlan-scan-api.md](./P0-utils-wlan-scan-api.md) |
-| Speedtest / reachability | [P0-utils-reachability-speedtest-api.md](./P0-utils-reachability-speedtest-api.md) |
-| USB/PCI drivers | [P0-network-wlan-drivers-api.md](./P0-network-wlan-drivers-api.md) |
-| Date/time | [P0-system-datetime-api.md](./P0-system-datetime-api.md) |
-| Reg domain | [P0-system-reg-domain-api.md](./P0-system-reg-domain-api.md) |
+| WLAN scan | [wlan-scan.md](./api/wlan-scan.md) |
+| Speedtest / reachability | [reachability-speedtest.md](./api/reachability-speedtest.md) |
+| USB/PCI drivers | [network-wlan-drivers.md](./api/network-wlan-drivers.md) |
+| Date/time | [system-datetime.md](./api/system-datetime.md) |
+| Reg domain | [system-reg-domain.md](./api/system-reg-domain.md) |
 | Deprecated routes | [API-DEPRECATED-ENDPOINTS.md](./API-DEPRECATED-ENDPOINTS.md) |
 
 ---
@@ -261,7 +261,7 @@ GET /api/v1/utils/wlan/scan?detail=full
 | 409 + `SCAN_IN_PROGRESS` | Same adapter already scanning | Coalesce / short retry — **not** adapter selection |
 | 409 + `NEEDS_SELECTION` | Legacy `/network/wlan/scan` only | Same as needsSelection; prefer canonical path |
 
-Full field reference: [P0-utils-wlan-scan-api.md](./P0-utils-wlan-scan-api.md).
+Full field reference: [wlan-scan.md](./api/wlan-scan.md).
 
 ---
 

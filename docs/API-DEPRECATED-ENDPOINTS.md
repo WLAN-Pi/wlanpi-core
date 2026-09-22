@@ -35,7 +35,7 @@ Always branch on the JSON `error` field — **409 is overloaded** on this legacy
 
 ## Client migration checklist
 
-1. Replace all `GET /network/wlan/scan` with `GET /utils/wlan/scan` (response shape differs — see [P0-utils-wlan-scan-api.md](./P0-utils-wlan-scan-api.md)).
+1. Replace all `GET /network/wlan/scan` with `GET /utils/wlan/scan` (response shape differs — see [wlan-scan.md](./api/wlan-scan.md)).
 2. Replace connect/set flows with NetConfig CRUD + activate (see [API-INTEGRATION-GUIDE.md](./API-INTEGRATION-GUIDE.md) §5).
 3. Remove calls to `set-dbus` / `set`; handle 410 if still present in old apps.
 4. Use `/network/config/status` instead of `getInterfaces` / `getConnected`.

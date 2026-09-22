@@ -1,7 +1,7 @@
-# P0 API test matrix
+# API test matrix
 
 **Status:** Active  
-**Related:** [P0-core-worker-api.md](./P0-core-worker-api.md), [p0-api-gap-matrix.csv](./p0-api-gap-matrix.csv)
+**Related:** [core-worker-api.md](./core-worker-api.md), [api-gap-matrix.csv](./api-gap-matrix.csv)
 
 ## Why continue the matrix approach?
 
@@ -12,9 +12,9 @@ The namespace work used `namespace_test_matrix.csv` + parametrized handlers succ
 - **CI stubs are explicit per row** — reviewers see exactly what is mocked and why.
 - Handler registry grows incrementally as endpoints ship.
 
-**Recommendation: yes — use the same pattern for P0 API work.**
+**Recommendation: yes — use the same pattern for the core worker API work.**
 
-| Namespace matrix | P0 API matrix |
+| Namespace matrix | API matrix |
 |------------------|---------------|
 | `namespace_test_matrix.csv` | `p0_api_test_matrix.csv` |
 | `ACTIVATION_OUTCOMES.md` | `P0_API_OUTCOMES.md` |
@@ -72,10 +72,10 @@ On-device integration and fpms2 smoke tests run with minimal stubbing.
 | positive | 20 | JWT issue, scan auto-select, mode switch force, timezone |
 | negative | 4 | Auth missing, mode conflict, scan no adapter, service denied |
 | deprecate | 3 | Legacy wlan scan/connect/set-dbus repurposing |
-| integration | 1 | fpms2 P0 smoke list |
+| integration | 1 | fpms2 smoke list |
 | ui-helper | 1 | wlanpi-ui adapter summary translation |
 
-Add rows as each P0 endpoint ships. Update row count assertion in `test_matrix.py` when handlers exist.
+Add rows as each endpoint ships. Update row count assertion in `test_matrix.py` when handlers exist.
 
 ## Workflow for adding a scenario
 
