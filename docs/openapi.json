@@ -3,7 +3,7 @@
   "info": {
     "title": "wlanpi-core",
     "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`\n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| WebUI and other on-device services | `Authorization: Bearer <jwt>` | Mint a token on-device with `sudo getjwt <device-id>`. |\n| Remote apps (mobile) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| Local bootstrap (`getjwt`, root) | `X-Request-Signature: \u2026` | HMAC with the root-only shared secret; localhost only. |\n\nJWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic\nclock and is unaffected by wall-clock changes. After a reboot, Core evaluates\nthe signed `iat` and `exp` claims. If the restored clock is more than 30 seconds\nbehind `iat`, Bearer authentication returns\n`503 {\"error\":\"AUTH_CLOCK_NOT_SET\",\"message\":\"NTP needs set; cannot proceed\"}`.\nRetry the unchanged token after time synchronization. Branch on the `error`\nfield because unrelated 503 responses are not clock errors.\n\nAll documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30-90s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/api/wlan-scan.md` |\n| Speedtest / reachability | `docs/api/reachability-speedtest.md` |\n| WLAN USB/PCI drivers | `docs/api/network-wlan-drivers.md` |\n| Date/time | `docs/api/system-datetime.md` |\n| Reg domain | `docs/api/system-reg-domain.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
-    "version": "2.2.0"
+    "version": "2.3.0"
   },
   "paths": {
     "/api/v1/auth/token": {
@@ -1141,6 +1141,54 @@
         }
       }
     },
+    "/api/v1/network/interfaces/{iface}/wlan-link": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Show Interface Wlan Link",
+        "description": "Wireless association for an interface, from ``iw dev <iface> link``.\n\nCompanion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the\nSSID, BSSID, frequency, signal, and rx/tx bitrate when connected.",
+        "operationId": "show_interface_wlan_link_api_v1_network_interfaces__iface__wlan_link_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iface",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Iface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WlanLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/network/interfaces/{iface}/renew": {
       "post": {
         "tags": [
@@ -2188,6 +2236,60 @@
         ]
       }
     },
+    "/api/v1/system/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Health",
+        "description": "Return a device health snapshot.\n\nCovers Raspberry Pi throttling and under-voltage flags, temperature\nreadings, NTP synchronisation, load average, swap usage, and rfkill switch\nstate.",
+        "operationId": "show_health_api_v1_system_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/services/failed": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Failed Services",
+        "description": "Return the systemd units currently in the failed state.\n\nUses ``systemctl --failed --output=json``; returns an empty list when\nnothing has failed.",
+        "operationId": "show_failed_services_api_v1_system_services_failed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedServices"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/service/status": {
       "get": {
         "tags": [
@@ -2496,6 +2598,33 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/ntp": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Ntp",
+        "description": "Return the system clock / NTP synchronization state.",
+        "operationId": "show_ntp_api_v1_system_ntp_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NtpInfo"
                 }
               }
             }
@@ -3214,6 +3343,33 @@
         ]
       }
     },
+    "/api/v1/utils/pci": {
+      "get": {
+        "tags": [
+          "device utils"
+        ],
+        "summary": "Pci Devices",
+        "description": "Get a list of PCI devices.",
+        "operationId": "pci_devices_api_v1_utils_pci_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pci"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/wifi/capabilities": {
       "get": {
         "tags": [
@@ -3919,6 +4075,12 @@
             "type": "string",
             "title": "Mode",
             "example": "classic"
+          },
+          "wlan_management": {
+            "type": "string",
+            "title": "Wlan Management",
+            "description": "Wi-Fi management mode: auto (core manages Wi-Fi interfaces) or manual (operator owns the radios)",
+            "example": "auto"
           }
         },
         "type": "object",
@@ -3927,7 +4089,8 @@
           "name",
           "hostname",
           "software_version",
-          "mode"
+          "mode",
+          "wlan_management"
         ],
         "title": "DeviceInfo",
         "description": "Device identity and operating mode."
@@ -4054,6 +4217,59 @@
         "title": "DhcpRenewResponse",
         "description": "Result of renewing a DHCP lease."
       },
+      "FailedService": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "example": "bt-agent.service"
+          },
+          "load": {
+            "type": "string",
+            "title": "Load",
+            "example": "loaded"
+          },
+          "active": {
+            "type": "string",
+            "title": "Active",
+            "example": "failed"
+          },
+          "sub": {
+            "type": "string",
+            "title": "Sub",
+            "example": "failed"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "example": "Bluetooth Auth Agent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit",
+          "load",
+          "active",
+          "sub",
+          "description"
+        ],
+        "title": "FailedService",
+        "description": "A systemd unit currently in the failed state."
+      },
+      "FailedServices": {
+        "properties": {
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/FailedService"
+            },
+            "type": "array",
+            "title": "Units"
+          }
+        },
+        "type": "object",
+        "title": "FailedServices",
+        "description": "Failed systemd units."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4066,6 +4282,45 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "throttled": {
+            "$ref": "#/components/schemas/ThrottleInfo"
+          },
+          "temperatures": {
+            "items": {
+              "$ref": "#/components/schemas/TemperatureReading"
+            },
+            "type": "array",
+            "title": "Temperatures"
+          },
+          "ntp": {
+            "$ref": "#/components/schemas/NtpStatus"
+          },
+          "load": {
+            "$ref": "#/components/schemas/LoadAverage"
+          },
+          "swap": {
+            "$ref": "#/components/schemas/SwapUsage"
+          },
+          "rfkill": {
+            "items": {
+              "$ref": "#/components/schemas/RfkillState"
+            },
+            "type": "array",
+            "title": "Rfkill"
+          }
+        },
+        "type": "object",
+        "required": [
+          "throttled",
+          "ntp",
+          "load",
+          "swap"
+        ],
+        "title": "Health",
+        "description": "Device health snapshot: throttling, thermals, time, load, and radios."
       },
       "HotspotClientLink": {
         "properties": {
@@ -4934,6 +5189,30 @@
         "title": "LinkStats",
         "description": "Per-interface link statistics."
       },
+      "LoadAverage": {
+        "properties": {
+          "one": {
+            "type": "number",
+            "title": "One"
+          },
+          "five": {
+            "type": "number",
+            "title": "Five"
+          },
+          "fifteen": {
+            "type": "number",
+            "title": "Fifteen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "one",
+          "five",
+          "fifteen"
+        ],
+        "title": "LoadAverage",
+        "description": "System load average over 1, 5, and 15 minutes."
+      },
       "MessageResponse": {
         "properties": {
           "detail": {
@@ -5445,26 +5724,149 @@
         "title": "NtpAutoInfo",
         "description": "NTP automatic time synchronization status."
       },
-      "PciDevice": {
+      "NtpInfo": {
         "properties": {
-          "pci_id": {
-            "type": "string",
-            "title": "Pci Id",
-            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
+          "synchronized": {
+            "type": "boolean",
+            "title": "Synchronized",
+            "description": "True when the system clock is synchronized",
+            "examples": [
+              true
+            ]
           },
-          "description": {
+          "ntp_service": {
+            "type": "boolean",
+            "title": "Ntp Service",
+            "description": "True when the NTP service is enabled",
+            "examples": [
+              true
+            ]
+          },
+          "server_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Name",
+            "description": "NTP server name currently in use",
+            "examples": [
+              "2.debian.pool.ntp.org"
+            ]
+          },
+          "server_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Address",
+            "description": "Resolved address of the NTP server currently in use",
+            "examples": [
+              "192.168.2.123"
+            ]
+          },
+          "fallback_servers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fallback Servers",
+            "description": "Fallback NTP servers configured for timesyncd"
+          },
+          "runtime_servers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Runtime Servers",
+            "description": "Runtime NTP servers set on timesyncd (DHCP-provided)"
+          },
+          "poll_interval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Interval",
+            "description": "Current poll interval as reported by timesyncd",
+            "examples": [
+              "32s"
+            ]
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency",
+            "description": "Current clock frequency adjustment, if reported"
+          },
+          "source": {
             "type": "string",
-            "title": "Description",
-            "description": "Human-readable lspci device line"
+            "title": "Source",
+            "description": "Where the NTP servers came from: dhcp | default | unknown",
+            "default": "unknown",
+            "examples": [
+              "dhcp"
+            ]
           }
         },
         "type": "object",
         "required": [
-          "pci_id",
-          "description"
+          "synchronized",
+          "ntp_service"
         ],
-        "title": "PciDevice",
-        "description": "A PCI device from lspci."
+        "title": "NtpInfo",
+        "description": "systemd-timesyncd clock/NTP state."
+      },
+      "NtpStatus": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether NTP synchronisation is enabled"
+          },
+          "synchronized": {
+            "type": "boolean",
+            "title": "Synchronized",
+            "description": "Whether the clock is currently synchronised"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "synchronized"
+        ],
+        "title": "NtpStatus",
+        "description": "NTP enablement and synchronisation state."
+      },
+      "Pci": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/wlanpi_core__schemas__utils__utils__PciDevice"
+            },
+            "type": "array",
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "title": "Pci",
+        "description": "List of detected PCI devices."
       },
       "PhyCapabilities": {
         "properties": {
@@ -5849,6 +6251,37 @@
         ],
         "title": "RevertNamespace",
         "description": "Result of reverting a namespace."
+      },
+      "RfkillState": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "phy0"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "example": "wlan"
+          },
+          "soft_blocked": {
+            "type": "boolean",
+            "title": "Soft Blocked"
+          },
+          "hard_blocked": {
+            "type": "boolean",
+            "title": "Hard Blocked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "soft_blocked",
+          "hard_blocked"
+        ],
+        "title": "RfkillState",
+        "description": "One rfkill switch."
       },
       "RootConfig-Input": {
         "properties": {
@@ -6599,6 +7032,127 @@
         "title": "Stop",
         "description": "Result of stopping the profiler."
       },
+      "SwapUsage": {
+        "properties": {
+          "used_mb": {
+            "type": "integer",
+            "title": "Used Mb"
+          },
+          "total_mb": {
+            "type": "integer",
+            "title": "Total Mb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used_mb",
+          "total_mb"
+        ],
+        "title": "SwapUsage",
+        "description": "Swap usage in mebibytes."
+      },
+      "TemperatureReading": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "example": "cpu_thermal-virtual-0"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "example": "temp1"
+          },
+          "celsius": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Celsius",
+            "example": 63.8
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TemperatureReading",
+        "description": "One temperature sensor reading."
+      },
+      "ThrottleInfo": {
+        "properties": {
+          "raw": {
+            "type": "string",
+            "title": "Raw",
+            "example": "throttled=0x0"
+          },
+          "undervoltage": {
+            "type": "boolean",
+            "title": "Undervoltage",
+            "description": "Under-voltage currently detected"
+          },
+          "frequency_capped": {
+            "type": "boolean",
+            "title": "Frequency Capped",
+            "description": "ARM frequency currently capped"
+          },
+          "throttled": {
+            "type": "boolean",
+            "title": "Throttled",
+            "description": "Currently throttled"
+          },
+          "soft_temperature_limit": {
+            "type": "boolean",
+            "title": "Soft Temperature Limit",
+            "description": "Soft temperature limit active"
+          },
+          "undervoltage_occurred": {
+            "type": "boolean",
+            "title": "Undervoltage Occurred",
+            "description": "Under-voltage has occurred"
+          },
+          "frequency_capped_occurred": {
+            "type": "boolean",
+            "title": "Frequency Capped Occurred",
+            "description": "ARM frequency capping has occurred"
+          },
+          "throttled_occurred": {
+            "type": "boolean",
+            "title": "Throttled Occurred",
+            "description": "Throttling has occurred"
+          },
+          "soft_temperature_limit_occurred": {
+            "type": "boolean",
+            "title": "Soft Temperature Limit Occurred",
+            "description": "Soft temperature limit has occurred"
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw",
+          "undervoltage",
+          "frequency_capped",
+          "throttled",
+          "soft_temperature_limit",
+          "undervoltage_occurred",
+          "frequency_capped_occurred",
+          "throttled_occurred",
+          "soft_temperature_limit_occurred"
+        ],
+        "title": "ThrottleInfo",
+        "description": "Raspberry Pi throttling and under-voltage flags from ``vcgencmd``."
+      },
       "TimezoneInfo": {
         "properties": {
           "timezone": {
@@ -6979,6 +7533,145 @@
         "title": "WlanInterfaceSummary",
         "description": "Summary of one WLAN interface."
       },
+      "WlanLink": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected",
+            "description": "Whether the interface is associated"
+          },
+          "ssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssid",
+            "example": "HomeNet"
+          },
+          "bssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bssid",
+            "example": "68:51:34:7c:32:13"
+          },
+          "freq_mhz": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freq Mhz",
+            "example": 5200.0
+          },
+          "signal_dbm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Dbm",
+            "example": -48.0
+          },
+          "rx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rx Bitrate",
+            "example": "286.7 MBit/s HE-MCS 11"
+          },
+          "tx_bitrate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tx Bitrate",
+            "example": "286.7 MBit/s HE-MCS 11"
+          },
+          "rx_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rx Bytes",
+            "example": 2112666
+          },
+          "tx_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tx Bytes",
+            "example": 104496501
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw",
+            "description": "Raw iw link output for diagnostics; do not parse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface",
+          "connected"
+        ],
+        "title": "WlanLink",
+        "description": "Wireless association state for one interface (from ``iw link``)."
+      },
       "WlanNetwork": {
         "properties": {
           "ssid": {
@@ -7111,7 +7804,7 @@
           },
           "pci_devices": {
             "items": {
-              "$ref": "#/components/schemas/PciDevice"
+              "$ref": "#/components/schemas/wlanpi_core__schemas__network__primitives__PciDevice"
             },
             "type": "array",
             "title": "Pci Devices",
@@ -7269,6 +7962,48 @@
         "type": "object",
         "title": "WlanUsbDriversResponse",
         "description": "USB-attached WLAN adapters and their drivers."
+      },
+      "wlanpi_core__schemas__network__primitives__PciDevice": {
+        "properties": {
+          "pci_id": {
+            "type": "string",
+            "title": "Pci Id",
+            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable lspci device line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pci_id",
+          "description"
+        ],
+        "title": "PciDevice",
+        "description": "A PCI device from lspci."
+      },
+      "wlanpi_core__schemas__utils__utils__PciDevice": {
+        "properties": {
+          "pci_id": {
+            "type": "string",
+            "title": "Pci Id",
+            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable lspci device line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pci_id",
+          "description"
+        ],
+        "title": "PciDevice",
+        "description": "One PCI device from lspci."
       }
     },
     "securitySchemes": {
