@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
@@ -38,6 +39,7 @@ def _read_device_info() -> dict[str, Any]:
     return {
         **_read_static_device_info(),
         "mode": system_service.get_mode(),
+        "wlan_management": settings.WLAN_MANAGEMENT,
     }
 
 
@@ -283,6 +285,22 @@ async def set_timezone(body: system.TimezoneSetRequest) -> Any:
     """Set the system timezone."""
     try:
         return await asyncio.to_thread(system_service.set_timezone, body.timezone)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/ntp",
+    response_model=system.NtpInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_ntp() -> Any:
+    """Return the system clock / NTP synchronization state."""
+    try:
+        return await asyncio.to_thread(system_service.get_ntp)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

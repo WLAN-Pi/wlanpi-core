@@ -37,6 +37,13 @@ class DeviceInfo(BaseModel):
     hostname: str = Field(json_schema_extra={"example": "wlanpi-bc2.local"})
     software_version: str = Field(json_schema_extra={"example": "3.2.0"})
     mode: str = Field(json_schema_extra={"example": "classic"})
+    wlan_management: str = Field(
+        json_schema_extra={"example": "auto"},
+        description=(
+            "Wi-Fi management mode: auto (core manages Wi-Fi interfaces) "
+            "or manual (operator owns the radios)"
+        ),
+    )
 
 
 class DeviceStats(BaseModel):
@@ -89,6 +96,51 @@ class TimezoneSetRequest(BaseModel):
     """Request to set the system timezone."""
 
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
+
+
+class NtpInfo(BaseModel):
+    """systemd-timesyncd clock/NTP state."""
+
+    synchronized: bool = Field(
+        description="True when the system clock is synchronized",
+        examples=[True],
+    )
+    ntp_service: bool = Field(
+        description="True when the NTP service is enabled",
+        examples=[True],
+    )
+    server_name: str | None = Field(
+        default=None,
+        description="NTP server name currently in use",
+        examples=["2.debian.pool.ntp.org"],
+    )
+    server_address: str | None = Field(
+        default=None,
+        description="Resolved address of the NTP server currently in use",
+        examples=["192.168.2.123"],
+    )
+    fallback_servers: list[str] = Field(
+        default_factory=list,
+        description="Fallback NTP servers configured for timesyncd",
+    )
+    runtime_servers: list[str] = Field(
+        default_factory=list,
+        description="Runtime NTP servers set on timesyncd (DHCP-provided)",
+    )
+    poll_interval: str | None = Field(
+        default=None,
+        description="Current poll interval as reported by timesyncd",
+        examples=["32s"],
+    )
+    frequency: int | None = Field(
+        default=None,
+        description="Current clock frequency adjustment, if reported",
+    )
+    source: str = Field(
+        default="unknown",
+        description="Where the NTP servers came from: dhcp | default | unknown",
+        examples=["dhcp"],
+    )
 
 
 class RegDomainInfo(BaseModel):

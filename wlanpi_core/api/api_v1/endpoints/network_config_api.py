@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
     ConfigMalformedError,
@@ -192,6 +193,7 @@ async def delete_config(id: str, force: bool = False) -> Any:
 async def activate_config(id: str, override_active: bool = False) -> Any:
     """Activate a network configuration by ID."""
     try:
+        require_wlan_management_enabled()
         success = await asyncio.to_thread(
             network_config.activate_config, id, override_active
         )
@@ -227,6 +229,7 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
 async def deactivate_config(id: str, override_active: bool = False) -> Any:
     """Deactivate a network configuration by ID."""
     try:
+        require_wlan_management_enabled()
         success = await asyncio.to_thread(
             network_config.deactivate_config,
             id,
