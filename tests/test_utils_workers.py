@@ -15,9 +15,8 @@ from wlanpi_core.utils.reachability import (
 )
 from wlanpi_core.utils.speedtest import parse_librespeed_output, run_speedtest
 
-SAMPLE_LIBRESPEED = (
-    Path(__file__).parent / "fixtures/librespeed-cli/v1.0.10-linux-arm64.stdout"
-).read_text()
+FIXTURES = Path(__file__).parent / "fixtures/librespeed-cli"
+SAMPLE_LIBRESPEED = (FIXTURES / "v1.0.10-linux-arm64.stdout").read_text()
 
 JC_PING_OK = {
     "packets_received": 1,
@@ -90,6 +89,21 @@ def test_parse_librespeed_output_extracts_speeds():
         "jitterMs": 0.04,
         "server": "New York, United States (2) (Clouvider)",
         "testedAt": datetime(2026, 9, 22, 20, 42, 22, 896290, tzinfo=UTC),
+    }
+
+
+def test_parse_librespeed_v1_0_14_output():
+    result = parse_librespeed_output(
+        (FIXTURES / "v1.0.14-linux-arm64.stdout").read_text()
+    )
+    assert result == {
+        "ipAddress": "",
+        "downloadSpeed": "766.38 Mbps",
+        "uploadSpeed": "509.15 Mbps",
+        "pingMs": 17.39,
+        "jitterMs": 0.32,
+        "server": "New York, United States (2) (Clouvider)",
+        "testedAt": datetime(2026, 9, 22, 20, 58, 44, 832838, tzinfo=UTC),
     }
 
 
