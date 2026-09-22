@@ -1,3 +1,10 @@
+wlanpi-core (2.3.7-1) unstable; urgency=medium
+
+  * Restrict systemd service notifications to the Gunicorn main process so
+    workers and request-spawned children cannot change the unit state.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 16:15:00 -0400
+
 wlanpi-core (2.3.6-1) unstable; urgency=medium
 
   * Fix wlanpi-core auto-vivifying ~/.local and ~/.local/share as root:root
