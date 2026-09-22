@@ -29,6 +29,7 @@ from wlanpi_core.constants import (
     CREATE_MONITOR_PAIRS_DEFAULT,
     CREATE_MONITOR_PAIRS_UNINIT,
     CURRENT_CONFIG_FILE,
+    HOME_DIR,
     MODE_FILE,
     SECRETS_DIR,
     SUPPORTED_MODELS,
@@ -47,6 +48,7 @@ from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
 from wlanpi_core.services.system_service import get_model
+from wlanpi_core.utils.homedir import ensure_wlanpi_home_data_dirs
 from wlanpi_core.utils.network_config import (
     activate_config,
     get_config,
@@ -236,6 +238,12 @@ class InitializationManager:
                 f"Required group 'wlanpi' does not exist! Available groups: {', '.join(existing_groups)}"
             )
             return False
+
+        # ~/.local and ~/.local/share are the wlanpi user's XDG data home,
+        # shared with other wlanpi apps. Reclaim them before touching
+        # anything under wlanpi-core, so a fresh boot never leaves them
+        # root-owned just because this service was first to create them.
+        ensure_wlanpi_home_data_dirs(HOME_DIR)
 
         try:
             secrets_dir = Path(SECRETS_DIR)
