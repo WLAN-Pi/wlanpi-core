@@ -1,5 +1,7 @@
 """Unit tests for reachability and speedtest helpers."""
 
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,14 +15,9 @@ from wlanpi_core.utils.reachability import (
 )
 from wlanpi_core.utils.speedtest import parse_librespeed_output, run_speedtest
 
-SAMPLE_LIBRESPEED = """\
-Retrieving server list from https://librespeed.org/backend-servers/servers.php
-Selecting the fastest server based on ping
-Ping:\t5.00 ms\tJitter:\t0.00 ms
-Download rate:\t495.79 Mbps
-Upload rate:\t690.97 Mbps
-[{"timestamp":"2026-06-14T18:38:48.994139018+01:00","server":{"name":"London, England (Clouvider)","url":"https://lon.speedtest.clouvider.net/backend"},"client":{"ip":"217.155.247.50","hostname":"","city":"","region":"","country":"","loc":"","org":"","postal":"","timezone":""},"bytes_sent":1347584000,"bytes_received":966920456,"ping":5,"jitter":0,"upload":690.97,"download":495.79,"share":""}]
-"""
+SAMPLE_LIBRESPEED = (
+    Path(__file__).parent / "fixtures/librespeed-cli/v1.0.10-linux-arm64.stdout"
+).read_text()
 
 JC_PING_OK = {
     "packets_received": 1,
@@ -85,12 +82,15 @@ def test_ping_stats_from_jc_failure():
 
 def test_parse_librespeed_output_extracts_speeds():
     result = parse_librespeed_output(SAMPLE_LIBRESPEED)
-    assert result["ipAddress"] == "217.155.247.50"
-    assert result["downloadSpeed"] == "495.79 Mbps"
-    assert result["uploadSpeed"] == "690.97 Mbps"
-    assert result["pingMs"] == 5
-    assert result["server"] == "London, England (Clouvider)"
-    assert result["testedAt"] is not None
+    assert result == {
+        "ipAddress": "",
+        "downloadSpeed": "790.68 Mbps",
+        "uploadSpeed": "126.37 Mbps",
+        "pingMs": 17,
+        "jitterMs": 0.04,
+        "server": "New York, United States (2) (Clouvider)",
+        "testedAt": datetime(2026, 9, 22, 20, 42, 22, 896290, tzinfo=UTC),
+    }
 
 
 @pytest.mark.asyncio
@@ -107,4 +107,4 @@ async def test_run_speedtest_uses_async_command_timeout():
         raise_on_fail=False,
         timeout=SPEEDTEST_TIMEOUT_SEC,
     )
-    assert result["downloadSpeed"] == "495.79 Mbps"
+    assert result["downloadSpeed"] == "790.68 Mbps"
