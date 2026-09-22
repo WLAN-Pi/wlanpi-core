@@ -1,3 +1,15 @@
+wlanpi-core (2.3.0-1) unstable; urgency=medium
+
+  * Add /utils/pci to list PCI devices from lspci.
+  * Add /system/health with Raspberry Pi throttling and under-voltage flags,
+    temperature readings, NTP synchronisation, load average, swap usage, and
+    rfkill switch state.
+  * Add /system/services/failed for systemd units in the failed state.
+  * Add /network/interfaces/{iface}/wlan-link for the wireless association
+    (iw link): SSID, BSSID, frequency, signal, and rx/tx bitrate.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 21 Sep 2026 23:00:00 -0400
+
 wlanpi-core (2.2.0-1) unstable; urgency=medium
 
   * Make the shared HMAC secret root-only (root:root 0600, secrets directory

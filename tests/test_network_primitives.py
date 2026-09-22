@@ -16,6 +16,7 @@ from wlanpi_core.network import (
     lookup,
     routing,
     wlan_drivers,
+    wlan_link,
 )
 
 
@@ -90,6 +91,44 @@ def test_get_link_stats_parses_ethtool():
     assert result["speed_mbps"] == 1000
     assert result["duplex"] == "Full"
     assert result["link_detected"] == "yes"
+
+
+def test_get_wlan_link_parses_connected():
+    iw_out = (
+        "Connected to 68:51:34:7c:32:13 (on wlan0)\n"
+        "\tSSID: PurpleDove\n"
+        "\tfreq: 5200.0\n"
+        "\tsignal: -48 dBm\n"
+        "\trx bitrate: 286.7 MBit/s HE-MCS 11\n"
+        "\ttx bitrate: 286.7 MBit/s HE-MCS 11\n"
+        "\tRX: 2112666 bytes (22185 packets)\n"
+        "\tTX: 104496501 bytes (1980 packets)\n"
+    )
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        return_value=MagicMock(stdout=iw_out),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert result["connected"] is True
+    assert result["ssid"] == "PurpleDove"
+    assert result["bssid"] == "68:51:34:7c:32:13"
+    assert result["freq_mhz"] == 5200.0
+    assert result["signal_dbm"] == -48.0
+    assert result["rx_bytes"] == 2112666
+    assert result["tx_bytes"] == 104496501
+
+
+def test_get_wlan_link_not_connected():
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        return_value=MagicMock(stdout="Not connected.\n"),
+    ):
+        result = wlan_link.get_wlan_link("wlan2")
+
+    assert result["connected"] is False
+    assert result["ssid"] is None
+    assert result["bssid"] is None
 
 
 def test_get_tcp_connections_parses_ss():

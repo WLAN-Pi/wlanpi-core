@@ -37,6 +37,13 @@ class DeviceInfo(BaseModel):
     hostname: str = Field(json_schema_extra={"example": "wlanpi-bc2.local"})
     software_version: str = Field(json_schema_extra={"example": "3.2.0"})
     mode: str = Field(json_schema_extra={"example": "classic"})
+    wlan_management: str = Field(
+        json_schema_extra={"example": "auto"},
+        description=(
+            "Wi-Fi management mode: auto (core manages Wi-Fi interfaces) "
+            "or manual (operator owns the radios)"
+        ),
+    )
 
 
 class DeviceStats(BaseModel):
@@ -89,6 +96,51 @@ class TimezoneSetRequest(BaseModel):
     """Request to set the system timezone."""
 
     timezone: str = Field(json_schema_extra={"example": "Europe/London"})
+
+
+class NtpInfo(BaseModel):
+    """systemd-timesyncd clock/NTP state."""
+
+    synchronized: bool = Field(
+        description="True when the system clock is synchronized",
+        examples=[True],
+    )
+    ntp_service: bool = Field(
+        description="True when the NTP service is enabled",
+        examples=[True],
+    )
+    server_name: str | None = Field(
+        default=None,
+        description="NTP server name currently in use",
+        examples=["2.debian.pool.ntp.org"],
+    )
+    server_address: str | None = Field(
+        default=None,
+        description="Resolved address of the NTP server currently in use",
+        examples=["192.168.2.123"],
+    )
+    fallback_servers: list[str] = Field(
+        default_factory=list,
+        description="Fallback NTP servers configured for timesyncd",
+    )
+    runtime_servers: list[str] = Field(
+        default_factory=list,
+        description="Runtime NTP servers set on timesyncd (DHCP-provided)",
+    )
+    poll_interval: str | None = Field(
+        default=None,
+        description="Current poll interval as reported by timesyncd",
+        examples=["32s"],
+    )
+    frequency: int | None = Field(
+        default=None,
+        description="Current clock frequency adjustment, if reported",
+    )
+    source: str = Field(
+        default="unknown",
+        description="Where the NTP servers came from: dhcp | default | unknown",
+        examples=["dhcp"],
+    )
 
 
 class RegDomainInfo(BaseModel):
@@ -173,3 +225,89 @@ class HotspotCredentials(BaseModel):
     mode: str = Field(json_schema_extra={"example": "hotspot"})
     ssid: str = Field(json_schema_extra={"example": "WLAN Pi abc"})
     passphrase: str = Field(json_schema_extra={"example": "example-passphrase"})
+
+
+class ThrottleInfo(BaseModel):
+    """Raspberry Pi throttling and under-voltage flags from ``vcgencmd``."""
+
+    raw: str = Field(json_schema_extra={"example": "throttled=0x0"})
+    undervoltage: bool = Field(description="Under-voltage currently detected")
+    frequency_capped: bool = Field(description="ARM frequency currently capped")
+    throttled: bool = Field(description="Currently throttled")
+    soft_temperature_limit: bool = Field(description="Soft temperature limit active")
+    undervoltage_occurred: bool = Field(description="Under-voltage has occurred")
+    frequency_capped_occurred: bool = Field(
+        description="ARM frequency capping has occurred"
+    )
+    throttled_occurred: bool = Field(description="Throttling has occurred")
+    soft_temperature_limit_occurred: bool = Field(
+        description="Soft temperature limit has occurred"
+    )
+
+
+class TemperatureReading(BaseModel):
+    """One temperature sensor reading."""
+
+    name: str = Field(json_schema_extra={"example": "cpu_thermal-virtual-0"})
+    label: str | None = Field(default=None, json_schema_extra={"example": "temp1"})
+    celsius: float | None = Field(default=None, json_schema_extra={"example": 63.8})
+
+
+class NtpStatus(BaseModel):
+    """NTP enablement and synchronisation state."""
+
+    enabled: bool = Field(description="Whether NTP synchronisation is enabled")
+    synchronized: bool = Field(
+        description="Whether the clock is currently synchronised"
+    )
+
+
+class LoadAverage(BaseModel):
+    """System load average over 1, 5, and 15 minutes."""
+
+    one: float
+    five: float
+    fifteen: float
+
+
+class SwapUsage(BaseModel):
+    """Swap usage in mebibytes."""
+
+    used_mb: int
+    total_mb: int
+
+
+class RfkillState(BaseModel):
+    """One rfkill switch."""
+
+    name: str = Field(json_schema_extra={"example": "phy0"})
+    type: str = Field(json_schema_extra={"example": "wlan"})
+    soft_blocked: bool
+    hard_blocked: bool
+
+
+class Health(BaseModel):
+    """Device health snapshot: throttling, thermals, time, load, and radios."""
+
+    throttled: ThrottleInfo
+    temperatures: list[TemperatureReading] = Field(default_factory=list)
+    ntp: NtpStatus
+    load: LoadAverage
+    swap: SwapUsage
+    rfkill: list[RfkillState] = Field(default_factory=list)
+
+
+class FailedService(BaseModel):
+    """A systemd unit currently in the failed state."""
+
+    unit: str = Field(json_schema_extra={"example": "bt-agent.service"})
+    load: str = Field(json_schema_extra={"example": "loaded"})
+    active: str = Field(json_schema_extra={"example": "failed"})
+    sub: str = Field(json_schema_extra={"example": "failed"})
+    description: str = Field(json_schema_extra={"example": "Bluetooth Auth Agent"})
+
+
+class FailedServices(BaseModel):
+    """Failed systemd units."""
+
+    units: list[FailedService] = Field(default_factory=list)

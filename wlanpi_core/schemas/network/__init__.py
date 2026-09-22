@@ -22,6 +22,7 @@ from .primitives import (
     DhcpRenewResponse,
     LinkStats,
     RoutingTable,
+    WlanLink,
     WlanPciDriversResponse,
     WlanUsbDriversResponse,
 )

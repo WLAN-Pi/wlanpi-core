@@ -118,3 +118,20 @@ def test_api_speedtest_failure(client):
     ):
         response = client.get("/api/v1/utils/speedtest")
     assert response.status_code == 503
+
+
+def test_api_pci(client):
+    payload = {
+        "devices": [
+            {"pci_id": "00:00.0", "description": "PCI bridge: test bridge"},
+            {"pci_id": "01:00.0", "description": "Network controller: test nic"},
+        ]
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.utils_service.show_pci",
+        new=AsyncMock(return_value=payload),
+    ) as pci:
+        response = client.get("/api/v1/utils/pci")
+    assert response.status_code == 200
+    pci.assert_awaited_once()
+    assert response.json()["devices"][1]["pci_id"] == "01:00.0"

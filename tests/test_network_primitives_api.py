@@ -113,6 +113,33 @@ def test_api_rejects_invalid_link_stats_interface(client):
     assert response.status_code == 400
 
 
+def test_api_wlan_link(client):
+    payload = {
+        "interface": "wlan0",
+        "namespace": None,
+        "connected": True,
+        "ssid": "PurpleDove",
+        "bssid": "68:51:34:7c:32:13",
+        "freq_mhz": 5200.0,
+        "signal_dbm": -48.0,
+        "rx_bitrate": "286.7 MBit/s HE-MCS 11",
+        "tx_bitrate": "286.7 MBit/s HE-MCS 11",
+        "rx_bytes": 2112666,
+        "tx_bytes": 104496501,
+        "raw": "",
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.resolve_interface_namespace",
+        return_value=None,
+    ):
+        with patch("wlanpi_core.network.get_wlan_link", return_value=payload):
+            response = client.get("/api/v1/network/interfaces/wlan0/wlan-link")
+
+    assert response.status_code == 200
+    assert response.json()["ssid"] == "PurpleDove"
+    assert response.json()["connected"] is True
+
+
 def test_api_post_network_dhcp_renew(client):
     with patch(
         "wlanpi_core.network.renew_interface_dhcp",

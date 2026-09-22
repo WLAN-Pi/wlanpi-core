@@ -34,7 +34,11 @@ from wlanpi_core.constants import (
     SUPPORTED_MODELS,
 )
 from wlanpi_core.core.auth import AUTH_CLOCK_MESSAGE, AuthClockNotSetError
-from wlanpi_core.core.config import endpoints, settings
+from wlanpi_core.core.config import (
+    endpoints,
+    settings,
+    wlan_management_is_manual,
+)
 from wlanpi_core.core.database import DatabaseError, DatabaseManager
 from wlanpi_core.core.logging import configure_logging, get_logger
 from wlanpi_core.core.middleware import ActivityMiddleware
@@ -343,6 +347,13 @@ class InitializationManager:
 
     async def _initialize_network_namespaces(self) -> None:
         """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
+        # Operator/automation override: leave Wi-Fi entirely to the operator.
+        if wlan_management_is_manual():
+            self.log.info(
+                "WLAN_MANAGEMENT=manual; skipping Wi-Fi initialization and monitor pairs"
+            )
+            return
+
         # Only proceed if in classic mode
         if not self._is_classic_mode():
             self.log.info(

@@ -112,3 +112,16 @@ class Ufw(BaseModel):
 
     status: str = Field()
     ports: list[Any] = Field()
+
+
+class PciDevice(BaseModel):
+    """One PCI device from lspci."""
+
+    pci_id: str = Field(description="lspci BDF prefix, e.g. 0000:01:00.0")
+    description: str = Field(description="Human-readable lspci device line")
+
+
+class Pci(BaseModel):
+    """List of detected PCI devices."""
+
+    devices: list[PciDevice] = Field(default_factory=list)

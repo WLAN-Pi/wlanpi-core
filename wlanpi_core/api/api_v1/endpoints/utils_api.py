@@ -280,3 +280,28 @@ async def ufw_information() -> Any:
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/pci", response_model=utils.Pci, dependencies=[Depends(verify_auth_wrapper)]
+)
+async def pci_devices() -> Any:
+    """Get a list of PCI devices."""
+
+    try:
+        result = await utils_service.show_pci()
+
+        if result.get("error"):
+            return Response(
+                content=json.dumps(result["error"]),
+                status_code=503,
+                media_type="application/json",
+            )
+
+        return result
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)

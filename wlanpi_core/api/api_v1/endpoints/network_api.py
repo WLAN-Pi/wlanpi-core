@@ -13,6 +13,7 @@ from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.lookup import resolve_interface_namespace
@@ -42,6 +43,12 @@ def _read_interface_link_stats(iface: str) -> dict[str, Any]:
     """Resolve interface ownership and read link stats in one worker thread."""
     namespace = resolve_interface_namespace(iface)
     return network_primitives.get_link_stats(iface, namespace=namespace)
+
+
+def _read_interface_wlan_link(iface: str) -> dict[str, Any]:
+    """Resolve interface ownership and read the wireless link in one thread."""
+    namespace = resolve_interface_namespace(iface)
+    return network_primitives.get_wlan_link(iface, namespace=namespace)
 
 
 ################################
@@ -349,6 +356,29 @@ async def show_interface_link_stats(iface: str) -> Any:
         return Response(content="Unable to read link statistics", status_code=503)
 
 
+@router.get(
+    "/interfaces/{iface}/wlan-link",
+    response_model=network.WlanLink,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_interface_wlan_link(iface: str) -> Any:
+    """
+    Wireless association for an interface, from ``iw dev <iface> link``.
+
+    Companion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the
+    SSID, BSSID, frequency, signal, and rx/tx bitrate when connected.
+    """
+    try:
+        return await asyncio.to_thread(_read_interface_wlan_link, iface=iface)
+    except ValidationError as ex:
+        return Response(content=ex.error_msg, status_code=ex.status_code)
+    except ValueError as ex:
+        return Response(content=str(ex), status_code=400)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to read wireless link", status_code=503)
+
+
 @router.post(
     "/interfaces/{iface}/renew",
     response_model=network.DhcpRenewResponse,
@@ -591,6 +621,7 @@ async def revert_wlan_namespace(
 ) -> Any:
     """Revert the PHY and interface back to the root namespace."""
     try:
+        require_wlan_management_enabled()
         namespace_service = network_namespace_service.NetworkNamespaceService()
         await asyncio.to_thread(
             namespace_service.revert_to_root,
@@ -602,6 +633,8 @@ async def revert_wlan_namespace(
             "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
         }
 
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)

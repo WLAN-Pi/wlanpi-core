@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Response
 
 from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
@@ -38,6 +39,7 @@ def _read_device_info() -> dict[str, Any]:
     return {
         **_read_static_device_info(),
         "mode": system_service.get_mode(),
+        "wlan_management": settings.WLAN_MANAGEMENT,
     }
 
 
@@ -102,6 +104,49 @@ async def show_device_model() -> Any:
     try:
         model = await asyncio.to_thread(system_service.get_model)
         return {"model": model}
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/health",
+    response_model=system.Health,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_health() -> Any:
+    """
+    Return a device health snapshot.
+
+    Covers Raspberry Pi throttling and under-voltage flags, temperature
+    readings, NTP synchronisation, load average, swap usage, and rfkill switch
+    state.
+    """
+    try:
+        return await asyncio.to_thread(system_service.get_health)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/services/failed",
+    response_model=system.FailedServices,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_failed_services() -> Any:
+    """
+    Return the systemd units currently in the failed state.
+
+    Uses ``systemctl --failed --output=json``; returns an empty list when
+    nothing has failed.
+    """
+    try:
+        return await asyncio.to_thread(system_service.get_failed_services)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -240,6 +285,22 @@ async def set_timezone(body: system.TimezoneSetRequest) -> Any:
     """Set the system timezone."""
     try:
         return await asyncio.to_thread(system_service.set_timezone, body.timezone)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
+    "/ntp",
+    response_model=system.NtpInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_ntp() -> Any:
+    """Return the system clock / NTP synchronization state."""
+    try:
+        return await asyncio.to_thread(system_service.get_ntp)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

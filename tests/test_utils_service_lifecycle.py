@@ -142,6 +142,45 @@ async def test_show_ufw_returns_error_response(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_show_pci_parses_lspci(monkeypatch):
+    output = (
+        "00:00.0 PCI bridge: Broadcom Inc. and subsidiaries BCM2711 PCIe Bridge (rev 20)\n"
+        "01:00.0 Network controller: Intel Corporation Wi-Fi 7 AX1775 2x2 (rev 1a)\n"
+    )
+    monkeypatch.setattr(
+        utils_service,
+        "run_command_async",
+        AsyncMock(return_value=CommandResult(output, "", 0)),
+    )
+
+    result = await utils_service.show_pci()
+
+    assert result["devices"][0] == {
+        "pci_id": "00:00.0",
+        "description": (
+            "PCI bridge: Broadcom Inc. and subsidiaries BCM2711 PCIe Bridge (rev 20)"
+        ),
+    }
+    assert result["devices"][1]["pci_id"] == "01:00.0"
+
+
+@pytest.mark.asyncio
+async def test_show_pci_returns_serializable_error(monkeypatch):
+    monkeypatch.setattr(
+        utils_service,
+        "run_command_async",
+        AsyncMock(side_effect=RunCommandError("lspci failed", 1)),
+    )
+
+    result = await utils_service.show_pci()
+
+    assert result == {
+        "error": {"error": "Issue getting pci info using lspci command: lspci failed"}
+    }
+    json.dumps(result)
+
+
+@pytest.mark.asyncio
 async def test_speedtest_missing_executable_is_scoped_failure(monkeypatch):
     monkeypatch.setattr(
         speedtest,
