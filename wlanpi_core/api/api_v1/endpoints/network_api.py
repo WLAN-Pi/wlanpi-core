@@ -13,6 +13,7 @@ from wlanpi_core.api.openapi_docs import RESPONSES_SCAN
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.lookup import resolve_interface_namespace
@@ -591,6 +592,7 @@ async def revert_wlan_namespace(
 ) -> Any:
     """Revert the PHY and interface back to the root namespace."""
     try:
+        require_wlan_management_enabled()
         namespace_service = network_namespace_service.NetworkNamespaceService()
         await asyncio.to_thread(
             namespace_service.revert_to_root,
@@ -602,6 +604,8 @@ async def revert_wlan_namespace(
             "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
         }
 
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)

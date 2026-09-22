@@ -9,6 +9,7 @@ from .system import (
     HotspotClients,
     HotspotCredentials,
     NtpAutoInfo,
+    NtpInfo,
     PowerActionResponse,
     RegDomainInfo,
     RegDomainList,

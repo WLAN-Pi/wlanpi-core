@@ -678,6 +678,115 @@ def get_timezone() -> dict[str, str]:
         raise ValidationError("Unable to determine timezone", status_code=503) from None
 
 
+def _parse_keyvalue(output: str) -> dict[str, str]:
+    """Parse `key=value` lines (systemd `timedatectl` output) into a dict."""
+    parsed: dict[str, str] = {}
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+def _parse_int(value: str | None) -> int | None:
+    """Return an int for a numeric string, else None."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _runtime_ntp_servers() -> list[str]:
+    """
+    Return the runtime NTP servers currently set on systemd-timesyncd.
+
+    These are fed in by the NetworkManager DHCP dispatcher (full image), so a
+    non-empty list means timesyncd is using DHCP-provided servers. Output is
+    ``as N "server"...`` from busctl.
+    """
+    try:
+        output = run_command(
+            [
+                "busctl",
+                "get-property",
+                "org.freedesktop.timesync1",
+                "/org/freedesktop/timesync1",
+                "org.freedesktop.timesync1.Manager",
+                "RuntimeNTPServers",
+            ],
+            raise_on_fail=False,
+        ).stdout.strip()
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.debug("get_ntp: RuntimeNTPServers query failed: %r", exc)
+        return []
+
+    parts = output.split(None, 2)
+    if len(parts) < 2 or parts[0] != "as":
+        return []
+    if _parse_int(parts[1]) == 0 or len(parts) < 3:
+        return []
+    return [server.strip('"') for server in parts[2].split() if server.strip('"')]
+
+
+def get_ntp() -> dict[str, Any]:
+    """
+    Return the system clock / NTP synchronization state.
+
+    Sources systemd-timesyncd state via `timedatectl show` and
+    `timedatectl show-timesync`. Never raises for a missing or unsynced clock;
+    callers render whatever is available.
+    """
+    result: dict[str, Any] = {
+        "synchronized": False,
+        "ntp_service": False,
+        "server_name": None,
+        "server_address": None,
+        "fallback_servers": [],
+        "runtime_servers": [],
+        "poll_interval": None,
+        "frequency": None,
+        "source": "unknown",
+    }
+
+    try:
+        show = _parse_keyvalue(
+            run_command(
+                ["timedatectl", "show", "-p", "NTP", "-p", "NTPSynchronized"],
+                raise_on_fail=False,
+            ).stdout
+        )
+        result["ntp_service"] = show.get("NTP", "no").lower() == "yes"
+        result["synchronized"] = show.get("NTPSynchronized", "no").lower() == "yes"
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.debug("get_ntp: timedatectl show failed: %r", exc)
+
+    try:
+        timesync = _parse_keyvalue(
+            run_command(["timedatectl", "show-timesync"], raise_on_fail=False).stdout
+        )
+        result["server_name"] = timesync.get("ServerName") or None
+        result["server_address"] = timesync.get("ServerAddress") or None
+        result["fallback_servers"] = timesync.get("FallbackNTPServers", "").split()
+        result["poll_interval"] = timesync.get("PollIntervalUSec") or None
+        result["frequency"] = _parse_int(timesync.get("Frequency"))
+    except (RunCommandError, subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.debug("get_ntp: timedatectl show-timesync failed: %r", exc)
+
+    runtime = _runtime_ntp_servers()
+    result["runtime_servers"] = runtime
+    if runtime:
+        result["source"] = "dhcp"
+    elif result["server_name"] or result["server_address"]:
+        result["source"] = "default"
+
+    log.debug("get_ntp: %s", result)
+    return result
+
+
 @lru_cache(maxsize=1)
 def _timezone_names() -> tuple[str, ...]:
     """Load the static tzdata name set once per service process."""
