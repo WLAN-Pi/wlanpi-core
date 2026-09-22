@@ -160,7 +160,11 @@ def test_get_dhcp_leases_reads_files(tmp_path):
         'lease {\n  interface "eth0";\n  fixed-address 10.10.0.163;\n}\n'
     )
 
-    result = dhcp.get_dhcp_leases(lease_dir=tmp_path)
+    with patch(
+        "wlanpi_core.network.dhcp.run_command",
+        return_value=CommandResult("", "", 1),
+    ):
+        result = dhcp.get_dhcp_leases(lease_dir=tmp_path)
 
     assert result["source"] == str(tmp_path)
     assert len(result["leases"]) == 1
@@ -170,9 +174,40 @@ def test_get_dhcp_leases_reads_files(tmp_path):
 
 def test_get_dhcp_leases_missing_dir(tmp_path):
     missing = tmp_path / "nope"
-    result = dhcp.get_dhcp_leases(lease_dir=missing)
+    with patch(
+        "wlanpi_core.network.dhcp.run_command",
+        return_value=CommandResult("", "", 1),
+    ):
+        result = dhcp.get_dhcp_leases(lease_dir=missing)
     assert result["leases"] == []
     assert "error" in result
+
+
+def test_get_dhcp_leases_reads_networkmanager():
+    output = """GENERAL.DEVICE:eth0
+DHCP4.OPTION[1]:ip_address = 192.168.6.63
+DHCP4.OPTION[2]:dhcp_server_identifier = 192.168.6.1
+DHCP4.OPTION[3]:domain_name_servers = 9.9.9.9 1.0.0.1
+
+GENERAL.DEVICE:wlan0
+"""
+    with patch(
+        "wlanpi_core.network.dhcp.run_command",
+        return_value=CommandResult(output, "", 0),
+    ):
+        result = dhcp.get_dhcp_leases()
+
+    assert result == {
+        "leases": [
+            {
+                "interface": "eth0",
+                "ip_address": "192.168.6.63",
+                "dhcp_server_identifier": "192.168.6.1",
+                "domain_name_servers": "9.9.9.9 1.0.0.1",
+            }
+        ],
+        "source": "NetworkManager",
+    }
 
 
 def test_parse_lease_blocks():
