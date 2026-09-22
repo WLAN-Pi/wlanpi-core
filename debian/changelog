@@ -1,3 +1,16 @@
+wlanpi-core (2.3.1-1) unstable; urgency=medium
+
+  * Add WLAN_MANAGEMENT=auto|manual and GET /system/ntp.
+    WLAN_MANAGEMENT lets operators and automation tell core to stop
+    managing Wi-Fi interfaces: startup skips network namespace
+    initialization and monitor pairs, and activate/deactivate/revert
+    return 409. Invalid values fall back to auto so startup is never
+    broken.  GET /system/ntp reports systemd-timesyncd clock state
+    (synchronized, service, server and source, fallback/runtime servers,
+    poll interval).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 00:21:34 -0400
+
 wlanpi-core (2.3.0-1) unstable; urgency=medium
 
   * Add /utils/pci to list PCI devices from lspci.
