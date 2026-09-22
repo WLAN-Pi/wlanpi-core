@@ -13,7 +13,12 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.conftest import hardware_success_mocks, write_json_config
+from tests.conftest import (
+    JOSH_THREE_RADIO,
+    hardware_success_mocks,
+    live_adapter_inventory_mocks,
+    write_json_config,
+)
 from tests.scenarios.loader import Scenario
 from wlanpi_core.connection.monitor import (
     ConnectionMonitor,
@@ -26,6 +31,7 @@ from wlanpi_core.models.network_config_errors import (
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
+    NetConfig,
     NetConfigUpdate,
     NetSecurity,
     NetworkModeEnum,
@@ -329,18 +335,25 @@ def handle_files_all_configs_deleted(namespace_service, netcfg_env, scenario: Sc
     assert (netcfg_env["cfg_dir"] / "default.json").exists()
 
 
-def handle_default_hardcoded_no_file(namespace_service, netcfg_env, scenario: Scenario):
+def handle_default_created_when_missing(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#237: missing default.json must follow live iface→phy, not phy0/phy1 parity."""
     assert not (netcfg_env["cfg_dir"] / "default.json").exists()
-    from wlanpi_core.schemas.network.network import NetworkSetupLog, NetworkSetupStatus
-
-    ok_status = NetworkSetupStatus(
-        status="provisioned",
-        response=NetworkSetupLog(selectErr="", eventLog=[]),
-        connectedNet=None,
-        input="",
-    )
-    with patch.object(nc.ns, "activate_config", return_value=ok_status):
-        assert nc.activate_config("default", override_active=True) is True
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        loaded = nc.get_config("default")
+        ok = nc.activate_config("default", override_active=True)
+        added = inventory.added_phy("wlan1")
+    assert (netcfg_env["cfg_dir"] / "default.json").exists()
+    live_phy = {iface: meta["phy"] for iface, meta in JOSH_THREE_RADIO.items()}
+    for root in loaded.roots or []:
+        if root.interface in live_phy:
+            assert root.phy == live_phy[root.interface], (
+                f"{root.interface} mapped to {root.phy}, live is "
+                f"{live_phy[root.interface]}"
+            )
+    assert ok is True
+    assert added in (None, "phy2"), f"wlan1 recreated on wrong radio: {added}"
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
@@ -915,8 +928,134 @@ def handle_files_apps_json_missing_orb(
     start_app.assert_called_once_with("orb_ns", "orb")
 
 
+def handle_stale_phy_iface_on_other_radio(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236: stored phy1 for wlan1 while live wiphy is phy2 must not steal phy1."""
+    _write_netconfig(
+        netcfg_env,
+        "stale_phy_cfg",
+        roots=[
+            _root(interface="wlan1", phy="phy1", iface_display_name="wlan1").model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("stale_phy_cfg", override_active=True) is True
+        added = inventory.added_phy("wlan1")
+    assert added in (None, "phy2"), (
+        f"#236: _prepare_root created wlan1 on {added}, expected live phy2 or no add"
+    )
+
+
+def handle_phy_index_neq_iface_index(namespace_service, netcfg_env, scenario: Scenario):
+    """Control: non-parity indexes succeed when cfg.phy matches live."""
+    _write_netconfig(
+        netcfg_env,
+        "live_map_cfg",
+        roots=[
+            _root(interface="wlan0", phy="phy0", iface_display_name="wlan0").model_dump(
+                mode="json"
+            ),
+            _root(interface="wlan1", phy="phy2", iface_display_name="wlan1").model_dump(
+                mode="json"
+            ),
+            _root(interface="wlan2", phy="phy1", iface_display_name="wlan2").model_dump(
+                mode="json"
+            ),
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("live_map_cfg", override_active=True) is True
+        assert inventory.added_phy("wlan1") != "phy1"
+        assert inventory.added_phy("wlan2") != "phy2"
+
+
+def handle_prepare_missing_phy_after_delete(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236: missing cfg.phy must not leave the live iface deleted."""
+    _write_netconfig(
+        netcfg_env,
+        "missing_phy_cfg",
+        roots=[
+            _root(interface="wlan1", phy="phy9", iface_display_name="wlan1").model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        nc.activate_config("missing_phy_cfg", override_active=True)
+        deleted = any(name == "wlan1" for name, _ns in inventory.deleted)
+        restored = inventory.added_phy("wlan1") == "phy2"
+    assert not deleted or restored, (
+        "#236: deleted wlan1 before validating phy9 and did not restore on live phy2"
+    )
+
+
+def handle_stale_phy_namespace_wrong_radio(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#236 namespace twin: do not move phy1 when wlan1 lives on phy2."""
+    _write_netconfig(
+        netcfg_env,
+        "stale_ns_cfg",
+        namespaces=[
+            _ns(
+                "lab_ns",
+                interface="wlan1",
+                phy="phy1",
+                iface_display_name="wlan1",
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("stale_ns_cfg", override_active=True) is True
+        moved = inventory.last_moved_phy()
+    assert moved == "phy2", (
+        f"#236: _prepare_namespace moved {moved}, expected live phy2"
+    )
+
+
+def handle_default_single_radio_no_500(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#202: activate default on a single-radio device must persist, not fail."""
+    single = {"wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"}}
+    with live_adapter_inventory_mocks(single):
+        ok = nc.activate_config("default", override_active=True)
+    assert ok is True, (
+        "#202: activate default returned False on single-radio "
+        "(hardcoded wlan1 and/or fake WPA2)"
+    )
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_create_profile_snapshots_mac(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Jake pin: first profile using wlan1 snapshots the live MAC."""
+    cfg = NetConfig(
+        id="pin_wlan1",
+        namespaces=[],
+        roots=[
+            _root(interface="wlan1", phy="phy1", iface_display_name="wlan1"),
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        assert nc.add_config(cfg) is True
+        loaded = nc.get_config("pin_wlan1")
+    dumped = loaded.roots[0].model_dump()
+    mac = dumped.get("mac")
+    expected = JOSH_THREE_RADIO["wlan1"]["mac"]
+    assert mac == expected, (
+        f"#237: add_config did not snapshot live MAC; got {mac!r}, expected {expected}"
+    )
+
+
 HANDLERS = {
-    "default_hardcoded_no_file": handle_default_hardcoded_no_file,
+    "default_created_when_missing": handle_default_created_when_missing,
     "default_file_override": handle_default_file_override,
     "dual_ns_split_adapters": handle_dual_ns_split_adapters,
     "move_wlan1_to_ns_orb_no_security": handle_move_wlan1_to_ns_orb_no_security,
@@ -957,6 +1096,12 @@ HANDLERS = {
     "files_all_configs_deleted": handle_files_all_configs_deleted,
     "list_configs_malformed_annotation": handle_list_configs_malformed_annotation,
     "files_apps_json_missing_orb": handle_files_apps_json_missing_orb,
+    "stale_phy_iface_on_other_radio": handle_stale_phy_iface_on_other_radio,
+    "phy_index_neq_iface_index": handle_phy_index_neq_iface_index,
+    "prepare_missing_phy_after_delete": handle_prepare_missing_phy_after_delete,
+    "stale_phy_namespace_wrong_radio": handle_stale_phy_namespace_wrong_radio,
+    "default_single_radio_no_500": handle_default_single_radio_no_500,
+    "create_profile_snapshots_mac": handle_create_profile_snapshots_mac,
 }
 
 

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -236,6 +238,142 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
     finally:
         for p in reversed(started):
             p.stop()
+
+
+@dataclass
+class InventoryRecorder:
+    """Live iface→phy→MAC map plus recorded prepare mutations."""
+
+    adapters: dict[str, dict[str, str]]
+    deleted: list[tuple[str, str | None]] = field(default_factory=list)
+    adds: list[tuple[str, str]] = field(default_factory=list)
+    phy_moves: list[tuple[str, str]] = field(default_factory=list)
+    commands: list[list[str]] = field(default_factory=list)
+
+    def phys(self) -> list[str]:
+        return sorted({meta["phy"] for meta in self.adapters.values()})
+
+    def added_phy(self, iface: str) -> str | None:
+        matches = [phy for phy, name in self.adds if name == iface]
+        return matches[-1] if matches else None
+
+    def last_moved_phy(self) -> str | None:
+        return self.phy_moves[-1][0] if self.phy_moves else None
+
+
+# Josh's 3-radio boot (#236): BE200 phy0/wlan0, mt7921u phy1/wlan2, MT7612U phy2/wlan1.
+JOSH_THREE_RADIO: dict[str, dict[str, str]] = {
+    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"},
+    "wlan1": {"phy": "phy2", "mac": "00:11:22:33:44:01"},
+    "wlan2": {"phy": "phy1", "mac": "00:11:22:33:44:02"},
+}
+
+
+@contextmanager
+def live_adapter_inventory_mocks(adapters: dict[str, dict[str, str]] | None = None):
+    """Stub a live iface/phy/MAC inventory and record delete, add, and phy move.
+
+    Unlike hardware_success_mocks, this exposes which PHY received
+    `iw phy <phy> interface add <iface>` so identity-mismatch rows can assert
+    the mapping instead of only `activate_config is True`.
+    """
+    adapters = adapters or dict(JOSH_THREE_RADIO)
+    recorder = InventoryRecorder(adapters=adapters)
+
+    def _move_phy(phy_name: str, namespace: str) -> None:
+        recorder.phy_moves.append((phy_name, namespace))
+        if phy_name not in recorder.phys():
+            raise RunCommandError(f"{phy_name} does not exist", 1)
+        return None
+
+    def _delete(iface: str, namespace: str | None = None) -> None:
+        recorder.deleted.append((iface, namespace))
+        return None
+
+    def _run_command(
+        cmd: list[str], raise_on_fail: bool = True, **kwargs: Any
+    ) -> CommandResult:
+        parts = [str(item) for item in cmd]
+        recorder.commands.append(parts)
+        joined = parts[1:] if parts and parts[0] == "sudo" else parts
+
+        if joined == ["iw", "phy"]:
+            stdout = "\n".join(f"Wiphy {phy}" for phy in recorder.phys()) + "\n"
+            return CommandResult(stdout=stdout, stderr="", return_code=0)
+
+        if (
+            len(joined) >= 6
+            and joined[0:2] == ["iw", "phy"]
+            and joined[3:5] == ["interface", "add"]
+        ):
+            recorder.adds.append((joined[2], joined[5]))
+            return CommandResult(stdout="", stderr="", return_code=0)
+
+        if "set" in joined and "netns" in joined:
+            try:
+                phy_name = joined[joined.index("phy") + 1]
+            except (ValueError, IndexError):
+                phy_name = ""
+            if phy_name not in recorder.phys():
+                raise RunCommandError(f"{phy_name} does not exist", 1)
+            return CommandResult(stdout="", stderr="", return_code=0)
+
+        if len(joined) >= 4 and joined[0:2] == ["iw", "dev"] and joined[-1] == "info":
+            iface = joined[2]
+            meta = recorder.adapters.get(iface)
+            if meta is None:
+                raise RunCommandError("No such device", 1)
+            wiphy = meta["phy"].removeprefix("phy")
+            stdout = (
+                f"Interface {iface}\n"
+                f"\taddr {meta['mac']}\n"
+                f"\ttype managed\n"
+                f"\twiphy {wiphy}\n"
+            )
+            return CommandResult(stdout=stdout, stderr="", return_code=0)
+
+        if len(joined) >= 4 and joined[0:2] == ["iw", "phy"] and joined[-1] == "info":
+            phy_name = joined[2]
+            mac = next(
+                (
+                    meta["mac"]
+                    for meta in recorder.adapters.values()
+                    if meta["phy"] == phy_name
+                ),
+                None,
+            )
+            if mac is None:
+                raise RunCommandError("No such device", 1)
+            stdout = f"Wiphy {phy_name}\n\taddr {mac}\n"
+            return CommandResult(stdout=stdout, stderr="", return_code=0)
+
+        return CommandResult(stdout="", stderr="", return_code=0)
+
+    with hardware_success_mocks(
+        interfaces=list(adapters),
+        phy_move_side_effect=_move_phy,
+    ):
+        with patch(
+            "wlanpi_core.services.network_namespace_service.interface.delete_interface",
+            side_effect=_delete,
+        ):
+            with patch(
+                "wlanpi_core.services.network_namespace_service.phy.list_phys",
+                side_effect=lambda namespace=None: (
+                    recorder.phys()
+                    if namespace is None
+                    else [
+                        phy_name
+                        for phy_name, ns_name in recorder.phy_moves
+                        if ns_name == namespace
+                    ]
+                ),
+            ):
+                with patch(
+                    "wlanpi_core.services.network_namespace_service.run_command",
+                    side_effect=_run_command,
+                ):
+                    yield recorder
 
 
 def write_json_config(cfg_dir: Path, cfg_id: str, payload: dict) -> Path:
