@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches:
+      - dev
       - main
 
 permissions:
@@ -45,7 +46,7 @@ jobs:
         run: |
           python scripts/export_openapi.py
           if ! git diff --exit-code docs/openapi.json; then
-            echo "::error::docs/openapi.json is stale. Merge the open 'chore: update generated OpenAPI reference' PR into dev, or run scripts/export_openapi.py on dev and commit the result."
+            echo "::error::docs/openapi.json is stale. Run scripts/export_openapi.py and commit the result in this PR, or (if this PR targets main) merge the open 'chore: update generated OpenAPI reference' PR into dev first."
             exit 1
           fi
 

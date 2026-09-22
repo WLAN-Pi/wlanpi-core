@@ -51,7 +51,7 @@ PrivateTmp=false
 # process restart. Bounded by StartLimit* in [Unit] above.
 Restart=on-failure
 RestartSec=2
-NotifyAccess=all
+NotifyAccess=main
 
 [Install]
 WantedBy=multi-user.target
