@@ -15,12 +15,29 @@
 set -eu
 
 # Keep in sync with wlanpi_core.constants.SECRETS_DIR
-STATE_DIR="/home/wlanpi/.local/share/wlanpi-core/secrets"
+WLANPI_HOME="/home/wlanpi"
+STATE_DIR="$WLANPI_HOME/.local/share/wlanpi-core/secrets"
 
 fail() {
     echo "wlanpi-core-preflight: FATAL: $1" >&2
     exit 1
 }
+
+# ~/.local and ~/.local/share are the wlanpi user's XDG data home, shared
+# with other wlanpi apps. This probe runs as root before wlanpi-core's own
+# Python startup, so on a truly fresh boot it would otherwise be the first
+# thing to auto-vivify them via `mkdir -p` below -- leaving them root-owned
+# and locking the wlanpi user out of their own data home. Reclaim them for
+# wlanpi:wlanpi first; only .local/share/wlanpi-core itself (created next)
+# is meant to be root-owned.
+for d in "$WLANPI_HOME/.local" "$WLANPI_HOME/.local/share"; do
+    if [ ! -d "$d" ]; then
+        mkdir -m 0755 "$d" 2>/dev/null || fail "cannot create $d"
+        chown wlanpi:wlanpi "$d" 2>/dev/null || fail "cannot chown $d to wlanpi:wlanpi"
+    elif [ "$(stat -c %U:%G "$d" 2>/dev/null)" != "wlanpi:wlanpi" ]; then
+        chown wlanpi:wlanpi "$d" 2>/dev/null || fail "cannot chown $d to wlanpi:wlanpi"
+    fi
+done
 
 # Create the tree if missing (mkdir -p is idempotent). SecurityManager also
 # does this in-process, but doing it here lets the probe below be meaningful on

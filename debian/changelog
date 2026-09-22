@@ -1,3 +1,14 @@
+wlanpi-core (2.3.6-1) unstable; urgency=medium
+
+  * Fix wlanpi-core auto-vivifying ~/.local and ~/.local/share as root:root
+    on a fresh boot, locking the wlanpi user out of their own XDG data home.
+    Both the preflight probe and app startup now reclaim wlanpi:wlanpi
+    ownership of those two directories before touching anything under
+    .local/share/wlanpi-core, which remains root-owned; postinst applies the
+    same fix to existing installs on upgrade.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 14:00:00 -0500
+
 wlanpi-core (2.3.5-1) unstable; urgency=medium
 
   * Populate GET /network/dhcp/leases from NetworkManager's public nmcli
