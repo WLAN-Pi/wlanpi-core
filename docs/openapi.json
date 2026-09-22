@@ -3910,7 +3910,6 @@
           },
           "paired_devices": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -4211,7 +4210,6 @@
         "properties": {
           "leases": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -5662,7 +5660,6 @@
           "errors": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -5936,27 +5933,6 @@
         "type": "object",
         "title": "Pci",
         "description": "List of detected PCI devices."
-      },
-      "PciDevice": {
-        "properties": {
-          "pci_id": {
-            "type": "string",
-            "title": "Pci Id",
-            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "Human-readable lspci device line"
-          }
-        },
-        "type": "object",
-        "required": [
-          "pci_id",
-          "description"
-        ],
-        "title": "PciDevice",
-        "description": "A PCI device from lspci."
       },
       "PhyCapabilities": {
         "properties": {
@@ -6506,7 +6482,6 @@
           },
           "routes": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -6636,7 +6611,6 @@
           },
           "candidates": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -6663,7 +6637,6 @@
           },
           "candidates": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "type": "array",
@@ -7430,13 +7403,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",
@@ -7904,7 +7870,7 @@
           },
           "pci_devices": {
             "items": {
-              "$ref": "#/components/schemas/PciDevice"
+              "$ref": "#/components/schemas/wlanpi_core__schemas__network__primitives__PciDevice"
             },
             "type": "array",
             "title": "Pci Devices",
@@ -8062,6 +8028,27 @@
         "type": "object",
         "title": "WlanUsbDriversResponse",
         "description": "USB-attached WLAN adapters and their drivers."
+      },
+      "wlanpi_core__schemas__network__primitives__PciDevice": {
+        "properties": {
+          "pci_id": {
+            "type": "string",
+            "title": "Pci Id",
+            "description": "lspci BDF prefix, e.g. 0000:01:00.0"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable lspci device line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pci_id",
+          "description"
+        ],
+        "title": "PciDevice",
+        "description": "A PCI device from lspci."
       },
       "wlanpi_core__schemas__utils__utils__PciDevice": {
         "properties": {
