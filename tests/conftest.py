@@ -310,8 +310,11 @@ class Iface:
     phy: str
     netns: str | None = None
     type: str = "managed"
-    # Kernel ifindex: survives a netns move; newer netdevs get higher ones.
+    # Kernel ifindex, per netns: a netns move gives a new one here (the worst
+    # case on a real kernel, which keeps it only if it is free in the target).
     ifindex: int = 0
+    # cfg80211 wdev id: survives netns moves; newer netdevs get higher ones.
+    wdev: int = 0
     # Administratively up (`ip link set <iface> up`); new netdevs start down.
     up: bool = False
     # A program has a packet socket bound to it (capturing, e.g. profiler).
@@ -345,6 +348,7 @@ class InventoryRecorder:
     commands: list[tuple[str | None, list[str]]] = field(default_factory=list)
     unrecognised: list[tuple[str | None, list[str]]] = field(default_factory=list)
     next_ifindex: int = 3
+    next_wdev: int = 3
     # netns name -> identity; a namespace deleted and re-added gets a new one,
     # like the nsfs inode under /run/netns.
     netns_ids: dict[str, int] = field(default_factory=dict)
@@ -369,6 +373,7 @@ class InventoryRecorder:
                 netns=netns,
                 type=meta.get("type", "managed"),
                 ifindex=ifindex,
+                wdev=ifindex,
                 up=bool(meta.get("up")),
                 bound=bool(meta.get("bound")),
             )
@@ -380,6 +385,7 @@ class InventoryRecorder:
             netns=netns_set,
             faults=dict(faults or {}),
             next_ifindex=3 + len(adapters),
+            next_wdev=3 + len(adapters),
             netns_ids={name: 900 + i for i, name in enumerate(sorted(netns_set))},
         )
 
@@ -469,7 +475,7 @@ class InventoryRecorder:
     def _netns_ifaces(self, netns: str | None) -> list[tuple[str, Iface]]:
         return sorted(
             ((name, meta) for (ns, name), meta in self.ifaces.items() if ns == netns),
-            key=lambda item: item[1].ifindex,
+            key=lambda item: item[1].wdev,
         )
 
     def _iw(
@@ -542,9 +548,14 @@ class InventoryRecorder:
                     raise_on_fail,
                 )
             self.ifaces[(netns, name)] = Iface(
-                phy=phy_name, netns=netns, type=iface_type, ifindex=self.next_ifindex
+                phy=phy_name,
+                netns=netns,
+                type=iface_type,
+                ifindex=self.next_ifindex,
+                wdev=self.next_wdev,
             )
             self.next_ifindex += 1
+            self.next_wdev += 1
             self.adds.append((phy_name, name, netns))
             return self._ok()
         if rest[:2] == ["set", "netns"]:
@@ -564,15 +575,22 @@ class InventoryRecorder:
             return self._ok()
         return self._unrecognised(netns, ["iw", "phy", phy_name, *rest])
 
+    @staticmethod
+    def _wdev_id(meta: Iface) -> int:
+        # Like cfg80211: wiphy index in the high 32 bits.
+        return (int(meta.phy.removeprefix("phy")) << 32) | meta.wdev
+
     def _move_phy(self, phy_name: str, target: str | None) -> None:
         source = self.phy_netns[phy_name]
         travelling = sorted(
             (key for key, meta in self.ifaces.items() if meta.phy == phy_name),
-            key=lambda key: self.ifaces[key].ifindex,
+            key=lambda key: self.ifaces[key].wdev,
         )
         for key in travelling:
             meta = self.ifaces.pop(key)
             meta.netns = target
+            meta.ifindex = self.next_ifindex
+            self.next_ifindex += 1
             name = key[1]
             if (target, name) in self.ifaces:
                 # The kernel does not refuse the move; it renames the
@@ -603,6 +621,7 @@ class InventoryRecorder:
                 lines += [
                     f"\tInterface {name}",
                     f"\t\tifindex {meta.ifindex}",
+                    f"\t\twdev 0x{self._wdev_id(meta):x}",
                     f"\t\taddr {self.phy_mac[phy_name]}",
                     f"\t\ttype {meta.type}",
                 ]
@@ -612,6 +631,7 @@ class InventoryRecorder:
         return (
             f"Interface {name}\n"
             f"\tifindex {meta.ifindex}\n"
+            f"\twdev 0x{self._wdev_id(meta):x}\n"
             f"\taddr {self.phy_mac[meta.phy]}\n"
             f"\ttype {meta.type}\n"
             f"\twiphy {meta.phy.removeprefix('phy')}\n"

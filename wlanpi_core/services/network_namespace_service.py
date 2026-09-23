@@ -618,11 +618,12 @@ class NetworkNamespaceService:
     # Core" is exactly "Core's responsibility". Automatic changes (the default
     # configuration) only touch those; netdevs from drivers or other tools
     # (hostapd, wlanpi-profiler, a user's mon0) are left alone. Keyed by
-    # (netns, name) and checked against the ifindex, which a netns move keeps
-    # and a recreate by anyone else changes. On tmpfs, so a reboot resets it.
+    # (netns, name) and checked against the cfg80211 wdev id, which a netns
+    # move keeps (the ifindex may change) and a recreate by anyone else
+    # changes. On tmpfs, so a reboot resets it.
     # A netdev is owned only while a profile uses it: reverting an entry hands
     # it back, since another tool may take it over without recreating it
-    # (wlanpi-profiler reuses the netdev, keeping its ifindex).
+    # (wlanpi-profiler reuses the netdev, keeping its wdev).
 
     def _owned_path(self, name: str, netns: str | None) -> Path:
         return Path(RUN_DIR) / "owned" / (netns or "@root") / name
@@ -630,10 +631,10 @@ class NetworkNamespaceService:
     def _claim(self, name: str, netns: str | None) -> None:
         """Record the netdev Core just created as Core's."""
         for live in discovery.list_interfaces_all_namespaces():
-            if live.name == name and live.netns == netns and live.ifindex is not None:
+            if live.name == name and live.netns == netns and live.wdev is not None:
                 path = self._owned_path(name, netns)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(str(live.ifindex))
+                path.write_text(live.wdev)
                 return
 
     def _release(self, name: str, netns: str | None) -> None:
@@ -641,18 +642,18 @@ class NetworkNamespaceService:
         self._owned_path(name, netns).unlink(missing_ok=True)
 
     def _is_owned(self, live: discovery.LiveInterface) -> bool:
-        """Return whether Core created `live` (same name and ifindex).
+        """Return whether Core created `live` (same name and wdev id).
 
         A netdev moved out of band (e.g. its phy moved back to root by hand)
-        keeps its ifindex; its record is found under the old namespace and
+        keeps its wdev; its record is found under the old namespace and
         re-keyed to where the netdev is now.
         """
-        if live.ifindex is None:
+        if live.wdev is None:
             return False
         here = self._owned_path(live.name, live.netns)
         for path in [here, *sorted(here.parent.parent.glob(f"*/{live.name}"))]:
             try:
-                if path.read_text().strip() != str(live.ifindex):
+                if path.read_text().strip() != live.wdev:
                     continue
             except OSError:
                 continue

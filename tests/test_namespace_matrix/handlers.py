@@ -2413,7 +2413,8 @@ def handle_core_netdev_moved_home_by_hand_still_reverted(
         )
         assert inventory.live()["wlan1"] == ("phy2", None, "monitor")
         assert nc.deactivate_config("ns_cfg") is True
-    # Same ifindex, so still Core's: put back as managed, ns_a removed.
+    # Same wdev (the move changed its ifindex), so still Core's: put back
+    # as managed, ns_a removed.
     assert inventory.live() == JOSH_LIVE
     assert "ns_a" not in inventory.netns
 
