@@ -483,14 +483,9 @@ class NetworkNamespaceService:
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         )  # None = root namespace
 
-        # Stop any active connection monitor for this config
+        # Core's processes are found through its pidfiles, so they are stopped
+        # even when the netdev itself is gone (unplugged, deleted, renamed).
         self.stop_connection_monitor(namespace, iface)
-
-        # Check if interface exists in any netns before trying to deactivate
-        if self._find_live(cfg) is None:
-            self.log.info(f"Interface {iface} does not exist, skipping deactivation")
-            return
-
         if cfg.autostart_app:
             apps.stop_app_in_namespace(namespace, pid_dir=self.pid_dir)
         if cfg.security:
@@ -502,6 +497,9 @@ class NetworkNamespaceService:
                     f"Failed to remove network {iface} in namespace {namespace_display}: {e} (non-critical)"
                 )
 
+        if self._find_live(cfg) is None:
+            self.log.info(f"Interface {iface} does not exist, nothing to revert")
+            return
         if self.may_undo(cfg):
             self.revert_to_root(cfg)
 

@@ -2509,15 +2509,50 @@ def handle_deactivate_in_use_root_still_stops_processes(
         inventory.ifaces[(None, "wlan2profiler")].bound = True
         deleted_before = list(inventory.deleted)
         with (
-            patch.object(nc.ns, "remove_network") as remove,
+            patch(
+                "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant"
+            ) as stop_wpa,
+            patch(
+                "wlanpi_core.services.network_namespace_service.stop_dhcp"
+            ) as stop_dhcp,
             patch.object(nc.ns, "revert_to_root", wraps=nc.ns.revert_to_root) as revert,
         ):
             assert nc.deactivate_config("wpa_cfg") is True
-        remove.assert_called_once_with("wlan2", None)
+        stop_wpa.assert_called_once_with("wlan2", None)
+        stop_dhcp.assert_called_once_with("wlan2", None)
         # The radio itself was handed back, not reverted.
         assert all(call.args[0] is None for call in revert.call_args_list)
     assert inventory.deleted == deleted_before
     assert inventory.live()["wlan2"] == ("phy1", None, "managed")
+
+
+def handle_deactivate_missing_iface_still_stops_processes(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Stop Core's supplicant and dhcpcd even when the netdev is gone (unplugged)."""
+    _write_netconfig(
+        netcfg_env,
+        "wpa_cfg",
+        roots=[
+            _root(interface="wlan2", phy="phy1", security=_security("lab")).model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("wpa_cfg", override_active=True) is True
+        inventory.run_command(["sudo", "/sbin/iw", "dev", "wlan2", "del"])
+        with (
+            patch(
+                "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant"
+            ) as stop_wpa,
+            patch(
+                "wlanpi_core.services.network_namespace_service.stop_dhcp"
+            ) as stop_dhcp,
+        ):
+            assert nc.deactivate_config("wpa_cfg") is True
+        stop_wpa.assert_called_once_with("wlan2", None)
+        stop_dhcp.assert_called_once_with("wlan2", None)
 
 
 HANDLERS = {
@@ -2595,6 +2630,7 @@ HANDLERS = {
     "in_use_ignores_managed_sibling_bound": handle_in_use_ignores_managed_sibling_bound,
     "in_use_ignores_core_monitor_capturing": handle_in_use_ignores_core_monitor_capturing,
     "deactivate_in_use_root_still_stops_processes": handle_deactivate_in_use_root_still_stops_processes,
+    "deactivate_missing_iface_still_stops_processes": handle_deactivate_missing_iface_still_stops_processes,
     "core_netdev_moved_home_by_hand_still_reverted": handle_core_netdev_moved_home_by_hand_still_reverted,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
