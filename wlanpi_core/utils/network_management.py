@@ -7,29 +7,11 @@ in namespaces.
 
 import logging
 import time
-from pathlib import Path
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
-
-
-def write_dhcp_config(iface: str, dhcp_dir: Path) -> None:
-    """
-    Write DHCP configuration file for an interface.
-
-    Args:
-        iface: Interface name
-        dhcp_dir: Directory for DHCP configuration files
-
-    Examples:
-        >>> write_dhcp_config("wlan0", Path("/etc/network/interfaces.d"))
-    """
-    dhcp_dir.mkdir(parents=True, exist_ok=True)
-    dhcp_path = dhcp_dir / f"{iface}.cfg"
-    dhcp_path.write_text(f"allow-hotplug {iface}\niface {iface} inet dhcp\n")
-    log.debug(f"Wrote DHCP config to {dhcp_path}")
 
 
 def restart_dhcp_with_timeout(

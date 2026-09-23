@@ -385,6 +385,11 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     for field, value in config_update.model_dump().items():
         if value is not None and field != "cfg_id":
             setattr(cfg, field, value)
+    # setattr skips model validation; re-run it (uniqueness across entries)
+    try:
+        cfg = NetConfig.model_validate(cfg.model_dump())
+    except PydanticValidationError as e:
+        raise ValidationError(str(e), status_code=422) from None
 
     # Write updated config back to file
     path.write_text(cfg.model_dump_json(indent=4))

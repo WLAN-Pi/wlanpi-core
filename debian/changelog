@@ -1,3 +1,20 @@
+wlanpi-core (2.3.12-1) unstable; urgency=medium
+
+  * Key wpa_supplicant runtime state by (namespace, interface): the config,
+    log and pidfile live under /run/wlanpi-core/wpa_supplicant/<netns>/, and
+    supplicants in a namespace get their own control socket directory, so
+    the same interface name in two namespaces no longer shares one (#273).
+  * Write each supplicant config with only that entry's network, mode 0600,
+    instead of merging networks from earlier profiles into
+    /etc/wpa_supplicant/<iface>.conf.
+  * Stop writing /etc/network/interfaces.d/<iface>.cfg.
+  * Give each Core namespace /etc/netns/<ns>/resolv.conf so DHCP inside it
+    cannot rewrite the root /etc/resolv.conf.
+  * Reject a profile whose entries share an interface, use another entry's
+    interface as a display name, or reuse a name within one namespace.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:35:43 -0500
+
 wlanpi-core (2.3.11-1) unstable; urgency=medium
 
   * Only return and delete network namespaces Core created, recorded by a

@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 from wlanpi_core.constants import RUN_DIR
-from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
@@ -21,14 +20,51 @@ log = logging.getLogger(__name__)
 _ROOT_DIR_NAME = "@root"
 
 
+# Root keeps the conventional control directory so plain `wpa_cli` works.
+ROOT_CTRL_DIR = "/run/wpa_supplicant"
+
+
+def runtime_dir(namespace: str | None) -> Path:
+    """Return Core's runtime directory for supplicants in `namespace`."""
+    return Path(RUN_DIR) / "wpa_supplicant" / (namespace or _ROOT_DIR_NAME)
+
+
 def pidfile_path(iface: str, namespace: str | None) -> Path:
     """Return the pidfile Core uses for the supplicant on (namespace, iface)."""
-    return (
-        Path(RUN_DIR)
-        / "wpa_supplicant"
-        / (namespace or _ROOT_DIR_NAME)
-        / f"{iface}.pid"
-    )
+    return runtime_dir(namespace) / f"{iface}.pid"
+
+
+def config_path(iface: str, namespace: str | None) -> Path:
+    """Return the wpa_supplicant config Core writes for (namespace, iface)."""
+    return runtime_dir(namespace) / f"{iface}.conf"
+
+
+def log_path(iface: str, namespace: str | None) -> Path:
+    """Return the wpa_supplicant log for (namespace, iface)."""
+    return runtime_dir(namespace) / f"{iface}.log"
+
+
+def ctrl_dir(namespace: str | None) -> str:
+    """Return the control socket directory for supplicants Core runs in `namespace`.
+
+    /run is shared by every netns, so namespaced supplicants get their own
+    directory; otherwise wlan1 in two namespaces would share one socket.
+    """
+    if namespace is None:
+        return ROOT_CTRL_DIR
+    return str(runtime_dir(namespace) / "ctrl")
+
+
+def wpa_cli_command(iface: str, namespace: str | None, *args: str) -> list[str]:
+    """Build a wpa_cli command for (namespace, iface).
+
+    Uses Core's control directory when Core's supplicant owns the interface,
+    and the default directory otherwise (a supplicant started by another tool).
+    """
+    ctrl = ctrl_dir(namespace)
+    if namespace is not None and not (Path(ctrl) / iface).exists():
+        ctrl = ROOT_CTRL_DIR
+    return ["wpa_cli", "-p", ctrl, "-i", iface, *args]
 
 
 def _read_cmdline(pid: int) -> list[str]:
@@ -92,26 +128,22 @@ def stop_namespace_supplicants(namespace: str) -> None:
         _stop_pidfile(path)
 
 
-def start_or_restart_supplicant(
-    iface: str,
-    namespace: str | None,
-    config_path: Path,
-    ctrl_interface: str = "/run/wpa_supplicant",
-) -> None:
+def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
     """
     Start or restart wpa_supplicant for an interface.
+
+    The config must already be written to config_path(iface, namespace). The
+    pidfile, log, and control socket are all keyed by (namespace, iface).
 
     Args:
         iface: Interface name
         namespace: Network namespace name, or None for root
-        config_path: Path to wpa_supplicant configuration file
-        ctrl_interface: Control interface directory
 
     Raises:
         RunCommandError: If wpa_supplicant fails to start
 
     Examples:
-        >>> start_or_restart_supplicant("wlan0", "test_ns", Path("/etc/wpa_supplicant/wlan0.conf"))
+        >>> start_or_restart_supplicant("wlan0", "test_ns")
     """
     namespace_display = namespace if namespace else "root"
     log.info(
@@ -121,21 +153,15 @@ def start_or_restart_supplicant(
     # Stop the supplicant Core previously started for this (namespace, iface)
     stop_supplicant(iface, namespace)
 
-    # Remove control interface socket
-    try:
-        ns_exec(["rm", "-f", f"{ctrl_interface}/{iface}"], namespace=namespace)
-    except RunCommandError:
-        pass  # May not exist, that's okay
+    # Remove a stale control socket left by a supplicant that died
+    (Path(ctrl_dir(namespace)) / iface).unlink(missing_ok=True)
 
-    # Prepare log file
-    log_file = Path(f"/tmp/wpa-{iface}.log")
-    if log_file.exists():
-        log_file.unlink()
+    runtime_dir(namespace).mkdir(mode=0o700, parents=True, exist_ok=True)
+    log_file = log_path(iface, namespace)
+    log_file.unlink(missing_ok=True)
     log_file.touch()
 
     # Start wpa_supplicant, recording its PID for targeted teardown
-    pidfile = pidfile_path(iface, namespace)
-    pidfile.parent.mkdir(parents=True, exist_ok=True)
     ns_exec(
         [
             "wpa_supplicant",
@@ -143,14 +169,14 @@ def start_or_restart_supplicant(
             "-i",
             iface,
             "-c",
-            str(config_path),
+            str(config_path(iface, namespace)),
             "-D",
             "nl80211",
             "-f",
-            f"/tmp/wpa-{iface}.log",
+            str(log_file),
             "-t",
             "-P",
-            str(pidfile),
+            str(pidfile_path(iface, namespace)),
         ],
         namespace=namespace,
     )
@@ -158,12 +184,13 @@ def start_or_restart_supplicant(
     log.info(f"wpa_supplicant started for {iface} in namespace {namespace_display}")
 
 
-def parse_wpa_log(iface: str, timeout: int = 30) -> None:
+def parse_wpa_log(iface: str, namespace: str | None = None, timeout: int = 30) -> None:
     """
     Parse wpa_supplicant log file waiting for connection completion.
 
     Args:
         iface: Interface name
+        namespace: Network namespace name, or None for root
         timeout: Maximum time to wait in seconds
 
     Raises:
@@ -173,7 +200,7 @@ def parse_wpa_log(iface: str, timeout: int = 30) -> None:
         >>> parse_wpa_log("wlan0", timeout=30)
     """
     start_time = time.time()
-    log_file = Path(f"/tmp/wpa-{iface}.log")
+    log_file = log_path(iface, namespace)
 
     if not log_file.exists():
         log.warning(f"WPA log file {log_file} does not exist")

@@ -12,6 +12,7 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.utils.validation import validate_interface_name
 from wlanpi_core.wpa.scan import fetch_scan_results, find_bss, parse_wpa_scan_results
+from wlanpi_core.wpa.supplicant import wpa_cli_command
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
     try:
         wpa_status = {}
         wpa = ns_exec(
-            ["wpa_cli", "-i", iface, "status"],
+            wpa_cli_command(iface, namespace, "status"),
             namespace=namespace,
         ).stdout.strip()
 

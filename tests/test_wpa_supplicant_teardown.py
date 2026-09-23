@@ -1,8 +1,10 @@
-"""Pidfile-based wpa_supplicant teardown (#269).
+"""wpa_supplicant runtime state and teardown (#269, #273).
 
 Core must only stop supplicants it started: the one named in its pidfile for
 a (namespace, iface), checked against /proc to survive PID reuse. A host-wide
-`pkill -f wpa_supplicant` would also kill NetworkManager's supplicant.
+`pkill -f wpa_supplicant` would also kill NetworkManager's supplicant. Every
+runtime file (pidfile, config, log, control socket) is keyed by
+(namespace, iface), because /run and /tmp are shared by every namespace.
 """
 
 from __future__ import annotations
@@ -158,19 +160,80 @@ def test_kill_all_stops_core_supplicants_only(run_dir, procs):
     assert sorted(procs.procs) == [12, 13]
 
 
-def test_start_records_pidfile_and_stops_previous(run_dir, procs, tmp_path):
+def test_start_records_pidfile_and_stops_previous(run_dir, procs):
     old = supplicant.pidfile_path("wlan1", "lab_ns")
     _write_pid(old, 100)
     procs.procs[100] = _core_argv("wlan1", old)
 
     with patch.object(supplicant, "ns_exec") as ns_exec:
-        supplicant.start_or_restart_supplicant(
-            "wlan1", "lab_ns", tmp_path / "wlan1.conf"
-        )
+        supplicant.start_or_restart_supplicant("wlan1", "lab_ns")
 
     assert procs.killed == [100]
     start = ns_exec.call_args_list[-1]
     argv = start.args[0]
-    assert argv[argv.index("-P") + 1] == str(old)
+    runtime = run_dir / "wpa_supplicant" / "lab_ns"
+    assert argv[argv.index("-P") + 1] == str(runtime / "wlan1.pid")
+    assert argv[argv.index("-c") + 1] == str(runtime / "wlan1.conf")
+    assert argv[argv.index("-f") + 1] == str(runtime / "wlan1.log")
     assert start.kwargs["namespace"] == "lab_ns"
-    assert old.parent.is_dir()
+
+
+# --- runtime state keyed by (namespace, iface) (#273) ---
+
+
+def test_runtime_paths_do_not_collide_across_namespaces(run_dir):
+    paths = {
+        ns: (
+            supplicant.config_path("wlan1", ns),
+            supplicant.log_path("wlan1", ns),
+            supplicant.ctrl_dir(ns),
+        )
+        for ns in (None, "ns_a", "ns_b")
+    }
+    flat = [str(p) for triple in paths.values() for p in triple]
+    assert len(flat) == len(set(flat))
+    assert supplicant.ctrl_dir(None) == "/run/wpa_supplicant"
+
+
+def test_wpa_cli_uses_core_ctrl_dir_only_when_core_owns_the_socket(run_dir):
+    assert supplicant.wpa_cli_command("wlan1", "ns_a", "status") == [
+        "wpa_cli",
+        "-p",
+        "/run/wpa_supplicant",
+        "-i",
+        "wlan1",
+        "status",
+    ]
+    ctrl = Path(supplicant.ctrl_dir("ns_a"))
+    ctrl.mkdir(parents=True)
+    (ctrl / "wlan1").touch()
+    assert supplicant.wpa_cli_command("wlan1", "ns_a", "status")[1:3] == [
+        "-p",
+        str(ctrl),
+    ]
+
+
+def test_wpa_config_holds_one_network_and_is_private(tmp_path):
+    from wlanpi_core.schemas.network.network import NetSecurity, RootConfig
+    from wlanpi_core.wpa.config import write_wpa_config
+
+    def cfg(ssid):
+        return RootConfig(
+            mode="managed",
+            iface_display_name="wlan1",
+            phy="phy1",
+            interface="wlan1",
+            security=NetSecurity(ssid=ssid, security="WPA2-PSK", psk="secret123"),
+            default_route=False,
+            autostart_app=None,
+        )
+
+    path = tmp_path / "wpa" / "wlan1.conf"
+    write_wpa_config(cfg("OldNet"), path, {}, "/run/x/ctrl")
+    write_wpa_config(cfg("NewNet"), path, {}, "/run/x/ctrl")
+
+    text = path.read_text()
+    assert text.count("network={") == 1
+    assert "NewNet" in text and "OldNet" not in text
+    assert "ctrl_interface=/run/x/ctrl" in text
+    assert path.stat().st_mode & 0o777 == 0o600

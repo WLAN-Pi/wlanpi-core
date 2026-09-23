@@ -6,6 +6,7 @@ including global headers and network blocks.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -148,85 +149,40 @@ def generate_network_block(
 
 def write_wpa_config(
     cfg: NamespaceConfig | RootConfig,
-    config_dir: Path,
+    conf_path: Path,
     global_settings: dict[str, Any],
+    ctrl_interface: str,
 ) -> None:
     """
-    Write wpa_supplicant configuration file(s) for an interface.
+    Write the wpa_supplicant configuration for one config entry.
 
-    This function generates both interface.conf and wlan<index>.conf files
-    if the interface follows the wlan pattern.
+    The file holds exactly this entry's network, so a supplicant cannot fall
+    back to a network from an earlier profile. It is created 0600 because it
+    holds the PSK.
 
     Args:
         cfg: Network configuration
-        config_dir: Directory for configuration files
+        conf_path: File to write, keyed by (namespace, iface)
         global_settings: Global settings dictionary
+        ctrl_interface: Control socket directory for this supplicant
 
     Raises:
         ValueError: If security.ssid is required but missing
 
     Examples:
-        >>> write_wpa_config(config, Path("/etc/wpa_supplicant"), {"ctrl_interface": "/run/wpa_supplicant"})
+        >>> write_wpa_config(config, Path("/run/wlanpi-core/wpa_supplicant/@root/wlan0.conf"), {}, "/run/wpa_supplicant")
     """
-    iface = cfg.iface_display_name or cfg.interface
-
-    # Validate security.ssid exists before accessing
     if not cfg.security or not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
         raise ValueError("security.ssid is required when writing config with security")
 
-    # Generate both interface.conf and wlan<index>.conf files
-    conf_files = [config_dir / f"{iface}.conf"]
+    global_header = generate_global_header(
+        ctrl_interface=ctrl_interface,
+        update_config=global_settings.get("update_config", 1),
+    )
+    content = global_header + "\n\n" + generate_network_block(cfg, 1)
 
-    # Add wlan<index>.conf if interface follows wlan pattern
-    if iface.startswith("wlan") and len(iface) > 4:
-        index = iface[4:]
-        if index.isdigit():
-            conf_files.append(config_dir / f"wlan{index}.conf")
-
-    for conf_path in conf_files:
-        # Find max priority
-        max_priority = 0
-        blocks = []
-
-        if conf_path.exists():
-            with conf_path.open() as f:
-                block, in_block = [], False
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("network={"):
-                        in_block = True
-                        block = [line]
-                    elif in_block:
-                        block.append(line)
-                        if line == "}":
-                            blocks.append("\n".join(block))
-                            in_block = False
-
-            for b in blocks:
-                for line in b.splitlines():
-                    if line.strip().startswith("priority="):
-                        try:
-                            max_priority = max(max_priority, int(line.split("=")[1]))
-                        except ValueError:
-                            pass
-
-        new_block = generate_network_block(cfg, max_priority + 1)
-
-        # Case-sensitive SSID removal
-        original_ssid = cfg.security.ssid
-        filtered_blocks = []
-        for b in blocks:
-            if f'ssid="{original_ssid}"' not in b:
-                filtered_blocks.append(b)
-
-        filtered_blocks.insert(0, new_block)
-
-        global_header = generate_global_header(
-            ctrl_interface=global_settings.get("ctrl_interface", "/run/wpa_supplicant"),
-            update_config=global_settings.get("update_config", 1),
-        )
-
-        with conf_path.open("w") as f:
-            f.write(global_header + "\n\n" + "\n\n".join(filtered_blocks))
-
-        log.debug(f"Wrote WPA config to {conf_path}")
+    conf_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    log.debug(f"Wrote WPA config to {conf_path}")

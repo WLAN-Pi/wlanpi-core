@@ -172,26 +172,3 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
             continue
         found += _parse_iw_dev(ns_result.stdout, netns)
     return found
-
-
-def find_interface(names: list[str]) -> LiveInterface | None:
-    """
-    Find the first of `names` that exists as a wireless netdev in any netns.
-
-    Names are tried in order. If one name exists in several namespaces, the
-    root namespace wins and a warning is logged.
-    """
-    inventory = list_interfaces_all_namespaces()
-    for name in names:
-        matches = sorted(
-            (live for live in inventory if live.name == name),
-            key=lambda live: live.netns is not None,
-        )
-        if len(matches) > 1:
-            log.warning(
-                f"Interface {name} exists in several namespaces "
-                f"{[m.netns or 'root' for m in matches]}; using {matches[0].netns or 'root'}"
-            )
-        if matches:
-            return matches[0]
-    return None

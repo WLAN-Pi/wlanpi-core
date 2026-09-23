@@ -14,6 +14,7 @@ from wlanpi_core.constants import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_CTRL_INTERFACE,
     DEFAULT_DHCP_DIR,
+    NETNS_ETC_DIR,
     PID_DIR,
     RUN_DIR,
 )
@@ -34,10 +35,7 @@ from wlanpi_core.schemas.network.network import (
     SecurityTypes,
 )
 from wlanpi_core.utils.namespace_execution import ns_exec
-from wlanpi_core.utils.network_management import (
-    set_default_route,
-    write_dhcp_config,
-)
+from wlanpi_core.utils.network_management import set_default_route
 from wlanpi_core.wpa import config as wpa_config
 from wlanpi_core.wpa import status as wpa_status
 from wlanpi_core.wpa import supplicant as wpa_supplicant
@@ -351,11 +349,13 @@ class NetworkNamespaceService:
                     input=cfg.__str__(),
                 )
 
-            wpa_config.write_wpa_config(cfg, self.config_dir, self.global_settings)
-            write_dhcp_config(iface, self.dhcp_dir)
-            wpa_supplicant.start_or_restart_supplicant(
-                iface, namespace, self.config_dir / f"{iface}.conf", self.ctrl_interface
+            wpa_config.write_wpa_config(
+                cfg,
+                wpa_supplicant.config_path(iface, namespace),
+                self.global_settings,
+                self._ctrl_dir(namespace),
             )
+            wpa_supplicant.start_or_restart_supplicant(iface, namespace)
 
             # Start background connection monitor instead of blocking
             # This allows the method to return immediately with "provisioned" status
@@ -478,24 +478,21 @@ class NetworkNamespaceService:
         namespace_display = namespace if namespace else "root"
         self.log.info("Removing network %s from namespace %s", iface, namespace_display)
 
-        # Fixed: Enhanced cleanup for wlan<index>.conf files
-        config_files_to_remove = [
+        # Runtime config, plus files written by Core before they were keyed
+        # by (namespace, iface) under /run
+        stale = [
+            wpa_supplicant.config_path(iface, namespace),
             self.config_dir / f"{iface}.conf",
             self.dhcp_dir / f"{iface}.cfg",
         ]
-
-        # Add wlan<index>.conf if interface follows pattern
-        if iface.startswith("wlan") and len(iface) > 4:
-            index = iface[4:]
-            if index.isdigit():
-                config_files_to_remove.append(self.config_dir / f"wlan{index}.conf")
-                config_files_to_remove.append(self.dhcp_dir / f"wlan{index}.cfg")
-
-        for config_file in config_files_to_remove:
+        if iface.startswith("wlan") and iface[4:].isdigit():
+            stale.append(self.config_dir / f"wlan{iface[4:]}.conf")
+            stale.append(self.dhcp_dir / f"wlan{iface[4:]}.cfg")
+        for config_file in stale:
             self._safe_unlink(config_file)
 
         wpa_supplicant.stop_supplicant(iface, namespace)
-        self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
+        self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
         self._ns_exec(["dhclient", "-r", iface], namespace)
 
     def revert_to_root(
@@ -528,14 +525,11 @@ class NetworkNamespaceService:
 
         # Stop the supplicant and dhclient tied to this interface
         wpa_supplicant.stop_supplicant(live.name, namespace)
-        for cmd in (
-            ["rm", "-f", f"{self.ctrl_interface}/{live.name}"],
-            ["dhclient", "-r", live.name],
-        ):
-            try:
-                self._ns_exec(cmd, namespace)
-            except RunCommandError:
-                pass
+        self._safe_unlink(Path(self._ctrl_dir(namespace)) / live.name)
+        try:
+            self._ns_exec(["dhclient", "-r", live.name], namespace)
+        except RunCommandError:
+            pass
 
         # Already in root: nothing to move, and root is not a real namespace
         if namespace is None:
@@ -557,6 +551,14 @@ class NetworkNamespaceService:
         # Delete the namespace only if Core created it and nothing is left in it
         if delete_namespace and namespace in self._core_namespaces():
             self._delete_namespace_if_empty(namespace)
+
+    def _ctrl_dir(self, namespace: str | None) -> str:
+        """Return the control socket directory for a supplicant in `namespace`."""
+        return (
+            self.ctrl_interface
+            if namespace is None
+            else wpa_supplicant.ctrl_dir(namespace)
+        )
 
     def _namespace_marker(self, namespace: str) -> Path:
         # /run is tmpfs, like /run/netns, so a marker lives as long as its netns.
@@ -613,6 +615,12 @@ class NetworkNamespaceService:
             return
         ns_namespace.delete_namespace(namespace, raise_on_fail=False)
         self._namespace_marker(namespace).unlink(missing_ok=True)
+        etc_dir = Path(NETNS_ETC_DIR) / namespace
+        (etc_dir / "resolv.conf").unlink(missing_ok=True)
+        try:
+            etc_dir.rmdir()
+        except OSError:
+            pass  # absent, or holds files Core did not write
         self.log.info(f"Deleted namespace {namespace}.")
 
     def start_app_in_namespace(self, namespace: str | None, app_id: str) -> None:
@@ -642,9 +650,32 @@ class NetworkNamespaceService:
     def _find_live(
         self, cfg: NamespaceConfig | RootConfig
     ) -> discovery.LiveInterface | None:
-        """Find cfg's netdev in any netns, by iface_display_name then interface."""
-        names = [n for n in (cfg.iface_display_name, cfg.interface) if n]
-        return discovery.find_interface(names) if names else None
+        """Find the live netdev backing cfg, in any namespace.
+
+        `interface` names the radio wherever it is. `iface_display_name` is
+        what Core renames it to, so it only identifies cfg's radio inside
+        cfg's own target namespace; another entry may use the same display
+        name in a different namespace.
+        """
+        namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else None
+        inventory = discovery.list_interfaces_all_namespaces()
+        display = cfg.iface_display_name
+        if display and display != cfg.interface:
+            for live in inventory:
+                if live.name == display and live.netns == namespace:
+                    return live
+        if not cfg.interface:
+            return None
+        matches = sorted(
+            (live for live in inventory if live.name == cfg.interface),
+            key=lambda live: (live.netns != namespace, live.netns is not None),
+        )
+        if len(matches) > 1:
+            self.log.warning(
+                f"Interface {cfg.interface} exists in several namespaces "
+                f"{[m.netns or 'root' for m in matches]}; using {matches[0].netns or 'root'}"
+            )
+        return matches[0] if matches else None
 
     def _mode_value(self, cfg: NamespaceConfig | RootConfig) -> str:
         return (
@@ -748,6 +779,11 @@ class NetworkNamespaceService:
             marker = self._namespace_marker(namespace)
             marker.parent.mkdir(parents=True, exist_ok=True)
             marker.touch()
+            # `ip netns exec` bind-mounts /etc/netns/<ns>/resolv.conf over
+            # /etc/resolv.conf, so DHCP in the namespace cannot rewrite root DNS.
+            etc_dir = Path(NETNS_ETC_DIR) / namespace
+            etc_dir.mkdir(parents=True, exist_ok=True)
+            (etc_dir / "resolv.conf").touch()
             created_namespace = namespace
         else:
             self.log.info("Namespace %s already exists", namespace)

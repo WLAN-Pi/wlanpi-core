@@ -224,6 +224,39 @@ class NetConfig(BaseModel):
         """Validate the configuration ID."""
         return validate_config_id(value)
 
+    @model_validator(mode="after")
+    def validate_unique_interfaces(self) -> "NetConfig":
+        """Reject entries that would claim the same radio or the same name.
+
+        Runtime state is keyed by (namespace, interface name), and each
+        `interface` names one live radio, so two entries may not share an
+        `interface`, reuse another entry's `interface` as a display name, or
+        use the same display name in the same namespace.
+        """
+        entries: list[tuple[str | None, RootConfig]] = [
+            (entry.namespace, entry) for entry in self.namespaces or []
+        ]
+        entries += [(None, entry) for entry in self.roots or []]
+        interfaces = [entry.interface for _ns, entry in entries]
+        duplicates = sorted({i for i in interfaces if interfaces.count(i) > 1})
+        if duplicates:
+            raise ValueError(f"interface used by more than one entry: {duplicates}")
+        for _ns, entry in entries:
+            display = entry.iface_display_name
+            if display and display != entry.interface and display in interfaces:
+                raise ValueError(
+                    f"iface_display_name {display!r} is another entry's interface"
+                )
+        names = [
+            (ns, entry.iface_display_name or entry.interface) for ns, entry in entries
+        ]
+        clashes = sorted(
+            {f"{ns or 'root'}/{n}" for ns, n in names if names.count((ns, n)) > 1}
+        )
+        if clashes:
+            raise ValueError(f"interface name used twice in one namespace: {clashes}")
+        return self
+
     def __str__(self) -> str:
         """Return the config with credentials redacted."""
         data = self.model_dump()

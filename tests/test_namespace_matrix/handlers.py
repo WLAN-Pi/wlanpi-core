@@ -9,9 +9,11 @@ import json
 import threading
 import time
 import warnings
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from tests.conftest import (
     JOSH_THREE_RADIO,
@@ -1336,6 +1338,116 @@ def handle_revert_moves_phy_without_netdev(
     assert "ns_a" not in inventory.netns
 
 
+def _netconfig_error(namespaces=(), roots=()) -> str:
+    with pytest.raises(PydanticValidationError) as exc:
+        NetConfig(
+            id="dup",
+            namespaces=[_ns(ns, **kw) for ns, kw in namespaces],
+            roots=[_root(**kw) for kw in roots],
+        )
+    return str(exc.value)
+
+
+def handle_validate_duplicate_interface(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#273: two entries cannot claim the same live radio."""
+    msg = _netconfig_error(
+        namespaces=[("ns_a", {"interface": "wlan1", "phy": "phy1"})],
+        roots=[{"interface": "wlan1", "phy": "phy1"}],
+    )
+    assert "interface used by more than one entry" in msg
+
+
+def handle_validate_display_name_shadows_interface(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#273: a display name may not be another entry's interface."""
+    msg = _netconfig_error(
+        roots=[
+            {"interface": "wlan0", "phy": "phy0", "iface_display_name": "wlan1"},
+            {"interface": "wlan1", "phy": "phy1"},
+        ],
+    )
+    assert "is another entry's interface" in msg
+
+
+def handle_validate_same_name_other_namespace_ok(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#273: the same display name in two namespaces is allowed; runtime state is per netns."""
+    cfg = NetConfig(
+        id="mon",
+        namespaces=[
+            _ns("ns_a", interface="wlan1", phy="phy1", iface_display_name="mon0"),
+            _ns("ns_b", interface="wlan2", phy="phy2", iface_display_name="mon0"),
+        ],
+        roots=[],
+    )
+    assert len(cfg.namespaces) == 2
+    msg = _netconfig_error(
+        namespaces=[
+            (
+                "ns_a",
+                {"interface": "wlan1", "phy": "phy1", "iface_display_name": "mon0"},
+            ),
+            (
+                "ns_a",
+                {"interface": "wlan2", "phy": "phy2", "iface_display_name": "mon0"},
+            ),
+        ],
+    )
+    assert "used twice in one namespace" in msg
+
+
+def handle_same_display_name_two_namespaces(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#273: sta0 in ns_a must not be taken for the second entry's radio."""
+    _write_netconfig(
+        netcfg_env,
+        "sta_cfg",
+        namespaces=[
+            _ns(
+                "ns_a", interface="wlan1", phy="phy2", iface_display_name="sta0"
+            ).model_dump(mode="json"),
+            _ns(
+                "ns_b", interface="wlan2", phy="phy1", iface_display_name="sta0"
+            ).model_dump(mode="json"),
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("sta_cfg", override_active=True) is True
+        after = {(ns, name): meta.phy for (ns, name), meta in inventory.ifaces.items()}
+        assert nc.deactivate_config("sta_cfg") is True
+    assert after == {
+        (None, "wlan0"): "phy0",
+        ("ns_a", "sta0"): "phy2",
+        ("ns_b", "sta0"): "phy1",
+    }
+    assert inventory.phy_moves[:2] == [("phy2", "ns_a"), ("phy1", "ns_b")]
+    assert inventory.live() == JOSH_LIVE
+
+
+def handle_namespace_private_resolv_conf(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#273: Core namespaces get /etc/netns/<ns>/resolv.conf; it goes with them."""
+    from wlanpi_core.services import network_namespace_service as nns
+
+    etc = Path(nns.NETNS_ETC_DIR)
+    _write_netconfig(
+        netcfg_env,
+        "dns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        assert nc.activate_config("dns_cfg", override_active=True) is True
+        assert (etc / "ns_a" / "resolv.conf").is_file()
+        assert nc.deactivate_config("dns_cfg") is True
+    assert not (etc / "ns_a").exists()
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1415,6 +1527,11 @@ HANDLERS = {
     "phy10_vs_phy1_substring": handle_phy10_vs_phy1_substring,
     "iface_display_name_differs": handle_iface_display_name_differs,
     "rollback_after_partial_prepare": handle_rollback_after_partial_prepare,
+    "validate_duplicate_interface": handle_validate_duplicate_interface,
+    "validate_display_name_shadows_interface": handle_validate_display_name_shadows_interface,
+    "validate_same_name_other_namespace_ok": handle_validate_same_name_other_namespace_ok,
+    "namespace_private_resolv_conf": handle_namespace_private_resolv_conf,
+    "same_display_name_two_namespaces": handle_same_display_name_two_namespaces,
     "revert_leaves_foreign_namespace": handle_revert_leaves_foreign_namespace,
     "revert_moves_phy_without_netdev": handle_revert_moves_phy_without_netdev,
     "shared_phy_monitor_iface_round_trip": handle_shared_phy_monitor_iface_round_trip,

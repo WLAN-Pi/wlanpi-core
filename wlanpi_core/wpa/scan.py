@@ -13,6 +13,7 @@ from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.wpa.supplicant import wpa_cli_command
 
 log = logging.getLogger(__name__)
 
@@ -329,7 +330,7 @@ def parse_iw_scan_output(
 def fetch_scan_results(iface: str, namespace: str | None = None) -> str:
     """Read cached ``wpa_cli scan_results`` without triggering a new scan."""
     return ns_exec(
-        ["wpa_cli", "-i", iface, "scan_results"],
+        wpa_cli_command(iface, namespace, "scan_results"),
         namespace=namespace,
     ).stdout.strip()
 
@@ -370,7 +371,7 @@ def _set_interface_state(iface: str, up: bool, namespace: str | None = None) -> 
 def wpa_cli_available(iface: str, namespace: str | None = None) -> bool:
     """Return True when ``wpa_cli`` can talk to a running supplicant."""
     result = ns_exec(
-        ["wpa_cli", "-i", iface, "status"],
+        wpa_cli_command(iface, namespace, "status"),
         namespace=namespace,
         raise_on_fail=False,
     )
@@ -385,7 +386,7 @@ def run_wpa_cli_scan(
 ) -> list[dict[str, Any]]:
     """Trigger ``wpa_cli scan`` and return parsed networks."""
     normalize_scan_detail(detail)
-    ns_exec(["wpa_cli", "-i", iface, "scan"], namespace=namespace)
+    ns_exec(wpa_cli_command(iface, namespace, "scan"), namespace=namespace)
 
     last_error: Exception | None = None
     for _ in range(_SCAN_POLL_ATTEMPTS):
