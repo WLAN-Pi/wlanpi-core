@@ -73,13 +73,16 @@ def test_same_name_in_another_netns_is_not_this_iface(fake_proc):
     assert usage.foreign_users("wlan2", "ns_a") == ["wpa_supplicant (pid 43)"]
 
 
-def test_up_links_reads_the_admin_up_flag():
+def test_capturing_links_reads_packet_sockets():
+    # wlan2profiler (8) has sockets; ifindex 0 is "any interface", not a link.
     out = (
-        "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n"
-        "7: wlan2: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500\n"
-        "8: wlan2profiler: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2304\n"
-        "9: wlanpi2: <BROADCAST,MULTICAST> mtu 1500\n"
+        "sk       RefCnt Type Proto  Iface R Rmem   User   Inode\n"
+        "00000000 3      3    0003   8     1 0      0      1001\n"
+        "00000000 3      3    0003   8     1 0      0      1002\n"
+        "00000000 3      2    0003   0     1 0      0      1003\n"
+        "00000000 3      3    888e   7     1 0      0      1004\n"
     )
     result = CommandResult(stdout=out, stderr="", return_code=0)
-    with patch.object(usage, "ns_exec", return_value=result):
-        assert usage.up_links(None) == {"lo", "wlan2", "wlan2profiler"}
+    with patch.object(usage, "ns_exec", return_value=result) as run:
+        assert usage.capturing_links("ns_a") == {7, 8}
+    assert run.call_args.kwargs["namespace"] == "ns_a"

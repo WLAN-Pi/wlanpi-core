@@ -314,6 +314,8 @@ class Iface:
     ifindex: int = 0
     # Administratively up (`ip link set <iface> up`); new netdevs start down.
     up: bool = False
+    # A program has a packet socket bound to it (capturing, e.g. profiler).
+    bound: bool = False
 
 
 @dataclass
@@ -368,6 +370,7 @@ class InventoryRecorder:
                 type=meta.get("type", "managed"),
                 ifindex=ifindex,
                 up=bool(meta.get("up")),
+                bound=bool(meta.get("bound")),
             )
         netns_set = {ns for ns in phy_netns.values() if ns is not None}
         return cls(
@@ -429,6 +432,14 @@ class InventoryRecorder:
             return self._iw(netns, parts[1:], raise_on_fail)
         if parts[:1] == ["ip"]:
             return self._ip(netns, parts[1:], raise_on_fail)
+        if parts == ["cat", "/proc/net/packet"]:
+            # One packet socket per netdev a program is capturing on.
+            rows = "".join(
+                f"00000000 3 3 0003 {meta.ifindex} 1 0 0 {9000 + meta.ifindex}\n"
+                for _name, meta in self._netns_ifaces(netns)
+                if meta.bound
+            )
+            return self._ok("sk RefCnt Type Proto Iface R Rmem User Inode\n" + rows)
         if parts[:1] and parts[0] in _NOOP_COMMANDS:
             return self._ok()
         return self._unrecognised(netns, parts)

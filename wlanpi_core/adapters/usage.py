@@ -3,8 +3,9 @@
 Core does not take a radio that something else controls. A netdev is in use
 when another tool set a mode Core never sets (AP, mesh, ...), when a
 wpa_supplicant or hostapd that Core did not start is bound to it, or when
-another netdev on the same radio is up (a monitor interface pins the
-channel, e.g. wlanpi-profiler's `<iface>profiler` or kismet's).
+a program is capturing on another netdev of the same radio (a packet socket
+bound to it: wlanpi-profiler's `<iface>profiler`, kismet, tcpdump). Being
+administratively up is not enough: a WLAN Pi may keep `wlanpi0` up idle.
 """
 
 import logging
@@ -22,25 +23,28 @@ log = logging.getLogger(__name__)
 CORE_MODES = {"managed", "monitor"}
 
 PROC = Path("/proc")
-_FLAGS_RE = re.compile(r"^\d+:\s+([^:@\s]+)[^<]*<([^>]*)>")
 _HOSTAPD_IFACE_RE = re.compile(r"^interface=(\S+)", re.MULTILINE)
 
 
-def up_links(namespace: str | None) -> set[str]:
-    """Return the links in `namespace` (None = root) that are administratively up."""
+def capturing_links(namespace: str | None) -> set[int]:
+    """Return ifindexes in `namespace` (None = root) with a packet socket bound.
+
+    /proc/net/packet is per network namespace, so it is read from inside it.
+    """
     try:
         result = ns_exec(
-            ["ip", "-o", "link", "show"], namespace=namespace, no_output=True
+            ["cat", "/proc/net/packet"], namespace=namespace, no_output=True
         )
     except (RunCommandError, ValueError) as e:
-        log.warning(f"Could not list links in {namespace or 'root'}: {e}")
+        log.warning(f"Could not read packet sockets in {namespace or 'root'}: {e}")
         return set()
-    up = set()
-    for line in result.stdout.splitlines():
-        match = _FLAGS_RE.match(line)
-        if match and "UP" in match.group(2).split(","):
-            up.add(match.group(1))
-    return up
+    bound = set()
+    for line in result.stdout.splitlines()[1:]:
+        # sk RefCnt Type Proto Iface R Rmem User Inode
+        fields = line.split()
+        if len(fields) > 4 and fields[4].isdigit() and fields[4] != "0":
+            bound.add(int(fields[4]))
+    return bound
 
 
 def _netns_inode(namespace: str | None) -> int | None:
