@@ -200,6 +200,9 @@ def _service_side_effect_patches() -> list[Any]:
             NetworkNamespaceService,
             "_monitor_connection_async",
         ),
+        # No real /proc scan: rows that need a foreign supplicant or hostapd
+        # patch this themselves.
+        patch("wlanpi_core.adapters.usage.foreign_users", return_value=[]),
         patch(
             "wlanpi_core.services.network_namespace_service.apps.start_app_in_namespace",
             return_value=True,
@@ -309,6 +312,8 @@ class Iface:
     type: str = "managed"
     # Kernel ifindex: survives a netns move; newer netdevs get higher ones.
     ifindex: int = 0
+    # Administratively up (`ip link set <iface> up`); new netdevs start down.
+    up: bool = False
 
 
 @dataclass
@@ -362,6 +367,7 @@ class InventoryRecorder:
                 netns=netns,
                 type=meta.get("type", "managed"),
                 ifindex=ifindex,
+                up=bool(meta.get("up")),
             )
         netns_set = {ns for ns in phy_netns.values() if ns is not None}
         return cls(
@@ -606,14 +612,15 @@ class InventoryRecorder:
         if netns is None and args[:1] == ["netns"]:
             return self._ip_netns(args[1:], raise_on_fail)
         if args == ["-o", "link", "show"]:
-            stdout = "1: lo: <LOOPBACK> mtu 65536\n" + "".join(
-                f"{meta.ifindex}: {name}: <BROADCAST,MULTICAST> mtu 1500\n"
+            stdout = "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n" + "".join(
+                f"{meta.ifindex}: {name}: <BROADCAST,MULTICAST{',UP' if meta.up else ''}> mtu 1500\n"
                 for name, meta in self._netns_ifaces(netns)
             )
             return self._ok(stdout)
         if len(args) == 4 and args[:2] == ["link", "set"] and args[3] in {"up", "down"}:
             if (netns, args[2]) not in self.ifaces:
                 return self._fail(f'Cannot find device "{args[2]}"\n', 1, raise_on_fail)
+            self.ifaces[(netns, args[2])].up = args[3] == "up"
             return self._ok()
         if args[:4] == ["-4", "route", "show", "default"]:
             # No DHCP server is modelled, so no interface has a gateway.

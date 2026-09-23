@@ -689,7 +689,11 @@ def handle_deactivate_exception_mid_loop_rollback(
         if cfg.interface == "wlan1":
             raise RunCommandError("deactivate failed", 1)
 
-    with patch.object(nc.ns, "deactivate_config", side_effect=deactivate_side_effect):
+    # Orchestration only: every entry counts as set up by Core.
+    with (
+        patch.object(nc.ns, "may_undo", return_value=True),
+        patch.object(nc.ns, "deactivate_config", side_effect=deactivate_side_effect),
+    ):
         with patch.object(
             nc.ns,
             "revert_to_root",
@@ -827,7 +831,11 @@ def handle_user_broken_active_override_deactivate(
         ],
     )
     netcfg_env["ccf"].write_text("broken_cfg")
-    with patch.object(nc.ns, "deactivate_config"):
+    # Orchestration only: every entry counts as set up by Core.
+    with (
+        patch.object(nc.ns, "may_undo", return_value=True),
+        patch.object(nc.ns, "deactivate_config"),
+    ):
         with patch.object(nc.ns, "revert_to_root") as revert:
             assert nc.deactivate_config("broken_cfg", override_active=True) is True
             revert.assert_any_call(None)
@@ -845,7 +853,11 @@ def handle_user_manual_phy_move_then_recover(
         ],
     )
     netcfg_env["ccf"].write_text("ns_cfg")
-    with patch.object(nc.ns, "deactivate_config"):
+    # Orchestration only: every entry counts as set up by Core.
+    with (
+        patch.object(nc.ns, "may_undo", return_value=True),
+        patch.object(nc.ns, "deactivate_config"),
+    ):
         with patch.object(nc.ns, "revert_to_root") as revert:
             assert nc.deactivate_config("ns_cfg", override_active=True) is True
             revert.assert_any_call(None)
@@ -2124,6 +2136,243 @@ def handle_reset_refuses_in_use_and_unknown(
     assert "ns_a" in inventory.netns
 
 
+# --- radios another tool is using are never taken (in_use) ---
+
+PROFILER_AP_LAYOUT: dict[str, dict[str, str]] = {
+    **JOSH_THREE_RADIO,
+    # wlanpi-profiler in hostapd mode: wlan2 is the AP
+    "wlan2": {"phy": "phy1", "mac": "00:11:22:33:44:02", "type": "AP", "up": "1"},
+}
+
+PROFILER_FAKEAP_LAYOUT: dict[str, dict[str, str]] = {
+    **JOSH_THREE_RADIO,
+    # wlanpi-profiler --fakeap: wlan2 stays managed, its monitor is up
+    "wlan2profiler": {
+        "phy": "phy1",
+        "mac": "00:11:22:33:44:02",
+        "type": "monitor",
+        "up": "1",
+    },
+}
+
+WLANPI_MONITOR_DOWN_LAYOUT: dict[str, dict[str, str]] = {
+    **JOSH_THREE_RADIO,
+    # the WLAN Pi's own per-radio monitor, normally down
+    "wlanpi1": {"phy": "phy1", "mac": "00:11:22:33:44:02", "type": "monitor"},
+}
+
+
+def _two_entry_profile(netcfg_env) -> None:
+    """wlan1 into ns_a, wlan2 (profiler's radio) as a root monitor."""
+    _write_netconfig(
+        netcfg_env,
+        "two_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+        roots=[
+            _root(
+                interface="wlan2", phy="phy1", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
+        ],
+    )
+
+
+def _outcome(outcomes, name):
+    [match] = [o for o in outcomes if o.interface == name]
+    return match
+
+
+def handle_in_use_ap_mode_radio_left_alone(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Report a radio in AP mode (hostapd) as in_use; the rest still runs."""
+    _two_entry_profile(netcfg_env)
+    with live_adapter_inventory_mocks(PROFILER_AP_LAYOUT) as inventory:
+        ok, outcomes = nc.activate_config_report("two_cfg", override_active=True)
+        assert ok is True
+        wlan2 = _outcome(outcomes, "wlan2")
+        assert wlan2.status == "in_use"
+        assert "AP mode" in wlan2.detail
+        assert _outcome(outcomes, "wlan1").status == "connected"
+        assert nc.deactivate_config("two_cfg") is True
+    assert inventory.live()["wlan2"] == ("phy1", None, "AP")
+    assert "wlan2" not in {name for name, _ns in inventory.deleted}
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_in_use_foreign_supplicant_left_alone(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Report a radio with a wpa_supplicant Core did not start as in_use."""
+    _two_entry_profile(netcfg_env)
+
+    def users(iface, namespace):
+        return ["wpa_supplicant (pid 4242)"] if iface == "wlan2" else []
+
+    with (
+        live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory,
+        patch("wlanpi_core.adapters.usage.foreign_users", side_effect=users),
+    ):
+        ok, outcomes = nc.activate_config_report("two_cfg", override_active=True)
+        assert ok is True
+        wlan2 = _outcome(outcomes, "wlan2")
+        assert (wlan2.status, "pid 4242" in wlan2.detail) == ("in_use", True)
+        assert inventory.live()["wlan1"] == ("phy2", "ns_a", "managed")
+    assert inventory.live()["wlan2"] == ("phy1", None, "managed")
+    assert "wlan2" not in {name for name, _ns in inventory.deleted}
+
+
+def handle_in_use_sibling_monitor_up(namespace_service, netcfg_env, scenario: Scenario):
+    """Profiler in fakeap mode: an up monitor on the same radio marks it in_use."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_b", interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(PROFILER_FAKEAP_LAYOUT) as inventory:
+        before = inventory.live()
+        ok, outcomes = nc.activate_config_report("ns_cfg", override_active=True)
+        assert ok is True
+        [wlan2] = outcomes
+        assert wlan2.status == "in_use"
+        assert "wlan2profiler" in wlan2.detail
+    # The phy was not moved, so profiler kept its monitor.
+    assert inventory.phy_moves == []
+    assert inventory.live() == before
+
+
+def handle_in_use_ignores_down_sibling(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Do not let a down wlanpiN monitor on the same radio block it."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_b", interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(WLANPI_MONITOR_DOWN_LAYOUT) as inventory:
+        ok, outcomes = nc.activate_config_report("ns_cfg", override_active=True)
+        assert ok is True
+        assert [o.status for o in outcomes] == ["connected"]
+    assert inventory.live()["wlan2"] == ("phy1", "ns_b", "managed")
+    assert inventory.live()["wlanpi1"] == ("phy1", "ns_b", "monitor")
+
+
+def handle_default_skips_core_netdev_now_in_use(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Never reset by default a netdev Core created that another tool now uses."""
+    _write_netconfig(
+        netcfg_env,
+        "mon_cfg",
+        roots=[
+            _root(
+                interface="wlan2", phy="phy1", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        nc.get_config("default")  # snapshot the default while all are managed
+        assert nc.activate_config("mon_cfg", override_active=True) is True
+        # Profiler starts on Core's wlan2 (fakeap) while the profile is active.
+        for cmd in (
+            [
+                "sudo",
+                "/sbin/iw",
+                "phy",
+                "phy1",
+                "interface",
+                "add",
+                "wlan2profiler",
+                "type",
+                "monitor",
+            ],
+            ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
+        ):
+            inventory.run_command(cmd)
+        # Core's record of the active profile is lost (e.g. current.txt reset).
+        netcfg_env["ccf"].write_text("default")
+        deleted_before = list(inventory.deleted)
+        ok, outcomes = nc.activate_config_report("default", override_active=True)
+        assert ok is True
+        # Tearing down the recorded profile saw profiler on wlan2 and handed
+        # it back, so the default then reports it as not Core's.
+        assert _outcome(outcomes, "wlan2").status == "skipped"
+    assert inventory.deleted == deleted_before
+    assert inventory.live()["wlan2profiler"] == ("phy1", None, "monitor")
+
+
+def handle_deactivate_hands_back_interfaces(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """After deactivate Core no longer owns what it restored; default skips it."""
+    _write_netconfig(
+        netcfg_env,
+        "mix_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+        roots=[
+            _root(
+                interface="wlan2",
+                iface_display_name="sta2",
+                phy="phy1",
+                mode=NetworkModeEnum.monitor,
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("mix_cfg", override_active=True) is True
+        assert nc.deactivate_config("mix_cfg") is True
+        assert inventory.live() == JOSH_LIVE
+        deleted_before = list(inventory.deleted)
+        ok, outcomes = nc.activate_config_report("default", override_active=True)
+        assert ok is True
+        assert {o.interface: o.status for o in outcomes} == {
+            "wlan0": "skipped",
+            "wlan1": "skipped",
+            "wlan2": "skipped",
+        }
+    assert inventory.deleted == deleted_before
+
+
+def handle_deactivate_leaves_core_netdev_now_in_use(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Profiler starts on a Core netdev while its profile is active; deactivate keeps it."""
+    _write_netconfig(
+        netcfg_env,
+        "mon_cfg",
+        roots=[
+            _root(
+                interface="wlan2", phy="phy1", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("mon_cfg", override_active=True) is True
+        for cmd in (
+            [
+                "sudo",
+                "/sbin/iw",
+                "phy",
+                "phy1",
+                "interface",
+                "add",
+                "wlan2profiler",
+                "type",
+                "monitor",
+            ],
+            ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
+        ):
+            inventory.run_command(cmd)
+        deleted_before = list(inventory.deleted)
+        assert nc.deactivate_config("mon_cfg") is True
+        # Handed back: a later default does not reset it either.
+        ok, outcomes = nc.activate_config_report("default", override_active=True)
+        assert ok is True and _outcome(outcomes, "wlan2").status == "skipped"
+    assert inventory.deleted == deleted_before
+    assert inventory.live()["wlan2"] == ("phy1", None, "monitor")
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
@@ -2189,6 +2438,13 @@ HANDLERS = {
     "leftovers_reports_kept_core_namespace": handle_leftovers_reports_kept_core_namespace,
     "reset_returns_named_namespace": handle_reset_returns_named_namespace,
     "reset_refuses_in_use_and_unknown": handle_reset_refuses_in_use_and_unknown,
+    "in_use_ap_mode_radio_left_alone": handle_in_use_ap_mode_radio_left_alone,
+    "in_use_foreign_supplicant_left_alone": handle_in_use_foreign_supplicant_left_alone,
+    "in_use_sibling_monitor_up": handle_in_use_sibling_monitor_up,
+    "in_use_ignores_down_sibling": handle_in_use_ignores_down_sibling,
+    "default_skips_core_netdev_now_in_use": handle_default_skips_core_netdev_now_in_use,
+    "deactivate_hands_back_interfaces": handle_deactivate_hands_back_interfaces,
+    "deactivate_leaves_core_netdev_now_in_use": handle_deactivate_leaves_core_netdev_now_in_use,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,
