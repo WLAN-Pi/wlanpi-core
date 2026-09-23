@@ -2381,6 +2381,43 @@ def handle_deactivate_leaves_core_netdev_now_in_use(
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_core_netdev_moved_home_by_hand_still_reverted(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Core's netdev whose phy was moved to root by hand is still Core's to revert."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[
+            _ns(
+                "ns_a", interface="wlan1", phy="phy2", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        inventory.run_command(
+            [
+                "sudo",
+                "ip",
+                "netns",
+                "exec",
+                "ns_a",
+                "/sbin/iw",
+                "phy",
+                "phy2",
+                "set",
+                "netns",
+                "1",
+            ]
+        )
+        assert inventory.live()["wlan1"] == ("phy2", None, "monitor")
+        assert nc.deactivate_config("ns_cfg") is True
+    # Same ifindex, so still Core's: put back as managed, ns_a removed.
+    assert inventory.live() == JOSH_LIVE
+    assert "ns_a" not in inventory.netns
+
+
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
@@ -2453,6 +2490,7 @@ HANDLERS = {
     "default_skips_core_netdev_now_in_use": handle_default_skips_core_netdev_now_in_use,
     "deactivate_hands_back_interfaces": handle_deactivate_hands_back_interfaces,
     "deactivate_leaves_core_netdev_now_in_use": handle_deactivate_leaves_core_netdev_now_in_use,
+    "core_netdev_moved_home_by_hand_still_reverted": handle_core_netdev_moved_home_by_hand_still_reverted,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,

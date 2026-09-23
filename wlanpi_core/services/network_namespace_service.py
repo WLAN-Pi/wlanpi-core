@@ -641,11 +641,26 @@ class NetworkNamespaceService:
         self._owned_path(name, netns).unlink(missing_ok=True)
 
     def _is_owned(self, live: discovery.LiveInterface) -> bool:
-        try:
-            recorded = self._owned_path(live.name, live.netns).read_text().strip()
-        except OSError:
+        """Return whether Core created `live` (same name and ifindex).
+
+        A netdev moved out of band (e.g. its phy moved back to root by hand)
+        keeps its ifindex; its record is found under the old namespace and
+        re-keyed to where the netdev is now.
+        """
+        if live.ifindex is None:
             return False
-        return live.ifindex is not None and recorded == str(live.ifindex)
+        here = self._owned_path(live.name, live.netns)
+        for path in [here, *sorted(here.parent.parent.glob(f"*/{live.name}"))]:
+            try:
+                if path.read_text().strip() != str(live.ifindex):
+                    continue
+            except OSError:
+                continue
+            if path != here:
+                here.parent.mkdir(parents=True, exist_ok=True)
+                path.replace(here)
+            return True
+        return False
 
     def in_use_reason(self, live: discovery.LiveInterface) -> str | None:
         """Return why another tool is using `live`'s radio, or None if it is free.
