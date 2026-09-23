@@ -141,15 +141,18 @@ def get_app_command(app_id: str) -> str | None:
                 f"Apps file parent directory does not exist: {apps_file.parent}. "
                 "Cannot create apps file (e.g. in CI /home/wlanpi may be missing)."
             )
-        apps_file.touch()
+        apps_file.write_text("{}\n")
 
     try:
-        with apps_file.open("r") as f:
-            apps = json.load(f)
-        return apps.get(app_id)
+        # Older Cores created the file empty (#311): empty means no apps.
+        apps = json.loads(apps_file.read_text().strip() or "{}")
     except json.JSONDecodeError as e:
         log.error(f"Failed to parse apps file {APPS_FILE}: {e}")
         raise
+    if not isinstance(apps, dict):
+        raise ValueError(f"Apps file {APPS_FILE} must hold a JSON object")
+    command = apps.get(app_id)
+    return command if isinstance(command, str) else None
 
 
 def start_app_in_namespace(
@@ -439,16 +442,9 @@ def _stop_app_in_root(
             run_command(["kill", str(pid)], raise_on_fail=True)
             log.info(f"Stopped app in {namespace_display} with PID {pid}")
             return True
-        elif app_command:
-            # Extract the base command (first part) for matching
-            cmd_parts = app_command.split()
-            if cmd_parts:
-                base_cmd = cmd_parts[0]
-                run_command(["pkill", "-f", base_cmd], raise_on_fail=True)
-                log.info(
-                    f"Stopped app in {namespace_display} using pkill for {base_cmd}"
-                )
-                return True
+        # No PID means Core cannot tell its app from any other process running
+        # the same command, so it stops nothing (#305).
+        log.warning(f"App pidfile in {namespace_display} has no PID; not stopping")
     except RunCommandError as e:
         log.warning(f"Failed to kill app in {namespace_display}: {e}")
     return False

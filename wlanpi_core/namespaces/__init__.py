@@ -23,7 +23,6 @@ from wlanpi_core.namespaces.namespace import (
 )
 from wlanpi_core.namespaces.processes import (
     get_processes_in_namespace,
-    kill_processes_in_namespace,
 )
 
 __all__ = [
@@ -32,7 +31,6 @@ __all__ = [
     "get_app_command",
     "get_interfaces_in_namespace",
     "get_processes_in_namespace",
-    "kill_processes_in_namespace",
     "list_namespaces",
     "move_interface_to_namespace",
     "move_interface_to_root",

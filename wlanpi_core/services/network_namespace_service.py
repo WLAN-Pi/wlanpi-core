@@ -214,6 +214,15 @@ class NetworkNamespaceService:
         if hasattr(cfg, "autostart_app") and cfg.autostart_app is not None:
             if not isinstance(cfg.autostart_app, str) or not cfg.autostart_app.strip():
                 errors.append("autostart_app must be a non-empty string if provided")
+            else:
+                # Fail before any radio moves, not after (#311).
+                try:
+                    if not apps.get_app_command(cfg.autostart_app):
+                        errors.append(
+                            f"autostart_app '{cfg.autostart_app}' is not defined in {apps.APPS_FILE}"
+                        )
+                except (OSError, ValueError) as e:
+                    errors.append(f"cannot read apps file: {e}")
 
         if (
             hasattr(cfg, "mlo")
