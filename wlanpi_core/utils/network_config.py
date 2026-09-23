@@ -661,11 +661,7 @@ def _apply_entries(
     Core did not create is reported "skipped" and not touched.
     """
     outcomes: list[AdapterOutcome] = []
-    entries: list[NamespaceConfig | RootConfig] = [
-        *(cfg.namespaces or []),
-        *(cfg.roots or []),
-    ]
-    for entry in entries:
+    for entry in _all_entries(cfg):
         where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
         if only_core_managed and not ns.is_core_managed(entry):
             log.info(f"Leaving {entry.interface} in {where} alone: not created by Core")
@@ -708,7 +704,7 @@ def _teardown_profile(cfg_id: str) -> None:
     except (FileNotFoundError, ConfigMalformedError, ValidationError) as e:
         log.warning(f"Cannot read active configuration {cfg_id} to tear down: {e}")
         profile = None
-    entries = _entries_to_undo(profile) if profile is not None else []
+    entries = _all_entries(profile) if profile is not None else []
     for entry in entries:
         try:
             ns.deactivate_config(entry)
@@ -736,17 +732,14 @@ def revert_all() -> None:
         _write_current("default")
 
 
-def _entries_to_undo(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
-    """Return cfg's entries that tearing it down may touch.
+def _all_entries(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
+    """Return cfg's entries, namespaces first.
 
-    Only entries whose radio Core set up (see NetworkNamespaceService.may_undo),
-    so an entry left alone as in_use, and other tools' interfaces, survive.
+    Every entry goes through deactivate_config: Core's processes for it are
+    always stopped, and the service decides per radio whether it may revert
+    it (NetworkNamespaceService.may_undo).
     """
-    entries: list[NamespaceConfig | RootConfig] = [
-        *(cfg.namespaces or []),
-        *(cfg.roots or []),
-    ]
-    return [entry for entry in entries if ns.may_undo(entry)]
+    return [*(cfg.namespaces or []), *(cfg.roots or [])]
 
 
 def _active_namespaces() -> set[str]:
@@ -817,7 +810,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             raise ConfigActiveError(f"Configuration {cfg_id} is not active.")
 
     try:
-        for entry in _entries_to_undo(cfg):
+        for entry in _all_entries(cfg):
             where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
             log.info(f"Deactivating {entry.interface} in {where}")
             ns.deactivate_config(entry)

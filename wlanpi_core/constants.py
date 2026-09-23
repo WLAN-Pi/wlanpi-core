@@ -73,6 +73,8 @@ NETNS_RUN_DIR = "/run/netns"
 NETNS_ETC_DIR = "/etc/netns"
 APPS_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/apps.json")
 WPA_LOG_FILE = "/tmp/wpa.log"
+# Core's per-radio monitor netdevs are <prefix><phy index> (wlanpi0, wlanpi1).
+MONITOR_IFACE_PREFIX = "wlanpi"
 CREATE_MONITOR_PAIRS_DEFAULT = True
 CREATE_MONITOR_PAIRS_UNINIT = True
 

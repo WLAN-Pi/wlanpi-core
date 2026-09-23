@@ -16,6 +16,7 @@ from wlanpi_core.constants import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_CTRL_INTERFACE,
     DEFAULT_DHCP_DIR,
+    MONITOR_IFACE_PREFIX,
     NETNS_ETC_DIR,
     NETNS_RUN_DIR,
     PID_DIR,
@@ -469,7 +470,14 @@ class NetworkNamespaceService:
         )
 
     def deactivate_config(self, cfg: NamespaceConfig | RootConfig) -> None:
-        """Deactivate a network configuration and revert to root."""
+        """Stop Core's processes for cfg, then revert its radio if Core may.
+
+        The connection monitor, autostart app, wpa_supplicant and dhcpcd are
+        Core's own (found by Core's pidfiles) and are always stopped. The
+        radio is reverted only when may_undo allows it: a netdev Core did not
+        create, or one another tool has since started using, is left as it
+        is (#304).
+        """
         iface = cfg.iface_display_name or cfg.interface
         namespace = (
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
@@ -494,7 +502,8 @@ class NetworkNamespaceService:
                     f"Failed to remove network {iface} in namespace {namespace_display}: {e} (non-critical)"
                 )
 
-        self.revert_to_root(cfg)
+        if self.may_undo(cfg):
+            self.revert_to_root(cfg)
 
     def remove_network(self, iface: str, namespace: str | None) -> None:
         """Remove a network configuration from a namespace."""
@@ -667,8 +676,11 @@ class NetworkNamespaceService:
         """Return why another tool is using `live`'s radio, or None if it is free.
 
         In use means: a mode Core never sets (e.g. AP), a wpa_supplicant or
-        hostapd Core did not start bound to it, or a program capturing on
-        another netdev of the same radio that Core did not create.
+        hostapd Core did not start bound to it, or a program capturing on a
+        monitor netdev of the same radio that Core did not create (profiler,
+        kismet, tcpdump). Managed siblings do not count: lldpd binds a packet
+        socket to every managed wlanN (#304). Nor do Core's own wlanpiN
+        monitors: capturing there while associating on wlanN is normal use.
         """
         if live.type and live.type not in usage.CORE_MODES:
             return f"{live.name} is in {live.type} mode, set by another tool"
@@ -681,6 +693,8 @@ class NetworkNamespaceService:
             if other.phy_index == live.phy_index
             and other.netns == live.netns
             and other.name != live.name
+            and other.type == "monitor"
+            and not other.name.startswith(MONITOR_IFACE_PREFIX)
             and not self._is_owned(other)
         ]
         if siblings:
@@ -688,8 +702,8 @@ class NetworkNamespaceService:
             for other in siblings:
                 if other.ifindex in capturing:
                     return (
-                        f"{other.name} on the same radio ({live.phy}) is in use "
-                        "(a program is capturing on it)"
+                        f"{other.name} on the same radio (phy{live.phy_index}) "
+                        "is in use (a program is capturing on it)"
                     )
         return None
 
