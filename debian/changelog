@@ -1,9 +1,10 @@
 wlanpi-core (2.3.28-1) unstable; urgency=medium
 
   * A profile with autostart_app no longer fails with 500 on a device
-    whose apps.json is empty (#311). An empty file now means no apps, a
-    missing one is created as {}, and an autostart_app that apps.json
-    does not define is rejected with 422 before any radio moves.
+    whose apps.json is empty (#311). A missing or empty file now means
+    no apps, Core no longer creates the file, and an autostart_app that
+    apps.json does not define is rejected with 422 before any radio
+    moves.
   * Stopping an app whose pidfile has no PID no longer runs a host-wide
     pkill -f on its command; the unused kill_processes_in_namespace is
     removed (#305).

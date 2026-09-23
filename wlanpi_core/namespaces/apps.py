@@ -126,26 +126,23 @@ def get_app_command(app_id: str) -> str | None:
         Command string if found, None otherwise
 
     Raises:
-        FileNotFoundError: If apps file doesn't exist and can't be created
-        json.JSONDecodeError: If apps file is malformed
+        OSError: If the apps file exists but cannot be read
+        ValueError: If the apps file is malformed (json.JSONDecodeError) or
+            is not a JSON object
 
     Examples:
         >>> command = get_app_command("my_app")
         >>> if command:
         ...     print(f"App command: {command}")
     """
-    apps_file = Path(APPS_FILE)
-    if not apps_file.exists():
-        if not apps_file.parent.exists():
-            raise FileNotFoundError(
-                f"Apps file parent directory does not exist: {apps_file.parent}. "
-                "Cannot create apps file (e.g. in CI /home/wlanpi may be missing)."
-            )
-        apps_file.write_text("{}\n")
-
+    # A missing or empty file means no apps (#311). Core never creates it: it
+    # runs as root in a directory the wlanpi user owns (#294).
     try:
-        # Older Cores created the file empty (#311): empty means no apps.
-        apps = json.loads(apps_file.read_text().strip() or "{}")
+        text = Path(APPS_FILE).read_text()
+    except FileNotFoundError:
+        return None
+    try:
+        apps = json.loads(text.strip() or "{}")
     except json.JSONDecodeError as e:
         log.error(f"Failed to parse apps file {APPS_FILE}: {e}")
         raise
@@ -172,9 +169,8 @@ def start_app_in_namespace(
         True if app was started successfully, False otherwise
 
     Raises:
-        FileNotFoundError: If apps file doesn't exist
-        json.JSONDecodeError: If apps file is malformed
-        ValueError: If app_id not found in apps file
+        OSError: If the apps file exists but cannot be read
+        ValueError: If the apps file is malformed or app_id is not in it
 
     Examples:
         >>> start_app_in_namespace("test_ns", "my_app")
