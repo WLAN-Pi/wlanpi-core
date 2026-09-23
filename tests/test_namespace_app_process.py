@@ -176,6 +176,26 @@ def test_stale_namespace_pidfile_is_dropped_without_signalling(mocker, tmp_path)
     assert not (tmp_path / "ns_a.pid").exists()
 
 
+def test_start_is_not_blocked_by_the_same_command_in_another_namespace(
+    mocker, tmp_path
+):
+    (tmp_path / "ns_a.pid").write_text(
+        json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    mocker.patch.object(apps.os, "kill")  # PID 10 is alive and runs orb...
+    mocker.patch.object(apps, "_is_recorded_app", return_value=True)
+    in_netns = mocker.patch.object(apps.usage, "in_netns", return_value=False)
+    mocker.patch.object(apps, "get_app_command", return_value="orb --serve")
+    process = MagicMock(pid=20)
+    process.poll.return_value = None
+    popen = mocker.patch.object(apps.subprocess, "Popen", return_value=process)
+    mocker.patch.object(apps.time, "sleep")
+
+    assert apps.start_app_in_namespace("ns_a", "orb", pid_dir=tmp_path) is True
+    in_netns.assert_called_once_with(10, "ns_a")  # ...but not in ns_a
+    popen.assert_called_once()
+
+
 def test_start_is_not_blocked_by_a_reused_pid(mocker, tmp_path):
     (tmp_path / "root.pid").write_text(
         json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})

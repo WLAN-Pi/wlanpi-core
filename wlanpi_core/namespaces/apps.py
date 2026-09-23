@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wlanpi_core.adapters import usage
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.namespaces import processes
@@ -83,7 +84,7 @@ def _stop_owned_app(pid: int | None, namespace: str | None, app_id: str) -> bool
     return True
 
 
-def _recorded_app_running(pid_file: Path) -> bool:
+def _recorded_app_running(pid_file: Path, namespace: str | None) -> bool:
     """Fail closed when a PID file still refers to a live process."""
     if not pid_file.exists():
         return False
@@ -104,8 +105,11 @@ def _recorded_app_running(pid_file: Path) -> bool:
     except PermissionError:
         return True
     app_command = pid_data.get("app_command", "") if isinstance(pid_data, dict) else ""
-    if app_command and not _is_recorded_app(pid, app_command):
-        # The PID was reused (reboot, service restart): the app is not running.
+    if app_command and not (
+        _is_recorded_app(pid, app_command) and usage.in_netns(pid, namespace)
+    ):
+        # The PID was reused (reboot, service restart), possibly by the same
+        # command in another namespace: the app is not running.
         pid_file.unlink(missing_ok=True)
         return False
     return True
@@ -202,7 +206,7 @@ def start_app_in_namespace(
         cmd = ["ip", "netns", "exec", namespace, *app_command.split()]
         pid_file = pid_dir / f"{namespace}.pid"
 
-    if _recorded_app_running(pid_file):
+    if _recorded_app_running(pid_file, namespace):
         log.warning("A recorded application process is still running")
         return False
 

@@ -12,6 +12,7 @@ import signal
 import time
 from pathlib import Path
 
+from wlanpi_core.adapters import usage
 from wlanpi_core.constants import RUN_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -48,8 +49,11 @@ def _read_cmdline(pid: int) -> list[str]:
     return [arg.decode(errors="replace") for arg in raw.split(b"\0") if arg]
 
 
-def _stop_dhcpcd_dir(state: Path) -> bool:
+def _stop_dhcpcd_dir(state: Path, namespace: str | None) -> bool:
     """Release and stop the dhcpcd whose private state is `state`.
+
+    Only a dhcpcd for that interface in `namespace` is signalled, so a stale
+    pidfile whose PID now runs dhcpcd for the same name elsewhere is ignored.
 
     Returns:
         False if that dhcpcd is still running afterwards
@@ -68,6 +72,8 @@ def _stop_dhcpcd_dir(state: Path) -> bool:
         title.startswith(f"dhcpcd: {iface} ")
         or (os.path.basename(argv[0]) == "dhcpcd" and iface in argv[1:])
     ):
+        return True
+    if not usage.in_netns(pid, namespace):
         return True
     try:
         # SIGALRM: release the lease and exit. (SIGHUP only rebinds in
@@ -98,14 +104,14 @@ def stop_dhcp(iface: str, namespace: str | None) -> None:
     Its private state directory is removed once it has exited.
     """
     state = dhcp_dir(iface, namespace)
-    if _stop_dhcpcd_dir(state):
+    if _stop_dhcpcd_dir(state, namespace):
         _remove_dhcpcd_dir(state)
 
 
 def stop_namespace_dhcp(namespace: str) -> None:
     """Stop every dhcpcd Core started in `namespace`, removing its state."""
     for state in sorted(dhcp_dir("x", namespace).parent.glob("*")):
-        if _stop_dhcpcd_dir(state):
+        if _stop_dhcpcd_dir(state, namespace):
             _remove_dhcpcd_dir(state)
 
 
@@ -140,7 +146,7 @@ def restart_dhcp_with_timeout(
         f"Starting DHCP client for {iface} in namespace {namespace_display} with timeout {timeout}s"
     )
     state = dhcp_dir(iface, namespace)
-    _stop_dhcpcd_dir(state)  # keep the state: the DUID and lease are reused
+    _stop_dhcpcd_dir(state, namespace)  # keep the state: the DUID and lease are reused
     for sub in ("run", "lib"):
         (state / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
 

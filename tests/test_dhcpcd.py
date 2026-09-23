@@ -20,6 +20,8 @@ from wlanpi_core.utils import network_management as nm
 @pytest.fixture
 def run_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(nm, "RUN_DIR", str(tmp_path))
+    # Fake PIDs are in the namespace their pidfile names unless a test says not.
+    monkeypatch.setattr(nm.usage, "in_netns", lambda pid, namespace: True)
     return tmp_path
 
 
@@ -214,3 +216,16 @@ def test_stop_dhcp_ignores_a_reused_pid_naming_the_iface(run_dir):
             nm.stop_dhcp("wlan1", None)
             nm.stop_dhcp("wlan1", "ns_a")
     assert procs.signals == [(11, signal.SIGALRM)]
+
+
+def test_stop_dhcp_ignores_a_reused_pid_in_another_namespace(run_dir, monkeypatch):
+    # A stale ns_a pidfile whose PID now runs dhcpcd for the same iface in ns_b.
+    procs = _Procs({10: ["dhcpcd: wlan1 [ip4]"]})
+    _pidfile(run_dir, "ns_a", "wlan1", 10)
+    monkeypatch.setattr(
+        nm.usage, "in_netns", lambda pid, namespace: namespace == "ns_b"
+    )
+    with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
+        with patch.object(nm.os, "kill", side_effect=procs.kill):
+            nm.stop_dhcp("wlan1", "ns_a")
+    assert procs.signals == []
