@@ -10,7 +10,7 @@ import grp
 import os
 import pwd
 from datetime import timedelta
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -214,19 +214,28 @@ async def generate_token(request: Request, token_request: TokenRequest) -> Any:
     summary="Revoke current JWT",
     responses={
         401: RESPONSES_AUTH[401],
+        403: {"description": "device_id does not match the token being revoked"},
         412: {"description": "device_id missing from request body"},
         500: {"description": "Revocation failed"},
     },
-    dependencies=[Depends(verify_jwt_token)],
 )
-async def revoke_token(request: Request, token_request: TokenRequest) -> Any:
+async def revoke_token(
+    request: Request,
+    token_request: TokenRequest,
+    validation: Annotated[Any, Depends(verify_jwt_token)],
+) -> Any:
     """
     Revoke the bearer token sent in the `Authorization` header.
 
-    The request body must include the same `device_id` used when the token was issued.
+    The request body must include the same `device_id` used when the token was
+    issued; a mismatch is rejected with 403 and the token stays valid.
     """
     try:
-        _require_device_id(token_request)
+        device_id = _require_device_id(token_request)
+        if device_id != validation.device_id:
+            raise HTTPException(
+                status_code=403, detail="device_id does not match token"
+            )
         auth = request.headers.get("Authorization")
         parts = auth.split() if auth else []
         if len(parts) != 2 or parts[0].lower() != "bearer":

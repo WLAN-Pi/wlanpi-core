@@ -9,6 +9,229 @@ wlanpi-core (2.3.24-1) unstable; urgency=medium
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 14:19:09 -0400
 
+wlanpi-core (2.3.23-1) unstable; urgency=medium
+
+  * Report namespaces Core has left alone: GET /network/config/leftovers,
+    and a left_alone list on deactivate and /wlan/revert. That is a
+    namespace Core created that is still present, or another tool's
+    namespace holding wireless radios.
+  * Add POST /network/config/reset: the caller names namespaces and Core
+    returns their radios to root, deleting each once empty. The active
+    configuration's namespaces are refused. "leftovers" and "reset" are now
+    reserved configuration IDs.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:21:07 -0500
+
+wlanpi-core (2.3.22-1) unstable; urgency=medium
+
+  * Track the interfaces Core creates (by name and cfg80211 wdev id, which
+    survives netns moves, on tmpfs) and make the default configuration touch
+    only those and radios in namespaces Core created. Interfaces from
+    drivers or other tools, such as wlanpi-profiler's hostapd, are left
+    alone and reported as skipped; after a reboot the default is a no-op
+    (#202).
+  * Deactivate restores its own root entries (the interface name, managed)
+    instead of applying the default afterwards, and a failed activation only
+    records default (#288, #271).
+  * Never take a radio another tool is using: one in a mode Core never sets
+    (e.g. AP), with a wpa_supplicant or hostapd Core did not start, or with
+    a program capturing on another interface of the same radio
+    (wlanpi-profiler's monitor, kismet, tcpdump). Its entry is reported
+    in_use with the reason and the rest of
+    the configuration still runs; teardown leaves it alone too.
+  * Interfaces a deactivate restores are handed back: Core only owns what
+    the active profile uses, so a later default never resets them.
+  * A revert step that fails is reported instead of leaving a radio without
+    an interface, and a failure after prepare (e.g. wpa_supplicant not
+    starting) puts that entry back.
+  * Namespace markers record the namespace's identity, so a same-named
+    namespace created by another tool is not taken for Core's, and a marker
+    is only removed once its namespace is gone (#275).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:11:19 -0500
+
+wlanpi-core (2.3.21-1) unstable; urgency=medium
+
+  * Make the deprecated POST /network/wlan/revert do what it says and say
+    what it does (#274): it reverts everything Core manages (tears down the
+    active configuration, returns every Core namespace to root, and makes
+    the default configuration active, updating current.txt). iface,
+    namespace and delete_namespace are ignored, as now documented; the
+    response no longer claims a single interface was reverted.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:27:18 -0500
+
+wlanpi-core (2.3.20-1) unstable; urgency=medium
+
+  * Report one outcome per configuration entry (connected, provisioned or
+    error, with a detail) in the activate response (#276).
+  * Return 422 instead of 500 when an entry fails configuration
+    validation, and include the per-entry outcomes in the error detail of
+    both the 422 and the 500 an adapter fault still returns.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:13:52 -0500
+
+wlanpi-core (2.3.19-1) unstable; urgency=medium
+
+  * Stop returning Wi-Fi secrets from the network config API (#272).
+    GET /network/config/{id} and the PATCH response omit psk and password
+    and report psk_set / password_set instead.
+  * PATCH keeps an entry's stored psk and password when the request omits
+    them, so a configuration read with GET can be edited and sent back.
+  * On upgrade, set existing network profiles and the legacy
+    /etc/wpa_supplicant/wlanN.conf files that earlier versions wrote to 0600.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:58:36 -0500
+
+wlanpi-core (2.3.18-1) unstable; urgency=medium
+
+  * Find a config's radio by its interface name first, and by its display
+    name only if no interface has that name, so a display name that another
+    radio already carries no longer selects that radio (#236).
+  * When a prepare fails, only remove a half-created interface if it is on
+    the radio being prepared. Previously a rename that failed because
+    another radio owned the name deleted that other radio's interface.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:39:28 -0500
+
+wlanpi-core (2.3.17-1) unstable; urgency=medium
+
+  * Write wpa_supplicant values so they round-trip exactly (#278).
+    wpa_supplicant reads a "quoted" value literally up to the last quote,
+    so the backslash escaping Core used changed any SSID or passphrase
+    containing a quote or backslash. SSIDs are now written as hex,
+    passphrases unescaped in quotes (or a 64-hex PSK bare), and EAP
+    identity, password and certificate paths as printf-escaped P"...".
+  * Reject a WPA2 PSK that is not 8-63 printable ASCII characters or 64 hex
+    digits, and a WPA3 PSK that is not a passphrase, with 422 instead of
+    failing when wpa_supplicant starts.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:32:46 -0500
+
+wlanpi-core (2.3.16-1) unstable; urgency=medium
+
+  * Replace dhclient, which Trixie does not ship, with dhcpcd (#261). Each
+    dhcpcd runs in a private mount namespace with its own state under
+    /run/wlanpi-core/dhcpcd/<netns>/<iface>, so the same interface name in
+    two namespaces gets two leases, and is released and stopped by PID.
+    No IPv4 link-local fallback; the hostname and timesyncd hooks are off,
+    and in root so is the resolv.conf hook.
+  * Never install a gatewayless default route: default_route uses the DHCP
+    router, and adds nothing when there is none (#279).
+  * Starting a connection monitor stops the previous one for the same
+    interface, a superseded monitor no longer deregisters its successor,
+    and a stop request is honoured before DHCP, route and app start.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:58:51 -0500
+
+wlanpi-core (2.3.15-1) unstable; urgency=medium
+
+  * Write network profiles and current.txt atomically (temp file, fsync,
+    rename), so a crash or full disk never leaves a truncated profile. New
+    profile files are created 0600 (#277).
+  * Deleting the active profile with force now deactivates it first, so
+    current.txt never names a deleted profile; without force it is still
+    refused with 409.
+  * Reject the configuration IDs default, root and status in any letter
+    case with 400.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:42:09 -0500
+
+wlanpi-core (2.3.14-1) unstable; urgency=medium
+
+  * Tear down the active profile before activating another, so its
+    namespaces, supplicants and apps no longer linger beside the new one
+    (#271).
+  * When an activation fails (including at boot), record and apply the
+    default configuration instead of leaving current.txt on a profile that
+    is no longer in effect. Apply the default after deactivate as well.
+  * Leave radios in namespaces Core did not create out of the default
+    configuration.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:12:44 -0500
+
+wlanpi-core (2.3.13-1) unstable; urgency=medium
+
+  * Serialise activate, deactivate, /wlan/revert and boot activation with an
+    flock on /run/wlanpi-core/netcfg.lock. A request that arrives while
+    another change is running gets HTTP 409 instead of interleaving phy
+    moves with it (#270).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:59:28 -0500
+
+wlanpi-core (2.3.12-1) unstable; urgency=medium
+
+  * Key wpa_supplicant runtime state by (namespace, interface): the config,
+    log and pidfile live under /run/wlanpi-core/wpa/<netns>/ (short enough
+    for the control socket path at the longest names), and
+    supplicants in a namespace get their own control socket directory, so
+    the same interface name in two namespaces no longer shares one (#273).
+  * Write each supplicant config with only that entry's network, mode 0600,
+    instead of merging networks from earlier profiles into
+    /etc/wpa_supplicant/<iface>.conf.
+  * Stop writing /etc/network/interfaces.d/<iface>.cfg.
+  * Give each Core namespace /etc/netns/<ns>/resolv.conf so DHCP inside it
+    cannot rewrite the root /etc/resolv.conf.
+  * Reject a profile whose entries share an interface, use another entry's
+    interface as a display name, or reuse a name within one namespace.
+    A stored profile that breaks these rules is still listed, but GET and
+    activate now return 422 for it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:35:43 -0500
+
+wlanpi-core (2.3.11-1) unstable; urgency=medium
+
+  * Only return and delete network namespaces Core created, recorded by a
+    marker under /run/wlanpi-core/netns. Deactivate no longer moves radios
+    out of, or deletes, namespaces created by users or other tools (#275).
+  * Return namespaces to root by walking their phys rather than their
+    interfaces, so a phy with no netdev, or several netdevs, comes back, and
+    delete a namespace only once no phys or links remain in it.
+  * A namespace created by an earlier Core version has no marker, so it is
+    not deleted until reboot. A phy returned without a netdev stays in root
+    with no interface until a profile or a tool creates one.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:20:05 -0500
+
+wlanpi-core (2.3.10-1) unstable; urgency=medium
+
+  * Stop only the wpa_supplicant processes Core started. Each supplicant
+    writes a pidfile under /run/wlanpi-core/wpa_supplicant/<netns>/<iface>.pid
+    and teardown signals that PID after checking it is still a supplicant
+    for that interface. Removes the host-wide `pkill -f wpa_supplicant`
+    that also killed NetworkManager's and other namespaces' supplicants,
+    and the targeted kill whose pattern never matched (#269).
+  * On override activation, also stop supplicants started by older Core
+    versions, recognised by Core's /tmp/wpa-<iface>.log argument.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:08:39 -0500
+
+wlanpi-core (2.3.9-1) unstable; urgency=medium
+
+  * Build the default network config from the radios present, across every
+    namespace and on the phy each interface is really on, instead of a
+    hardcoded wlan0/phy0 + wlan1/phy1 pair. The default has no security, so
+    activating it no longer fails on a fake WPA2 entry without a psk, and
+    single-radio devices no longer return 500 (#202).
+  * Replace an untouched pre-#202 default.json with the live default on
+    first read. Leave SystemManager's wlanpiN monitor interfaces out of it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:34:31 -0500
+
+wlanpi-core (2.3.8-1) unstable; urgency=medium
+
+  * Resolve each config's interface from the live inventory across every
+    network namespace before any change, and use the phy it is really on
+    (addressed as phy#N) instead of the stored phy. A stale phy in a config
+    no longer recreates the interface on a different radio, deletes it and
+    gives up, or moves the wrong radio into a namespace (#236).
+  * Find interfaces by iface_display_name as well as interface, and find
+    interfaces left in another namespace, so activate, deactivate and
+    rollback of namespaced configs are no longer silent no-ops.
+  * Restore the original interface when prepare fails part way through.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:22:14 -0500
+
 wlanpi-core (2.3.7-1) unstable; urgency=medium
 
   * Restrict systemd service notifications to the Gunicorn main process so
