@@ -297,6 +297,73 @@ class NetConfig(BaseModel):
     __repr__ = __str__
 
 
+class NetSecurityPublic(BaseModel):
+    """Security settings as the API returns them: secrets become flags."""
+
+    ssid: str
+    security: SecurityTypes
+    psk_set: bool = False
+    password_set: bool = False
+    sae_pwe: int | None = None
+    pmf: int | None = None
+    identity: str | None = None
+    client_cert: str | None = None
+    private_key: str | None = None
+    ca_cert: str | None = None
+
+    @classmethod
+    def from_security(cls, security: NetSecurity) -> "NetSecurityPublic":
+        """Drop psk and password, recording only whether each is set."""
+        return cls(
+            **security.model_dump(exclude={"psk", "password"}),
+            psk_set=bool(security.psk),
+            password_set=bool(security.password),
+        )
+
+
+class RootConfigPublic(RootConfig):
+    """A root entry as the API returns it (no secrets)."""
+
+    # Narrower public type for the same field.
+    security: NetSecurityPublic | None = None  # type: ignore[assignment]
+
+
+class NamespaceConfigPublic(NamespaceConfig):
+    """A namespace entry as the API returns it (no secrets)."""
+
+    security: NetSecurityPublic | None = None  # type: ignore[assignment]
+
+
+class NetConfigPublic(NetConfig):
+    """A configuration as the API returns it: psk and password omitted.
+
+    `psk_set` / `password_set` say whether a secret is stored. Send the
+    entry back without `psk` or `password` in a PATCH to keep it.
+    """
+
+    namespaces: list[NamespaceConfigPublic] | None = None  # type: ignore[assignment]
+    roots: list[RootConfigPublic] | None = None  # type: ignore[assignment]
+
+    @classmethod
+    def from_config(cls, cfg: NetConfig) -> "NetConfigPublic":
+        """Build the public view of a stored configuration."""
+
+        def public(entry: RootConfig) -> dict[str, Any]:
+            data = entry.model_dump(exclude={"security"})
+            data["security"] = (
+                NetSecurityPublic.from_security(entry.security)
+                if entry.security
+                else None
+            )
+            return data
+
+        return cls(
+            id=cfg.id,
+            namespaces=[public(e) for e in cfg.namespaces or []],  # type: ignore[misc]
+            roots=[public(e) for e in cfg.roots or []],  # type: ignore[misc]
+        )
+
+
 class NetConfigUpdate(BaseModel):
     """Partial update for a network configuration."""
 

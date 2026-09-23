@@ -440,6 +440,32 @@ def add_config(config: NetConfig) -> bool:
     return True
 
 
+def _keep_stored_secrets(stored: NetConfig, updated: NetConfig) -> None:
+    """Keep an entry's stored psk/password when an update omits them (#272).
+
+    The API never returns secrets, so a client that edits and sends back an
+    entry cannot include them. Entries are matched by (namespace, interface).
+    """
+
+    def by_key(cfg: NetConfig) -> dict[tuple[str | None, str], Any]:
+        entries: dict[tuple[str | None, str], Any] = {}
+        for ns_entry in cfg.namespaces or []:
+            entries[(ns_entry.namespace, ns_entry.interface)] = ns_entry
+        for root_entry in cfg.roots or []:
+            entries[(None, root_entry.interface)] = root_entry
+        return entries
+
+    old_entries = by_key(stored)
+    for key, entry in by_key(updated).items():
+        old = old_entries.get(key)
+        if old is None or old.security is None or entry.security is None:
+            continue
+        if entry.security.psk is None and old.security.psk:
+            entry.security.psk = old.security.psk
+        if entry.security.password is None and old.security.password:
+            entry.security.password = old.security.password
+
+
 def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     """Edit an existing configuration."""
     path = _config_path(cfg_id)
@@ -448,7 +474,9 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     if is_active(cfg_id):
         raise ConfigActiveError(f"Cannot edit active configuration {cfg_id}.")
 
-    for field, value in config_update.model_dump().items():
+    stored = cfg.model_copy(deep=True)
+    for field in type(config_update).model_fields:
+        value = getattr(config_update, field)
         if value is not None and field != "cfg_id":
             setattr(cfg, field, value)
     # setattr skips model validation; re-run it (uniqueness across entries)
@@ -456,6 +484,7 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
         cfg = NetConfig.model_validate(cfg.model_dump())
     except PydanticValidationError as e:
         raise ValidationError(str(e), status_code=422) from None
+    _keep_stored_secrets(stored, cfg)
 
     # Write updated config back to file
     _atomic_write(path, cfg.model_dump_json(indent=4))

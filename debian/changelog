@@ -1,3 +1,15 @@
+wlanpi-core (2.3.19-1) unstable; urgency=medium
+
+  * Stop returning Wi-Fi secrets from the network config API (#272).
+    GET /network/config/{id} and the PATCH response omit psk and password
+    and report psk_set / password_set instead.
+  * PATCH keeps an entry's stored psk and password when the request omits
+    them, so a configuration read with GET can be edited and sent back.
+  * On upgrade, set existing network profiles and the legacy
+    /etc/wpa_supplicant/wlanN.conf files that earlier versions wrote to 0600.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:58:36 -0500
+
 wlanpi-core (2.3.18-1) unstable; urgency=medium
 
   * Find a config's radio by its interface name first, and by its display

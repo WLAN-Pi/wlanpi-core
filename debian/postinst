@@ -129,6 +129,15 @@ if [ -d "$SECRETS_DIR" ]; then
     fi
 fi
 
+# Network profiles hold PSKs. Core now writes them 0600; tighten files
+# written by earlier versions. Earlier versions also wrote
+# /etc/wpa_supplicant/wlanN.conf (with the PSK) using the default umask.
+NETCFG_DIR=/home/wlanpi/.local/share/wlanpi-core/netcfg/configs
+if [ -d "$NETCFG_DIR" ]; then
+    find "$NETCFG_DIR" -maxdepth 1 -type f -name '*.json' -exec chmod 0600 {} + 2>/dev/null || true
+fi
+find /etc/wpa_supplicant -maxdepth 1 -type f -name 'wlan[0-9]*.conf' -exec chmod 0600 {} + 2>/dev/null || true
+
 if ! ischroot; then
     if [ $CONF_CHANGED -eq 1 ]; then
         echo "Restarting wlanpi-core ..."

@@ -17,6 +17,7 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
     NetConfig,
+    NetConfigPublic,
     NetConfigUpdate,
 )
 from wlanpi_core.utils import network_config
@@ -68,16 +69,21 @@ async def get_configs() -> Any:
 
 @router.get(
     "/{id}",
-    response_model=NetConfig,
+    response_model=NetConfigPublic,
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def get_config_by_id(id: str) -> Any:
-    """Get a specific network configuration by ID."""
+    """
+    Get a specific network configuration by ID.
+
+    Secrets are never returned: each `security` block has `psk_set` and
+    `password_set` instead of `psk` and `password`.
+    """
     try:
         config = network_config.get_config(id)
         log.info(f"Retrieved configuration: {config.id}")
-        return config
+        return NetConfigPublic.from_config(config)
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e)) from None
@@ -123,12 +129,19 @@ async def create_config(config: NetConfig) -> Any:
 
 @router.patch(
     "/{id}",
-    response_model=dict[str, NetConfig | str],
+    response_model=dict[str, NetConfigPublic | str],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
-    """Update an existing network configuration."""
+    """
+    Update an existing network configuration.
+
+    `roots` and `namespaces` replace the stored lists. An entry sent without
+    `psk` or `password` keeps the stored secret for the same namespace and
+    interface, so a configuration read with GET can be edited and sent back.
+    The response omits secrets like GET does.
+    """
     try:
         config = network_config.edit_config(id, config_update)
         if not config:
@@ -140,7 +153,7 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
         return {
             "id": id,
             "message": "Configuration updated successfully",
-            "config": config,
+            "config": NetConfigPublic.from_config(config),
         }
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")

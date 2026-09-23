@@ -563,6 +563,60 @@ def handle_network_config_create_invalid_psk_422(
     assert not (netcfg_env["cfg_dir"] / "psk_cfg.json").exists()
 
 
+def handle_network_config_secrets_not_returned(
+    client, auth_headers, scenario, netcfg_env
+):
+    import json as _json
+
+    entry = {
+        "mode": "managed",
+        "iface_display_name": "wlan0",
+        "phy": "phy0",
+        "interface": "wlan0",
+        "security": {"ssid": "Net", "security": "WPA2-PSK", "psk": "first-passphrase"},
+        "mlo": False,
+        "default_route": False,
+        "autostart_app": None,
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        created = client.post(
+            "/api/v1/network/config/",
+            json={"id": "sec_cfg", "namespaces": [], "roots": [entry]},
+        )
+        _expect_status(created, "200")
+        path = netcfg_env["cfg_dir"] / "sec_cfg.json"
+
+        fetched = client.get("/api/v1/network/config/sec_cfg")
+        _expect_status(fetched, scenario.expected_http)
+        security = fetched.json()["roots"][0]["security"]
+        assert "psk" not in security and security["psk_set"] is True
+        assert "first-passphrase" not in fetched.text
+
+        # Edit something else and send the entry back as GET returned it.
+        returned = fetched.json()["roots"][0]
+        returned["mode"] = "monitor"
+        patched = client.patch(
+            "/api/v1/network/config/sec_cfg", json={"roots": [returned]}
+        )
+        _expect_status(patched, scenario.expected_http)
+        assert "first-passphrase" not in patched.text
+        stored = _json.loads(path.read_text())["roots"][0]
+        assert stored["mode"] == "monitor"
+        assert stored["security"]["psk"] == "first-passphrase"
+
+        # A new psk in the PATCH replaces the stored one.
+        returned["security"]["psk"] = "second-passphrase"
+        _expect_status(
+            client.patch("/api/v1/network/config/sec_cfg", json={"roots": [returned]}),
+            "200",
+        )
+        assert (
+            _json.loads(path.read_text())["roots"][0]["security"]["psk"]
+            == "second-passphrase"
+        )
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
     from wlanpi_core.core.config import Settings
 
@@ -781,6 +835,7 @@ HANDLERS.update(
         "network_config_change_busy_409": handle_network_config_change_busy_409,
         "network_config_reserved_ids_400": handle_network_config_reserved_ids_400,
         "network_config_create_invalid_psk_422": handle_network_config_create_invalid_psk_422,
+        "network_config_secrets_not_returned": handle_network_config_secrets_not_returned,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,

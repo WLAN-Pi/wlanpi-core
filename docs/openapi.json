@@ -3,7 +3,7 @@
   "info": {
     "title": "wlanpi-core",
     "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`\n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| WebUI and other on-device services | `Authorization: Bearer <jwt>` | Mint a token on-device with `sudo getjwt <device-id>`. |\n| Remote apps (mobile) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| Local bootstrap (`getjwt`, root) | `X-Request-Signature: \u2026` | HMAC with the root-only shared secret; localhost only. |\n\nJWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic\nclock and is unaffected by wall-clock changes. After a reboot, Core evaluates\nthe signed `iat` and `exp` claims. If the restored clock is more than 30 seconds\nbehind `iat`, Bearer authentication returns\n`503 {\"error\":\"AUTH_CLOCK_NOT_SET\",\"message\":\"NTP needs set; cannot proceed\"}`.\nRetry the unchanged token after time synchronization. Branch on the `error`\nfield because unrelated 503 responses are not clock errors.\n\nAll documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30-90s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/api/wlan-scan.md` |\n| Speedtest / reachability | `docs/api/reachability-speedtest.md` |\n| WLAN USB/PCI drivers | `docs/api/network-wlan-drivers.md` |\n| Date/time | `docs/api/system-datetime.md` |\n| Reg domain | `docs/api/system-reg-domain.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
-    "version": "2.3.18"
+    "version": "2.3.19"
   },
   "paths": {
     "/api/v1/auth/token": {
@@ -1763,7 +1763,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NetConfig-Input"
+                "$ref": "#/components/schemas/NetConfig"
               }
             }
           },
@@ -1808,7 +1808,7 @@
           "network_config"
         ],
         "summary": "Get Config By Id",
-        "description": "Get a specific network configuration by ID.",
+        "description": "Get a specific network configuration by ID.\n\nSecrets are never returned: each `security` block has `psk_set` and\n`password_set` instead of `psk` and `password`.",
         "operationId": "get_config_by_id_api_v1_network_config__id__get",
         "security": [
           {
@@ -1832,7 +1832,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NetConfig-Output"
+                  "$ref": "#/components/schemas/NetConfigPublic"
                 }
               }
             }
@@ -1854,7 +1854,7 @@
           "network_config"
         ],
         "summary": "Update Config",
-        "description": "Update an existing network configuration.",
+        "description": "Update an existing network configuration.\n\n`roots` and `namespaces` replace the stored lists. An entry sent without\n`psk` or `password` keeps the stored secret for the same namespace and\ninterface, so a configuration read with GET can be edited and sent back.\nThe response omits secrets like GET does.",
         "operationId": "update_config_api_v1_network_config__id__patch",
         "security": [
           {
@@ -1892,7 +1892,7 @@
                   "additionalProperties": {
                     "anyOf": [
                       {
-                        "$ref": "#/components/schemas/NetConfig-Output"
+                        "$ref": "#/components/schemas/NetConfigPublic"
                       },
                       {
                         "type": "string"
@@ -5279,7 +5279,7 @@
         "title": "MessageResponse",
         "description": "Simple human-readable message response."
       },
-      "NamespaceConfig-Input": {
+      "NamespaceConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5343,7 +5343,7 @@
         "title": "NamespaceConfig",
         "description": "Configuration for an interface in a network namespace."
       },
-      "NamespaceConfig-Output": {
+      "NamespaceConfigPublic": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5364,7 +5364,7 @@
           "security": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetSecurity"
+                "$ref": "#/components/schemas/NetSecurityPublic"
               },
               {
                 "type": "null"
@@ -5404,8 +5404,8 @@
           "interface",
           "namespace"
         ],
-        "title": "NamespaceConfig",
-        "description": "Configuration for an interface in a network namespace."
+        "title": "NamespaceConfigPublic",
+        "description": "A namespace entry as the API returns it (no secrets)."
       },
       "NamespaceStatusError": {
         "properties": {
@@ -5422,7 +5422,7 @@
         "title": "NamespaceStatusError",
         "description": "Error marker when a namespace could not be queried."
       },
-      "NetConfig-Input": {
+      "NetConfig": {
         "properties": {
           "id": {
             "type": "string",
@@ -5432,7 +5432,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5446,7 +5446,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5464,7 +5464,7 @@
         "title": "NetConfig",
         "description": "A named network configuration with root and namespace interfaces."
       },
-      "NetConfig-Output": {
+      "NetConfigPublic": {
         "properties": {
           "id": {
             "type": "string",
@@ -5474,7 +5474,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Output"
+                  "$ref": "#/components/schemas/NamespaceConfigPublic"
                 },
                 "type": "array"
               },
@@ -5488,7 +5488,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Output"
+                  "$ref": "#/components/schemas/RootConfigPublic"
                 },
                 "type": "array"
               },
@@ -5503,8 +5503,8 @@
         "required": [
           "id"
         ],
-        "title": "NetConfig",
-        "description": "A named network configuration with root and namespace interfaces."
+        "title": "NetConfigPublic",
+        "description": "A configuration as the API returns it: psk and password omitted.\n\n`psk_set` / `password_set` say whether a secret is stored. Send the\nentry back without `psk` or `password` in a PATCH to keep it."
       },
       "NetConfigUpdate": {
         "properties": {
@@ -5512,7 +5512,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5526,7 +5526,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5646,6 +5646,100 @@
         ],
         "title": "NetSecurity",
         "description": "WLAN security settings for a connection."
+      },
+      "NetSecurityPublic": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "title": "Ssid"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityTypes"
+          },
+          "psk_set": {
+            "type": "boolean",
+            "title": "Psk Set",
+            "default": false
+          },
+          "password_set": {
+            "type": "boolean",
+            "title": "Password Set",
+            "default": false
+          },
+          "sae_pwe": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sae Pwe"
+          },
+          "pmf": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pmf"
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity"
+          },
+          "client_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Cert"
+          },
+          "private_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Key"
+          },
+          "ca_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ca Cert"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid",
+          "security"
+        ],
+        "title": "NetSecurityPublic",
+        "description": "Security settings as the API returns them: secrets become flags."
       },
       "NetworkConfigResponse": {
         "properties": {
@@ -6349,7 +6443,7 @@
         "title": "RfkillState",
         "description": "One rfkill switch."
       },
-      "RootConfig-Input": {
+      "RootConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -6408,7 +6502,7 @@
         "title": "RootConfig",
         "description": "Configuration for a root (non-namespaced) interface."
       },
-      "RootConfig-Output": {
+      "RootConfigPublic": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -6429,7 +6523,7 @@
           "security": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetSecurity"
+                "$ref": "#/components/schemas/NetSecurityPublic"
               },
               {
                 "type": "null"
@@ -6464,8 +6558,8 @@
           "phy",
           "interface"
         ],
-        "title": "RootConfig",
-        "description": "Configuration for a root (non-namespaced) interface."
+        "title": "RootConfigPublic",
+        "description": "A root entry as the API returns it (no secrets)."
       },
       "RoutingTable": {
         "properties": {
@@ -7507,7 +7601,7 @@
             "example": "wlan0"
           },
           "netConfig": {
-            "$ref": "#/components/schemas/NetConfig-Input"
+            "$ref": "#/components/schemas/NetConfig"
           },
           "removeAllFirst": {
             "type": "boolean",
