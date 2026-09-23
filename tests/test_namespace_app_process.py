@@ -98,3 +98,32 @@ def test_failed_owned_stop_preserves_tracking_for_retry(mocker, tmp_path):
 
     assert apps._owned_app_processes[1234] is owned
     assert pid_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("cmdline", "killed"),
+    [
+        (b"orb\0--serve\0", True),
+        (b"/usr/bin/python3\0/usr/bin/orb\0--serve\0", True),  # PATH + shebang
+        (b"orb\0--other\0", False),  # same program, other arguments
+        (b"/usr/sbin/sshd\0-D\0", False),  # PID reused after a reboot (#304)
+        (b"", False),  # process gone
+    ],
+)
+def test_root_stop_signals_only_the_recorded_command(mocker, tmp_path, cmdline, killed):
+    (tmp_path / "root.pid").write_text(
+        json.dumps({"pid": 4321, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    real_read_bytes = apps.Path.read_bytes
+
+    def read_bytes(path):
+        if str(path) == "/proc/4321/cmdline":
+            return cmdline
+        return real_read_bytes(path)
+
+    mocker.patch.object(apps.Path, "read_bytes", read_bytes)
+    run = mocker.patch.object(apps, "run_command")
+
+    assert apps.stop_app_in_namespace(None, pid_dir=tmp_path) is True
+    assert run.called is killed
+    assert not (tmp_path / "root.pid").exists()

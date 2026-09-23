@@ -472,16 +472,25 @@ class NetworkNamespaceService:
     def deactivate_config(self, cfg: NamespaceConfig | RootConfig) -> None:
         """Stop Core's processes for cfg, then revert its radio if Core may.
 
-        The connection monitor, autostart app, wpa_supplicant and dhcpcd are
-        Core's own (found by Core's pidfiles) and are always stopped. The
-        radio is reverted only when may_undo allows it: a netdev Core did not
-        create, or one another tool has since started using, is left as it
-        is (#304).
+        An entry Core never set up (another tool's netdev, or one left alone
+        as in_use) is not touched at all. For Core's own entries, and for one
+        whose netdev is gone, the connection monitor, autostart app,
+        wpa_supplicant and dhcpcd are always stopped (each found through
+        Core's pidfiles). The radio is then reverted only when may_undo
+        allows it: one another tool has since started using is handed back
+        as it is (#304).
         """
         iface = cfg.iface_display_name or cfg.interface
         namespace = (
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         )  # None = root namespace
+
+        live = self._find_live(cfg)
+        if live is not None and not self.is_core_managed(cfg):
+            # Never Core's (left alone as in_use, or another tool's netdev):
+            # Core started nothing for it, so there is nothing to stop.
+            self.log.info(f"Leaving {iface} alone: not set up by Core")
+            return
 
         # Core's processes are found through its pidfiles, so they are stopped
         # even when the netdev itself is gone (unplugged, deleted, renamed).
@@ -497,7 +506,7 @@ class NetworkNamespaceService:
                     f"Failed to remove network {iface} in namespace {namespace_display}: {e} (non-critical)"
                 )
 
-        if self._find_live(cfg) is None:
+        if live is None:
             self.log.info(f"Interface {iface} does not exist, nothing to revert")
             return
         if self.may_undo(cfg):
@@ -692,7 +701,7 @@ class NetworkNamespaceService:
             and other.netns == live.netns
             and other.name != live.name
             and other.type == "monitor"
-            and not re.fullmatch(rf"{MONITOR_IFACE_PREFIX}[0-9]+", other.name)
+            and other.name != f"{MONITOR_IFACE_PREFIX}{live.phy_index}"
             and not self._is_owned(other)
         ]
         if siblings:

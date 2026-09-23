@@ -400,6 +400,25 @@ def _stop_app_in_root(
     """Stop app in root namespace."""
     try:
         if pid:
+            # The pidfile outlives reboots and service restarts, so the PID may
+            # now belong to something else: only signal the recorded command.
+            # Compared as a suffix with the program by basename, so a script
+            # started through PATH and its shebang (python3 /usr/bin/orb) matches.
+            parts = app_command.split()
+            try:
+                raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+            except OSError:
+                raw = b""
+            argv = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+            tail = argv[-len(parts) :] if parts else []
+            if (
+                len(tail) != len(parts)
+                or not parts
+                or tail[1:] != parts[1:]
+                or os.path.basename(tail[0]) != os.path.basename(parts[0])
+            ):
+                log.info(f"PID {pid} is not the recorded app; dropping its pidfile")
+                return True
             run_command(["kill", str(pid)], raise_on_fail=True)
             log.info(f"Stopped app in {namespace_display} with PID {pid}")
             return True

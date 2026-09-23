@@ -202,3 +202,15 @@ def test_restart_keeps_the_state_for_the_next_lease(run_dir):
     with patch.object(nm, "ns_exec"):
         nm.restart_dhcp_with_timeout("wlan1", None)
     assert lease.read_text() == "x"
+
+
+def test_stop_dhcp_ignores_a_reused_pid_naming_the_iface(run_dir):
+    # A stale pidfile whose PID now runs `tcpdump -i wlan1` (#304 review).
+    procs = _Procs({10: ["tcpdump", "-i", "wlan1"], 11: ["/usr/sbin/dhcpcd", "wlan1"]})
+    _pidfile(run_dir, None, "wlan1", 10)
+    _pidfile(run_dir, "ns_a", "wlan1", 11)
+    with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
+        with patch.object(nm.os, "kill", side_effect=procs.kill):
+            nm.stop_dhcp("wlan1", None)
+            nm.stop_dhcp("wlan1", "ns_a")
+    assert procs.signals == [(11, signal.SIGALRM)]

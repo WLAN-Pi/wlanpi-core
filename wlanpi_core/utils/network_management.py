@@ -64,7 +64,10 @@ def _stop_dhcpcd_dir(state: Path) -> bool:
     # dhcpcd rewrites its title to "dhcpcd: <iface> [ip4]"; match the name
     # exactly, so a reused PID running dhcpcd for wlan10 is not taken for wlan1.
     title = " ".join(argv)
-    if not argv or not (title.startswith(f"dhcpcd: {iface} ") or iface in argv[1:]):
+    if not argv or not (
+        title.startswith(f"dhcpcd: {iface} ")
+        or (os.path.basename(argv[0]) == "dhcpcd" and iface in argv[1:])
+    ):
         return True
     try:
         # SIGALRM: release the lease and exit. (SIGHUP only rebinds in
