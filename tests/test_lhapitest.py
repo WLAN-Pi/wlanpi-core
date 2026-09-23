@@ -28,6 +28,7 @@ def _run(argv, secret_path, urlopen):
     with (
         patch.object(sys, "argv", ["lhapitest", "-s", str(secret_path), *argv]),
         patch.object(lhapitest.urllib.request, "urlopen", urlopen),
+        patch.object(lhapitest.ssl, "create_default_context", return_value=None),
         patch.object(sys, "stderr", io.StringIO()),
     ):
         return lhapitest.main()
