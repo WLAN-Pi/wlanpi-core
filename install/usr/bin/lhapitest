@@ -12,6 +12,7 @@ import json
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 SECRET = "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
@@ -56,7 +57,12 @@ def main() -> int:
         return 1
 
     # Must match verify_hmac in wlanpi_core/core/auth.py.
-    canonical = f"{method}\n{path}\n{a.query}\n".encode() + body
+    # verify_hmac re-encodes the parsed params (last value wins per key), so
+    # sign and send exactly that form rather than the raw --query text.
+    query = urllib.parse.urlencode(
+        dict(urllib.parse.parse_qsl(a.query, keep_blank_values=True))
+    )
+    canonical = f"{method}\n{path}\n{query}\n".encode() + body
     sig = hmac.new(secret, canonical, hashlib.sha256).hexdigest()
     if a.verbose:
         print(f"canonical: {canonical!r}\nsignature: {sig}", file=sys.stderr)
@@ -69,12 +75,11 @@ def main() -> int:
         headers[k.strip()] = v.strip()
 
     scheme = "http" if a.http else "https"
-    url = f"{scheme}://127.0.0.1:{a.port}{path}" + (f"?{a.query}" if a.query else "")
+    url = f"{scheme}://127.0.0.1:{a.port}{path}" + (f"?{query}" if query else "")
     req = urllib.request.Request(url, data=body or None, method=method, headers=headers)
     ctx = None
     if scheme == "https":
         ctx = ssl.create_default_context(cafile=CACERT)
-        ctx.check_hostname = False
     try:
         with urllib.request.urlopen(req, context=ctx) as resp:
             raw, status = resp.read(), resp.status
