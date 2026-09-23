@@ -15,6 +15,7 @@ from wlanpi_core.constants import (
     DEFAULT_CTRL_INTERFACE,
     DEFAULT_DHCP_DIR,
     PID_DIR,
+    RUN_DIR,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.namespaces import (
@@ -503,103 +504,12 @@ class NetworkNamespaceService:
         delete_namespace: bool = True,
     ) -> None:
         """Move interfaces and PHYs back to the root namespace."""
-        # If no cfg provided: scan all namespaces and move all interfaces/PHYs back to root
+        # No cfg: return every phy in every namespace Core created
         if cfg is None:
-            try:
-                namespace_names = ns_namespace.list_namespaces()
-            except ns_namespace.NetworkNamespaceError as e:
-                self.log.warning(f"Failed to list namespaces: {e}")
-                namespace_names = []
-
-            for ns_name in namespace_names:
-                try:
-                    self.log.info(
-                        f"Moving interfaces from namespace {ns_name} back to root"
-                    )
-                    # Stop the supplicants Core started in this namespace
-                    wpa_supplicant.stop_namespace_supplicants(ns_name)
-                    # List interfaces in the namespace using namespace interfaces module
-                    iface_names = ns_interfaces.get_interfaces_in_namespace(
-                        ns_name, include_loopback=False
-                    )
-
-                    for name in iface_names:
-                        if name.startswith("lo"):
-                            continue
-                        if name.startswith("wlan"):
-                            # Determine phy for this interface and move phy to root
-                            try:
-                                info_output = self._ns_exec(
-                                    ["iw", "dev", name, "info"], ns_name
-                                ).stdout
-                                # look for 'wiphy N'
-                                phy_num = None
-                                for info_line in info_output.splitlines():
-                                    info_line = info_line.strip()
-                                    if info_line.startswith("wiphy "):
-                                        try:
-                                            phy_num = int(info_line.split()[1])
-                                        except ValueError:
-                                            phy_num = None
-                                        break
-                                # Best-effort cleanup of control interface socket
-                                try:
-                                    self._ns_exec(
-                                        ["rm", "-f", f"{self.ctrl_interface}/{name}"],
-                                        ns_name,
-                                    )
-                                except RunCommandError:
-                                    pass
-                                if phy_num is not None:
-                                    phy_name = f"phy{phy_num}"
-                                    phy.move_phy_to_root(phy_name, ns_name)
-                                    self.log.info(
-                                        f"Moved {phy_name} from namespace {ns_name} back to root"
-                                    )
-                                else:
-                                    # Fallback: try moving link if phy not parsed
-                                    ns_interfaces.move_interface_to_root(name, ns_name)
-                                    self.log.info(
-                                        f"Moved {name} from namespace {ns_name} back to root (link move)"
-                                    )
-                            except RunCommandError as e:
-                                self.log.warning(
-                                    f"Failed moving wireless interface {name} from {ns_name}: {e}"
-                                )
-                        else:
-                            # Try generic link move for non-wlan interfaces (e.g., eth*)
-                            try:
-                                # Best-effort cleanup of control interface socket (if any naming overlap)
-                                try:
-                                    self._ns_exec(
-                                        ["rm", "-f", f"{self.ctrl_interface}/{name}"],
-                                        ns_name,
-                                    )
-                                except RunCommandError:
-                                    pass
-                                ns_interfaces.move_interface_to_root(name, ns_name)
-                                self.log.info(
-                                    f"Moved {name} from namespace {ns_name} back to root"
-                                )
-                            except RunCommandError as e:
-                                self.log.warning(
-                                    f"Failed moving interface {name} from {ns_name}: {e}"
-                                )
-
-                    if delete_namespace:
-                        # Stop any app running in this namespace before deletion
-                        self.stop_app_in_namespace(ns_name)
-                        try:
-                            ns_namespace.delete_namespace(ns_name, raise_on_fail=False)
-                            self.log.info(f"Deleted namespace {ns_name}")
-                        except Exception as e:
-                            self.log.warning(
-                                f"Could not delete namespace {ns_name}: {e}"
-                            )
-                except Exception as e:
-                    self.log.warning(
-                        f"Issue reverting namespace {ns_name} to root: {e}"
-                    )
+            for ns_name in self._core_namespaces():
+                self._return_namespace_phys(ns_name)
+                if delete_namespace:
+                    self._delete_namespace_if_empty(ns_name)
             return
 
         iface = cfg.interface
@@ -644,15 +554,66 @@ class NetworkNamespaceService:
                 f"Could not fully revert {live.name} from {namespace_display}: {e}"
             )
 
-        # Optionally delete the namespace the netdev was found in
-        if delete_namespace:
-            # Stop any app running in this namespace before deletion
-            self.stop_app_in_namespace(namespace)
+        # Delete the namespace only if Core created it and nothing is left in it
+        if delete_namespace and namespace in self._core_namespaces():
+            self._delete_namespace_if_empty(namespace)
+
+    def _namespace_marker(self, namespace: str) -> Path:
+        # /run is tmpfs, like /run/netns, so a marker lives as long as its netns.
+        return Path(RUN_DIR) / "netns" / namespace
+
+    def _core_namespaces(self) -> list[str]:
+        """Return the existing namespaces that Core created, dropping stale markers."""
+        marker_dir = Path(RUN_DIR) / "netns"
+        if not marker_dir.is_dir():
+            return []
+        try:
+            existing = set(ns_namespace.list_namespaces())
+        except ns_namespace.NetworkNamespaceError as e:
+            self.log.warning(f"Failed to list namespaces: {e}")
+            return []
+        owned = []
+        for marker in sorted(marker_dir.iterdir()):
+            if marker.name in existing:
+                owned.append(marker.name)
+            else:
+                marker.unlink(missing_ok=True)
+        return owned
+
+    def _return_namespace_phys(self, namespace: str) -> None:
+        """Stop Core's supplicants in `namespace` and move every phy in it to root."""
+        self.log.info(f"Returning phys in namespace {namespace} to root")
+        wpa_supplicant.stop_namespace_supplicants(namespace)
+        try:
+            phys = phy.list_phys(namespace=namespace)
+        except RunCommandError as e:
+            self.log.warning(f"Could not list phys in {namespace}: {e}")
+            return
+        for phy_name in phys:
             try:
-                ns_namespace.delete_namespace(namespace, raise_on_fail=False)
-                self.log.info(f"Deleted namespace {namespace}.")
-            except Exception as e:
-                self.log.warning(f"Could not delete namespace {namespace}: {e}")
+                phy.move_phy_to_root(phy_name, namespace)
+                self.log.info(f"Moved {phy_name} from namespace {namespace} to root")
+            except RunCommandError as e:
+                self.log.warning(f"Could not move {phy_name} from {namespace}: {e}")
+
+    def _delete_namespace_if_empty(self, namespace: str) -> None:
+        """Delete a Core namespace once no phys or non-loopback links remain."""
+        self.stop_app_in_namespace(namespace)
+        try:
+            remaining = phy.list_phys(
+                namespace=namespace
+            ) + ns_interfaces.get_interfaces_in_namespace(
+                namespace, include_loopback=False
+            )
+        except RunCommandError as e:
+            self.log.warning(f"Could not inspect namespace {namespace}: {e}")
+            return
+        if remaining:
+            self.log.warning(f"Keeping namespace {namespace}; still holds {remaining}")
+            return
+        ns_namespace.delete_namespace(namespace, raise_on_fail=False)
+        self._namespace_marker(namespace).unlink(missing_ok=True)
+        self.log.info(f"Deleted namespace {namespace}.")
 
     def start_app_in_namespace(self, namespace: str | None, app_id: str) -> None:
         """
@@ -727,7 +688,7 @@ class NetworkNamespaceService:
         except RunCommandError as e:
             self.log.error(f"Could not restore {live.name} on {live.phy}: {e}")
         if created_namespace is not None:
-            ns_namespace.delete_namespace(created_namespace, raise_on_fail=False)
+            self._delete_namespace_if_empty(created_namespace)
 
     def _prepare_root(self, cfg: RootConfig, live: discovery.LiveInterface) -> bool:
         """
@@ -784,6 +745,9 @@ class NetworkNamespaceService:
         if not ns_namespace.namespace_exists(namespace):
             self.log.info("Creating namespace %s", namespace)
             ns_namespace.create_namespace(namespace)
+            marker = self._namespace_marker(namespace)
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.touch()
             created_namespace = namespace
         else:
             self.log.info("Namespace %s already exists", namespace)

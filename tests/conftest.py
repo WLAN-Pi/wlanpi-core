@@ -112,6 +112,17 @@ def _isolate_namespace_execution(mock_namespace_execution):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_run_dir(tmp_path, monkeypatch):
+    """Keep pidfiles and namespace markers out of the real /run/wlanpi-core."""
+    run_dir = tmp_path / "run-wlanpi-core"
+    monkeypatch.setattr(
+        "wlanpi_core.services.network_namespace_service.RUN_DIR", str(run_dir)
+    )
+    monkeypatch.setattr("wlanpi_core.wpa.supplicant.RUN_DIR", str(run_dir))
+    return run_dir
+
+
+@pytest.fixture(autouse=True)
 def _clean_connection_monitors():
     from wlanpi_core.connection.monitor import stop_all_connection_monitors
 

@@ -1,3 +1,14 @@
+wlanpi-core (2.3.11-1) unstable; urgency=medium
+
+  * Only return and delete network namespaces Core created, recorded by a
+    marker under /run/wlanpi-core/netns. Deactivate no longer moves radios
+    out of, or deletes, namespaces created by users or other tools (#275).
+  * Return namespaces to root by walking their phys rather than their
+    interfaces, so a phy with no netdev, or several netdevs, comes back, and
+    delete a namespace only once no phys or links remain in it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:20:05 -0500
+
 wlanpi-core (2.3.10-1) unstable; urgency=medium
 
   * Stop only the wpa_supplicant processes Core started. Each supplicant

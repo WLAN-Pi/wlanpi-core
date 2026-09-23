@@ -1289,6 +1289,53 @@ def handle_shared_phy_monitor_iface_round_trip(
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_revert_leaves_foreign_namespace(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#275: deactivate returns Core's namespaces and leaves others alone."""
+    adapters = {
+        **JOSH_THREE_RADIO,
+        "wlan2": {**JOSH_THREE_RADIO["wlan2"], "netns": "user_ns"},
+    }
+    _write_netconfig(
+        netcfg_env,
+        "core_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        assert nc.activate_config("core_cfg", override_active=True) is True
+        assert nc.deactivate_config("core_cfg") is True
+    assert inventory.live() == {
+        "wlan0": ("phy0", None, "managed"),
+        "wlan1": ("phy2", None, "managed"),
+        "wlan2": ("phy1", "user_ns", "managed"),
+    }
+    assert inventory.netns == {"user_ns"}
+
+
+def handle_revert_moves_phy_without_netdev(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#275: a phy with no netdev left in a Core namespace still returns to root."""
+    _write_netconfig(
+        netcfg_env,
+        "core_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("core_cfg", override_active=True) is True
+        # Someone deletes the netdev inside the namespace behind Core's back.
+        inventory.run_command(
+            ["sudo", "ip", "netns", "exec", "ns_a", "/sbin/iw", "dev", "wlan1", "del"]
+        )
+        assert nc.deactivate_config("core_cfg") is True
+    # Moved explicitly before the namespace is deleted, not returned by the
+    # kernel as a side effect of destroying a non-empty namespace.
+    assert inventory.phy_moves[-1] == ("phy2", None)
+    assert inventory.phy_netns["phy2"] is None
+    assert "ns_a" not in inventory.netns
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1368,6 +1415,8 @@ HANDLERS = {
     "phy10_vs_phy1_substring": handle_phy10_vs_phy1_substring,
     "iface_display_name_differs": handle_iface_display_name_differs,
     "rollback_after_partial_prepare": handle_rollback_after_partial_prepare,
+    "revert_leaves_foreign_namespace": handle_revert_leaves_foreign_namespace,
+    "revert_moves_phy_without_netdev": handle_revert_moves_phy_without_netdev,
     "shared_phy_monitor_iface_round_trip": handle_shared_phy_monitor_iface_round_trip,
 }
 
