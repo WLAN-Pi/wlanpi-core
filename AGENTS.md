@@ -5,8 +5,12 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 ## Branch and PR rules
 
 - PRs target `dev` (the default branch). `main` is the release line; never PR it.
-- One concern per PR. One domain router, one fix, one refactor. No mixed
-  move-plus-change diffs. Soft cap ~400 changed lines for focused changes.
+- One concern per PR: one domain router, one fix, one refactor. Size is a soft
+  target: above 500 changed lines, add a `Review order` section to the
+  description; above 1,000 is fine when the change is cohesive. Split only at
+  real seams, never to hit a number. Put moves and formatting in separate
+  commits from behavioral changes. Full policy:
+  [developer guide](https://github.com/WLAN-Pi/developers/blob/main/CONTRIBUTING.md#pr-size-and-scope).
 - CI-only or docs-only changes do not bump `debian/changelog`. A version bump
   is a release; only package-content changes get one.
 - Keep `wlanpi_core/__version__.py` in sync with the deb version minus the
