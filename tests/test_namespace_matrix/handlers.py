@@ -17,6 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from tests.conftest import (
     JOSH_THREE_RADIO,
+    Iface,
     hardware_success_mocks,
     live_adapter_inventory_mocks,
     write_json_config,
@@ -1968,6 +1969,80 @@ def handle_deactivate_root_managed_leaves_radio_capturable(
     assert inventory.phy_moves == []
 
 
+def _shared_cfg_with_up_monitor(netcfg_env) -> dict[str, dict[str, str]]:
+    _write_netconfig(
+        netcfg_env,
+        "shared_cfg",
+        namespaces=[
+            _ns("lab_ns", interface="wlan0", phy="phy0").model_dump(mode="json")
+        ],
+    )
+    return {
+        **SHARED_PHY_THREE_RADIO,
+        "wlanpi0": {**SHARED_PHY_THREE_RADIO["wlanpi0"], "up": "1"},
+    }
+
+
+def handle_bulk_revert_returns_radio_capturable(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Return a namespace's radio with its monitor up and its managed netdev down."""
+    adapters = _shared_cfg_with_up_monitor(netcfg_env)
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        assert nc.activate_config("shared_cfg", override_active=True) is True
+        assert inventory.ifaces[("lab_ns", "wlan0")].up
+        # What revert_all and orphan cleanup run: every Core namespace home.
+        namespace_service.revert_to_root(None)
+        assert inventory.ifaces[(None, "wlanpi0")].up
+        assert not inventory.ifaces[(None, "wlan0")].up
+    assert "lab_ns" not in inventory.netns
+
+
+def handle_netns_move_skips_renamed_monitor(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Never bring up a same-named netdev of another radio after a rename."""
+    adapters = _shared_cfg_with_up_monitor(netcfg_env)
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        assert nc.activate_config("shared_cfg", override_active=True) is True
+        # While phy0 is away, another radio gets a root netdev named wlanpi0.
+        inventory.ifaces[(None, "wlanpi0")] = Iface(
+            phy="phy1", type="monitor", ifindex=90, wdev=90
+        )
+        # The bulk path moves phy0 home as it is; the kernel renames its
+        # monitor to a free wlanN because root's wlanpi0 is taken.
+        namespace_service.revert_to_root(None)
+        foreign = inventory.ifaces[(None, "wlanpi0")]
+        assert foreign.phy == "phy1" and not foreign.up
+        renamed = [
+            meta
+            for (ns, _name), meta in inventory.ifaces.items()
+            if ns is None and meta.phy == "phy0" and meta.type == "monitor"
+        ]
+        assert len(renamed) == 1 and not renamed[0].up
+
+
+def handle_netns_move_monitor_restore_is_best_effort(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Keep the move and activation working when a monitor cannot be restored."""
+    adapters = _shared_cfg_with_up_monitor(netcfg_env)
+    faults = [
+        (None, ("ip", "-o", "link", "show", "up")),
+        ("lab_ns", ("ip", "link", "set", "wlanpi0", "up")),
+    ]
+    for fault in faults:
+        netcfg_env["ccf"].write_text("default")
+        with live_adapter_inventory_mocks(
+            adapters, faults={fault: "RTNETLINK answers: Operation not permitted\n"}
+        ) as inventory:
+            assert nc.activate_config("shared_cfg", override_active=True) is True
+            assert inventory.live()["wlanpi0"] == ("phy0", "lab_ns", "monitor")
+            assert not inventory.ifaces[("lab_ns", "wlanpi0")].up
+            assert nc.deactivate_config("shared_cfg") is True
+        assert "lab_ns" not in inventory.netns
+
+
 def handle_revert_failure_is_reported(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -2735,6 +2810,9 @@ HANDLERS = {
     "default_resets_core_created_netdev": handle_default_resets_core_created_netdev,
     "deactivate_restores_renamed_root_entry": handle_deactivate_restores_renamed_root_entry,
     "deactivate_root_managed_leaves_radio_capturable": handle_deactivate_root_managed_leaves_radio_capturable,
+    "bulk_revert_returns_radio_capturable": handle_bulk_revert_returns_radio_capturable,
+    "netns_move_skips_renamed_monitor": handle_netns_move_skips_renamed_monitor,
+    "netns_move_monitor_restore_is_best_effort": handle_netns_move_monitor_restore_is_best_effort,
     "revert_failure_is_reported": handle_revert_failure_is_reported,
     "post_prepare_failure_rolls_back_entry": handle_post_prepare_failure_rolls_back_entry,
     "marker_identity_guards_reused_name": handle_marker_identity_guards_reused_name,
