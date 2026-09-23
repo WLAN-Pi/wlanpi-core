@@ -1,6 +1,7 @@
 """Service managing network namespaces, interfaces, and apps."""
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -223,15 +224,6 @@ class NetworkNamespaceService:
         """Update the global wpa_supplicant settings."""
         self.log.info("Updating global settings: %s", settings)
         self.global_settings.update(settings)
-
-    def parse_wpa_log(self, iface: str, timeout: int = 30) -> None:
-        """
-        Parse wpa_supplicant log file.
-
-        Delegates to wpa.supplicant module.
-        Note: Event logging is not preserved in the extracted function.
-        """
-        wpa_supplicant.parse_wpa_log(iface, timeout=timeout)
 
     def get_interfaces(self) -> list[Any]:
         """Get list of wireless interfaces using the adapter discovery module."""
@@ -478,16 +470,17 @@ class NetworkNamespaceService:
         namespace_display = namespace if namespace else "root"
         self.log.info("Removing network %s from namespace %s", iface, namespace_display)
 
-        # Runtime config, plus files written by Core before they were keyed
-        # by (namespace, iface) under /run
+        # Runtime config and log, plus the wlanN.conf / wlanN.cfg that Core
+        # wrote under /etc before runtime state moved to /run. Only that exact
+        # name pattern: a display name such as "wpa_supplicant" must never
+        # remove /etc/wpa_supplicant/wpa_supplicant.conf.
         stale = [
             wpa_supplicant.config_path(iface, namespace),
-            self.config_dir / f"{iface}.conf",
-            self.dhcp_dir / f"{iface}.cfg",
+            wpa_supplicant.log_path(iface, namespace),
         ]
-        if iface.startswith("wlan") and iface[4:].isdigit():
-            stale.append(self.config_dir / f"wlan{iface[4:]}.conf")
-            stale.append(self.dhcp_dir / f"wlan{iface[4:]}.cfg")
+        if re.fullmatch(r"wlan[0-9]+", iface):
+            stale.append(self.config_dir / f"{iface}.conf")
+            stale.append(self.dhcp_dir / f"{iface}.cfg")
         for config_file in stale:
             self._safe_unlink(config_file)
 
@@ -579,8 +572,19 @@ class NetworkNamespaceService:
             if marker.name in existing:
                 owned.append(marker.name)
             else:
+                # Deleted out of band: drop the marker and Core's /etc overlay
                 marker.unlink(missing_ok=True)
+                self._remove_netns_etc(marker.name)
         return owned
+
+    def _remove_netns_etc(self, namespace: str) -> None:
+        """Remove the resolv.conf Core wrote for `namespace`, and its dir if empty."""
+        etc_dir = Path(NETNS_ETC_DIR) / namespace
+        (etc_dir / "resolv.conf").unlink(missing_ok=True)
+        try:
+            etc_dir.rmdir()
+        except OSError:
+            pass  # absent, or holds files Core did not write
 
     def _return_namespace_phys(self, namespace: str) -> None:
         """Stop Core's supplicants in `namespace` and move every phy in it to root."""
@@ -615,12 +619,7 @@ class NetworkNamespaceService:
             return
         ns_namespace.delete_namespace(namespace, raise_on_fail=False)
         self._namespace_marker(namespace).unlink(missing_ok=True)
-        etc_dir = Path(NETNS_ETC_DIR) / namespace
-        (etc_dir / "resolv.conf").unlink(missing_ok=True)
-        try:
-            etc_dir.rmdir()
-        except OSError:
-            pass  # absent, or holds files Core did not write
+        self._remove_netns_etc(namespace)
         self.log.info(f"Deleted namespace {namespace}.")
 
     def start_app_in_namespace(self, namespace: str | None, app_id: str) -> None:
@@ -791,7 +790,9 @@ class NetworkNamespaceService:
             # /etc/resolv.conf, so DHCP in the namespace cannot rewrite root DNS.
             etc_dir = Path(NETNS_ETC_DIR) / namespace
             etc_dir.mkdir(parents=True, exist_ok=True)
-            (etc_dir / "resolv.conf").touch()
+            # Empty, not touched: a namespace reusing this name must not
+            # inherit the previous one's nameservers.
+            (etc_dir / "resolv.conf").write_text("")
             created_namespace = namespace
         else:
             self.log.info("Namespace %s already exists", namespace)

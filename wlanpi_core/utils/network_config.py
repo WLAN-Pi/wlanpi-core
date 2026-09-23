@@ -51,6 +51,12 @@ def network_change_lock() -> Iterator[None]:
     opens its own file description) and other processes, such as an old
     gunicorn worker still finishing during a reload. Does not wait.
 
+    Not reentrant: acquiring it again while held, even in the same thread,
+    raises ConfigBusyError. Code already holding it (activate's rollback)
+    must call the unlocked service methods, not deactivate_config(). The
+    lock does not cover ConnectionMonitor threads, which run DHCP, routes
+    and app start after the change that started them has returned.
+
     Raises:
         ConfigBusyError: If another activate, deactivate or revert is running
     """
@@ -74,7 +80,13 @@ def _config_path(cfg_id: str) -> Path:
         validated_id = validate_config_id(cfg_id)
     except ValueError as error:
         raise ValidationError(str(error), status_code=400) from error
-    return cfg_dir / f"{validated_id}.json"
+    # validate_config_id already forbids "/", "." and ".."; this normpath +
+    # prefix check is the confinement CodeQL's py/path-injection recognises.
+    base = os.path.normpath(cfg_dir)
+    path = os.path.normpath(os.path.join(base, f"{validated_id}.json"))
+    if not path.startswith(base + os.sep):
+        raise ValidationError("Invalid configuration ID", status_code=400)
+    return Path(path)
 
 
 def _legacy_default_config(cfg_id: str = "default") -> NetConfig:
@@ -122,24 +134,35 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
     not create: the default must not claim a user's or another tool's radio.
     """
     core_namespaces = set(ns.core_namespaces())
-    roots = [
-        RootConfig(
-            mode=(
-                NetworkModeEnum.monitor
-                if live.type == "monitor"
-                else NetworkModeEnum.managed
-            ),
-            iface_display_name=live.name,
-            phy=f"phy{live.phy_index}",
-            interface=live.name,
-            security=None,
-            default_route=False,
-            autostart_app=None,
+    roots: list[RootConfig] = []
+    for live in discovery.list_interfaces_all_namespaces():
+        if live.netns is not None and live.netns not in core_namespaces:
+            continue
+        if live.type == "monitor" and _is_system_monitor(live.name):
+            continue
+        if any(r.interface == live.name for r in roots):
+            # The same name in root and a Core namespace is legal, but one
+            # NetConfig cannot hold both; root is listed first and wins.
+            log.warning(
+                f"{live.name} exists in more than one namespace; leaving the "
+                f"{live.netns or 'root'} one out of the default"
+            )
+            continue
+        roots.append(
+            RootConfig(
+                mode=(
+                    NetworkModeEnum.monitor
+                    if live.type == "monitor"
+                    else NetworkModeEnum.managed
+                ),
+                iface_display_name=live.name,
+                phy=f"phy{live.phy_index}",
+                interface=live.name,
+                security=None,
+                default_route=False,
+                autostart_app=None,
+            )
         )
-        for live in discovery.list_interfaces_all_namespaces()
-        if (live.netns is None or live.netns in core_namespaces)
-        and not (live.type == "monitor" and _is_system_monitor(live.name))
-    ]
     return NetConfig(id=cfg_id, namespaces=[], roots=roots)
 
 
@@ -281,7 +304,7 @@ def get_config(cfg_id: str) -> NetConfig:
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info("Default configuration file not found. Creating default config.")
-            return _write_live_default(path)
+            return _write_live_default()
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
     try:
@@ -299,7 +322,7 @@ def get_config(cfg_id: str) -> NetConfig:
             # Devices upgraded from before #202 still hold the hardcoded
             # default (fake WPA2 on wlan0, wlan1 on phy1); replace it.
             log.info("Replacing the legacy hardcoded default configuration.")
-            return _write_live_default(path)
+            return _write_live_default()
         return config
     except json.JSONDecodeError as e:
         log.error(f"Configuration file {cfg_id}.json contains malformed JSON: {e}")
@@ -316,12 +339,20 @@ def get_config(cfg_id: str) -> NetConfig:
         ) from None
 
 
-def _write_live_default(path: Path) -> NetConfig:
+def _write_live_default() -> NetConfig:
     # shortcut: default.json snapshots the radios present when it is first
     # written; an adapter plugged in later is not in it until the file is
     # deleted. Upgrade path: regenerate while the file is unedited.
-    default_config = get_default_config("default")
-    path.write_text(default_config.model_dump_json(indent=4))
+    try:
+        default_config = get_default_config("default")
+    except Exception as e:
+        # Core must start even when the live inventory cannot be read or
+        # yields an invalid default; nothing is written, so the next start
+        # tries again.
+        log.error(f"Could not build the default configuration: {e}")
+        return NetConfig(id="default", namespaces=[], roots=[])
+    # A fixed name (not a caller's ID), so no user data reaches this path.
+    (cfg_dir / "default.json").write_text(default_config.model_dump_json(indent=4))
     return default_config
 
 
