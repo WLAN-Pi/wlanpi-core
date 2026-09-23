@@ -114,11 +114,27 @@ def test_invalid_entry_is_rejected_before_any_radio_is_touched(
     teardown.assert_not_called()
     assert netcfg_env["ccf"].read_text() == "default"
 
-    # Boot path: current.txt names the invalid profile; repair it to default.
+    # Another profile is active: it keeps running and stays current.
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "other",
+        {"id": "other", "namespaces": [], "roots": []},
+    )
+    netcfg_env["ccf"].write_text("other")
+    response = client.post(
+        "/api/v1/network/config/activate/bad_261", params={"override_active": True}
+    )
+    assert response.status_code == 422
+    teardown.assert_not_called()
+    assert netcfg_env["ccf"].read_text() == "other"
+
+    # The invalid profile is the stored current one (boot, or edited on disk):
+    # tear down what may remain of it and repair current.txt.
     netcfg_env["ccf"].write_text("bad_261")
     response = client.post(
         "/api/v1/network/config/activate/bad_261", params={"override_active": True}
     )
     assert response.status_code == 422
     activate.assert_not_called()
+    teardown.assert_called_once_with("bad_261")
     assert netcfg_env["ccf"].read_text() == "default"

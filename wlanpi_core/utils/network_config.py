@@ -606,15 +606,18 @@ def _activate_config_locked(
 
     # Validate every entry before touching any radio, so an invalid entry
     # cannot cost a valid sibling its interface (#261).
-    invalid_outcomes = _invalid_entries(cfg)
+    invalid_outcomes = _invalid_entries(cfg, only_core_managed=cfg_id == "default")
     if invalid_outcomes:
         log.error(
             f"Configuration {cfg_id} is invalid, nothing changed: "
             f"{[o.detail for o in invalid_outcomes]}"
         )
         if active_cfg == cfg_id:
-            # Boot-time re-activation of a stored profile that is now invalid:
-            # nothing of it is running, so stop claiming it is active.
+            # The stored current profile is now invalid (edited on disk, or a
+            # boot-time re-activation): tear down whatever of it still runs
+            # and stop claiming it is active. Another active profile is left
+            # running and current.txt keeps naming it.
+            _teardown_profile(cfg_id)
             _fall_back_to_default(cfg_id)
         return False, invalid_outcomes
 
@@ -662,11 +665,19 @@ def _activate_config_locked(
         raise
 
 
-def _invalid_entries(cfg: NetConfig) -> list[AdapterOutcome]:
-    """Return an error outcome for every entry that fails schema validation."""
+def _invalid_entries(
+    cfg: NetConfig, only_core_managed: bool = False
+) -> list[AdapterOutcome]:
+    """Return an error outcome for every entry that fails schema validation.
+
+    With `only_core_managed`, entries whose radio Core did not create are not
+    checked: _apply_entries reports them "skipped" without touching them.
+    """
     outcomes: list[AdapterOutcome] = []
     for entry in [*(cfg.namespaces or []), *(cfg.roots or [])]:
-        is_valid, detail = ns._validate_config(entry)
+        if only_core_managed and not ns.is_core_managed(entry):
+            continue
+        is_valid, detail = ns.validate_config(entry)
         if not is_valid:
             outcomes.append(
                 AdapterOutcome(

@@ -1,3 +1,15 @@
+wlanpi-core (2.3.25-1) unstable; urgency=medium
+
+  * Network configuration activation validates every entry before
+    touching any radio. An invalid entry now returns 422 with nothing
+    changed; previously valid siblings listed before it were deleted and
+    recreated, then rolled back. A stored current profile that fails
+    validation is torn down and current.txt reset to default.
+  * Declare dhcpcd-base as a dependency; the activation path has run
+    dhcpcd since 2.3.23.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 14:39:31 -0400
+
 wlanpi-core (2.3.24-1) unstable; urgency=medium
 
   * lhapitest: rewrite in Python so localhost HMAC requests sign
