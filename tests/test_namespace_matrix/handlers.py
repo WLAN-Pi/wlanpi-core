@@ -1787,6 +1787,33 @@ def handle_no_gatewayless_default_route(
     assert inventory.routes == []
 
 
+def handle_display_name_does_not_capture_other_radio(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Pick the radio by interface, not by a display name another radio carries."""
+    _write_netconfig(
+        netcfg_env,
+        "clash_cfg",
+        roots=[
+            _root(interface="wlan2", phy="phy1", iface_display_name="wlan0").model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        with pytest.raises(RunCommandError):
+            nc.activate_config("clash_cfg", override_active=True)
+    # wlan2 was picked (by interface), the rename clashed, and the failed
+    # prepare touched only wlan2. The restore must not delete the other
+    # radio's wlan0; the only later wlan0 delete is the default fallback
+    # recreating it on its own phy0.
+    assert inventory.deleted[0] == ("wlan2", None)
+    assert inventory.deleted.index(("wlan0", None)) > 1
+    assert all(phy == "phy0" for phy, name, _ns in inventory.adds if name == "wlan0")
+    assert inventory.live() == JOSH_LIVE
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1869,6 +1896,7 @@ HANDLERS = {
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,
+    "display_name_does_not_capture_other_radio": handle_display_name_does_not_capture_other_radio,
     "atomic_write_failure_keeps_old_file": handle_atomic_write_failure_keeps_old_file,
     "monitor_restart_keeps_new_generation": handle_monitor_restart_keeps_new_generation,
     "monitor_stop_during_poll_skips_dhcp": handle_monitor_stop_during_poll_skips_dhcp,

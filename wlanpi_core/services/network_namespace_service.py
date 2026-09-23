@@ -654,11 +654,13 @@ class NetworkNamespaceService:
     ) -> discovery.LiveInterface | None:
         """Find the live netdev backing cfg, in any namespace.
 
-        `interface` names the radio wherever it is. `iface_display_name` is
-        what Core renames it to, so it only identifies cfg's radio inside
-        cfg's own target namespace; another entry may use the same display
-        name in a different namespace. Radios in namespaces Core did not
-        create (other than cfg's own target) are not considered.
+        `interface` names the radio, so it is looked up first, wherever the
+        radio is. Only if no netdev has that name (Core renamed it on an
+        earlier activation) is `iface_display_name` tried, and only in cfg's
+        own target namespace: another entry may use the same display name
+        elsewhere, and another radio may already carry that name. Radios in
+        namespaces Core did not create (other than cfg's own target) are not
+        considered.
         """
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         # Radios in namespaces Core did not create belong to someone else;
@@ -669,13 +671,6 @@ class NetworkNamespaceService:
             for live in discovery.list_interfaces_all_namespaces()
             if live.netns is None or live.netns in owned or live.netns == namespace
         ]
-        display = cfg.iface_display_name
-        if display and display != cfg.interface:
-            for live in inventory:
-                if live.name == display and live.netns == namespace:
-                    return live
-        if not cfg.interface:
-            return None
         matches = sorted(
             (live for live in inventory if live.name == cfg.interface),
             key=lambda live: (live.netns != namespace, live.netns is not None),
@@ -685,7 +680,14 @@ class NetworkNamespaceService:
                 f"Interface {cfg.interface} exists in several namespaces "
                 f"{[m.netns or 'root' for m in matches]}; using {matches[0].netns or 'root'}"
             )
-        return matches[0] if matches else None
+        if matches:
+            return matches[0]
+        display = cfg.iface_display_name
+        if display and display != cfg.interface:
+            for live in inventory:
+                if live.name == display and live.netns == namespace:
+                    return live
+        return None
 
     def _mode_value(self, cfg: NamespaceConfig | RootConfig) -> str:
         return (
@@ -710,11 +712,21 @@ class NetworkNamespaceService:
     ) -> None:
         """Best-effort undo of a prepare that failed after deleting `live`.
 
-        Removes any half-created `new_name` from where the phy is now, moves
-        the phy back to its original netns, and recreates the original netdev.
+        Removes a half-created `new_name` from where the phy is now (only if
+        it is on this phy), moves the phy back to its original netns, and
+        recreates the original netdev.
         """
         try:
-            interface.delete_interface(new_name, namespace=moved_to)
+            # Remove a half-created `new_name` only if it is on our phy: the
+            # create may have failed because another radio owns that name.
+            ours = any(
+                other.name == new_name
+                and other.netns == moved_to
+                and other.phy_index == live.phy_index
+                for other in discovery.list_interfaces_all_namespaces()
+            )
+            if ours:
+                interface.delete_interface(new_name, namespace=moved_to)
             if moved_to != live.netns:
                 if moved_to is not None:
                     phy.move_phy_to_root(live.phy, moved_to)

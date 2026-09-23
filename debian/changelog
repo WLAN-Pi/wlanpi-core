@@ -1,3 +1,14 @@
+wlanpi-core (2.3.18-1) unstable; urgency=medium
+
+  * Find a config's radio by its interface name first, and by its display
+    name only if no interface has that name, so a display name that another
+    radio already carries no longer selects that radio (#236).
+  * When a prepare fails, only remove a half-created interface if it is on
+    the radio being prepared. Previously a rename that failed because
+    another radio owned the name deleted that other radio's interface.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:39:28 -0500
+
 wlanpi-core (2.3.17-1) unstable; urgency=medium
 
   * Write wpa_supplicant values so they round-trip exactly (#278).
