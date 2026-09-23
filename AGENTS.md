@@ -142,7 +142,7 @@ Reuse first, write second:
 - No walrus operator (`:=`). Rewrite the assignment into a plain statement;
   readability beats the one-liner.
 - Mark deliberate simplifications that cut a real corner (a global lock, an
-  O(n²) scan, a naive heuristic) with a `# shortcut:` comment naming the
+  O(n²) scan, a naive heuristic) with a `# ponytail:` comment naming the
   ceiling and the upgrade path.
 - Be terse in replies and in what you read. Prefer `grep`/`glob` and targeted
   reads over dumping whole files. Run the real gates once, not ad-hoc

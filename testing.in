@@ -1,9 +1,6 @@
 tox
-black
-isort
-autoflake
+ruff
 mypy
-flake8
 pytest
 pytest-asyncio
 pytest-cov
