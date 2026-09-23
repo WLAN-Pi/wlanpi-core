@@ -105,7 +105,7 @@ def test_stop_dhcp_releases_only_its_own_dhcpcd(run_dir):
         with patch.object(nm.os, "kill", side_effect=procs.kill):
             nm.stop_dhcp("sta0", "ns_a")
             nm.stop_dhcp("sta0", "ns_c")
-    assert procs.signals == [(10, signal.SIGHUP)]
+    assert procs.signals == [(10, signal.SIGALRM)]
 
 
 def test_stop_namespace_dhcp_covers_every_iface(run_dir):
@@ -179,3 +179,26 @@ def test_stop_dhcp_does_not_match_a_longer_iface_name(run_dir):
         with patch.object(nm.os, "kill", side_effect=procs.kill):
             nm.stop_dhcp("wlan1", None)
     assert procs.signals == []
+
+
+def test_stop_dhcp_sends_sigalrm_and_removes_its_state(run_dir):
+    # dhcpcd 10: SIGALRM releases and exits; SIGHUP only rebinds.
+    procs = _Procs({10: ["dhcpcd: wlan1 [ip4]"]})
+    _pidfile(run_dir, None, "wlan1", 10)
+    lease = run_dir / "dhcpcd" / "@root" / "wlan1" / "lib" / "wlan1-Pi_test.lease"
+    lease.parent.mkdir(parents=True)
+    lease.write_text("")
+    with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
+        with patch.object(nm.os, "kill", side_effect=procs.kill):
+            nm.stop_dhcp("wlan1", None)
+    assert procs.signals == [(10, signal.SIGALRM)]
+    assert not (run_dir / "dhcpcd" / "@root").exists()
+
+
+def test_restart_keeps_the_state_for_the_next_lease(run_dir):
+    lease = run_dir / "dhcpcd" / "@root" / "wlan1" / "lib" / "duid"
+    lease.parent.mkdir(parents=True)
+    lease.write_text("x")
+    with patch.object(nm, "ns_exec"):
+        nm.restart_dhcp_with_timeout("wlan1", None)
+    assert lease.read_text() == "x"
