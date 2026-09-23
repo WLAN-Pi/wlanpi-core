@@ -1,3 +1,15 @@
+wlanpi-core (2.3.9-1) unstable; urgency=medium
+
+  * Build the default network config from the radios present, across every
+    namespace and on the phy each interface is really on, instead of a
+    hardcoded wlan0/phy0 + wlan1/phy1 pair. The default has no security, so
+    activating it no longer fails on a fake WPA2 entry without a psk, and
+    single-radio devices no longer return 500 (#202).
+  * Replace an untouched pre-#202 default.json with the live default on
+    first read. Leave SystemManager's wlanpiN monitor interfaces out of it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:34:31 -0500
+
 wlanpi-core (2.3.8-1) unstable; urgency=medium
 
   * Resolve each config's interface from the live inventory across every

@@ -74,6 +74,17 @@ JOSH_LIVE: dict[str, tuple[str, str | None, str]] = {
 }
 
 
+# Layout captured from a WLAN Pi with two MT7921AU USB adapters: onboard phy0
+# carries the managed wlan0 plus the wlanpi0 monitor iface on the same MAC.
+# MACs are placeholders.
+SHARED_PHY_THREE_RADIO: dict[str, dict[str, str]] = {
+    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:55:00"},
+    "wlanpi0": {"phy": "phy0", "mac": "00:11:22:33:55:00", "type": "monitor"},
+    "wlan1": {"phy": "phy1", "mac": "00:11:22:33:55:01"},
+    "wlan2": {"phy": "phy2", "mac": "00:11:22:33:55:02"},
+}
+
+
 class _MonitorClock:
     """Fake `time` for connection.monitor only; sleep advances the clock.
 
@@ -361,9 +372,10 @@ def handle_list_configs_malformed_annotation(
 
 def handle_files_all_configs_deleted(namespace_service, netcfg_env, scenario: Scenario):
     assert not (netcfg_env["cfg_dir"] / "default.json").exists()
-    cfg = nc.get_default_config()
-    loaded = nc.get_config("default")
-    assert loaded.id == cfg.id
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        cfg = nc.get_default_config()
+        loaded = nc.get_config("default")
+    assert loaded == cfg
     assert (netcfg_env["cfg_dir"] / "default.json").exists()
 
 
@@ -401,6 +413,46 @@ def handle_default_created_when_missing(
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_default_legacy_file_migrated(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#202: an untouched pre-fix default.json is replaced from the live inventory."""
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "default",
+        nc._legacy_default_config().model_dump(mode="json"),
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        loaded = nc.get_config("default")
+        ok = nc.activate_config("default", override_active=True)
+    on_disk = json.loads((netcfg_env["cfg_dir"] / "default.json").read_text())
+    assert {r["interface"]: r["phy"] for r in on_disk["roots"]} == {
+        "wlan0": "phy0",
+        "wlan1": "phy2",
+        "wlan2": "phy1",
+    }
+    assert loaded.model_dump(mode="json") == on_disk
+    assert ok is True
+    assert inventory.live() == JOSH_LIVE
+
+
+def handle_default_skips_system_monitors(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Leave SystemManager's wlanpiN monitors out of the live default."""
+    with live_adapter_inventory_mocks(SHARED_PHY_THREE_RADIO) as inventory:
+        loaded = nc.get_config("default")
+        ok = nc.activate_config("default", override_active=True)
+    assert [(r.interface, r.phy, r.mode) for r in loaded.roots] == [
+        ("wlan2", "phy2", NetworkModeEnum.managed),
+        ("wlan1", "phy1", NetworkModeEnum.managed),
+        ("wlan0", "phy0", NetworkModeEnum.managed),
+    ]
+    assert ok is True
+    assert not any(name == "wlanpi0" for name, _ns in inventory.deleted)
+    assert inventory.live()["wlanpi0"] == ("phy0", None, "monitor")
+
+
 def handle_default_file_override(namespace_service, netcfg_env, scenario: Scenario):
     custom = {
         "id": "default",
@@ -422,19 +474,18 @@ def handle_default_file_override(namespace_service, netcfg_env, scenario: Scenar
     loaded = nc.get_config("default")
     assert len(loaded.roots) == 1
     assert loaded.roots[0].mode == NetworkModeEnum.monitor
-    hardcoded = nc.get_default_config()
-    assert loaded.model_dump() != hardcoded.model_dump()
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        live_default = nc.get_default_config()
+    assert loaded.model_dump() != live_default.model_dump()
 
 
 def handle_default_startup_malformed_current(
     namespace_service, netcfg_env, scenario: Scenario
 ):
     netcfg_env["ccf"].write_text("")
-    write_json_config(
-        netcfg_env["cfg_dir"],
-        "default",
-        nc.get_default_config().model_dump(mode="json"),
-    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        default = nc.get_default_config()
+    write_json_config(netcfg_env["cfg_dir"], "default", default.model_dump(mode="json"))
     with pytest.raises(ConfigMalformedError) as exc:
         nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
@@ -1200,17 +1251,6 @@ def handle_iface_display_name_differs(
     }
 
 
-# Layout captured from a WLAN Pi with two MT7921AU USB adapters: onboard phy0
-# carries the managed wlan0 plus the wlanpi0 monitor iface on the same MAC.
-# MACs are placeholders.
-SHARED_PHY_THREE_RADIO: dict[str, dict[str, str]] = {
-    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:55:00"},
-    "wlanpi0": {"phy": "phy0", "mac": "00:11:22:33:55:00", "type": "monitor"},
-    "wlan1": {"phy": "phy1", "mac": "00:11:22:33:55:01"},
-    "wlan2": {"phy": "phy2", "mac": "00:11:22:33:55:02"},
-}
-
-
 def handle_shared_phy_monitor_iface_round_trip(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1276,6 +1316,8 @@ def handle_rollback_after_partial_prepare(
 
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
+    "default_legacy_file_migrated": handle_default_legacy_file_migrated,
+    "default_skips_system_monitors": handle_default_skips_system_monitors,
     "default_file_override": handle_default_file_override,
     "dual_ns_split_adapters": handle_dual_ns_split_adapters,
     "move_wlan1_to_ns_orb_no_security": handle_move_wlan1_to_ns_orb_no_security,

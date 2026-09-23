@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from wlanpi_core.adapters import discovery
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
@@ -45,8 +46,8 @@ def _config_path(cfg_id: str) -> Path:
     return cfg_dir / f"{validated_id}.json"
 
 
-def get_default_config(cfg_id: str = "default") -> NetConfig:
-    """Get the default configuration structure."""
+def _legacy_default_config(cfg_id: str = "default") -> NetConfig:
+    """Return the hardcoded default shipped before #202, for migration only."""
     return NetConfig(
         id=cfg_id,
         namespaces=[],
@@ -73,6 +74,39 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
             ),
         ],
     )
+
+
+def _is_system_monitor(name: str) -> bool:
+    return name.startswith("wlanpi") and name.removeprefix("wlanpi").isdigit()
+
+
+def get_default_config(cfg_id: str = "default") -> NetConfig:
+    """Build the default configuration from the radios present now.
+
+    One root entry per wireless interface in any namespace, on the phy it is
+    really on, keeping monitor interfaces in monitor mode. No security and no
+    default route: the default returns radios to root without connecting.
+    The `wlanpiN` monitor interfaces that SystemManager creates at startup
+    (with its own flags) are left out.
+    """
+    roots = [
+        RootConfig(
+            mode=(
+                NetworkModeEnum.monitor
+                if live.type == "monitor"
+                else NetworkModeEnum.managed
+            ),
+            iface_display_name=live.name,
+            phy=f"phy{live.phy_index}",
+            interface=live.name,
+            security=None,
+            default_route=False,
+            autostart_app=None,
+        )
+        for live in discovery.list_interfaces_all_namespaces()
+        if not (live.type == "monitor" and _is_system_monitor(live.name))
+    ]
+    return NetConfig(id=cfg_id, namespaces=[], roots=roots)
 
 
 def parse_iw_dev_output(output: str) -> dict[str, Any]:
@@ -213,9 +247,7 @@ def get_config(cfg_id: str) -> NetConfig:
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info("Default configuration file not found. Creating default config.")
-            default_config = get_default_config("default")
-            path.write_text(default_config.model_dump_json(indent=4))
-            return default_config
+            return _write_live_default(path)
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
     try:
@@ -228,7 +260,13 @@ def get_config(cfg_id: str) -> NetConfig:
             )
 
         data = json.loads(file_content)
-        return NetConfig(**data)
+        config = NetConfig(**data)
+        if cfg_id == "default" and config == _legacy_default_config():
+            # Devices upgraded from before #202 still hold the hardcoded
+            # default (fake WPA2 on wlan0, wlan1 on phy1); replace it.
+            log.info("Replacing the legacy hardcoded default configuration.")
+            return _write_live_default(path)
+        return config
     except json.JSONDecodeError as e:
         log.error(f"Configuration file {cfg_id}.json contains malformed JSON: {e}")
         raise ConfigMalformedError(
@@ -242,6 +280,15 @@ def get_config(cfg_id: str) -> NetConfig:
         raise ConfigMalformedError(
             f"Failed to parse configuration {cfg_id}: {e}", cfg_id=cfg_id
         ) from None
+
+
+def _write_live_default(path: Path) -> NetConfig:
+    # shortcut: default.json snapshots the radios present when it is first
+    # written; an adapter plugged in later is not in it until the file is
+    # deleted. Upgrade path: regenerate while the file is unedited.
+    default_config = get_default_config("default")
+    path.write_text(default_config.model_dump_json(indent=4))
+    return default_config
 
 
 def is_active(cfg_id: str) -> bool:

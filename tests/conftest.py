@@ -217,6 +217,10 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
             side_effect=_find_interface,
         ),
         patch(
+            "wlanpi_core.adapters.discovery.list_interfaces_all_namespaces",
+            return_value=[_find_interface([name]) for name in interfaces],
+        ),
+        patch(
             "wlanpi_core.services.network_namespace_service.ns_namespace.namespace_exists",
             return_value=False,
         ),

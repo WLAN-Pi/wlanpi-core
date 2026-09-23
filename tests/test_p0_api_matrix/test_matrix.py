@@ -15,7 +15,6 @@ pytestmark = pytest.mark.usefixtures("no_real_run_command")
 
 # Rows that replicate open bugs. strict=True, so the fix must delete its entry.
 KNOWN_BUGS = {
-    "network_config_activate_default_single_radio": "#202: default has wlan1 and WPA2 without psk",
     "network_config_create_snapshots_mac": "#237: add_config does not snapshot the MAC",
 }
 
