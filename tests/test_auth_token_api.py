@@ -68,6 +68,24 @@ async def test_revoke_token_accepts_normalized_bearer_scheme(authorization):
     request = _request_with_token_manager(token_manager)
     request.headers = {"Authorization": authorization}
 
-    await revoke_token(request, TokenRequest(device_id="mcp-client"))
+    validation = SimpleNamespace(device_id="mcp-client")
+    await revoke_token(request, TokenRequest(device_id="mcp-client"), validation)
 
     token_manager.revoke_token.assert_awaited_once_with("jwt")
+
+
+@pytest.mark.asyncio
+async def test_revoke_token_rejects_mismatched_device_id():
+    token_manager = SimpleNamespace(revoke_token=AsyncMock())
+    request = _request_with_token_manager(token_manager)
+    request.headers = {"Authorization": "Bearer jwt"}
+
+    with pytest.raises(HTTPException) as exc:
+        await revoke_token(
+            request,
+            TokenRequest(device_id="other"),
+            SimpleNamespace(device_id="mcp-client"),
+        )
+
+    assert exc.value.status_code == 403
+    token_manager.revoke_token.assert_not_awaited()
