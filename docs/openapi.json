@@ -76,7 +76,7 @@
           "authentication"
         ],
         "summary": "Revoke current JWT",
-        "description": "Revoke the bearer token sent in the `Authorization` header.\n\nThe request body must include the same `device_id` used when the token was issued.",
+        "description": "Revoke the bearer token sent in the `Authorization` header.\n\nThe request body must include the same `device_id` used when the token was\nissued; a mismatch is rejected with 403 and the token stays valid.",
         "operationId": "revoke_token_api_v1_auth_token_delete",
         "requestBody": {
           "content": {
@@ -108,6 +108,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "device_id does not match the token being revoked"
           },
           "412": {
             "description": "device_id missing from request body"
