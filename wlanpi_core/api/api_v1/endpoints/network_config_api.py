@@ -13,6 +13,7 @@ from wlanpi_core.models.network_config_errors import (
     ConfigBusyError,
     ConfigMalformedError,
 )
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
@@ -219,8 +220,10 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     `error` with a `detail`). If an entry fails configuration validation the
     request returns 422, and if an adapter fails it returns 500; in both
     cases `detail` holds the message and the outcomes, and the default
-    configuration is active again. 409 means another change is running or
-    the configuration is already active.
+    configuration is active again. If an adapter command fails outright
+    (for example a driver refusing to delete an interface), the 500's
+    `detail` holds the message and the command's `error`. 409 means another
+    change is running or the configuration is already active.
     """
     try:
         require_wlan_management_enabled()
@@ -258,6 +261,12 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except HTTPException:
         raise
+    except RunCommandError as rce:
+        log.error(f"Adapter command failed activating {id}: {rce}")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "An adapter command failed", "error": rce.error_msg},
+        ) from None
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error") from None

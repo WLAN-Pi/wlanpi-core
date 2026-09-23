@@ -320,10 +320,9 @@ class InitializationManager:
                 get_config("default")
                 self.log.info("Default config ok")
             except Exception as e:
-                self.log.error(
-                    f"Failed to ensure default namespaces configuration exists: {e}"
-                )
-                return False
+                # Not fatal: Core must stay up so the API can report and
+                # repair the configuration instead of restart-looping.
+                self.log.error(f"Default network configuration is unusable: {e}")
 
             return True
         except Exception as e:

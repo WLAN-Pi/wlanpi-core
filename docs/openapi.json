@@ -1984,7 +1984,7 @@
           "network_config"
         ],
         "summary": "Activate Config",
-        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). If an entry fails configuration validation the\nrequest returns 422, and if an adapter fails it returns 500; in both\ncases `detail` holds the message and the outcomes, and the default\nconfiguration is active again. 409 means another change is running or\nthe configuration is already active.",
+        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). If an entry fails configuration validation the\nrequest returns 422, and if an adapter fails it returns 500; in both\ncases `detail` holds the message and the outcomes, and the default\nconfiguration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.",
         "operationId": "activate_config_api_v1_network_config_activate__id__post",
         "security": [
           {

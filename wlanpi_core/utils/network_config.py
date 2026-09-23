@@ -53,6 +53,12 @@ def network_change_lock() -> Iterator[None]:
     opens its own file description) and other processes, such as an old
     gunicorn worker still finishing during a reload. Does not wait.
 
+    Not reentrant: acquiring it again while held, even in the same thread,
+    raises ConfigBusyError. Code already holding it (activate's rollback)
+    must call the unlocked service methods, not deactivate_config(). The
+    lock does not cover ConnectionMonitor threads, which run DHCP, routes
+    and app start after the change that started them has returned.
+
     Raises:
         ConfigBusyError: If another activate, deactivate or revert is running
     """
@@ -71,14 +77,15 @@ def network_change_lock() -> Iterator[None]:
         os.close(fd)
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write(path: Path, text: str, mode: int = 0o600) -> None:
     """Replace `path` with `text` so readers never see a partial file.
 
-    Writes a sibling temp file (created 0600, since profiles hold PSKs),
-    fsyncs it, then renames it over `path`.
+    Writes a sibling temp file with `mode` (0600 by default, since profiles
+    hold PSKs), fsyncs it, then renames it over `path`.
     """
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     try:
+        os.fchmod(fd, mode)
         with os.fdopen(fd, "w") as f:
             f.write(text)
             f.flush()
@@ -87,6 +94,11 @@ def _atomic_write(path: Path, text: str) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def _write_current(cfg_id: str) -> None:
+    # current.txt holds no secret and may be read by other wlanpi tools.
+    _atomic_write(ccf, cfg_id, mode=0o644)
 
 
 # IDs that clash with the built-in default, the root namespace or the
@@ -106,7 +118,13 @@ def _config_path(cfg_id: str) -> Path:
         validated_id = validate_config_id(cfg_id)
     except ValueError as error:
         raise ValidationError(str(error), status_code=400) from error
-    return cfg_dir / f"{validated_id}.json"
+    # validate_config_id already forbids "/", "." and ".."; this normpath +
+    # prefix check is the confinement CodeQL's py/path-injection recognises.
+    base = os.path.normpath(cfg_dir)
+    path = os.path.normpath(os.path.join(base, f"{validated_id}.json"))
+    if not path.startswith(base + os.sep):
+        raise ValidationError("Invalid configuration ID", status_code=400)
+    return Path(path)
 
 
 def _legacy_default_config(cfg_id: str = "default") -> NetConfig:
@@ -154,24 +172,35 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
     not create: the default must not claim a user's or another tool's radio.
     """
     core_namespaces = set(ns.core_namespaces())
-    roots = [
-        RootConfig(
-            mode=(
-                NetworkModeEnum.monitor
-                if live.type == "monitor"
-                else NetworkModeEnum.managed
-            ),
-            iface_display_name=live.name,
-            phy=f"phy{live.phy_index}",
-            interface=live.name,
-            security=None,
-            default_route=False,
-            autostart_app=None,
+    roots: list[RootConfig] = []
+    for live in discovery.list_interfaces_all_namespaces():
+        if live.netns is not None and live.netns not in core_namespaces:
+            continue
+        if live.type == "monitor" and _is_system_monitor(live.name):
+            continue
+        if any(r.interface == live.name for r in roots):
+            # The same name in root and a Core namespace is legal, but one
+            # NetConfig cannot hold both; root is listed first and wins.
+            log.warning(
+                f"{live.name} exists in more than one namespace; leaving the "
+                f"{live.netns or 'root'} one out of the default"
+            )
+            continue
+        roots.append(
+            RootConfig(
+                mode=(
+                    NetworkModeEnum.monitor
+                    if live.type == "monitor"
+                    else NetworkModeEnum.managed
+                ),
+                iface_display_name=live.name,
+                phy=f"phy{live.phy_index}",
+                interface=live.name,
+                security=None,
+                default_route=False,
+                autostart_app=None,
+            )
         )
-        for live in discovery.list_interfaces_all_namespaces()
-        if (live.netns is None or live.netns in core_namespaces)
-        and not (live.type == "monitor" and _is_system_monitor(live.name))
-    ]
     return NetConfig(id=cfg_id, namespaces=[], roots=roots)
 
 
@@ -313,7 +342,7 @@ def get_config(cfg_id: str) -> NetConfig:
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info("Default configuration file not found. Creating default config.")
-            return _write_live_default(path)
+            return _write_live_default()
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
     try:
@@ -331,7 +360,7 @@ def get_config(cfg_id: str) -> NetConfig:
             # Devices upgraded from before #202 still hold the hardcoded
             # default (fake WPA2 on wlan0, wlan1 on phy1); replace it.
             log.info("Replacing the legacy hardcoded default configuration.")
-            return _write_live_default(path)
+            return _write_live_default()
         return config
     except json.JSONDecodeError as e:
         log.error(f"Configuration file {cfg_id}.json contains malformed JSON: {e}")
@@ -348,12 +377,20 @@ def get_config(cfg_id: str) -> NetConfig:
         ) from None
 
 
-def _write_live_default(path: Path) -> NetConfig:
+def _write_live_default() -> NetConfig:
     # shortcut: default.json snapshots the radios present when it is first
     # written; an adapter plugged in later is not in it until the file is
     # deleted. Upgrade path: regenerate while the file is unedited.
-    default_config = get_default_config("default")
-    _atomic_write(path, default_config.model_dump_json(indent=4))
+    try:
+        default_config = get_default_config("default")
+    except Exception as e:
+        # Core must start even when the live inventory cannot be read or
+        # yields an invalid default; nothing is written, so the next start
+        # tries again.
+        log.error(f"Could not build the default configuration: {e}")
+        return NetConfig(id="default", namespaces=[], roots=[])
+    # A fixed name (not a caller's ID), so no user data reaches this path.
+    _atomic_write(cfg_dir / "default.json", default_config.model_dump_json(indent=4))
     return default_config
 
 
@@ -369,7 +406,7 @@ def is_active(cfg_id: str) -> bool:
 
 
 def _revert_current_config_to_default() -> None:
-    _atomic_write(ccf, "default")
+    _write_current("default")
 
 
 def get_current_config() -> str:
@@ -501,11 +538,14 @@ def delete_config(cfg_id: str, force: bool = False) -> bool:
     """
     path = _config_path(cfg_id)
 
-    if is_active(cfg_id):
-        if not force:
-            raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
-        deactivate_config(cfg_id)
-    path.unlink()
+    # Under the change lock, so no activation can make cfg_id active again
+    # between the deactivate and the unlink.
+    with network_change_lock():
+        if is_active(cfg_id):
+            if not force:
+                raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+            _deactivate_config_locked(cfg_id, False)
+        path.unlink()
     return True
 
 
@@ -580,7 +620,7 @@ def _activate_config_locked(
         acceptable_statuses = {"connected", "provisioned"}
         if all(outcome.status in acceptable_statuses for outcome in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
-            _atomic_write(ccf, cfg_id)
+            _write_current(cfg_id)
             return True, outcomes
         # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
         log.error(
@@ -678,7 +718,7 @@ def revert_all() -> None:
 
 def _fall_back_to_default(failed_cfg_id: str) -> None:
     """After a failed activation, record and apply `default` so state matches."""
-    _atomic_write(ccf, "default")
+    _write_current("default")
     if failed_cfg_id != "default":
         _apply_default()
 
@@ -720,7 +760,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             log.info(f"Deactivating root config for interface {root_cfg.interface}")
             ns.deactivate_config(root_cfg)
 
-        _atomic_write(ccf, "default")
+        _write_current("default")
         ns.revert_to_root(None)
         # current.txt now says default, so apply it (#271)
         if cfg_id != "default":
@@ -731,7 +771,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
         log.error(f"Failed to deactivate config {cfg_id}: {ex}")
         # Ensure ccf/revert complete even when a later adapter raises (mirror activate rollback)
         try:
-            _atomic_write(ccf, "default")
+            _write_current("default")
             ns.revert_to_root(None)
         except Exception as cleanup_error:
             log.warning(
