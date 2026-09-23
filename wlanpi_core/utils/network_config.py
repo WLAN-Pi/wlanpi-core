@@ -612,6 +612,10 @@ def _activate_config_locked(
             f"Configuration {cfg_id} is invalid, nothing changed: "
             f"{[o.detail for o in invalid_outcomes]}"
         )
+        if active_cfg == cfg_id:
+            # Boot-time re-activation of a stored profile that is now invalid:
+            # nothing of it is running, so stop claiming it is active.
+            _fall_back_to_default(cfg_id)
         return False, invalid_outcomes
 
     # Tear down the active profile first so its namespaces, supplicants and

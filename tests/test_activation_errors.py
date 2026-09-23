@@ -113,3 +113,12 @@ def test_invalid_entry_is_rejected_before_any_radio_is_touched(
     kill.assert_not_called()
     teardown.assert_not_called()
     assert netcfg_env["ccf"].read_text() == "default"
+
+    # Boot path: current.txt names the invalid profile; repair it to default.
+    netcfg_env["ccf"].write_text("bad_261")
+    response = client.post(
+        "/api/v1/network/config/activate/bad_261", params={"override_active": True}
+    )
+    assert response.status_code == 422
+    activate.assert_not_called()
+    assert netcfg_env["ccf"].read_text() == "default"
