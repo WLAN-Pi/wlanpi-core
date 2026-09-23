@@ -16,6 +16,11 @@ from wlanpi_core.utils.namespace_execution import ns_exec
 log = logging.getLogger(__name__)
 
 
+def phy_args(phy: str) -> list[str]:
+    """Return the iw arguments that select `phy`, a name (`phy0`) or index (`phy#0`)."""
+    return [phy] if phy.startswith("phy#") else ["phy", phy]
+
+
 def list_phys(namespace: str | None = None) -> list[str]:
     """
     List all PHY devices in a namespace or root.
@@ -121,7 +126,7 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
     Move a PHY device to a network namespace.
 
     Args:
-        phy: PHY name (e.g., "phy0")
+        phy: PHY name (e.g., "phy0") or index selector (e.g., "phy#0")
         namespace: Target namespace name
 
     Returns:
@@ -144,7 +149,7 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
     try:
         # Move PHY to namespace using 'iw phy <phy> set netns name <namespace>'
         run_command(
-            ["sudo", IW_FILE, "phy", phy, "set", "netns", "name", namespace],
+            ["sudo", IW_FILE, *phy_args(phy), "set", "netns", "name", namespace],
             raise_on_fail=True,
         )
 
@@ -160,7 +165,7 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
     Move a PHY device from a namespace back to root namespace.
 
     Args:
-        phy: PHY name (e.g., "phy0")
+        phy: PHY name (e.g., "phy0") or index selector (e.g., "phy#0")
         namespace: Source namespace name
 
     Returns:
@@ -183,7 +188,7 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
     try:
         # Move PHY to root (PID 1) using 'iw phy <phy> set netns 1'
         ns_exec(
-            [IW_FILE, "phy", phy, "set", "netns", "1"],
+            [IW_FILE, *phy_args(phy), "set", "netns", "1"],
             namespace=namespace,
         )
 

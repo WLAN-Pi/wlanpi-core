@@ -12,13 +12,6 @@ pytestmark = pytest.mark.usefixtures("no_real_run_command")
 
 # Rows that replicate open bugs. strict=True, so the fix must delete its entry.
 KNOWN_BUGS = {
-    "stale_phy_iface_on_other_radio": "#236: prepare trusts cfg.phy over the live phy",
-    "prepare_missing_phy_after_delete": "#236: iface deleted before cfg.phy is checked",
-    "stale_phy_namespace_wrong_radio": "#236: namespace prepare moves cfg.phy",
-    "iface_already_in_netns_at_activation": "#236: activate gate only sees root",
-    "phy10_vs_phy1_substring": "#236: activate gate only sees root; phy check is a substring match",
-    "iface_display_name_differs": "#236: gate ignores iface_display_name",
-    "rollback_after_partial_prepare": "#236: rollback gates only see root",
     "default_created_when_missing": "#202: default config is hardcoded phy0/phy1",
     "default_single_radio_no_500": "#202: default has wlan1 and WPA2 without psk",
     "create_profile_snapshots_mac": "#237: add_config does not snapshot the MAC",

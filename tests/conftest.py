@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from wlanpi_core.adapters.discovery import LiveInterface
 from wlanpi_core.connection.monitor import ConnectionMonitor
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -188,17 +189,32 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
 
     def _move_phy(phy_name, namespace):
         if phy_move_side_effect is not None:
-            result = phy_move_side_effect(phy_name, namespace)
+            # Production addresses live phys by index (`phy#N`); rows fault by name.
+            result = phy_move_side_effect(phy_name.replace("phy#", "phy"), namespace)
             if result is RunCommandError or isinstance(result, Exception):
                 raise result
             if result is False:
                 raise RunCommandError("phy move failed", 1)
         return None
 
+    def _find_interface(names):
+        # Parity layout: wlanN lives on phyN in root.
+        for name in names:
+            if name in interfaces:
+                index = interfaces.index(name)
+                if name.removeprefix("wlan").isdigit():
+                    index = int(name.removeprefix("wlan"))
+                return LiveInterface(name, index, None, "managed")
+        return None
+
     patches = [
         patch(
             "wlanpi_core.services.network_namespace_service.discovery.list_interfaces",
             return_value=interfaces,
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.discovery.find_interface",
+            side_effect=_find_interface,
         ),
         patch(
             "wlanpi_core.services.network_namespace_service.ns_namespace.namespace_exists",
@@ -216,7 +232,7 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
         ),
         patch(
             "wlanpi_core.services.network_namespace_service.interface.delete_interface",
-            side_effect=RunCommandError("No such device", 1),
+            return_value=True,
         ),
         patch(
             "wlanpi_core.services.network_namespace_service.interface.create_interface",
@@ -236,10 +252,6 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
             "wlanpi_core.services.network_namespace_service.phy.move_phy_to_root",
         ),
         *_service_side_effect_patches(),
-        patch(
-            "wlanpi_core.services.network_namespace_service.run_command",
-            return_value=CommandResult(stdout="phy0\nphy1", stderr="", return_code=0),
-        ),
     ]
 
     with ExitStack() as stack:
@@ -251,7 +263,6 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
 # Every module that binds `run_command` at import and is reached by
 # activate/deactivate/revert. The inventory fake replaces each of them.
 _RUN_COMMAND_SITES = (
-    "wlanpi_core.services.network_namespace_service.run_command",
     "wlanpi_core.utils.network_config.run_command",
     "wlanpi_core.utils.namespace_execution.run_command",
     "wlanpi_core.adapters.discovery.run_command",
@@ -454,9 +465,13 @@ class InventoryRecorder:
             phy_name = f"phy{args[0].removeprefix('phy#')}"
             rest = args[1:]
             if phy_name not in self._visible_phys(netns):
-                # Real iw filters its dump by index: unknown index prints
-                # nothing and exits 0.
-                return self._ok()
+                # Real iw filters an info dump by index, so an unknown index
+                # prints nothing and exits 0; commands on it fail with ENODEV.
+                if rest == ["info"]:
+                    return self._ok()
+                return self._fail(
+                    "command failed: No such device (-19)\n", 237, raise_on_fail
+                )
         else:
             return self._unrecognised(netns, ["iw", *args])
 

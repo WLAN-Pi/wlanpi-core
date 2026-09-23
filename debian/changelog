@@ -1,3 +1,17 @@
+wlanpi-core (2.3.8-1) unstable; urgency=medium
+
+  * Resolve each config's interface from the live inventory across every
+    network namespace before any change, and use the phy it is really on
+    (addressed as phy#N) instead of the stored phy. A stale phy in a config
+    no longer recreates the interface on a different radio, deletes it and
+    gives up, or moves the wrong radio into a namespace (#236).
+  * Find interfaces by iface_display_name as well as interface, and find
+    interfaces left in another namespace, so activate, deactivate and
+    rollback of namespaced configs are no longer silent no-ops.
+  * Restore the original interface when prepare fails part way through.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:22:14 -0500
+
 wlanpi-core (2.3.7-1) unstable; urgency=medium
 
   * Restrict systemd service notifications to the Gunicorn main process so

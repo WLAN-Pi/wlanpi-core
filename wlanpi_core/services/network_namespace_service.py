@@ -32,7 +32,6 @@ from wlanpi_core.schemas.network.network import (
     ScanItem,
     SecurityTypes,
 )
-from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.utils.network_management import (
     set_default_route,
@@ -297,11 +296,11 @@ class NetworkNamespaceService:
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         )  # None = root namespace
 
-        # Check if interface exists before proceeding
-        interfaces = self.get_interfaces()
-        self.log.info(f"Interfaces: {interfaces}")
+        # Resolve the live netdev (any netns, either name) before any state change
+        live = self._find_live(cfg)
+        self.log.info(f"Live interface for {iface}: {live}")
 
-        if not iface or iface not in interfaces:
+        if live is None:
             skip_msg = f"Interface '{iface}' does not exist, skipping activation for this config."
             self.log.info(skip_msg)
             log = NetworkSetupLog(selectErr=skip_msg, eventLog=self.event_log)
@@ -319,9 +318,9 @@ class NetworkNamespaceService:
 
         # Prepare namespace or root - this is the first state change
         if isinstance(cfg, NamespaceConfig):
-            success = self._prepare_namespace(cfg)
+            success = self._prepare_namespace(cfg, live)
         else:
-            success = self._prepare_root(cfg)
+            success = self._prepare_root(cfg, live)
 
         if not success:
             error_msg = "Could not complete setup (namespace/root preparation failed)."
@@ -455,9 +454,8 @@ class NetworkNamespaceService:
         # Stop any active connection monitor for this config
         self.stop_connection_monitor(namespace, iface)
 
-        # Check if interface actually exists before trying to deactivate
-        interfaces = self.get_interfaces()
-        if iface not in interfaces:
+        # Check if interface exists in any netns before trying to deactivate
+        if self._find_live(cfg) is None:
             self.log.info(f"Interface {iface} does not exist, skipping deactivation")
             return
 
@@ -608,145 +606,57 @@ class NetworkNamespaceService:
                     )
             return
 
-        iface_before = cfg.iface_display_name or cfg.interface
         iface = cfg.interface
-        namespace = (
-            cfg.namespace if isinstance(cfg, NamespaceConfig) else None
-        )  # None = root namespace
-        namespace_display = namespace if namespace else "root"
 
-        # Check if interface actually exists before attempting revert
-        interfaces = self.get_interfaces()
-        if iface not in interfaces:
+        # Resolve where the netdev really is; cfg.namespace and cfg.phy can be stale
+        live = self._find_live(cfg)
+        if live is None:
             self.log.info(f"Interface {iface} does not exist, skipping revert")
             return
+        namespace = live.netns
+        namespace_display = namespace if namespace else "root"
 
         self.log.info(
-            f"Reverting {iface_before} and {cfg.phy} from namespace {namespace_display} to root namespace."
+            f"Reverting {live.name} ({live.phy}) from namespace {namespace_display} to root namespace."
         )
 
-        # For root namespace (None), we don't need to move things "back" - they're already there
+        # Stop any wpa_supplicant and dhclient tied to this interface
+        for cmd in (
+            ["pkill", "-f", f"wpa_supplicant.*-i{live.name}"],
+            ["rm", "-f", f"{self.ctrl_interface}/{live.name}"],
+            ["dhclient", "-r", live.name],
+        ):
+            try:
+                self._ns_exec(cmd, namespace)
+            except RunCommandError:
+                pass
+
+        # Already in root: nothing to move, and root is not a real namespace
         if namespace is None:
-            self.log.debug(
-                "Config is already in root namespace, minimal cleanup needed"
-            )
-            # Just clean up any processes/configs, but don't try to move things
-            try:
-                self._ns_exec(
-                    ["pkill", "-f", f"wpa_supplicant.*-i{iface_before}"], namespace
-                )
-            except RunCommandError:
-                pass
-            try:
-                self._ns_exec(
-                    ["rm", "-f", f"{self.ctrl_interface}/{iface_before}"], namespace
-                )
-            except RunCommandError:
-                pass
-            try:
-                self._ns_exec(["dhclient", "-r", iface_before], namespace)
-            except RunCommandError:
-                pass
-            return  # Don't try to delete "root" namespace or move things that are already in root
+            return
 
-        # For actual namespaces, do the full revert
-        # Ensure any wpa_supplicant and dhclient tied to this interface are stopped in the namespace
         try:
-            self._ns_exec(
-                ["pkill", "-f", f"wpa_supplicant.*-i{iface_before}"], namespace
+            interface.delete_interface(live.name, namespace=namespace)
+            phy.move_phy_to_root(live.phy, namespace)
+            interface.create_interface(
+                live.phy, iface, interface_type="managed", namespace=None
             )
-        except RunCommandError:
-            pass
-        try:
-            self._ns_exec(
-                ["rm", "-f", f"{self.ctrl_interface}/{iface_before}"], namespace
-            )
-        except RunCommandError:
-            pass
-        try:
-            self._ns_exec(["dhclient", "-r", iface_before], namespace)
-        except RunCommandError:
-            pass
-
-        # Try to delete the interface in the namespace if it exists
-        try:
-            interface.delete_interface(iface_before, namespace=namespace)
-            self.log.info(f"Deleted {iface_before} in namespace {namespace_display}.")
-        except RunCommandError as e:
-            if "No such device" in str(e):
-                self.log.debug(
-                    f"No {iface_before} found to delete in {namespace_display}."
-                )
-            else:
-                self.log.warning(
-                    f"Failed to delete {iface_before} in {namespace_display}: {e}"
-                )
-
-        # Check if PHY exists before trying to move it
-        try:
-            # First check if PHY exists in the system
-            phys_in_root = phy.list_phys(namespace=None)
-            if cfg.phy not in phys_in_root:
-                # Check if PHY is in the namespace
-                phys_in_ns = phy.list_phys(namespace=namespace)
-                if cfg.phy in phys_in_ns:
-                    phy.move_phy_to_root(cfg.phy, namespace)
-                    self.log.info(
-                        f"Moved {cfg.phy} from namespace {namespace_display} back to root."
-                    )
-                else:
-                    self.log.debug(
-                        f"PHY {cfg.phy} not found in {namespace_display}, assuming it's already in root."
-                    )
-            else:
-                self.log.debug(f"PHY {cfg.phy} already in root, skipping move")
+            interface.bring_interface_up(iface, namespace=None)
+            self.log.info(f"Reverted {iface} on {live.phy} to root namespace.")
         except RunCommandError as e:
             self.log.warning(
-                f"Could not check or move {cfg.phy} from {namespace_display}: {e}"
+                f"Could not fully revert {live.name} from {namespace_display}: {e}"
             )
 
-        # Only try to create interface if PHY exists
-        try:
-            phys_in_root = phy.list_phys(namespace=None)
-            if cfg.phy in phys_in_root:
-                interface.create_interface(
-                    cfg.phy, iface, interface_type="managed", namespace=None
-                )
-                self.log.info(f"Created {iface} in root namespace.")
-            else:
-                self.log.debug(f"PHY {cfg.phy} does not exist, cannot create {iface}")
-        except RunCommandError as e:
-            self.log.warning(f"Could not create {iface} in root: {e}")
-
-        # Only try to bring up interface if it exists
-        try:
-            if iface in self.get_interfaces():
-                interface.bring_interface_up(iface, namespace=None)
-                self.log.info(f"Brought {iface} up in root namespace.")
-            else:
-                self.log.debug(f"Interface {iface} does not exist, cannot bring it up")
-        except RunCommandError as e:
-            self.log.warning(f"Could not bring up {iface} in root: {e}")
-
-        # Optionally delete the namespace (None = root namespace, which is not a real namespace)
-        if delete_namespace and namespace is not None:
+        # Optionally delete the namespace the netdev was found in
+        if delete_namespace:
             # Stop any app running in this namespace before deletion
             self.stop_app_in_namespace(namespace)
-            # Check if namespace actually exists before trying to delete
             try:
-                namespace_names = ns_namespace.list_namespaces()
-                if namespace in namespace_names:
-                    try:
-                        ns_namespace.delete_namespace(namespace, raise_on_fail=False)
-                        self.log.info(f"Deleted namespace {namespace}.")
-                    except Exception as e:
-                        self.log.warning(f"Could not delete namespace {namespace}: {e}")
-                else:
-                    self.log.debug(
-                        f"Namespace {namespace} does not exist, skipping deletion"
-                    )
-            except ns_namespace.NetworkNamespaceError as e:
-                self.log.warning(f"Could not check namespace list before deletion: {e}")
+                ns_namespace.delete_namespace(namespace, raise_on_fail=False)
+                self.log.info(f"Deleted namespace {namespace}.")
+            except Exception as e:
+                self.log.warning(f"Could not delete namespace {namespace}: {e}")
 
     def start_app_in_namespace(self, namespace: str | None, app_id: str) -> None:
         """
@@ -772,160 +682,145 @@ class NetworkNamespaceService:
         """
         return wpa_status.get_wpa_status(iface, namespace)
 
-    def _prepare_root(self, cfg: RootConfig) -> bool | None:
-        """
-        Prepare root namespace for network configuration using the new modules.
+    def _find_live(
+        self, cfg: NamespaceConfig | RootConfig
+    ) -> discovery.LiveInterface | None:
+        """Find cfg's netdev in any netns, by iface_display_name then interface."""
+        names = [n for n in (cfg.iface_display_name, cfg.interface) if n]
+        return discovery.find_interface(names) if names else None
 
-        This method now delegates to the extracted adapter and interface modules.
+    def _mode_value(self, cfg: NamespaceConfig | RootConfig) -> str:
+        return (
+            cfg.mode.value if isinstance(cfg.mode, NetworkModeEnum) else str(cfg.mode)
+        )
+
+    def _warn_stale_phy(
+        self, cfg: NamespaceConfig | RootConfig, live: discovery.LiveInterface
+    ) -> None:
+        if cfg.phy != f"phy{live.phy_index}":
+            self.log.warning(
+                f"Config says {cfg.interface} is on {cfg.phy}, but {live.name} is on "
+                f"{live.phy}; using the live phy."
+            )
+
+    def _restore_live(
+        self,
+        live: discovery.LiveInterface,
+        new_name: str,
+        moved_to: str | None,
+        created_namespace: str | None,
+    ) -> None:
+        """Best-effort undo of a prepare that failed after deleting `live`.
+
+        Removes any half-created `new_name` from where the phy is now, moves
+        the phy back to its original netns, and recreates the original netdev.
         """
         try:
-            iface = cfg.interface
-
-            # Clean up any stale interface using interface module
-            try:
-                interface.delete_interface(iface, namespace=None)
-            except RunCommandError as e:
-                if "No such device" in str(e):
-                    self.log.info(f"No {iface} to delete in root. ignoring.")
-                else:
-                    raise
-
-            phy = cfg.phy
-
-            # Check if phy is already in root; if not, attach it
-            result = self._run(["iw", "phy"], no_output=True)
-            if phy not in result.stdout:
-                self.log.info(f"Attaching {phy} to root namespace")
-                try:
-                    self._run(["sudo", "iw", "phy", phy, "set", "netns", "1"])
-                except RunCommandError:
-                    self.log.info(f"{phy} does not exist. skipping this config.")
-                    return False
-            else:
-                self.log.info(f"{phy} already in root namespace")
-
-            # Create the wlan interface
-            iface_name = cfg.iface_display_name or iface
-            # Get mode value safely (validated, but handle enum vs string)
-            mode_value = (
-                cfg.mode.value
-                if isinstance(cfg.mode, NetworkModeEnum)
-                else str(cfg.mode)
+            interface.delete_interface(new_name, namespace=moved_to)
+            if moved_to != live.netns:
+                if moved_to is not None:
+                    phy.move_phy_to_root(live.phy, moved_to)
+                if live.netns is not None:
+                    phy.move_phy_to_namespace(live.phy, live.netns)
+            interface.create_interface(
+                live.phy,
+                live.name,
+                interface_type=live.type or "managed",
+                namespace=live.netns,
             )
-            try:
-                self.log.info(f"adding {iface} as {iface_name} in root")
-                self._run(
-                    [
-                        "iw",
-                        "phy",
-                        phy,
-                        "interface",
-                        "add",
-                        iface_name,
-                        "type",
-                        mode_value,
-                    ],
-                )
-            except (RunCommandError, OSError):
-                self.log.info(f"{iface} already exists")
-
-            # Bring up the new interface
-            self.log.info("Bringing up %s in root", iface_name)
-            self._run(["ip", "link", "set", iface_name, "up"])
-
-            return True
-
         except RunCommandError as e:
-            self.log.error(f"Root setup failed for {iface}: {e}")
-            raise
+            self.log.error(f"Could not restore {live.name} on {live.phy}: {e}")
+        if created_namespace is not None:
+            ns_namespace.delete_namespace(created_namespace, raise_on_fail=False)
 
-    def _prepare_namespace(self, cfg: NamespaceConfig) -> bool | None:
+    def _prepare_root(self, cfg: RootConfig, live: discovery.LiveInterface) -> bool:
+        """
+        Recreate cfg's interface in the root namespace on its live phy.
+
+        The live netdev is resolved before anything is deleted, so a stale
+        cfg.phy never costs the radio its netdev. On failure the original
+        netdev is restored before the error propagates.
+        """
+        self._warn_stale_phy(cfg, live)
+        iface_name = cfg.iface_display_name or cfg.interface
+        moved_to = live.netns
+        interface.delete_interface(live.name, namespace=live.netns)
+        if live.netns is not None:
+            self.log.info(f"Attaching {live.phy} to root namespace")
+            try:
+                phy.move_phy_to_root(live.phy, live.netns)
+            except RunCommandError as e:
+                self.log.error(f"Could not move {live.phy} to root: {e}")
+                self._restore_live(live, iface_name, moved_to, None)
+                return False
+            moved_to = None
+        try:
+            self.log.info(f"adding {iface_name} on {live.phy} in root")
+            interface.create_interface(
+                live.phy, iface_name, interface_type=self._mode_value(cfg)
+            )
+            self.log.info("Bringing up %s in root", iface_name)
+            interface.bring_interface_up(iface_name, namespace=None)
+        except RunCommandError as e:
+            self.log.error(f"Root setup failed for {iface_name}: {e}")
+            self._restore_live(live, iface_name, moved_to, None)
+            raise
+        return True
+
+    def _prepare_namespace(
+        self, cfg: NamespaceConfig, live: discovery.LiveInterface
+    ) -> bool | None:
+        """
+        Move cfg's live phy into cfg.namespace and recreate the interface there.
+
+        The netdev is deleted where it lives before the phy moves, so it
+        cannot travel into the namespace under its old name and mode. On
+        failure the original netdev is restored and a namespace created here
+        is removed before the error propagates.
+        """
         namespace = cfg.namespace
-        iface = cfg.interface
         if not namespace:
             return None
+        self._warn_stale_phy(cfg, live)
+        iface_name = cfg.iface_display_name or cfg.interface
 
-        try:
-            # Ensure namespace exists using namespace module
-            if not ns_namespace.namespace_exists(namespace):
-                self.log.info("Creating namespace %s", namespace)
-                ns_namespace.create_namespace(namespace)
-            else:
-                self.log.info("Namespace %s already exists", namespace)
+        created_namespace = None
+        if not ns_namespace.namespace_exists(namespace):
+            self.log.info("Creating namespace %s", namespace)
+            ns_namespace.create_namespace(namespace)
+            created_namespace = namespace
+        else:
+            self.log.info("Namespace %s already exists", namespace)
 
-            # Clean up any stale interface using interface module
+        moved_to = live.netns
+        interface.delete_interface(live.name, namespace=live.netns)
+        if live.netns != namespace:
             try:
-                interface.delete_interface(iface, namespace=namespace)
+                if live.netns is not None:
+                    phy.move_phy_to_root(live.phy, live.netns)
+                    moved_to = None
+                self.log.info(f"Attaching {live.phy} to namespace {namespace}")
+                phy.move_phy_to_namespace(live.phy, namespace)
             except RunCommandError as e:
-                if "No such device" in str(e):
-                    self.log.info(f"No {iface} to delete in {namespace}. ignoring.")
-                else:
-                    raise
-
-            phy_name = cfg.phy
-
-            # Check if PHY is already in namespace, move it back to root first if needed
-            phys_in_ns = phy.list_phys(namespace=namespace)
-            if phy_name in phys_in_ns:
-                self.log.info(
-                    "Moving %s back to root from namespace %s", phy_name, namespace
-                )
-                phy.move_phy_to_root(phy_name, namespace)
-            else:
-                self.log.info(
-                    f"{phy_name} not found in {namespace}. assume it's in root already."
-                )
-
-            # Attach PHY to target namespace using phy module
-            self.log.info(f"Attaching {phy_name} to namespace {namespace}")
-            try:
-                phy.move_phy_to_namespace(phy_name, namespace)
-            except RunCommandError:
-                self.log.info(f"{phy_name} does not exist. skipping this config.")
+                self.log.error(f"Could not move {live.phy} to {namespace}: {e}")
+                self._restore_live(live, iface_name, moved_to, created_namespace)
                 return False
-
-            # Create the wlan interface
-            iface_name = cfg.iface_display_name or iface
-            # Get mode value safely (validated, but handle enum vs string)
-            mode_value = (
-                cfg.mode.value
-                if isinstance(cfg.mode, NetworkModeEnum)
-                else str(cfg.mode)
+            moved_to = namespace
+        try:
+            self.log.info(f"adding {iface_name} on {live.phy} in namespace {namespace}")
+            interface.create_interface(
+                live.phy,
+                iface_name,
+                interface_type=self._mode_value(cfg),
+                namespace=namespace,
             )
-            try:
-                self.log.info(
-                    f"adding {iface} as {iface_name} in namespace {namespace}"
-                )
-                interface.create_interface(
-                    phy_name, iface_name, interface_type=mode_value, namespace=namespace
-                )
-            except RunCommandError:
-                self.log.info(f"{iface} already exists")
-
-            # Bring up the interface using interface module
             self.log.info("Bringing up %s in namespace %s", iface_name, namespace)
             interface.bring_interface_up(iface_name, namespace=namespace)
-            return True
-
         except RunCommandError as e:
-            self.log.error("Namespace setup failed for %s: %s", iface, e)
+            self.log.error("Namespace setup failed for %s: %s", iface_name, e)
+            self._restore_live(live, iface_name, moved_to, created_namespace)
             raise
-
-    def _run(self, cmd: list[str], no_output: bool = False) -> Any:
-        self.log.info(f"Running: {' '.join(cmd)}")
-        try:
-            output = run_command(cmd)
-            if no_output:
-                return output
-            self.log.info(f"stdout: {output.stdout}")
-            self.log.info(f"stderr: {output.stderr}")
-            self.log.info(f"return_code: {output.return_code}")
-            if output.return_code != 0:
-                raise RunCommandError(output.stderr, output.return_code)
-            return output
-        except Exception as e:
-            self.log.error(f"Command failed: {' '.join(cmd)}\nError: {e}")
-            raise
+        return True
 
     def _ns_exec(
         self, cmd: list[str], namespace: str | None, no_output: bool = False

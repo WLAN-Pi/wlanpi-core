@@ -43,7 +43,7 @@ Both must roll back entries already applied and leave `current.txt` unchanged.
 
 ## Identity vs absence (do not conflate)
 
-`hw-absence` is "iface not in `discovery.list_interfaces()`" (USB unplugged, late boot).
+`hw-absence` is "iface not found by `discovery.find_interface()` in any netns" (USB unplugged, late boot).
 That path skips prepare and returns `provisioned`.
 
 Stale PHY is the opposite: the iface **exists**, but `cfg.phy` names the

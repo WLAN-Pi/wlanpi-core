@@ -20,6 +20,7 @@ from tests.conftest import (
     write_json_config,
 )
 from tests.scenarios.loader import Scenario
+from wlanpi_core.adapters.discovery import LiveInterface
 from wlanpi_core.connection.monitor import (
     ConnectionMonitor,
     stop_all_connection_monitors,
@@ -544,16 +545,16 @@ def handle_multi_adapter_phy_fault_unacceptable(
 def handle_partial_activation_rollback(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    def fail_phy9(phy_name, namespace):
-        if phy_name == "phy9":
-            raise RunCommandError("missing phy", 1)
+    def fail_bad_ns(phy_name, namespace):
+        if namespace == "bad_ns":
+            raise RunCommandError("phy move refused", 1)
 
     _write_netconfig(
         netcfg_env,
         "bad_cfg",
         namespaces=[
             _ns("good_ns", interface="wlan0", phy="phy0").model_dump(mode="json"),
-            _ns("bad_ns", interface="wlan1", phy="phy9").model_dump(mode="json"),
+            _ns("bad_ns", interface="wlan1", phy="phy1").model_dump(mode="json"),
         ],
     )
     deactivate_calls = []
@@ -561,7 +562,7 @@ def handle_partial_activation_rollback(
     def track_deactivate(cfg):
         deactivate_calls.append(cfg.interface)
 
-    with hardware_success_mocks(phy_move_side_effect=fail_phy9):
+    with hardware_success_mocks(phy_move_side_effect=fail_bad_ns):
         with patch.object(nc.ns, "deactivate_config", side_effect=track_deactivate):
             assert nc.activate_config("bad_cfg", override_active=True) is False
     assert netcfg_env["ccf"].read_text().strip() == "default"
@@ -692,7 +693,8 @@ def handle_user_manual_namespace_exists(
             with patch(
                 "wlanpi_core.services.network_namespace_service.ns_namespace.create_namespace",
             ) as create_ns:
-                assert namespace_service._prepare_namespace(cfg) is True
+                live = LiveInterface("wlan1", 1, None, "managed")
+                assert namespace_service._prepare_namespace(cfg, live) is True
                 exists.assert_called_once_with("my_ns")
                 create_ns.assert_not_called()
 
