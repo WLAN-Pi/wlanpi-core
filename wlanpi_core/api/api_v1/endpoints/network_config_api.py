@@ -284,7 +284,10 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     To use that radio, stop the other tool first. Every entry is validated
     before any radio is touched: if one fails, the request returns 422 with
     the invalid outcomes in `detail` and nothing has changed (a previously
-    active profile keeps running). If an adapter fails during activation
+    active profile keeps running). The one exception is re-activating the
+    recorded current profile with `override_active` after it became invalid
+    on disk: it is torn down and the default configuration is active again.
+    If an adapter fails during activation
     the request returns 500, `detail` holds the message and the outcomes,
     and the default configuration is active again. If an adapter command fails outright
     (for example a driver refusing to delete an interface), the 500's

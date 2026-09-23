@@ -138,3 +138,36 @@ def test_invalid_entry_is_rejected_before_any_radio_is_touched(
     activate.assert_not_called()
     teardown.assert_called_once_with("bad_261")
     assert netcfg_env["ccf"].read_text() == "default"
+
+
+def test_default_preflight_skips_entries_core_does_not_own(client, netcfg_env, mocker):
+    # An unowned default entry is reported skipped even if it would not
+    # validate; preflight must not turn it into a 422.
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "default",
+        {
+            "id": "default",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan0",
+                    "phy": "phy0",
+                    "interface": "wlan0",
+                    "security": {"security": "WPA2-PSK", "ssid": "x", "psk": None},
+                }
+            ],
+        },
+    )
+    mocker.patch.object(netcfg_env["service"], "is_core_managed", return_value=False)
+    activate = mocker.patch.object(netcfg_env["service"], "activate_config")
+
+    response = client.post(
+        "/api/v1/network/config/activate/default", params={"override_active": True}
+    )
+
+    assert response.status_code == 200
+    assert [o["status"] for o in response.json()["outcomes"]] == ["skipped"]
+    activate.assert_not_called()
+    assert netcfg_env["ccf"].read_text() == "default"
