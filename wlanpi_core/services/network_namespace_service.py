@@ -493,8 +493,7 @@ class NetworkNamespaceService:
         for config_file in config_files_to_remove:
             self._safe_unlink(config_file)
 
-        # self._ns_exec(["pkill", "-f", f"wpa_supplicant.*-i{iface}"], namespace)
-        self._ns_exec(["pkill", "-f", "wpa_supplicant"], namespace)
+        wpa_supplicant.stop_supplicant(iface, namespace)
         self._ns_exec(["rm", "-f", f"{self.ctrl_interface}/{iface}"], namespace)
         self._ns_exec(["dhclient", "-r", iface], namespace)
 
@@ -517,11 +516,8 @@ class NetworkNamespaceService:
                     self.log.info(
                         f"Moving interfaces from namespace {ns_name} back to root"
                     )
-                    # Stop any wpa_supplicant processes in this namespace to avoid hangers
-                    try:
-                        self._ns_exec(["pkill", "-f", "wpa_supplicant"], ns_name)
-                    except RunCommandError:
-                        pass
+                    # Stop the supplicants Core started in this namespace
+                    wpa_supplicant.stop_namespace_supplicants(ns_name)
                     # List interfaces in the namespace using namespace interfaces module
                     iface_names = ns_interfaces.get_interfaces_in_namespace(
                         ns_name, include_loopback=False
@@ -620,9 +616,9 @@ class NetworkNamespaceService:
             f"Reverting {live.name} ({live.phy}) from namespace {namespace_display} to root namespace."
         )
 
-        # Stop any wpa_supplicant and dhclient tied to this interface
+        # Stop the supplicant and dhclient tied to this interface
+        wpa_supplicant.stop_supplicant(live.name, namespace)
         for cmd in (
-            ["pkill", "-f", f"wpa_supplicant.*-i{live.name}"],
             ["rm", "-f", f"{self.ctrl_interface}/{live.name}"],
             ["dhclient", "-r", live.name],
         ):
@@ -867,7 +863,7 @@ class NetworkNamespaceService:
 
     def kill_all_supplicants(self) -> None:
         """
-        Stop any running wpa_supplicant processes across namespaces.
+        Stop every wpa_supplicant Core started, across namespaces.
 
         Delegates to wpa.supplicant module.
         """

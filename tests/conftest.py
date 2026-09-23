@@ -168,6 +168,12 @@ def _service_side_effect_patches() -> list[Any]:
         patch(
             "wlanpi_core.services.network_namespace_service.wpa_supplicant.kill_all_supplicants",
         ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant",
+        ),
+        patch(
+            "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_namespace_supplicants",
+        ),
         patch.object(
             NetworkNamespaceService,
             "_monitor_connection_async",

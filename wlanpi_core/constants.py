@@ -65,6 +65,8 @@ DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
 CONFIG_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/configs")
 CURRENT_CONFIG_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/current.txt")
 PID_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/pids")
+# Runtime state (pidfiles); tmpfs, so it is cleared on reboot.
+RUN_DIR = "/run/wlanpi-core"
 APPS_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/apps.json")
 WPA_LOG_FILE = "/tmp/wpa.log"
 CREATE_MONITOR_PAIRS_DEFAULT = True

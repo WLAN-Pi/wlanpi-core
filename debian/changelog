@@ -1,3 +1,16 @@
+wlanpi-core (2.3.10-1) unstable; urgency=medium
+
+  * Stop only the wpa_supplicant processes Core started. Each supplicant
+    writes a pidfile under /run/wlanpi-core/wpa_supplicant/<netns>/<iface>.pid
+    and teardown signals that PID after checking it is still a supplicant
+    for that interface. Removes the host-wide `pkill -f wpa_supplicant`
+    that also killed NetworkManager's and other namespaces' supplicants,
+    and the targeted kill whose pattern never matched (#269).
+  * On override activation, also stop supplicants started by older Core
+    versions, recognised by Core's /tmp/wpa-<iface>.log argument.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:08:39 -0500
+
 wlanpi-core (2.3.9-1) unstable; urgency=medium
 
   * Build the default network config from the radios present, across every
