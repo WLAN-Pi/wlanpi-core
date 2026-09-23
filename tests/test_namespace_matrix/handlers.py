@@ -1284,7 +1284,11 @@ def handle_iface_display_name_differs(
 def handle_shared_phy_monitor_iface_round_trip(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """Bring wlanpi0 back with wlan0 when phy0 round-trips through a netns."""
+    """Bring wlanpi0 back with wlan0 when phy0 round-trips through a netns.
+
+    A netns move takes every netdev down; a monitor that was up (a capture
+    target) must be up again on both sides, and one that was down stays down.
+    """
     _write_netconfig(
         netcfg_env,
         "shared_cfg",
@@ -1292,7 +1296,11 @@ def handle_shared_phy_monitor_iface_round_trip(
             _ns("lab_ns", interface="wlan0", phy="phy0").model_dump(mode="json")
         ],
     )
-    with live_adapter_inventory_mocks(SHARED_PHY_THREE_RADIO) as inventory:
+    adapters = {
+        **SHARED_PHY_THREE_RADIO,
+        "wlanpi0": {**SHARED_PHY_THREE_RADIO["wlanpi0"], "up": "1"},
+    }
+    with live_adapter_inventory_mocks(adapters) as inventory:
         # Same order as real `iw dev`: phys high to low, newest iface first.
         assert namespace_service.get_interfaces() == [
             "wlan2",
@@ -1302,7 +1310,17 @@ def handle_shared_phy_monitor_iface_round_trip(
         ]
         assert nc.activate_config("shared_cfg", override_active=True) is True
         after_activate = inventory.live()
+        assert inventory.ifaces[("lab_ns", "wlanpi0")].up
         assert nc.deactivate_config("shared_cfg") is True
+        assert inventory.ifaces[(None, "wlanpi0")].up
+        # Left up with no supplicant, wlan0 would block wlanpi0's channel.
+        assert not inventory.ifaces[(None, "wlan0")].up
+
+        inventory.ifaces[(None, "wlanpi0")].up = False
+        assert nc.activate_config("shared_cfg", override_active=True) is True
+        assert not inventory.ifaces[("lab_ns", "wlanpi0")].up
+        assert nc.deactivate_config("shared_cfg") is True
+        assert not inventory.ifaces[(None, "wlanpi0")].up
     assert after_activate == {
         "wlan1": ("phy1", None, "managed"),
         "wlan2": ("phy2", None, "managed"),
@@ -1921,6 +1939,33 @@ def handle_deactivate_restores_renamed_root_entry(
         assert nc.deactivate_config("lab_root") is True
     assert inventory.live() == JOSH_LIVE
     assert {name for name, _ns in inventory.deleted} == {"wlan1", "lab1"}
+    assert not inventory.ifaces[(None, "wlan1")].up  # as at boot
+
+
+def handle_deactivate_root_managed_leaves_radio_capturable(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Return a root profile's managed netdev down; leave the monitor up."""
+    _write_netconfig(
+        netcfg_env,
+        "root_sta",
+        roots=[_root(interface="wlan0", phy="phy0").model_dump(mode="json")],
+    )
+    adapters = {
+        **SHARED_PHY_THREE_RADIO,
+        "wlanpi0": {**SHARED_PHY_THREE_RADIO["wlanpi0"], "up": "1"},
+    }
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        assert nc.activate_config("root_sta", override_active=True) is True
+        assert inventory.ifaces[(None, "wlan0")].up
+        assert nc.deactivate_config("root_sta") is True
+        assert not inventory.ifaces[(None, "wlan0")].up
+        assert inventory.ifaces[(None, "wlanpi0")].up
+    assert inventory.live() == {
+        name: (meta["phy"], None, meta.get("type", "managed"))
+        for name, meta in SHARED_PHY_THREE_RADIO.items()
+    }
+    assert inventory.phy_moves == []
 
 
 def handle_revert_failure_is_reported(
@@ -2689,6 +2734,7 @@ HANDLERS = {
     "default_leaves_other_tools_alone": handle_default_leaves_other_tools_alone,
     "default_resets_core_created_netdev": handle_default_resets_core_created_netdev,
     "deactivate_restores_renamed_root_entry": handle_deactivate_restores_renamed_root_entry,
+    "deactivate_root_managed_leaves_radio_capturable": handle_deactivate_root_managed_leaves_radio_capturable,
     "revert_failure_is_reported": handle_revert_failure_is_reported,
     "post_prepare_failure_rolls_back_entry": handle_post_prepare_failure_rolls_back_entry,
     "marker_identity_guards_reused_name": handle_marker_identity_guards_reused_name,

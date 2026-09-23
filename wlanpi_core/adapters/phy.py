@@ -8,6 +8,7 @@ moving them between namespaces and querying their state.
 import logging
 from typing import Any
 
+from wlanpi_core.adapters import discovery
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
@@ -19,6 +20,43 @@ log = logging.getLogger(__name__)
 def phy_args(phy: str) -> list[str]:
     """Return the iw arguments that select `phy`, a name (`phy0`) or index (`phy#0`)."""
     return [phy] if phy.startswith("phy#") else ["phy", phy]
+
+
+def _up_netdevs(phy: str, namespace: str | None) -> list[str]:
+    """Return the netdevs on `phy` that are up in `namespace`.
+
+    A netns move takes every netdev of the phy down. Core recreates the one it
+    configures, but the others (the `wlanpiN` monitor) must be brought back up.
+    Best effort: [] when the state cannot be read.
+    """
+    # ponytail: assumes phyN is phy index N, as the callers already do.
+    index = phy.removeprefix("phy#").removeprefix("phy")
+    try:
+        iw_dev = ns_exec([IW_FILE, "dev"], namespace=namespace, no_output=True)
+        links = ns_exec(
+            ["ip", "-o", "link", "show", "up"], namespace=namespace, no_output=True
+        )
+    except (RunCommandError, ValueError) as e:
+        log.warning(f"Could not read which netdevs of {phy} are up: {e}")
+        return []
+    up = {
+        line.split(":")[1].strip().split("@")[0]
+        for line in links.stdout.splitlines()
+        if line.count(":") >= 2
+    }
+    return [
+        live.name
+        for live in discovery._parse_iw_dev(iw_dev.stdout, namespace)
+        if str(live.phy_index) == index and live.name in up
+    ]
+
+
+def _bring_up(names: list[str], namespace: str | None) -> None:
+    for name in names:
+        try:
+            ns_exec(["ip", "link", "set", name, "up"], namespace=namespace)
+        except RunCommandError as e:
+            log.warning(f"Could not bring {name} back up after moving its phy: {e}")
 
 
 def list_phys(namespace: str | None = None) -> list[str]:
@@ -146,12 +184,14 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
 
     log.info(f"Moving PHY {phy} to namespace {namespace}")
 
+    up = _up_netdevs(phy, None)
     try:
         # Move PHY to namespace using 'iw phy <phy> set netns name <namespace>'
         run_command(
             ["sudo", IW_FILE, *phy_args(phy), "set", "netns", "name", namespace],
             raise_on_fail=True,
         )
+        _bring_up(up, namespace)
 
         log.info(f"Successfully moved PHY {phy} to namespace {namespace}")
         return True
@@ -185,12 +225,14 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
 
     log.info(f"Moving PHY {phy} from namespace {namespace} to root")
 
+    up = _up_netdevs(phy, namespace)
     try:
         # Move PHY to root (PID 1) using 'iw phy <phy> set netns 1'
         ns_exec(
             [IW_FILE, *phy_args(phy), "set", "netns", "1"],
             namespace=namespace,
         )
+        _bring_up(up, None)
 
         log.info(f"Successfully moved PHY {phy} to root namespace")
         return True
