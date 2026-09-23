@@ -70,14 +70,15 @@ def network_change_lock() -> Iterator[None]:
         os.close(fd)
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write(path: Path, text: str, mode: int = 0o600) -> None:
     """Replace `path` with `text` so readers never see a partial file.
 
-    Writes a sibling temp file (created 0600, since profiles hold PSKs),
-    fsyncs it, then renames it over `path`.
+    Writes a sibling temp file with `mode` (0600 by default, since profiles
+    hold PSKs), fsyncs it, then renames it over `path`.
     """
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     try:
+        os.fchmod(fd, mode)
         with os.fdopen(fd, "w") as f:
             f.write(text)
             f.flush()
@@ -86,6 +87,11 @@ def _atomic_write(path: Path, text: str) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def _write_current(cfg_id: str) -> None:
+    # current.txt holds no secret and may be read by other wlanpi tools.
+    _atomic_write(ccf, cfg_id, mode=0o644)
 
 
 # IDs that clash with the built-in default, the root namespace or the
@@ -368,7 +374,7 @@ def is_active(cfg_id: str) -> bool:
 
 
 def _revert_current_config_to_default() -> None:
-    _atomic_write(ccf, "default")
+    _write_current("default")
 
 
 def get_current_config() -> str:
@@ -471,11 +477,14 @@ def delete_config(cfg_id: str, force: bool = False) -> bool:
     """
     path = _config_path(cfg_id)
 
-    if is_active(cfg_id):
-        if not force:
-            raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
-        deactivate_config(cfg_id)
-    path.unlink()
+    # Under the change lock, so no activation can make cfg_id active again
+    # between the deactivate and the unlink.
+    with network_change_lock():
+        if is_active(cfg_id):
+            if not force:
+                raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+            _deactivate_config_locked(cfg_id, False)
+        path.unlink()
     return True
 
 
@@ -541,7 +550,7 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
         acceptable_statuses = {"connected", "provisioned"}
         if all(status in acceptable_statuses for status in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
-            _atomic_write(ccf, cfg_id)
+            _write_current(cfg_id)
             return True
         # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
         log.error(
@@ -607,7 +616,7 @@ def _teardown_profile(cfg_id: str) -> None:
 
 def _fall_back_to_default(failed_cfg_id: str) -> None:
     """After a failed activation, record and apply `default` so state matches."""
-    _atomic_write(ccf, "default")
+    _write_current("default")
     if failed_cfg_id != "default":
         _apply_default()
 
@@ -649,7 +658,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             log.info(f"Deactivating root config for interface {root_cfg.interface}")
             ns.deactivate_config(root_cfg)
 
-        _atomic_write(ccf, "default")
+        _write_current("default")
         ns.revert_to_root(None)
         # current.txt now says default, so apply it (#271)
         if cfg_id != "default":
@@ -660,7 +669,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
         log.error(f"Failed to deactivate config {cfg_id}: {ex}")
         # Ensure ccf/revert complete even when a later adapter raises (mirror activate rollback)
         try:
-            _atomic_write(ccf, "default")
+            _write_current("default")
             ns.revert_to_root(None)
         except Exception as cleanup_error:
             log.warning(
