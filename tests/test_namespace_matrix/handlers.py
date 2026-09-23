@@ -1672,12 +1672,27 @@ def handle_monitor_restart_keeps_new_generation(
     stop_all_connection_monitors()
     _wait_for_monitors_idle()
     cfg = _root(interface="wlan0", security=_security("SlowNet"))
+    # Each generation's status poll blocks on its own event, so the test
+    # decides when each one may move on.
     first_polling = threading.Event()
-    release = threading.Event()
+    release_first = threading.Event()
+    second_polling = threading.Event()
+    release_second = threading.Event()
+    seen: list[threading.Thread] = []
+    seen_lock = threading.Lock()
 
     def wpa_status(*args, **kwargs):
-        first_polling.set()
-        assert release.wait(timeout=10), "test never released the status call"
+        me = threading.current_thread()
+        with seen_lock:
+            if me not in seen:
+                seen.append(me)
+            is_first = me is seen[0]
+        if is_first:
+            first_polling.set()
+            assert release_first.wait(timeout=10), "first poll never released"
+        else:
+            second_polling.set()
+            assert release_second.wait(timeout=10), "second poll never released"
         return {"wpa_status": {"wpa_state": "SCANNING"}}
 
     dhcp_threads: list[threading.Thread] = []
@@ -1693,21 +1708,26 @@ def handle_monitor_restart_keeps_new_generation(
             with _patch_monitor_clock():
                 try:
                     ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
-                    assert first_polling.wait(timeout=5), "first monitor never polled"
                     with mon._monitor_lock:
                         first = mon._connection_monitors["root:wlan0"]
-                    # The first is still blocked in its poll; replacing it
-                    # signals it, waits (bounded), then registers the second.
+                    assert first_polling.wait(timeout=5), "first monitor never polled"
+                    assert seen[0] is first
+                    # The first is blocked in its poll; replacing it signals it,
+                    # waits (bounded), then registers the second.
                     ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
                     with mon._monitor_lock:
                         second = mon._connection_monitors["root:wlan0"]
                     assert second is not first
+                    assert second_polling.wait(timeout=5), "second monitor never polled"
+                    release_first.set()
+                    first.join(timeout=5)
+                    assert not first.is_alive(), "superseded monitor did not exit"
+                    # The first has exited; the second must still be registered.
+                    with mon._monitor_lock:
+                        assert mon._connection_monitors.get("root:wlan0") is second
                 finally:
-                    release.set()
-                first.join(timeout=5)
-                assert not first.is_alive(), "superseded monitor did not exit"
-                with mon._monitor_lock:
-                    assert mon._connection_monitors.get("root:wlan0") is second
+                    release_first.set()
+                    release_second.set()
                 stop_all_connection_monitors()
                 _wait_for_monitors_idle()
     # The superseded monitor must never reach DHCP; only the live one may.
