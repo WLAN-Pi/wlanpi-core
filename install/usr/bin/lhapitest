@@ -1,175 +1,99 @@
-#!/bin/bash
+#!/usr/bin/python3
+"""lhapitest: localhost API test client for wlanpi-core (HMAC-signed requests).
 
-# lsapitest.sh: Localhost API test script for wlanpi-core
+Stdlib only. Reads the shared secret as raw bytes, so secrets containing NUL
+or trailing newline bytes sign correctly (the previous bash version did not).
+"""
 
-PORT=31415
-BASE_URL="/api/v1"
-SECRETS_PATH="/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
-CACERT="/etc/nginx/ssl/self-signed-wlanpi.cert"
-METHOD="GET"
-ENDPOINT=""
-QUERY=""
-PAYLOAD=""
-HEADERS=""
+import argparse
+import hashlib
+import hmac
+import json
+import ssl
+import sys
+import urllib.error
+import urllib.request
 
-check_port() {
-    local port="$1"
-    (echo > /dev/tcp/localhost/"$port") >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "Error: Nothing appears to be running on port $port"
-        echo "Please ensure the wlanpi-core is running on the desired port"
-        exit 1
-    fi
-}
+SECRET = "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
+CACERT = "/etc/nginx/ssl/self-signed-wlanpi.cert"
 
-get_shared_secret() {
-    local secrets_path="$1"
-    
-    if ! sudo test -f "$secrets_path"; then
-        echo "Error: Secret file not found at $secrets_path"
-        exit 1
-    fi
-    
-    sudo cat "$secrets_path"
-}
 
-generate_signature() {
-    local method="$1"
-    local endpoint="$2"
-    local query="$3"
-    local payload="${4:-}"
-    local shared_secret="$5"
-    
-    if [[ "$method" == "GET" ]]; then
-        payload=""
-    fi
-    
-    if [[ -z "$query" ]]; then
-        query=""
-    fi
-
-    local canonical_string=""
-    canonical_string="$method"$'\n'
-    canonical_string+="${BASE_URL}${endpoint}"$'\n'
-    canonical_string+="$query"$'\n'
-    canonical_string+="$payload"
-
-    echo "Canonical string components:" >&2
-    echo "Method: $method" >&2
-    echo "Path: ${BASE_URL}${endpoint}" >&2
-    echo "Query: '$query'" >&2
-    echo "Payload: '$payload'" >&2
-    echo "Full canonical string (hex):" >&2
-    echo -n "$canonical_string" | xxd >&2
-
-    local signature=""
-    signature=$(printf "%s" "$canonical_string" | openssl dgst -sha256 -hmac "$shared_secret" -binary | xxd -p -c 256)
-    echo "$signature"
-}
-
-api_call() {
-    local method="$1"
-    local endpoint="$2"
-    local query="$3"
-    local payload="${4:-}"
-    local headers="${5:-}"
-    local port="$6"
-    local shared_secret="$7"
-    local signature=""
-    
-    check_port "$port"
-    
-    if [[ "$method" =~ ^(GET|PATCH|POST|PUT|DELETE)$ ]]; then
-        signature=$(generate_signature "$method" "$endpoint" "$query" "$payload" "$shared_secret")
-    fi
-    
-    # Construct curl command
-    local curl_cmd=(
-        curl -s -X "$method"
-        --cacert "$CACERT"
-        -H "accept: application/json"
+def main() -> int:
+    """Parse args, sign, send, print the JSON response."""
+    p = argparse.ArgumentParser(
+        epilog="examples:\n"
+        "  %(prog)s -e /system/device/model\n"
+        '  %(prog)s -X POST -e /auth/token -P \'{"device_id": "1"}\'\n'
+        "  %(prog)s -e /system/device/model -p 8000 --http   # dev server, no TLS",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    
-    # Add signature header if generated
-    if [[ -n "$signature" ]]; then
-        curl_cmd+=(-H "X-Request-Signature: $signature")
-    fi
-    
-    # Add additional headers
-    if [[ -n "$headers" ]]; then
-        IFS=',' read -ra HEADER_ARRAY <<< "$headers"
-        for header in "${HEADER_ARRAY[@]}"; do
-            curl_cmd+=(-H "$header")
-        done
-    fi
-    
-    # Add payload for methods that support it
-    if [[ -n "$payload" ]] && [[ "$method" =~ ^(POST|PUT|PATCH)$ ]]; then
-        curl_cmd+=(-H "Content-Type: application/json" -d "$payload")
-    fi
-    
-    # Construct full URL
-    local full_url="https://127.0.0.1:$port$BASE_URL$endpoint"
-    curl_cmd+=("$full_url")
-    
-    # Execute the curl command and pretty print with jq
-    "${curl_cmd[@]}" | jq '.'
-}
+    p.add_argument("-p", "--port", type=int, default=31415)
+    p.add_argument("-b", "--base", default="/api/v1")
+    p.add_argument("-s", "--secrets", default=SECRET)
+    p.add_argument("-X", "--method", default="GET")
+    p.add_argument("-e", "--endpoint", required=True)
+    p.add_argument("-q", "--query", default="", help="raw query string, no '?'")
+    p.add_argument("-P", "--payload", default="", help="JSON body for POST/PUT/PATCH")
+    p.add_argument("-H", "--headers", default="", help="comma-separated 'K: V' headers")
+    p.add_argument(
+        "--http", action="store_true", help="plain HTTP (dev server on :8000)"
+    )
+    p.add_argument("-v", "--verbose", action="store_true", help="show canonical string")
+    a = p.parse_args()
 
-usage() {
-    echo "Usage: $0 [options]"
-    echo "Options:"
-    echo "  -p, --port PORT     Set the port (default: 31415)"
-    echo "  -b, --base BASE     Set the base URL path (default: /api/v1)"
-    echo "  -s, --secrets PATH  Set the path to shared secrets (default: /home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret)"
-    echo "  -X, --method METHOD Set HTTP method (GET, POST, PUT, DELETE) (default: GET)"
-    echo "  -e, --endpoint ENDPOINT Specify the API endpoint"
-    echo "  -q, --query QUERY Specify query string"
-    echo "  -P, --payload PAYLOAD JSON payload for POST/PUT requests"
-    echo "  -H, --headers HEADERS Comma-separated additional headers"
-    echo "  -h, --help         Show this help message"
-    echo ""
-    echo "  Get model:              $0 -e /system/device/model"
-    echo "  Get model (dev):        $0 -e /system/device/model -p 8000  # loopback HTTP only, no TLS"
-    echo ""
-    echo "  Get Token:              $0 -X POST -e /auth/token -P '{\"device_id\": \"1\"}'"
-    exit 1
-}
+    method = a.method.upper()
+    path = a.base + a.endpoint
+    body = a.payload.encode() if method in ("POST", "PUT", "PATCH") else b""
 
-ARGS=$(getopt -o p:b:s:X:e:P:H:h --long port:,base:,secrets:,method:,endpoint:,query:,payload:,headers:,help -n "$0" -- "$@")
+    try:
+        with open(a.secrets, "rb") as fh:
+            secret = fh.read()
+    except PermissionError:
+        print(f"cannot read {a.secrets}; run with sudo", file=sys.stderr)
+        return 1
+    except FileNotFoundError:
+        print(f"secret not found at {a.secrets}", file=sys.stderr)
+        return 1
 
-if [[ $? -ne 0 ]]; then
-    usage
-fi
+    # Must match verify_hmac in wlanpi_core/core/auth.py.
+    canonical = f"{method}\n{path}\n{a.query}\n".encode() + body
+    sig = hmac.new(secret, canonical, hashlib.sha256).hexdigest()
+    if a.verbose:
+        print(f"canonical: {canonical!r}\nsignature: {sig}", file=sys.stderr)
 
-eval set -- "$ARGS"
+    headers = {"accept": "application/json", "X-Request-Signature": sig}
+    if body:
+        headers["Content-Type"] = "application/json"
+    for h in filter(None, (x.strip() for x in a.headers.split(","))):
+        k, _, v = h.partition(":")
+        headers[k.strip()] = v.strip()
 
-while true; do
-    case "$1" in
-        -p|--port) PORT="$2"; shift 2 ;;
-        -b|--base) BASE_URL="$2"; shift 2 ;;
-        -s|--secrets) SECRETS_PATH="$2"; shift 2 ;;
-        -X|--method) METHOD="$2"; shift 2 ;;
-        -e|--endpoint) ENDPOINT="$2"; shift 2 ;;
-        -q|--query) QUERY="$2"; shift 2 ;;
-        -P|--payload) PAYLOAD="$2"; shift 2 ;;
-        -H|--headers) HEADERS="$2"; shift 2 ;;
-        -h|--help) usage ;;
-        --) shift; break ;;
-        *) 
-            if [[ -z "$1" ]]; then
-                break
-            fi
-            echo "Invalid option: $1"
-            usage
-            ;;
-    esac
-done
+    scheme = "http" if a.http else "https"
+    url = f"{scheme}://127.0.0.1:{a.port}{path}" + (f"?{a.query}" if a.query else "")
+    req = urllib.request.Request(url, data=body or None, method=method, headers=headers)
+    ctx = None
+    if scheme == "https":
+        ctx = ssl.create_default_context(cafile=CACERT)
+        ctx.check_hostname = False
+    try:
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            raw, status = resp.read(), resp.status
+    except urllib.error.HTTPError as exc:
+        raw, status = exc.read(), exc.code
+    except (urllib.error.URLError, ConnectionError) as exc:
+        print(
+            f"request failed: {exc.reason if hasattr(exc, 'reason') else exc}",
+            file=sys.stderr,
+        )
+        return 1
 
-if [[ -z "$ENDPOINT" ]]; then
-    usage
-fi
+    try:
+        print(json.dumps(json.loads(raw), indent=2))
+    except ValueError:
+        sys.stdout.write(raw.decode(errors="replace") + "\n")
+    print(f"http={status}", file=sys.stderr)
+    return 0 if status < 400 else 2
 
-SHARED_SECRET=$(get_shared_secret "$SECRETS_PATH")
 
-api_call "$METHOD" "$ENDPOINT" "$QUERY" "$PAYLOAD" "$HEADERS" "$PORT" "$SHARED_SECRET"
+if __name__ == "__main__":
+    sys.exit(main())
