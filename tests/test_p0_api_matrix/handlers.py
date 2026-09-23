@@ -324,8 +324,8 @@ def _sample_networks():
 def handle_scan_auto_single_monitor(client, auth_headers, scenario):
     status = {
         "root": {
-            "wlanpi0": {"type": "monitor"},
-            "wlan0": {"type": "managed"},
+            "wlanpi0": {"type": "monitor", "wiphy": "0"},
+            "wlan0": {"type": "managed", "wiphy": "0"},
         }
     }
     with patch("wlanpi_core.wlan.scan.network_config.status", return_value=status):

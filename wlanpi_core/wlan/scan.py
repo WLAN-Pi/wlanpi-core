@@ -65,6 +65,7 @@ def iter_adapters(status: dict[str, Any]) -> list[dict[str, Any]]:
                     "namespace": namespace,
                     "namespace_display": _ns_display(namespace),
                     "mode": mode,
+                    "phy": iface_info.get("wiphy"),
                     "label": _adapter_label(iface, mode, namespace),
                 }
             )
@@ -83,10 +84,18 @@ def _adapter_response(adapter: dict[str, Any]) -> dict[str, Any]:
 def find_managed_sibling(
     adapter: dict[str, Any], adapters: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    """Return a managed interface in the same namespace (e.g. wlan0 for wlanpi0)."""
-    namespace = adapter["namespace"]
+    """Return the managed interface on the same PHY and namespace (wlan0 for wlanpi0).
+
+    None when the monitor's PHY is unknown: never guess another radio.
+    """
+    if adapter.get("phy") is None:
+        return None
     for candidate in adapters:
-        if candidate["namespace"] == namespace and candidate["mode"] == "managed":
+        if (
+            candidate["namespace"] == adapter["namespace"]
+            and candidate.get("phy") == adapter.get("phy")
+            and candidate["mode"] == "managed"
+        ):
             return candidate
     return None
 
