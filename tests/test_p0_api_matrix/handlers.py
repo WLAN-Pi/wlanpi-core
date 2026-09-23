@@ -724,6 +724,7 @@ def handle_wlan_revert_reverts_all(client, auth_headers, scenario, netcfg_env):
     assert response.json() == {
         "success": True,
         "message": "Reverted every Core namespace to root; the default configuration is active.",
+        "left_alone": [],
     }
     assert not inventory.netns
     assert inventory.live() == {
@@ -732,6 +733,94 @@ def handle_wlan_revert_reverts_all(client, auth_headers, scenario, netcfg_env):
         "wlan2": ("phy1", None, "managed"),
     }
     assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_network_config_leftovers_and_reset(
+    client, auth_headers, scenario, netcfg_env
+):
+    # Another tool leaves phy1 in its own namespace; the caller lists it,
+    # then chooses to reset it.
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        for cmd in (
+            ["sudo", "ip", "netns", "add", "profiler_ns"],
+            ["sudo", "/sbin/iw", "phy#1", "set", "netns", "name", "profiler_ns"],
+        ):
+            inventory.run_command(cmd)
+        listed = client.get("/api/v1/network/config/leftovers")
+        _expect_status(listed, "200")
+        assert listed.json() == {
+            "left_alone": [
+                {
+                    "namespace": "profiler_ns",
+                    "interfaces": ["wlan2"],
+                    "phys": ["phy1"],
+                    "core_created": False,
+                    "reason": "Not created by Core; holds wireless radios",
+                }
+            ]
+        }
+        response = client.post(
+            "/api/v1/network/config/reset", json={"namespaces": ["profiler_ns"]}
+        )
+        _expect_status(response, scenario.expected_http)
+        assert response.json()["results"] == [
+            {
+                "namespace": "profiler_ns",
+                "phys_returned": ["phy1"],
+                "deleted": True,
+                "remaining": [],
+                "detail": "",
+            }
+        ]
+        after = client.get("/api/v1/network/config/leftovers")
+    assert after.json() == {"left_alone": []}
+    assert inventory.live()["wlan2"] == ("phy1", None, "managed")
+
+
+def handle_network_config_deactivate_reports_left_alone(
+    client, auth_headers, scenario, netcfg_env
+):
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "ns_cfg",
+        {
+            "id": "ns_cfg",
+            "namespaces": [{**_root_entry("wlan1", "phy2"), "namespace": "ns_a"}],
+            "roots": [],
+        },
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        activated = client.post(
+            "/api/v1/network/config/activate/ns_cfg", params={"override_active": True}
+        )
+        _expect_status(activated, "200")
+        for cmd in (
+            ["sudo", "ip", "netns", "add", "profiler_ns"],
+            ["sudo", "/sbin/iw", "phy#1", "set", "netns", "name", "profiler_ns"],
+        ):
+            inventory.run_command(cmd)
+        response = client.post("/api/v1/network/config/deactivate/ns_cfg")
+    _expect_status(response, scenario.expected_http)
+    body = response.json()
+    assert body["id"] == "ns_cfg"
+    assert [entry["namespace"] for entry in body["left_alone"]] == ["profiler_ns"]
+
+
+def handle_network_config_reset_invalid_name_422(client, auth_headers, scenario):
+    for body in ({"namespaces": []}, {"namespaces": ["bad name/../x"]}):
+        response = client.post("/api/v1/network/config/reset", json=body)
+        _expect_status(response, scenario.expected_http)
+
+
+def handle_network_config_reset_manual_409(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+
+    with patch.object(settings, "WLAN_MANAGEMENT", "manual"):
+        response = client.post(
+            "/api/v1/network/config/reset", json={"namespaces": ["profiler_ns"]}
+        )
+    _expect_status(response, scenario.expected_http)
+    assert "WLAN_MANAGEMENT=manual" in response.text
 
 
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
@@ -956,6 +1045,10 @@ HANDLERS.update(
         "network_config_activate_invalid_entry_422": handle_network_config_activate_invalid_entry_422,
         "network_config_activate_fault_500_outcomes": handle_network_config_activate_fault_500_outcomes,
         "wlan_revert_reverts_all": handle_wlan_revert_reverts_all,
+        "network_config_leftovers_and_reset": handle_network_config_leftovers_and_reset,
+        "network_config_deactivate_reports_left_alone": handle_network_config_deactivate_reports_left_alone,
+        "network_config_reset_invalid_name_422": handle_network_config_reset_invalid_name_422,
+        "network_config_reset_manual_409": handle_network_config_reset_manual_409,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,

@@ -18,6 +18,10 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
     ActivationResponse,
+    DeactivationResponse,
+    LeftoversResponse,
+    NamespaceResetRequest,
+    NamespaceResetResponse,
     NetConfig,
     NetConfigPublic,
     NetConfigUpdate,
@@ -64,6 +68,60 @@ async def get_configs() -> Any:
         return configs
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
+    except Exception as ex:
+        log.error(ex)
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
+
+
+@router.get(
+    "/leftovers",
+    response_model=LeftoversResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def get_leftovers() -> Any:
+    """
+    List namespaces holding radios that Core has left alone.
+
+    That is a namespace Core created that is still present outside the
+    active configuration, or any other namespace that holds wireless phys or
+    interfaces. Core never clears these on its own; clear them with
+    `POST /network/config/reset`.
+    """
+    try:
+        left = await asyncio.to_thread(network_config.left_alone)
+        return LeftoversResponse(left_alone=left)
+    except Exception as ex:
+        log.error(ex)
+        raise HTTPException(status_code=500, detail="Internal Server Error") from None
+
+
+@router.post(
+    "/reset",
+    response_model=NamespaceResetResponse,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def reset_namespaces(request: NamespaceResetRequest) -> Any:
+    """
+    Return the radios in the named namespaces to root.
+
+    Only the namespaces listed are touched, whoever created them: every phy
+    in each is moved to the root namespace and the namespace is deleted once
+    empty. Processes running inside are not stopped. A namespace used by the
+    active configuration is refused (deactivate it first). Each result says
+    what happened. Returns 409 while another network change is running.
+    """
+    try:
+        require_wlan_management_enabled()
+        results = await asyncio.to_thread(
+            network_config.reset_namespaces, request.namespaces
+        )
+        return NamespaceResetResponse(results=results)
+    except ConfigBusyError as cbe:
+        raise HTTPException(status_code=409, detail=cbe.message) from None
+    except ValidationError as ve:
+        raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
+    except HTTPException:
+        raise
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error") from None
@@ -275,12 +333,17 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
 
 @router.post(
     "/deactivate/{id}",
-    response_model=dict[str, str],
-    response_model_exclude_none=True,
+    response_model=DeactivationResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def deactivate_config(id: str, override_active: bool = False) -> Any:
-    """Deactivate a network configuration by ID."""
+    """
+    Deactivate a network configuration by ID.
+
+    `left_alone` lists namespaces still holding radios that Core did not
+    clean up (another tool's, or Core's own that could not be removed).
+    Clear them with `POST /network/config/reset`.
+    """
     try:
         require_wlan_management_enabled()
         success = await asyncio.to_thread(
@@ -294,7 +357,10 @@ async def deactivate_config(id: str, override_active: bool = False) -> Any:
                 status_code=500, detail="Failed to deactivate configuration"
             )
         log.info(f"Configuration deactivated: {id}")
-        return {"id": id, "message": "Configuration deactivated successfully"}
+        left = await asyncio.to_thread(network_config.left_alone)
+        return DeactivationResponse(
+            id=id, message="Configuration deactivated successfully", left_alone=left
+        )
     except ConfigBusyError as cbe:
         raise HTTPException(status_code=409, detail=cbe.message) from None
     except ConfigActiveError as cae:

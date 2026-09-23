@@ -630,16 +630,20 @@ async def revert_wlan_namespace(
     configuration, returns every namespace Core created to root (deleting
     each once it is empty), and makes the default configuration active.
     `iface`, `namespace` and `delete_namespace` are accepted for
-    compatibility and ignored. Returns 409 while another network change is
+    compatibility and ignored. `left_alone` lists namespaces still holding
+    radios that Core did not create; clear them with
+    `POST /network/config/reset`. Returns 409 while another network change is
     running.
     """
     del req, timeout
     try:
         require_wlan_management_enabled()
         await asyncio.to_thread(network_config.revert_all)
+        left = await asyncio.to_thread(network_config.left_alone)
         return {
             "success": True,
             "message": "Reverted every Core namespace to root; the default configuration is active.",
+            "left_alone": left,
         }
 
     except ConfigBusyError as cbe:

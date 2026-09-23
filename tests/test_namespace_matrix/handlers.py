@@ -2011,6 +2011,119 @@ def handle_namespace_marker_kept_when_delete_fails(
     assert (Path(nns.RUN_DIR) / "netns" / "ns_a").exists()
 
 
+def _foreign_namespace(inventory, name: str, phy_index: int) -> None:
+    """Another tool creates `name` and moves phy`phy_index` into it."""
+    for cmd in (
+        ["sudo", "ip", "netns", "add", name],
+        ["sudo", "/sbin/iw", f"phy#{phy_index}", "set", "netns", "name", name],
+    ):
+        inventory.run_command(cmd)
+
+
+def handle_leftovers_reports_foreign_namespace(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """P15: a namespace another tool made that holds a radio is reported."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        _foreign_namespace(inventory, "profiler_ns", 1)
+        inventory.run_command(["sudo", "ip", "netns", "add", "empty_ns"])
+        # ns_a is in use by the active profile; empty_ns holds no radio.
+        assert [entry.model_dump() for entry in nc.left_alone()] == [
+            {
+                "namespace": "profiler_ns",
+                "interfaces": ["wlan2"],
+                "phys": ["phy1"],
+                "core_created": False,
+                "reason": "Not created by Core; holds wireless radios",
+            }
+        ]
+        assert nc.deactivate_config("ns_cfg") is True
+        assert [entry.namespace for entry in nc.left_alone()] == ["profiler_ns"]
+    assert inventory.live()["wlan2"] == ("phy1", "profiler_ns", "managed")
+    assert "empty_ns" in inventory.netns
+
+
+def handle_leftovers_reports_kept_core_namespace(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """P15: a Core namespace that could not be deleted is reported."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    faults = {
+        (
+            None,
+            ("ip", "netns", "delete", "ns_a"),
+        ): "Cannot remove namespace file: Device or resource busy\n"
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults):
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        assert nc.deactivate_config("ns_cfg") is True
+        assert [entry.model_dump() for entry in nc.left_alone()] == [
+            {
+                "namespace": "ns_a",
+                "interfaces": [],
+                "phys": [],
+                "core_created": True,
+                "reason": "Created by Core and not removed",
+            }
+        ]
+
+
+def handle_reset_returns_named_namespace(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """P15: a reset returns the named namespace's radios and deletes it."""
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        _foreign_namespace(inventory, "profiler_ns", 1)
+        _foreign_namespace(inventory, "other_ns", 2)
+        results = nc.reset_namespaces(["profiler_ns"])
+        assert [r.model_dump() for r in results] == [
+            {
+                "namespace": "profiler_ns",
+                "phys_returned": ["phy1"],
+                "deleted": True,
+                "remaining": [],
+                "detail": "",
+            }
+        ]
+        assert [entry.namespace for entry in nc.left_alone()] == ["other_ns"]
+    live = inventory.live()
+    assert live["wlan2"] == ("phy1", None, "managed")
+    assert live["wlan1"] == ("phy2", "other_ns", "managed")
+    assert "profiler_ns" not in inventory.netns
+    assert "other_ns" in inventory.netns
+
+
+def handle_reset_refuses_in_use_and_unknown(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """P15: a reset refuses the active profile's namespace and unknown names."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        before = inventory.live()
+        results = nc.reset_namespaces(["ns_a", "nope"])
+        assert [(r.namespace, r.deleted, r.detail) for r in results] == [
+            ("ns_a", False, "In use by the active configuration; deactivate it first"),
+            ("nope", False, "No such namespace holding radios"),
+        ]
+        assert inventory.live() == before
+    assert "ns_a" in inventory.netns
+
+
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
@@ -2072,6 +2185,10 @@ HANDLERS = {
     "post_prepare_failure_rolls_back_entry": handle_post_prepare_failure_rolls_back_entry,
     "marker_identity_guards_reused_name": handle_marker_identity_guards_reused_name,
     "namespace_marker_kept_when_delete_fails": handle_namespace_marker_kept_when_delete_fails,
+    "leftovers_reports_foreign_namespace": handle_leftovers_reports_foreign_namespace,
+    "leftovers_reports_kept_core_namespace": handle_leftovers_reports_kept_core_namespace,
+    "reset_returns_named_namespace": handle_reset_returns_named_namespace,
+    "reset_refuses_in_use_and_unknown": handle_reset_refuses_in_use_and_unknown,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,

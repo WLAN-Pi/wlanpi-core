@@ -1,3 +1,16 @@
+wlanpi-core (2.3.23-1) unstable; urgency=medium
+
+  * Report namespaces Core has left alone: GET /network/config/leftovers,
+    and a left_alone list on deactivate and /wlan/revert. That is a
+    namespace Core created that is still present, or another tool's
+    namespace holding wireless radios.
+  * Add POST /network/config/reset: the caller names namespaces and Core
+    returns their radios to root, deleting each once empty. The active
+    configuration's namespaces are refused. "leftovers" and "reset" are now
+    reserved configuration IDs.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:21:07 -0500
+
 wlanpi-core (2.3.22-1) unstable; urgency=medium
 
   * Track the interfaces Core creates (by namespace, name and ifindex, on

@@ -25,7 +25,9 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import (
     AdapterOutcome,
+    LeftAlone,
     NamespaceConfig,
+    NamespaceResetResult,
     NetConfig,
     NetConfigUpdate,
     NetSecurity,
@@ -103,7 +105,7 @@ def _write_current(cfg_id: str) -> None:
 
 # IDs that clash with the built-in default, the root namespace or the
 # /network/config/status route, in any letter case.
-_RESERVED_IDS = {"default", "root", "status"}
+_RESERVED_IDS = {"default", "root", "status", "leftovers", "reset"}
 
 
 def _reject_reserved_id(cfg_id: str) -> None:
@@ -746,6 +748,46 @@ def _entries_to_undo(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
     if cfg.id == "default":
         entries = [entry for entry in entries if ns.is_core_managed(entry)]
     return entries
+
+
+def _active_namespaces() -> set[str]:
+    try:
+        active = get_current_config()
+        if active == "default":
+            return set()
+        return {entry.namespace for entry in get_config(active).namespaces or []}
+    except (OSError, ConfigMalformedError, ValidationError):
+        return set()
+
+
+def left_alone() -> list[LeftAlone]:
+    """Return the namespaces holding radios that Core has left alone."""
+    return [LeftAlone(**entry) for entry in ns.left_alone(_active_namespaces())]
+
+
+def reset_namespaces(names: list[str]) -> list[NamespaceResetResult]:
+    """Return the radios in the named namespaces to root, deleting each once empty.
+
+    Only the namespaces named are touched, whoever created them; one used by
+    the active configuration is refused (deactivate it first).
+
+    Raises:
+        ConfigBusyError: If another change holds network_change_lock()
+    """
+    with network_change_lock():
+        existing = {entry["namespace"] for entry in ns.left_alone(set())}
+        in_use = _active_namespaces()
+        results = []
+        for name in names:
+            if name in in_use:
+                detail = "In use by the active configuration; deactivate it first"
+                results.append(NamespaceResetResult(namespace=name, detail=detail))
+            elif name not in existing:
+                detail = "No such namespace holding radios"
+                results.append(NamespaceResetResult(namespace=name, detail=detail))
+            else:
+                results.append(NamespaceResetResult(**ns.reset_namespace(name)))
+        return results
 
 
 def _fall_back_to_default(failed_cfg_id: str) -> None:

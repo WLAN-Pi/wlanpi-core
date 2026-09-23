@@ -215,6 +215,7 @@ def test_api_get_network_wlan_pci_drivers(client):
 
 def test_api_revert_wlan_namespace_delegates_to_revert_all(client, mocker):
     revert = mocker.patch("wlanpi_core.utils.network_config.revert_all")
+    mocker.patch("wlanpi_core.utils.network_config.left_alone", return_value=[])
 
     response = client.post(
         "/api/v1/network/wlan/revert",
@@ -227,4 +228,5 @@ def test_api_revert_wlan_namespace_delegates_to_revert_all(client, mocker):
 
     assert response.status_code == 200
     assert response.json()["success"] is True
+    assert response.json()["left_alone"] == []
     revert.assert_called_once_with()

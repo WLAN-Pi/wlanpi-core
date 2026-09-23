@@ -43,6 +43,7 @@ from wlanpi_core.utils.network_management import (
     stop_dhcp,
     stop_namespace_dhcp,
 )
+from wlanpi_core.utils.validation import validate_namespace_name
 from wlanpi_core.wpa import config as wpa_config
 from wlanpi_core.wpa import status as wpa_status
 from wlanpi_core.wpa import supplicant as wpa_supplicant
@@ -671,8 +672,11 @@ class NetworkNamespaceService:
         except OSError:
             pass  # absent, or holds files Core did not write
 
-    def _return_namespace_phys(self, namespace: str) -> None:
-        """Stop Core's supplicants in `namespace` and move every phy in it to root."""
+    def _return_namespace_phys(self, namespace: str) -> list[str]:
+        """Stop Core's supplicants in `namespace`, move every phy in it to root.
+
+        Returns the phys moved.
+        """
         self.log.info(f"Returning phys in namespace {namespace} to root")
         wpa_supplicant.stop_namespace_supplicants(namespace)
         stop_namespace_dhcp(namespace)
@@ -680,7 +684,8 @@ class NetworkNamespaceService:
             phys = phy.list_phys(namespace=namespace)
         except RunCommandError as e:
             self.log.warning(f"Could not list phys in {namespace}: {e}")
-            return
+            return []
+        moved: list[str] = []
         inventory = discovery.list_interfaces_all_namespaces()
         for phy_name in phys:
             travelling = [
@@ -696,10 +701,88 @@ class NetworkNamespaceService:
             except RunCommandError as e:
                 self.log.warning(f"Could not move {phy_name} from {namespace}: {e}")
                 continue
+            moved.append(phy_name)
             # Core's netdevs travel with the phy and keep their ifindex.
             for live in travelling:
                 self._owned_path(live.name, namespace).unlink(missing_ok=True)
                 self._claim(live.name, None)
+        return moved
+
+    def left_alone(self, in_use: set[str]) -> list[dict[str, Any]]:
+        """Report namespaces holding radios that Core has not cleaned up.
+
+        A namespace Core created that is still present (and not used by the
+        active configuration) is listed, as is any other namespace that holds
+        wireless phys or interfaces. Other namespaces are not Core's concern.
+        """
+        core = set(self.core_namespaces())
+        try:
+            names = ns_namespace.list_namespaces()
+        except ns_namespace.NetworkNamespaceError as e:
+            self.log.warning(f"Failed to list namespaces: {e}")
+            return []
+        inventory = discovery.list_interfaces_all_namespaces()
+        found: list[dict[str, Any]] = []
+        for name in names:
+            if name in in_use:
+                continue
+            try:
+                validate_namespace_name(name)
+            except ValueError:
+                found.append({"namespace": name, "reason": "Name Core cannot manage"})
+                continue
+            try:
+                phys = phy.list_phys(namespace=name)
+            except RunCommandError:
+                phys = []
+            ifaces = [live.name for live in inventory if live.netns == name]
+            if name in core:
+                reason = "Created by Core and not removed"
+            elif phys or ifaces:
+                reason = "Not created by Core; holds wireless radios"
+            else:
+                continue
+            found.append(
+                {
+                    "namespace": name,
+                    "interfaces": ifaces,
+                    "phys": phys,
+                    "core_created": name in core,
+                    "reason": reason,
+                }
+            )
+        return found
+
+    def reset_namespace(self, namespace: str) -> dict[str, Any]:
+        """Return every phy in `namespace` to root and delete it once empty.
+
+        Only on an explicit request naming this namespace: it may belong to
+        another tool. Processes running inside it are not killed.
+        """
+        owned = namespace in self.core_namespaces()
+        moved = self._return_namespace_phys(namespace)
+        self.stop_app_in_namespace(namespace)
+        try:
+            remaining = phy.list_phys(
+                namespace=namespace
+            ) + ns_interfaces.get_interfaces_in_namespace(
+                namespace, include_loopback=False
+            )
+        except RunCommandError as e:
+            return {"namespace": namespace, "phys_returned": moved, "detail": str(e)}
+        deleted = False
+        if not remaining:
+            ns_namespace.delete_namespace(namespace, raise_on_fail=False)
+            deleted = not ns_namespace.namespace_exists(namespace)
+            if deleted and owned:
+                self._namespace_marker(namespace).unlink(missing_ok=True)
+                self._remove_netns_etc(namespace)
+        return {
+            "namespace": namespace,
+            "phys_returned": moved,
+            "deleted": deleted,
+            "remaining": remaining,
+        }
 
     def _delete_namespace_if_empty(self, namespace: str) -> None:
         """Delete a Core namespace once no phys or non-loopback links remain."""
