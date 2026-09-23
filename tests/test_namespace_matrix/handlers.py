@@ -2146,19 +2146,25 @@ PROFILER_AP_LAYOUT: dict[str, dict[str, str]] = {
 
 PROFILER_FAKEAP_LAYOUT: dict[str, dict[str, str]] = {
     **JOSH_THREE_RADIO,
-    # wlanpi-profiler --fakeap: wlan2 stays managed, its monitor is up
+    # wlanpi-profiler --fakeap: wlan2 stays managed; it captures on its monitor
     "wlan2profiler": {
         "phy": "phy1",
         "mac": "00:11:22:33:44:02",
         "type": "monitor",
         "up": "1",
+        "bound": "1",
     },
 }
 
-WLANPI_MONITOR_DOWN_LAYOUT: dict[str, dict[str, str]] = {
+WLANPI_MONITOR_IDLE_LAYOUT: dict[str, dict[str, str]] = {
     **JOSH_THREE_RADIO,
-    # the WLAN Pi's own per-radio monitor, normally down
-    "wlanpi1": {"phy": "phy1", "mac": "00:11:22:33:44:02", "type": "monitor"},
+    # the WLAN Pi's own per-radio monitor: may be up, but nothing captures on it
+    "wlanpi1": {
+        "phy": "phy1",
+        "mac": "00:11:22:33:44:02",
+        "type": "monitor",
+        "up": "1",
+    },
 }
 
 
@@ -2240,16 +2246,16 @@ def handle_in_use_sibling_monitor_up(namespace_service, netcfg_env, scenario: Sc
     assert inventory.live() == before
 
 
-def handle_in_use_ignores_down_sibling(
+def handle_in_use_ignores_idle_sibling(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """Do not let a down wlanpiN monitor on the same radio block it."""
+    """Do not let an idle (up, not capturing) wlanpiN monitor block its radio."""
     _write_netconfig(
         netcfg_env,
         "ns_cfg",
         namespaces=[_ns("ns_b", interface="wlan2", phy="phy1").model_dump(mode="json")],
     )
-    with live_adapter_inventory_mocks(WLANPI_MONITOR_DOWN_LAYOUT) as inventory:
+    with live_adapter_inventory_mocks(WLANPI_MONITOR_IDLE_LAYOUT) as inventory:
         ok, outcomes = nc.activate_config_report("ns_cfg", override_active=True)
         assert ok is True
         assert [o.status for o in outcomes] == ["connected"]
@@ -2289,6 +2295,7 @@ def handle_default_skips_core_netdev_now_in_use(
             ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
         ):
             inventory.run_command(cmd)
+        inventory.ifaces[(None, "wlan2profiler")].bound = True  # profiler captures
         # Core's record of the active profile is lost (e.g. current.txt reset).
         netcfg_env["ccf"].write_text("default")
         deleted_before = list(inventory.deleted)
@@ -2363,6 +2370,7 @@ def handle_deactivate_leaves_core_netdev_now_in_use(
             ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
         ):
             inventory.run_command(cmd)
+        inventory.ifaces[(None, "wlan2profiler")].bound = True  # profiler captures
         deleted_before = list(inventory.deleted)
         assert nc.deactivate_config("mon_cfg") is True
         # Handed back: a later default does not reset it either.
@@ -2441,7 +2449,7 @@ HANDLERS = {
     "in_use_ap_mode_radio_left_alone": handle_in_use_ap_mode_radio_left_alone,
     "in_use_foreign_supplicant_left_alone": handle_in_use_foreign_supplicant_left_alone,
     "in_use_sibling_monitor_up": handle_in_use_sibling_monitor_up,
-    "in_use_ignores_down_sibling": handle_in_use_ignores_down_sibling,
+    "in_use_ignores_idle_sibling": handle_in_use_ignores_idle_sibling,
     "default_skips_core_netdev_now_in_use": handle_default_skips_core_netdev_now_in_use,
     "deactivate_hands_back_interfaces": handle_deactivate_hands_back_interfaces,
     "deactivate_leaves_core_netdev_now_in_use": handle_deactivate_leaves_core_netdev_now_in_use,

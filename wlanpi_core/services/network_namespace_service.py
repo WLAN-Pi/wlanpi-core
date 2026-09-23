@@ -651,8 +651,8 @@ class NetworkNamespaceService:
         """Return why another tool is using `live`'s radio, or None if it is free.
 
         In use means: a mode Core never sets (e.g. AP), a wpa_supplicant or
-        hostapd Core did not start bound to it, or another netdev on the same
-        radio that is up and was not created by Core.
+        hostapd Core did not start bound to it, or a program capturing on
+        another netdev of the same radio that Core did not create.
         """
         if live.type and live.type not in usage.CORE_MODES:
             return f"{live.name} is in {live.type} mode, set by another tool"
@@ -668,12 +668,12 @@ class NetworkNamespaceService:
             and not self._is_owned(other)
         ]
         if siblings:
-            up = usage.up_links(live.netns)
+            capturing = usage.capturing_links(live.netns)
             for other in siblings:
-                if other.name in up:
+                if other.ifindex in capturing:
                     return (
-                        f"{other.name} on the same radio ({live.phy}) is up; "
-                        "another tool is using it"
+                        f"{other.name} on the same radio ({live.phy}) is in use "
+                        "(a program is capturing on it)"
                     )
         return None
 
