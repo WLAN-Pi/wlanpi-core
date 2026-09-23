@@ -217,7 +217,8 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     Activate a network configuration by ID.
 
     The response lists one outcome per entry (`connected`, `provisioned`, or
-    `error` with a `detail`). If an entry fails configuration validation the
+    `error` with a `detail`). Activating `default` only touches interfaces
+    Core created; the others are reported `skipped` and left alone. If an entry fails configuration validation the
     request returns 422, and if an adapter fails it returns 500; in both
     cases `detail` holds the message and the outcomes, and the default
     configuration is active again. If an adapter command fails outright

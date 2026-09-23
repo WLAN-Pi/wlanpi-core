@@ -122,6 +122,9 @@ class LiveInterface(NamedTuple):
     phy_index: int
     netns: str | None
     type: str
+    # Kernel ifindex: unchanged by a netns move, new when a netdev is
+    # recreated, so it tells a netdev apart from a later one of the same name.
+    ifindex: int | None = None
 
     @property
     def phy(self) -> str:
@@ -146,13 +149,26 @@ def _parse_iw_dev(output: str, netns: str | None) -> list[LiveInterface]:
             except ValueError:
                 phy_index = None
         elif line.startswith("Interface ") and phy_index is not None:
-            current = {"name": line.split()[1], "phy_index": phy_index, "type": ""}
+            current = {
+                "name": line.split()[1],
+                "phy_index": phy_index,
+                "type": "",
+                "ifindex": None,
+            }
             entries.append(current)
         elif line.startswith("Unnamed/non-netdev"):
             current = None
         elif line.startswith("type ") and current is not None:
             current["type"] = line.split()[1]
-    return [LiveInterface(e["name"], e["phy_index"], netns, e["type"]) for e in entries]
+        elif line.startswith("ifindex ") and current is not None:
+            try:
+                current["ifindex"] = int(line.split()[1])
+            except ValueError:
+                pass
+    return [
+        LiveInterface(e["name"], e["phy_index"], netns, e["type"], e["ifindex"])
+        for e in entries
+    ]
 
 
 def list_interfaces_all_namespaces() -> list[LiveInterface]:

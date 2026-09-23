@@ -434,7 +434,12 @@ class AdapterOutcome(BaseModel):
 
     interface: str
     namespace: str | None = None
-    status: str = Field(description="connected, provisioned or error")
+    status: str = Field(
+        description=(
+            "connected, provisioned or error; skipped for a default entry whose "
+            "radio Core did not create"
+        )
+    )
     detail: str = ""
     invalid: bool = Field(
         default=False, description="The entry failed configuration validation"

@@ -1,3 +1,22 @@
+wlanpi-core (2.3.22-1) unstable; urgency=medium
+
+  * Track the interfaces Core creates (by namespace, name and ifindex, on
+    tmpfs) and make the default configuration touch only those and radios
+    in namespaces Core created. Interfaces from drivers or other tools, such
+    as wlanpi-profiler's hostapd, are left alone and reported as skipped;
+    after a reboot the default is a no-op (#202).
+  * Deactivate restores its own root entries (the interface name, managed)
+    instead of applying the default afterwards, and a failed activation only
+    records default (#288, #271).
+  * A revert step that fails is reported instead of leaving a radio without
+    an interface, and a failure after prepare (e.g. wpa_supplicant not
+    starting) puts that entry back.
+  * Namespace markers record the namespace's identity, so a same-named
+    namespace created by another tool is not taken for Core's, and a marker
+    is only removed once its namespace is gone (#275).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:11:19 -0500
+
 wlanpi-core (2.3.21-1) unstable; urgency=medium
 
   * Make the deprecated POST /network/wlan/revert do what it says and say

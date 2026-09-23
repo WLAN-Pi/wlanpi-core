@@ -125,6 +125,13 @@ def _isolate_run_dir(tmp_path, monkeypatch):
         "wlanpi_core.services.network_namespace_service.NETNS_ETC_DIR",
         str(tmp_path / "etc-netns"),
     )
+    monkeypatch.setattr(
+        "wlanpi_core.services.network_namespace_service.NETNS_RUN_DIR",
+        str(tmp_path / "run-netns"),
+    )
+    monkeypatch.setattr(
+        "wlanpi_core.wpa.supplicant.ROOT_CTRL_DIR", str(tmp_path / "wpa-ctrl")
+    )
     return run_dir
 
 
@@ -153,6 +160,7 @@ def netcfg_env(tmp_path, monkeypatch):
     service = NetworkNamespaceService(
         config_dir=tmp_path / "wpa",
         dhcp_dir=tmp_path / "dhcp",
+        ctrl_interface=str(tmp_path / "wpa-ctrl"),
     )
     service.config_dir.mkdir(parents=True, exist_ok=True)
     service.dhcp_dir.mkdir(parents=True, exist_ok=True)
@@ -330,6 +338,10 @@ class InventoryRecorder:
     commands: list[tuple[str | None, list[str]]] = field(default_factory=list)
     unrecognised: list[tuple[str | None, list[str]]] = field(default_factory=list)
     next_ifindex: int = 3
+    # netns name -> identity; a namespace deleted and re-added gets a new one,
+    # like the nsfs inode under /run/netns.
+    netns_ids: dict[str, int] = field(default_factory=dict)
+    next_netns_id: int = 1000
 
     @classmethod
     def from_adapters(
@@ -359,6 +371,7 @@ class InventoryRecorder:
             netns=netns_set,
             faults=dict(faults or {}),
             next_ifindex=3 + len(adapters),
+            netns_ids={name: 900 + i for i, name in enumerate(sorted(netns_set))},
         )
 
     # --- views for assertions ---
@@ -572,6 +585,7 @@ class InventoryRecorder:
             for name, meta in on_phy:
                 lines += [
                     f"\tInterface {name}",
+                    f"\t\tifindex {meta.ifindex}",
                     f"\t\taddr {self.phy_mac[phy_name]}",
                     f"\t\ttype {meta.type}",
                 ]
@@ -580,6 +594,7 @@ class InventoryRecorder:
     def _iw_dev_info(self, name: str, meta: Iface) -> str:
         return (
             f"Interface {name}\n"
+            f"\tifindex {meta.ifindex}\n"
             f"\taddr {self.phy_mac[meta.phy]}\n"
             f"\ttype {meta.type}\n"
             f"\twiphy {meta.phy.removeprefix('phy')}\n"
@@ -627,6 +642,8 @@ class InventoryRecorder:
                     raise_on_fail,
                 )
             self.netns.add(args[1])
+            self.netns_ids[args[1]] = self.next_netns_id
+            self.next_netns_id += 1
             return self._ok()
         if len(args) == 2 and args[0] == "delete":
             name = args[1]
@@ -641,6 +658,7 @@ class InventoryRecorder:
             for phy_name in self._visible_phys(name):
                 self._move_phy(phy_name, None)
             self.netns.discard(name)
+            self.netns_ids.pop(name, None)
             return self._ok()
         return self._unrecognised(None, ["ip", "netns", *args])
 
@@ -672,9 +690,15 @@ def live_adapter_inventory_mocks(
     recorder = InventoryRecorder.from_adapters(
         adapters if adapters is not None else JOSH_THREE_RADIO, faults
     )
+
+    def _netns_id(_service: Any, namespace: str) -> str | None:
+        ident = recorder.netns_ids.get(namespace)
+        return None if ident is None else str(ident)
+
     patches = [
         *(patch(site, side_effect=recorder.run_command) for site in _RUN_COMMAND_SITES),
         *_service_side_effect_patches(),
+        patch.object(NetworkNamespaceService, "_netns_id", new=_netns_id),
     ]
     with ExitStack() as stack:
         for p in patches:

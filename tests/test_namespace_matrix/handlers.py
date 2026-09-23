@@ -92,9 +92,10 @@ def _mark_core_namespace(name: str) -> None:
     """Record `name` as created by Core, as _prepare_namespace would."""
     from wlanpi_core.services import network_namespace_service as nns
 
+    # Call inside live_adapter_inventory_mocks, which supplies the identity.
     marker = Path(nns.RUN_DIR) / "netns" / name
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.touch()
+    marker.write_text(nc.ns._netns_id(name) or "")
 
 
 class _MonitorClock:
@@ -410,16 +411,10 @@ def handle_default_created_when_missing(
         "#202: default must not carry WPA2 without a psk"
     )
     assert ok is True
-    assert sorted(inventory.deleted) == [
-        ("wlan0", None),
-        ("wlan1", None),
-        ("wlan2", None),
-    ]
-    assert sorted(inventory.adds) == [
-        ("phy0", "wlan0", None),
-        ("phy1", "wlan2", None),
-        ("phy2", "wlan1", None),
-    ]
+    # The drivers created these netdevs, not Core, so applying the default
+    # leaves them alone (P14): nothing deleted, added or moved.
+    assert inventory.deleted == []
+    assert inventory.adds == []
     assert inventory.phy_moves == []
     assert inventory.live() == JOSH_LIVE
     assert netcfg_env["ccf"].read_text().strip() == "default"
@@ -700,13 +695,11 @@ def handle_deactivate_exception_mid_loop_rollback(
             "revert_to_root",
             side_effect=lambda *a, **k: revert_calls.append(True),
         ):
-            with patch.object(nc, "_apply_default") as apply_default:
-                with pytest.raises(RunCommandError):
-                    nc.deactivate_config("dual_ns_cfg", override_active=True)
+            with pytest.raises(RunCommandError):
+                nc.deactivate_config("dual_ns_cfg", override_active=True)
 
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert revert_calls
-    apply_default.assert_called_once_with()
 
 
 def handle_dual_ns_split_adapters(namespace_service, netcfg_env, scenario: Scenario):
@@ -836,11 +829,9 @@ def handle_user_broken_active_override_deactivate(
     netcfg_env["ccf"].write_text("broken_cfg")
     with patch.object(nc.ns, "deactivate_config"):
         with patch.object(nc.ns, "revert_to_root") as revert:
-            with patch.object(nc, "_apply_default") as apply_default:
-                assert nc.deactivate_config("broken_cfg", override_active=True) is True
+            assert nc.deactivate_config("broken_cfg", override_active=True) is True
             revert.assert_any_call(None)
     assert netcfg_env["ccf"].read_text().strip() == "default"
-    apply_default.assert_called_once_with()  # #271: current.txt says default, so apply it
 
 
 def handle_user_manual_phy_move_then_recover(
@@ -856,10 +847,8 @@ def handle_user_manual_phy_move_then_recover(
     netcfg_env["ccf"].write_text("ns_cfg")
     with patch.object(nc.ns, "deactivate_config"):
         with patch.object(nc.ns, "revert_to_root") as revert:
-            with patch.object(nc, "_apply_default") as apply_default:
-                assert nc.deactivate_config("ns_cfg", override_active=True) is True
+            assert nc.deactivate_config("ns_cfg", override_active=True) is True
             revert.assert_any_call(None)
-    apply_default.assert_called_once_with()
 
 
 # --- connection monitor ---
@@ -1163,8 +1152,9 @@ def handle_default_single_radio_no_500(
     )
     default = json.loads((netcfg_env["cfg_dir"] / "default.json").read_text())
     assert [(r["interface"], r["phy"]) for r in default["roots"]] == [("wlan0", "phy0")]
-    assert inventory.deleted == [("wlan0", None)]
-    assert inventory.adds == [("phy0", "wlan0", None)]
+    # wlan0 was created by its driver, so the default leaves it alone (P14).
+    assert inventory.deleted == []
+    assert inventory.adds == []
     assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
@@ -1204,8 +1194,8 @@ def handle_iface_already_in_netns_at_activation(
         "home_cfg",
         roots=[_root(interface="wlan1", phy="phy2").model_dump(mode="json")],
     )
-    _mark_core_namespace("old_ns")  # left behind by an earlier Core activation
     with live_adapter_inventory_mocks(adapters) as inventory:
+        _mark_core_namespace("old_ns")  # left by an earlier Core activation
         ok = nc.activate_config("home_cfg", override_active=True)
     assert ok is True
     # Tearing down the active default (#271) brings wlan1 home from the
@@ -1229,8 +1219,8 @@ def handle_phy10_vs_phy1_substring(namespace_service, netcfg_env, scenario: Scen
         "phy1_cfg",
         roots=[_root(interface="wlan1", phy="phy1").model_dump(mode="json")],
     )
-    _mark_core_namespace("old_ns")
     with live_adapter_inventory_mocks(adapters) as inventory:
+        _mark_core_namespace("old_ns")  # left by an earlier Core activation
         ok = nc.activate_config("phy1_cfg", override_active=True)
     assert ok is True
     # As in iface_already_in_netns_at_activation: default teardown returns
@@ -1804,12 +1794,9 @@ def handle_display_name_does_not_capture_other_radio(
         with pytest.raises(RunCommandError):
             nc.activate_config("clash_cfg", override_active=True)
     # wlan2 was picked (by interface), the rename clashed, and the failed
-    # prepare touched only wlan2. The restore must not delete the other
-    # radio's wlan0; the only later wlan0 delete is the default fallback
-    # recreating it on its own phy0.
-    assert inventory.deleted[0] == ("wlan2", None)
-    assert inventory.deleted.index(("wlan0", None)) > 1
-    assert all(phy == "phy0" for phy, name, _ns in inventory.adds if name == "wlan0")
+    # prepare touched only wlan2; the other radio's wlan0 is never deleted.
+    assert inventory.deleted == [("wlan2", None)]
+    assert ("wlan0", None) not in inventory.deleted
     assert inventory.live() == JOSH_LIVE
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
@@ -1837,6 +1824,191 @@ def handle_rollback_after_partial_prepare(
     assert inventory.live() == JOSH_LIVE
     assert not inventory.netns & {"good_ns", "bad_ns"}
     assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+# --- P14: Core only touches what it created ---
+
+OTHER_TOOLS_LAYOUT: dict[str, dict[str, str]] = {
+    # wlanpi-profiler: hostapd holds wlan0 as AP, plus its own monitor
+    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:66:00", "type": "AP"},
+    "wlan0profiler": {"phy": "phy0", "mac": "00:11:22:33:66:00", "type": "monitor"},
+    "wlan1": {"phy": "phy1", "mac": "00:11:22:33:66:01"},
+    # a user's own monitor interface
+    "mon9": {"phy": "phy2", "mac": "00:11:22:33:66:02", "type": "monitor"},
+    "wlan2": {"phy": "phy2", "mac": "00:11:22:33:66:02"},
+}
+
+
+def handle_default_leaves_other_tools_alone(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#202: the default never recreates interfaces Core did not create."""
+    _write_netconfig(
+        netcfg_env,
+        "lab_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(OTHER_TOOLS_LAYOUT) as inventory:
+        before = inventory.live()
+        ok, outcomes = nc.activate_config_report("default", override_active=True)
+        assert ok is True
+        assert {o.status for o in outcomes} == {"skipped"}
+        assert inventory.deleted == [] and inventory.adds == []
+        # A profile cycle, which also records and tears down the default.
+        assert nc.activate_config("lab_cfg", override_active=True) is True
+        assert nc.deactivate_config("lab_cfg") is True
+    after = inventory.live()
+    for name in ("wlan0", "wlan0profiler", "mon9", "wlan2"):
+        assert after[name] == before[name], name
+    touched = {name for name, _ns in inventory.deleted}
+    assert touched == {"wlan1"}
+
+
+def handle_default_resets_core_created_netdev(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#202: the default still resets an interface Core itself created."""
+    _write_netconfig(
+        netcfg_env,
+        "mon_cfg",
+        roots=[
+            _root(
+                interface="wlan1", phy="phy2", mode=NetworkModeEnum.monitor
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        nc.get_config("default")  # snapshot the default while all are managed
+        assert nc.activate_config("mon_cfg", override_active=True) is True
+        # Core's record of the active profile is lost (e.g. current.txt reset).
+        netcfg_env["ccf"].write_text("default")
+        assert nc.activate_config("default", override_active=True) is True
+    assert inventory.live() == JOSH_LIVE
+    assert {name for name, _ns in inventory.deleted} == {"wlan1"}
+
+
+def handle_deactivate_restores_renamed_root_entry(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#288: deactivating a root profile undoes its rename and mode."""
+    _write_netconfig(
+        netcfg_env,
+        "lab_root",
+        roots=[
+            _root(
+                interface="wlan1",
+                iface_display_name="lab1",
+                phy="phy2",
+                mode=NetworkModeEnum.monitor,
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("lab_root", override_active=True) is True
+        assert inventory.live()["lab1"] == ("phy2", None, "monitor")
+        assert nc.deactivate_config("lab_root") is True
+    assert inventory.live() == JOSH_LIVE
+    assert {name for name, _ns in inventory.deleted} == {"wlan1", "lab1"}
+
+
+def handle_revert_failure_is_reported(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#281: a revert step that fails is reported and the radio stays usable."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    # The kernel refuses both ways of addressing the phy.
+    busy = "command failed: Busy (-16)\n"
+    faults = {
+        ("ns_a", ("iw", "phy#2", "set", "netns", "1")): busy,
+        ("ns_a", ("iw", "phy", "phy2", "set", "netns", "1")): busy,
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        with pytest.raises(RunCommandError):
+            nc.deactivate_config("ns_cfg")
+    # The move back failed; wlan1 was recreated where it was, not left missing,
+    # and the namespace holding it is kept.
+    assert inventory.live()["wlan1"] == ("phy2", "ns_a", "managed")
+    assert "ns_a" in inventory.netns
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_post_prepare_failure_rolls_back_entry(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#281: a failure after prepare (supplicant start) puts that entry back."""
+    _write_netconfig(
+        netcfg_env,
+        "wpa_cfg",
+        namespaces=[
+            _ns(
+                "ns_a", interface="wlan1", phy="phy2", security=_security("Net")
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        with patch(
+            "wlanpi_core.services.network_namespace_service.wpa_supplicant.start_or_restart_supplicant",
+            side_effect=RunCommandError("wpa_supplicant failed to start", 1),
+        ):
+            with pytest.raises(RunCommandError):
+                nc.activate_config("wpa_cfg", override_active=True)
+    assert inventory.live() == JOSH_LIVE
+    assert "ns_a" not in inventory.netns
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_marker_identity_guards_reused_name(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#284: a same-named namespace made later by another tool is not Core's."""
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        # Out of band: ns_a is deleted (wlan1 returns to root), then another
+        # tool creates its own ns_a and moves wlan2's radio into it.
+        for cmd in (
+            ["sudo", "ip", "netns", "delete", "ns_a"],
+            ["sudo", "ip", "netns", "add", "ns_a"],
+            ["sudo", "/sbin/iw", "phy#1", "set", "netns", "name", "ns_a"],
+        ):
+            inventory.run_command(cmd)
+        assert nc.deactivate_config("ns_cfg") is True
+    assert inventory.live()["wlan2"] == ("phy1", "ns_a", "managed")
+    assert "ns_a" in inventory.netns
+
+
+def handle_namespace_marker_kept_when_delete_fails(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#284: if the namespace cannot be deleted, Core keeps its marker."""
+    from wlanpi_core.services import network_namespace_service as nns
+
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    faults = {
+        (
+            None,
+            ("ip", "netns", "delete", "ns_a"),
+        ): "Cannot remove namespace file: Device or resource busy\n"
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults) as inventory:
+        assert nc.activate_config("ns_cfg", override_active=True) is True
+        assert nc.deactivate_config("ns_cfg") is True
+        assert nc.ns.core_namespaces() == ["ns_a"]
+    assert inventory.live() == JOSH_LIVE
+    assert (Path(nns.RUN_DIR) / "netns" / "ns_a").exists()
 
 
 HANDLERS = {
@@ -1893,6 +2065,13 @@ HANDLERS = {
     "phy10_vs_phy1_substring": handle_phy10_vs_phy1_substring,
     "iface_display_name_differs": handle_iface_display_name_differs,
     "rollback_after_partial_prepare": handle_rollback_after_partial_prepare,
+    "default_leaves_other_tools_alone": handle_default_leaves_other_tools_alone,
+    "default_resets_core_created_netdev": handle_default_resets_core_created_netdev,
+    "deactivate_restores_renamed_root_entry": handle_deactivate_restores_renamed_root_entry,
+    "revert_failure_is_reported": handle_revert_failure_is_reported,
+    "post_prepare_failure_rolls_back_entry": handle_post_prepare_failure_rolls_back_entry,
+    "marker_identity_guards_reused_name": handle_marker_identity_guards_reused_name,
+    "namespace_marker_kept_when_delete_fails": handle_namespace_marker_kept_when_delete_fails,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,

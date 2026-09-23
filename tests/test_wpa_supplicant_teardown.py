@@ -192,14 +192,14 @@ def test_runtime_paths_do_not_collide_across_namespaces(run_dir):
     }
     flat = [str(p) for triple in paths.values() for p in triple]
     assert len(flat) == len(set(flat))
-    assert supplicant.ctrl_dir(None) == "/run/wpa_supplicant"
+    assert supplicant.ctrl_dir(None) == supplicant.ROOT_CTRL_DIR
 
 
 def test_wpa_cli_uses_core_ctrl_dir_only_when_core_started_the_supplicant(run_dir):
     assert supplicant.wpa_cli_command("wlan1", "ns_a", "status") == [
         "wpa_cli",
         "-p",
-        "/run/wpa_supplicant",
+        supplicant.ROOT_CTRL_DIR,
         "-i",
         "wlan1",
         "status",

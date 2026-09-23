@@ -459,8 +459,9 @@ def handle_network_config_activate_default_single_radio(
     _expect_status(response, scenario.expected_http)
     body = response.json()
     assert body["message"] == "Configuration activated successfully"
+    # The driver created wlan0, so the default leaves it alone (P14).
     assert [(o["interface"], o["status"]) for o in body["outcomes"]] == [
-        ("wlan0", "connected")
+        ("wlan0", "skipped")
     ]
     assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
     assert netcfg_env["ccf"].read_text().strip() == "default"
