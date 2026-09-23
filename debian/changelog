@@ -1,3 +1,12 @@
+wlanpi-core (2.3.26-1) unstable; urgency=medium
+
+  * WLAN scan on a monitor (GET /utils/wlan/scan?iface=wlanpiN) runs on
+    the managed interface of the same radio. It could previously run on
+    a different adapter. GET /network/config/status now reports each
+    interface's wiphy.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 17:37:27 -0400
+
 wlanpi-core (2.3.25-1) unstable; urgency=medium
 
   * Network configuration activation validates every entry before
