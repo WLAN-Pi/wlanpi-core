@@ -34,6 +34,7 @@ from wlanpi_core.models.network_config_errors import (
     ConfigMalformedError,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.namespaces import apps
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
     NetConfig,
@@ -2366,6 +2367,32 @@ def handle_in_use_sibling_monitor_up(namespace_service, netcfg_env, scenario: Sc
     assert inventory.live() == before
 
 
+def handle_activate_undefined_autostart_app_is_invalid(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Reject an autostart_app that an empty apps.json lacks: a 422 entry, not a 500 (#311)."""
+    Path(apps.APPS_FILE).write_text("")  # as older Cores created it
+    _write_netconfig(
+        netcfg_env,
+        "ns_cfg",
+        namespaces=[
+            _ns("ns_b", interface="wlan2", phy="phy1", autostart_app="orb").model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(WLANPI_MONITOR_IDLE_LAYOUT) as inventory:
+        before = inventory.live()
+        ok, outcomes = nc.activate_config_report("ns_cfg", override_active=True)
+        assert ok is False
+        [wlan2] = outcomes
+        assert wlan2.status == "error" and wlan2.invalid is True
+        assert "autostart_app 'orb' is not defined" in wlan2.detail
+    assert inventory.phy_moves == []
+    assert inventory.live() == before
+    assert netcfg_env["ccf"].read_text() == "default"
+
+
 def handle_in_use_ignores_idle_sibling(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -2825,6 +2852,7 @@ HANDLERS = {
     "in_use_foreign_supplicant_left_alone": handle_in_use_foreign_supplicant_left_alone,
     "in_use_sibling_monitor_up": handle_in_use_sibling_monitor_up,
     "in_use_ignores_idle_sibling": handle_in_use_ignores_idle_sibling,
+    "activate_undefined_autostart_app_is_invalid": handle_activate_undefined_autostart_app_is_invalid,
     "default_skips_core_netdev_now_in_use": handle_default_skips_core_netdev_now_in_use,
     "deactivate_hands_back_interfaces": handle_deactivate_hands_back_interfaces,
     "deactivate_leaves_core_netdev_now_in_use": handle_deactivate_leaves_core_netdev_now_in_use,

@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from wlanpi_core.namespaces import apps
+from wlanpi_core.schemas.network.network import NetworkModeEnum, RootConfig
+from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
 
 
 @pytest.fixture(autouse=True)
@@ -232,3 +234,78 @@ def test_namespace_prefix_does_not_verify_a_pid_from_another_namespace(
 
     assert apps.stop_app_in_namespace("ns_a", pid_dir=tmp_path) is False
     assert not [c for c in run.call_args_list if c.args[0][0] == "kill"]
+
+
+def test_root_stop_without_pid_signals_nothing(mocker, tmp_path):
+    (tmp_path / "root.pid").write_text(
+        json.dumps({"app_id": "orb", "app_command": "orb --serve"})
+    )
+    run = mocker.patch.object(apps, "run_command")
+
+    assert apps.stop_app_in_namespace(None, pid_dir=tmp_path) is False
+    run.assert_not_called()  # no host-wide pkill -f orb (#305)
+    assert (tmp_path / "root.pid").exists()
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (None, None),  # missing: no apps, and Core does not create it
+        ("", None),  # created empty by an older Core (#311)
+        ("  \n", None),
+        ('{"orb": "orb --serve"}', "orb --serve"),
+        ('{"orb": 5}', None),
+    ],
+)
+def test_get_app_command_reads_apps_file(tmp_path, monkeypatch, content, expected):
+    apps_file = tmp_path / "netcfg-apps.json"
+    if content is not None:
+        apps_file.write_text(content)
+    monkeypatch.setattr(apps, "APPS_FILE", str(apps_file))
+
+    assert apps.get_app_command("orb") == expected
+    assert apps_file.exists() is (content is not None)
+
+
+@pytest.mark.parametrize("content", ["{", "[]"])
+def test_get_app_command_rejects_malformed_apps_file(tmp_path, monkeypatch, content):
+    apps_file = tmp_path / "netcfg-apps.json"
+    apps_file.write_text(content)
+    monkeypatch.setattr(apps, "APPS_FILE", str(apps_file))
+
+    with pytest.raises(ValueError):
+        apps.get_app_command("orb")
+
+
+@pytest.mark.parametrize(
+    ("content", "detail"),
+    [
+        (None, "autostart_app 'orb' is not defined"),
+        ("{", "cannot read apps file"),
+        ("[]", "cannot read apps file"),
+    ],
+)
+def test_validate_config_reports_an_unusable_autostart_app(
+    tmp_path, monkeypatch, content, detail
+):
+    apps_file = tmp_path / "netcfg-apps.json"
+    if content is not None:
+        apps_file.write_text(content)
+    monkeypatch.setattr(apps, "APPS_FILE", str(apps_file))
+    cfg = RootConfig(
+        interface="wlan0",
+        iface_display_name="wlan0",
+        phy="phy0",
+        mode=NetworkModeEnum.managed,
+        autostart_app="orb",
+    )
+
+    service = NetworkNamespaceService(
+        config_dir=str(tmp_path / "wpa"),
+        dhcp_dir=str(tmp_path / "dhcp"),
+        ctrl_interface=str(tmp_path / "wpa-ctrl"),
+    )
+    ok, message = service.validate_config(cfg)
+
+    assert ok is False
+    assert detail in message

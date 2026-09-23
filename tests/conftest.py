@@ -132,6 +132,9 @@ def _isolate_run_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "wlanpi_core.wpa.supplicant.ROOT_CTRL_DIR", str(tmp_path / "wpa-ctrl")
     )
+    apps_file = tmp_path / "apps.json"
+    apps_file.write_text('{"orb": "orb --serve"}')
+    monkeypatch.setattr("wlanpi_core.namespaces.apps.APPS_FILE", str(apps_file))
     return run_dir
 
 
