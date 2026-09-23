@@ -15,6 +15,7 @@ from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
+from wlanpi_core.models.network_config_errors import ConfigBusyError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.schemas import network
@@ -28,6 +29,7 @@ from wlanpi_core.services import (
     network_ethernet_service,
     network_namespace_service,
 )
+from wlanpi_core.utils import network_config
 from wlanpi_core.utils.validation import validate_vlan_id
 from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.scan import ScanInProgressError
@@ -623,16 +625,19 @@ async def revert_wlan_namespace(
     try:
         require_wlan_management_enabled()
         namespace_service = network_namespace_service.NetworkNamespaceService()
-        await asyncio.to_thread(
-            namespace_service.revert_to_root,
-            None,
-            req.delete_namespace,
-        )
+
+        def _revert() -> None:
+            with network_config.network_change_lock():
+                namespace_service.revert_to_root(None, req.delete_namespace)
+
+        await asyncio.to_thread(_revert)
         return {
             "success": True,
             "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
         }
 
+    except ConfigBusyError as cbe:
+        return Response(content=cbe.message, status_code=409)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:

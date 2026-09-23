@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.adapters import discovery
-from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
+from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE, RUN_DIR
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
+    ConfigBusyError,
     ConfigMalformedError,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -36,6 +41,32 @@ ns = NetworkNamespaceService()
 
 cfg_dir = Path(CONFIG_DIR)
 ccf = Path(CURRENT_CONFIG_FILE)
+
+
+@contextmanager
+def network_change_lock() -> Iterator[None]:
+    """Hold the process-wide lock for changing adapter and namespace state.
+
+    An flock on a file under /run, so it excludes other threads (each call
+    opens its own file description) and other processes, such as an old
+    gunicorn worker still finishing during a reload. Does not wait.
+
+    Raises:
+        ConfigBusyError: If another activate, deactivate or revert is running
+    """
+    path = Path(RUN_DIR) / "netcfg.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ConfigBusyError(
+                "Another network configuration change is in progress; try again."
+            ) from None
+        yield
+    finally:
+        os.close(fd)
 
 
 def _config_path(cfg_id: str) -> Path:
@@ -423,8 +454,14 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
        status=error). Deactivates activated_configs, re-raises; ccf unchanged.
 
     Provisioned-but-not-yet-connected is success path (1), not rollback.
-    """
 
+    Raises ConfigBusyError if another change holds network_change_lock().
+    """
+    with network_change_lock():
+        return _activate_config_locked(cfg_id, override_active)
+
+
+def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
     cfg = get_config(cfg_id)
     try:
         active_cfg = get_current_config()
@@ -514,7 +551,14 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
 
     On per-adapter failure mid-loop, still writes current.txt to default and calls
     revert_to_root so ccf and runtime state stay consistent before re-raising.
+
+    Raises ConfigBusyError if another change holds network_change_lock().
     """
+    with network_change_lock():
+        return _deactivate_config_locked(cfg_id, override_active)
+
+
+def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
     cfg = get_config(cfg_id)
     if not override_active:
         if not is_active(cfg_id):

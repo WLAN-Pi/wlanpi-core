@@ -1,3 +1,12 @@
+wlanpi-core (2.3.13-1) unstable; urgency=medium
+
+  * Serialise activate, deactivate, /wlan/revert and boot activation with an
+    flock on /run/wlanpi-core/netcfg.lock. A request that arrives while
+    another change is running gets HTTP 409 instead of interleaving phy
+    moves with it (#270).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:59:28 -0500
+
 wlanpi-core (2.3.12-1) unstable; urgency=medium
 
   * Key wpa_supplicant runtime state by (namespace, interface): the config,

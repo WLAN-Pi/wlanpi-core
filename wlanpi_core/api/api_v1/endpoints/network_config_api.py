@@ -10,6 +10,7 @@ from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
+    ConfigBusyError,
     ConfigMalformedError,
 )
 from wlanpi_core.models.validation_error import ValidationError
@@ -204,6 +205,8 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
             )
         log.info(f"Configuration activated: {id}")
         return {"id": id, "message": "Configuration activated successfully"}
+    except ConfigBusyError as cbe:
+        raise HTTPException(status_code=409, detail=cbe.message) from None
     except ConfigActiveError as cae:
         log.error(f"Configuration already active: {cae}")
         raise HTTPException(status_code=409, detail=str(cae)) from None
@@ -242,6 +245,8 @@ async def deactivate_config(id: str, override_active: bool = False) -> Any:
             )
         log.info(f"Configuration deactivated: {id}")
         return {"id": id, "message": "Configuration deactivated successfully"}
+    except ConfigBusyError as cbe:
+        raise HTTPException(status_code=409, detail=cbe.message) from None
     except ConfigActiveError as cae:
         log.error(f"Configuration not active: {cae}")
         raise HTTPException(status_code=409, detail=str(cae)) from None

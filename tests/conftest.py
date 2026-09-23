@@ -119,6 +119,7 @@ def _isolate_run_dir(tmp_path, monkeypatch):
         "wlanpi_core.services.network_namespace_service.RUN_DIR", str(run_dir)
     )
     monkeypatch.setattr("wlanpi_core.wpa.supplicant.RUN_DIR", str(run_dir))
+    monkeypatch.setattr("wlanpi_core.utils.network_config.RUN_DIR", str(run_dir))
     monkeypatch.setattr(
         "wlanpi_core.services.network_namespace_service.NETNS_ETC_DIR",
         str(tmp_path / "etc-netns"),

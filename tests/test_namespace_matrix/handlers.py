@@ -29,6 +29,7 @@ from wlanpi_core.connection.monitor import (
 )
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
+    ConfigBusyError,
     ConfigMalformedError,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -1448,6 +1449,52 @@ def handle_namespace_private_resolv_conf(
     assert not (etc / "ns_a").exists()
 
 
+def handle_concurrent_activate_rejected(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#270: a second change while one is running fails fast with ConfigBusyError."""
+    _write_netconfig(
+        netcfg_env,
+        "slow_cfg",
+        roots=[_root(interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    real_activate = nc.ns.activate_config
+
+    def blocking_activate(cfg):
+        entered.set()
+        assert release.wait(timeout=5), "test never released the first activation"
+        return real_activate(cfg)
+
+    results: dict[str, object] = {}
+
+    def first():
+        try:
+            results["first"] = nc.activate_config("slow_cfg", override_active=True)
+        except Exception as e:  # surfaced by the assertion below
+            results["first"] = e
+
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        with patch.object(nc.ns, "activate_config", side_effect=blocking_activate):
+            worker = threading.Thread(target=first, name="first-activation")
+            worker.start()
+            try:
+                assert entered.wait(timeout=5), "first activation never started"
+                with pytest.raises(ConfigBusyError):
+                    nc.activate_config("slow_cfg", override_active=True)
+                with pytest.raises(ConfigBusyError):
+                    nc.deactivate_config("slow_cfg", override_active=True)
+            finally:
+                release.set()
+                worker.join(timeout=5)
+            if worker.is_alive():
+                raise AssertionError("first activation thread did not finish")
+        assert results["first"] is True
+        # The lock is released afterwards.
+        assert nc.deactivate_config("slow_cfg") is True
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1527,6 +1574,7 @@ HANDLERS = {
     "phy10_vs_phy1_substring": handle_phy10_vs_phy1_substring,
     "iface_display_name_differs": handle_iface_display_name_differs,
     "rollback_after_partial_prepare": handle_rollback_after_partial_prepare,
+    "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "validate_duplicate_interface": handle_validate_duplicate_interface,
     "validate_display_name_shadows_interface": handle_validate_display_name_shadows_interface,
     "validate_same_name_other_namespace_ok": handle_validate_same_name_other_namespace_ok,

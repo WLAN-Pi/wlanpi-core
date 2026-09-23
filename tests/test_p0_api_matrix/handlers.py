@@ -495,6 +495,35 @@ def handle_network_config_create_snapshots_mac(
     )
 
 
+def handle_network_config_change_busy_409(client, auth_headers, scenario, netcfg_env):
+    from wlanpi_core.utils import network_config as nc
+
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "busy_cfg",
+        {"id": "busy_cfg", "namespaces": [], "roots": []},
+    )
+    with nc.network_change_lock():
+        responses = [
+            client.post(
+                "/api/v1/network/config/activate/busy_cfg",
+                params={"override_active": True},
+            ),
+            client.post(
+                "/api/v1/network/config/deactivate/busy_cfg",
+                params={"override_active": True},
+            ),
+            client.post(
+                "/api/v1/network/wlan/revert",
+                json={"iface": "wlan0", "namespace": "ns_a", "delete_namespace": True},
+            ),
+        ]
+    for response in responses:
+        _expect_status(response, scenario.expected_http)
+        assert "in progress" in response.text
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
     from wlanpi_core.core.config import Settings
 
@@ -710,6 +739,7 @@ HANDLERS.update(
         "network_config_activate_stale_phy_mismatch": handle_network_config_activate_stale_phy_mismatch,
         "network_config_activate_default_single_radio": handle_network_config_activate_default_single_radio,
         "network_config_create_snapshots_mac": handle_network_config_create_snapshots_mac,
+        "network_config_change_busy_409": handle_network_config_change_busy_409,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,
