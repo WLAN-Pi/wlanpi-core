@@ -162,7 +162,7 @@ def handle_validate_empty_phy(namespace_service, netcfg_env, scenario: Scenario)
 def handle_validate_empty_iface_display_name(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    valid, msg = namespace_service._validate_config(
+    valid, msg = namespace_service.validate_config(
         RootConfig.model_construct(
             mode=NetworkModeEnum.managed,
             iface_display_name="",
@@ -2419,6 +2419,219 @@ def handle_core_netdev_moved_home_by_hand_still_reverted(
     assert "ns_a" not in inventory.netns
 
 
+LLDPD_DUPLICATE_LAYOUT: dict[str, dict[str, str]] = {
+    **JOSH_THREE_RADIO,
+    # 2.3.7's boot default left a second managed netdev on phy1; lldpd binds
+    # a packet socket to every managed wlanN (#304 C).
+    "wlan3": {
+        "phy": "phy1",
+        "mac": "00:11:22:33:44:02",
+        "type": "managed",
+        "up": "1",
+        "bound": "1",
+    },
+}
+
+WLANPI_MONITOR_CAPTURING_LAYOUT: dict[str, dict[str, str]] = {
+    **JOSH_THREE_RADIO,
+    # Core's own streaming capture: dumpcap -i wlanpi1 (#304 A)
+    "wlanpi1": {
+        "phy": "phy1",
+        "mac": "00:11:22:33:44:02",
+        "type": "monitor",
+        "up": "1",
+        "bound": "1",
+    },
+}
+
+
+def handle_in_use_ignores_managed_sibling_bound(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """lldpd's packet socket on a managed sibling must not mark the radio in_use."""
+    _write_netconfig(
+        netcfg_env,
+        "root_cfg",
+        roots=[_root(interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(LLDPD_DUPLICATE_LAYOUT):
+        ok, outcomes = nc.activate_config_report("root_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["connected"]
+
+
+def handle_in_use_ignores_core_monitor_capturing(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Ignore a capture on Core's own wlanpiN monitor; it must not block its radio."""
+    _write_netconfig(
+        netcfg_env,
+        "root_cfg",
+        roots=[_root(interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(WLANPI_MONITOR_CAPTURING_LAYOUT):
+        ok, outcomes = nc.activate_config_report("root_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["connected"]
+
+
+def handle_deactivate_in_use_root_still_stops_processes(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Deactivate stops Core's supplicant for a root entry it may no longer revert."""
+    _write_netconfig(
+        netcfg_env,
+        "wpa_cfg",
+        roots=[
+            _root(
+                interface="wlan2",
+                phy="phy1",
+                security=_security("lab"),
+                autostart_app="orb",
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("wpa_cfg", override_active=True) is True
+        # Profiler (fakeap) starts capturing on the same radio afterwards.
+        for cmd in (
+            [
+                "sudo",
+                "/sbin/iw",
+                "phy",
+                "phy1",
+                "interface",
+                "add",
+                "wlan2profiler",
+                "type",
+                "monitor",
+            ],
+            ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
+        ):
+            inventory.run_command(cmd)
+        inventory.ifaces[(None, "wlan2profiler")].bound = True
+        deleted_before = list(inventory.deleted)
+        with (
+            patch(
+                "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant"
+            ) as stop_wpa,
+            patch(
+                "wlanpi_core.services.network_namespace_service.stop_dhcp"
+            ) as stop_dhcp,
+            patch(
+                "wlanpi_core.services.network_namespace_service.apps.stop_app_in_namespace"
+            ) as stop_app,
+            patch.object(
+                nc.ns,
+                "stop_connection_monitor",
+                wraps=nc.ns.stop_connection_monitor,
+            ) as stop_monitor,
+            patch.object(nc.ns, "revert_to_root", wraps=nc.ns.revert_to_root) as revert,
+        ):
+            assert nc.deactivate_config("wpa_cfg") is True
+        stop_wpa.assert_called_once_with("wlan2", None)
+        stop_dhcp.assert_called_once_with("wlan2", None)
+        stop_app.assert_called_once()
+        stop_monitor.assert_called_once_with(None, "wlan2")
+        # The radio itself was handed back, not reverted.
+        assert all(call.args[0] is None for call in revert.call_args_list)
+    assert inventory.deleted == deleted_before
+    assert inventory.live()["wlan2"] == ("phy1", None, "managed")
+
+
+def handle_deactivate_missing_iface_still_stops_processes(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Stop Core's supplicant and dhcpcd even when the netdev is gone (unplugged)."""
+    _write_netconfig(
+        netcfg_env,
+        "wpa_cfg",
+        roots=[
+            _root(interface="wlan2", phy="phy1", security=_security("lab")).model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("wpa_cfg", override_active=True) is True
+        inventory.run_command(["sudo", "/sbin/iw", "dev", "wlan2", "del"])
+        with (
+            patch(
+                "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant"
+            ) as stop_wpa,
+            patch(
+                "wlanpi_core.services.network_namespace_service.stop_dhcp"
+            ) as stop_dhcp,
+        ):
+            assert nc.deactivate_config("wpa_cfg") is True
+        stop_wpa.assert_called_once_with("wlan2", None)
+        stop_dhcp.assert_called_once_with("wlan2", None)
+
+
+def handle_in_use_foreign_monitor_with_wlanpi_prefix(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Treat a capturing monitor that only starts with "wlanpi" as another tool's."""
+    layout = {
+        **JOSH_THREE_RADIO,
+        "wlanpi-prof": {
+            "phy": "phy1",
+            "mac": "00:11:22:33:44:02",
+            "type": "monitor",
+            "up": "1",
+            "bound": "1",
+        },
+    }
+    _write_netconfig(
+        netcfg_env,
+        "root_cfg",
+        roots=[_root(interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(layout):
+        ok, outcomes = nc.activate_config_report("root_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["in_use"]
+    assert "wlanpi-prof" in outcomes[0].detail
+
+
+def handle_deactivate_never_core_entry_untouched(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Leave an entry that was in_use from the start alone on deactivate."""
+    _write_netconfig(
+        netcfg_env,
+        "wpa_cfg",
+        roots=[
+            _root(
+                interface="wlan2",
+                phy="phy1",
+                security=_security("lab"),
+                autostart_app="orb",
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(PROFILER_FAKEAP_LAYOUT) as inventory:
+        ok, outcomes = nc.activate_config_report("wpa_cfg", override_active=True)
+        assert ok is True and [o.status for o in outcomes] == ["in_use"]
+        before = inventory.live()
+        with (
+            patch(
+                "wlanpi_core.services.network_namespace_service.wpa_supplicant.stop_supplicant"
+            ) as stop_wpa,
+            patch(
+                "wlanpi_core.services.network_namespace_service.stop_dhcp"
+            ) as stop_dhcp,
+            patch(
+                "wlanpi_core.services.network_namespace_service.apps.stop_app_in_namespace"
+            ) as stop_app,
+        ):
+            assert nc.deactivate_config("wpa_cfg", override_active=True) is True
+        stop_wpa.assert_not_called()
+        stop_dhcp.assert_not_called()
+        stop_app.assert_not_called()
+        assert inventory.live() == before
+
+
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
@@ -2491,6 +2704,12 @@ HANDLERS = {
     "default_skips_core_netdev_now_in_use": handle_default_skips_core_netdev_now_in_use,
     "deactivate_hands_back_interfaces": handle_deactivate_hands_back_interfaces,
     "deactivate_leaves_core_netdev_now_in_use": handle_deactivate_leaves_core_netdev_now_in_use,
+    "in_use_ignores_managed_sibling_bound": handle_in_use_ignores_managed_sibling_bound,
+    "in_use_ignores_core_monitor_capturing": handle_in_use_ignores_core_monitor_capturing,
+    "deactivate_in_use_root_still_stops_processes": handle_deactivate_in_use_root_still_stops_processes,
+    "deactivate_missing_iface_still_stops_processes": handle_deactivate_missing_iface_still_stops_processes,
+    "in_use_foreign_monitor_with_wlanpi_prefix": handle_in_use_foreign_monitor_with_wlanpi_prefix,
+    "deactivate_never_core_entry_untouched": handle_deactivate_never_core_entry_untouched,
     "core_netdev_moved_home_by_hand_still_reverted": handle_core_netdev_moved_home_by_hand_still_reverted,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,

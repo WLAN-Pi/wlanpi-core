@@ -615,6 +615,25 @@ def _activate_config_locked(
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
 
+    # Validate every entry before touching any radio, so an invalid entry
+    # cannot cost a valid sibling its interface (#261).
+    invalid_outcomes = _invalid_entries(cfg, only_core_managed=cfg_id == "default")
+    if invalid_outcomes:
+        log.error(
+            f"Configuration {cfg_id} is invalid, nothing changed: "
+            f"{[o.detail for o in invalid_outcomes]}"
+        )
+        if active_cfg == cfg_id:
+            # The stored current profile is now invalid (edited on disk, or a
+            # boot-time re-activation): tear down whatever of it still runs
+            # and stop claiming it is active. Another active profile is left
+            # running and current.txt keeps naming it.
+            try:
+                _teardown_profile(cfg_id)
+            finally:
+                _fall_back_to_default(cfg_id)
+        return False, invalid_outcomes
+
     # Tear down the active profile first so its namespaces, supplicants and
     # apps do not linger beside the new one (#271).
     _teardown_profile(active_cfg)
@@ -659,6 +678,34 @@ def _activate_config_locked(
         raise
 
 
+def _invalid_entries(
+    cfg: NetConfig, only_core_managed: bool = False
+) -> list[AdapterOutcome]:
+    """Return an error outcome for every entry that fails schema validation.
+
+    With `only_core_managed`, entries whose radio Core did not create are not
+    checked: _apply_entries reports them "skipped" without touching them.
+    """
+    outcomes: list[AdapterOutcome] = []
+    for entry in [*(cfg.namespaces or []), *(cfg.roots or [])]:
+        if only_core_managed and not ns.is_core_managed(entry):
+            continue
+        is_valid, detail = ns.validate_config(entry)
+        if not is_valid:
+            outcomes.append(
+                AdapterOutcome(
+                    interface=entry.interface,
+                    namespace=entry.namespace
+                    if isinstance(entry, NamespaceConfig)
+                    else None,
+                    status="error",
+                    detail=detail,
+                    invalid=True,
+                )
+            )
+    return outcomes
+
+
 def _apply_entries(
     cfg: NetConfig,
     activated: list[NamespaceConfig | RootConfig],
@@ -672,11 +719,7 @@ def _apply_entries(
     Core did not create is reported "skipped" and not touched.
     """
     outcomes: list[AdapterOutcome] = []
-    entries: list[NamespaceConfig | RootConfig] = [
-        *(cfg.namespaces or []),
-        *(cfg.roots or []),
-    ]
-    for entry in entries:
+    for entry in _all_entries(cfg):
         where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
         if only_core_managed and not ns.is_core_managed(entry):
             log.info(f"Leaving {entry.interface} in {where} alone: not created by Core")
@@ -719,7 +762,7 @@ def _teardown_profile(cfg_id: str) -> None:
     except (FileNotFoundError, ConfigMalformedError, ValidationError) as e:
         log.warning(f"Cannot read active configuration {cfg_id} to tear down: {e}")
         profile = None
-    entries = _entries_to_undo(profile) if profile is not None else []
+    entries = _all_entries(profile) if profile is not None else []
     for entry in entries:
         try:
             ns.deactivate_config(entry)
@@ -747,17 +790,14 @@ def revert_all() -> None:
         _write_current("default")
 
 
-def _entries_to_undo(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
-    """Return cfg's entries that tearing it down may touch.
+def _all_entries(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
+    """Return cfg's entries, namespaces first.
 
-    Only entries whose radio Core set up (see NetworkNamespaceService.may_undo),
-    so an entry left alone as in_use, and other tools' interfaces, survive.
+    Every entry goes through deactivate_config: Core's processes for it are
+    always stopped, and the service decides per radio whether it may revert
+    it (NetworkNamespaceService.may_undo).
     """
-    entries: list[NamespaceConfig | RootConfig] = [
-        *(cfg.namespaces or []),
-        *(cfg.roots or []),
-    ]
-    return [entry for entry in entries if ns.may_undo(entry)]
+    return [*(cfg.namespaces or []), *(cfg.roots or [])]
 
 
 def _active_namespaces() -> set[str]:
@@ -828,7 +868,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             raise ConfigActiveError(f"Configuration {cfg_id} is not active.")
 
     try:
-        for entry in _entries_to_undo(cfg):
+        for entry in _all_entries(cfg):
             where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
             log.info(f"Deactivating {entry.interface} in {where}")
             ns.deactivate_config(entry)

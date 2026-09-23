@@ -16,6 +16,7 @@ from wlanpi_core.constants import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_CTRL_INTERFACE,
     DEFAULT_DHCP_DIR,
+    MONITOR_IFACE_PREFIX,
     NETNS_ETC_DIR,
     NETNS_RUN_DIR,
     PID_DIR,
@@ -76,7 +77,7 @@ class NetworkNamespaceService:
 
         # Connection monitoring is now handled by connection.monitor module
 
-    def _validate_config(self, cfg: NamespaceConfig | RootConfig) -> tuple[bool, str]:
+    def validate_config(self, cfg: NamespaceConfig | RootConfig) -> tuple[bool, str]:
         """
         Perform comprehensive validation of config against schema before any state changes.
 
@@ -275,7 +276,7 @@ class NetworkNamespaceService:
         any state changes.
         """
         # Validate config before any state changes
-        is_valid, error_msg = self._validate_config(cfg)
+        is_valid, error_msg = self.validate_config(cfg)
         if not is_valid:
             self.log.error(
                 f"Config validation failed, aborting activation: {error_msg}"
@@ -469,20 +470,31 @@ class NetworkNamespaceService:
         )
 
     def deactivate_config(self, cfg: NamespaceConfig | RootConfig) -> None:
-        """Deactivate a network configuration and revert to root."""
+        """Stop Core's processes for cfg, then revert its radio if Core may.
+
+        An entry Core never set up (another tool's netdev, or one left alone
+        as in_use) is not touched at all. For Core's own entries, and for one
+        whose netdev is gone, the connection monitor, autostart app,
+        wpa_supplicant and dhcpcd are always stopped (each found through
+        Core's pidfiles). The radio is then reverted only when may_undo
+        allows it: one another tool has since started using is handed back
+        as it is (#304).
+        """
         iface = cfg.iface_display_name or cfg.interface
         namespace = (
             cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         )  # None = root namespace
 
-        # Stop any active connection monitor for this config
-        self.stop_connection_monitor(namespace, iface)
-
-        # Check if interface exists in any netns before trying to deactivate
-        if self._find_live(cfg) is None:
-            self.log.info(f"Interface {iface} does not exist, skipping deactivation")
+        live = self._find_live(cfg)
+        if live is not None and not self.is_core_managed(cfg):
+            # Never Core's (left alone as in_use, or another tool's netdev):
+            # Core started nothing for it, so there is nothing to stop.
+            self.log.info(f"Leaving {iface} alone: not set up by Core")
             return
 
+        # Core's processes are found through its pidfiles, so they are stopped
+        # even when the netdev itself is gone (unplugged, deleted, renamed).
+        self.stop_connection_monitor(namespace, iface)
         if cfg.autostart_app:
             apps.stop_app_in_namespace(namespace, pid_dir=self.pid_dir)
         if cfg.security:
@@ -494,7 +506,11 @@ class NetworkNamespaceService:
                     f"Failed to remove network {iface} in namespace {namespace_display}: {e} (non-critical)"
                 )
 
-        self.revert_to_root(cfg)
+        if live is None:
+            self.log.info(f"Interface {iface} does not exist, nothing to revert")
+            return
+        if self.may_undo(cfg):
+            self.revert_to_root(cfg)
 
     def remove_network(self, iface: str, namespace: str | None) -> None:
         """Remove a network configuration from a namespace."""
@@ -516,7 +532,10 @@ class NetworkNamespaceService:
             self._safe_unlink(config_file)
 
         wpa_supplicant.stop_supplicant(iface, namespace)
-        self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
+        # /run/wpa_supplicant is also the default control directory for other
+        # supplicants: keep the socket of one that has since taken the netdev.
+        if not usage.foreign_users(iface, namespace):
+            self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
         stop_dhcp(iface, namespace)
 
     def revert_to_root(
@@ -667,8 +686,11 @@ class NetworkNamespaceService:
         """Return why another tool is using `live`'s radio, or None if it is free.
 
         In use means: a mode Core never sets (e.g. AP), a wpa_supplicant or
-        hostapd Core did not start bound to it, or a program capturing on
-        another netdev of the same radio that Core did not create.
+        hostapd Core did not start bound to it, or a program capturing on a
+        monitor netdev of the same radio that Core did not create (profiler,
+        kismet, tcpdump). Managed siblings do not count: lldpd binds a packet
+        socket to every managed wlanN (#304). Nor do Core's own wlanpiN
+        monitors: capturing there while associating on wlanN is normal use.
         """
         if live.type and live.type not in usage.CORE_MODES:
             return f"{live.name} is in {live.type} mode, set by another tool"
@@ -681,6 +703,8 @@ class NetworkNamespaceService:
             if other.phy_index == live.phy_index
             and other.netns == live.netns
             and other.name != live.name
+            and other.type == "monitor"
+            and other.name != f"{MONITOR_IFACE_PREFIX}{live.phy_index}"
             and not self._is_owned(other)
         ]
         if siblings:
@@ -688,8 +712,8 @@ class NetworkNamespaceService:
             for other in siblings:
                 if other.ifindex in capturing:
                     return (
-                        f"{other.name} on the same radio ({live.phy}) is in use "
-                        "(a program is capturing on it)"
+                        f"{other.name} on the same radio (phy{live.phy_index}) "
+                        "is in use (a program is capturing on it)"
                     )
         return None
 

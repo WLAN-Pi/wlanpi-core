@@ -20,6 +20,8 @@ from wlanpi_core.utils import network_management as nm
 @pytest.fixture
 def run_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(nm, "RUN_DIR", str(tmp_path))
+    # Fake PIDs are in the namespace their pidfile names unless a test says not.
+    monkeypatch.setattr(nm.usage, "in_netns", lambda pid, namespace: True)
     return tmp_path
 
 
@@ -202,3 +204,28 @@ def test_restart_keeps_the_state_for_the_next_lease(run_dir):
     with patch.object(nm, "ns_exec"):
         nm.restart_dhcp_with_timeout("wlan1", None)
     assert lease.read_text() == "x"
+
+
+def test_stop_dhcp_ignores_a_reused_pid_naming_the_iface(run_dir):
+    # A stale pidfile whose PID now runs `tcpdump -i wlan1` (#304 review).
+    procs = _Procs({10: ["tcpdump", "-i", "wlan1"], 11: ["/usr/sbin/dhcpcd", "wlan1"]})
+    _pidfile(run_dir, None, "wlan1", 10)
+    _pidfile(run_dir, "ns_a", "wlan1", 11)
+    with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
+        with patch.object(nm.os, "kill", side_effect=procs.kill):
+            nm.stop_dhcp("wlan1", None)
+            nm.stop_dhcp("wlan1", "ns_a")
+    assert procs.signals == [(11, signal.SIGALRM)]
+
+
+def test_stop_dhcp_ignores_a_reused_pid_in_another_namespace(run_dir, monkeypatch):
+    # A stale ns_a pidfile whose PID now runs dhcpcd for the same iface in ns_b.
+    procs = _Procs({10: ["dhcpcd: wlan1 [ip4]"]})
+    _pidfile(run_dir, "ns_a", "wlan1", 10)
+    monkeypatch.setattr(
+        nm.usage, "in_netns", lambda pid, namespace: namespace == "ns_b"
+    )
+    with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
+        with patch.object(nm.os, "kill", side_effect=procs.kill):
+            nm.stop_dhcp("wlan1", "ns_a")
+    assert procs.signals == []

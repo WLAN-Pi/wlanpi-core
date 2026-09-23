@@ -281,10 +281,15 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     wpa_supplicant or hostapd Core did not start, or a program capturing on
     another interface of the same radio) is never taken: its entry is reported
     `in_use` with the reason, and the rest of the configuration still runs.
-    To use that radio, stop the other tool first. If an entry fails configuration validation the
-    request returns 422, and if an adapter fails it returns 500; in both
-    cases `detail` holds the message and the outcomes, and the default
-    configuration is active again. If an adapter command fails outright
+    To use that radio, stop the other tool first. Every entry is validated
+    before any radio is touched: if one fails, the request returns 422 with
+    the invalid outcomes in `detail` and nothing has changed (a previously
+    active profile keeps running). The one exception is re-activating the
+    recorded current profile with `override_active` after it became invalid
+    on disk: it is torn down and the default configuration is active again.
+    If an adapter fails during activation
+    the request returns 500, `detail` holds the message and the outcomes,
+    and the default configuration is active again. If an adapter command fails outright
     (for example a driver refusing to delete an interface), the 500's
     `detail` holds the message and the command's `error`. 409 means another
     change is running or the configuration is already active.
