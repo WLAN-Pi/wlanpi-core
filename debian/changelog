@@ -1,7 +1,8 @@
 wlanpi-core (2.3.12-1) unstable; urgency=medium
 
   * Key wpa_supplicant runtime state by (namespace, interface): the config,
-    log and pidfile live under /run/wlanpi-core/wpa_supplicant/<netns>/, and
+    log and pidfile live under /run/wlanpi-core/wpa/<netns>/ (short enough
+    for the control socket path at the longest names), and
     supplicants in a namespace get their own control socket directory, so
     the same interface name in two namespaces no longer shares one (#273).
   * Write each supplicant config with only that entry's network, mode 0600,
@@ -12,6 +13,8 @@ wlanpi-core (2.3.12-1) unstable; urgency=medium
     cannot rewrite the root /etc/resolv.conf.
   * Reject a profile whose entries share an interface, use another entry's
     interface as a display name, or reuse a name within one namespace.
+    A stored profile that breaks these rules is still listed, but GET and
+    activate now return 422 for it.
 
  -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:35:43 -0500
 
