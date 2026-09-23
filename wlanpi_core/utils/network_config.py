@@ -6,6 +6,7 @@ import fcntl
 import json
 import logging
 import os
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -67,6 +68,36 @@ def network_change_lock() -> Iterator[None]:
         yield
     finally:
         os.close(fd)
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Replace `path` with `text` so readers never see a partial file.
+
+    Writes a sibling temp file (created 0600, since profiles hold PSKs),
+    fsyncs it, then renames it over `path`.
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+# IDs that clash with the built-in default, the root namespace or the
+# /network/config/status route, in any letter case.
+_RESERVED_IDS = {"default", "root", "status"}
+
+
+def _reject_reserved_id(cfg_id: str) -> None:
+    if cfg_id.lower() in _RESERVED_IDS:
+        raise ValidationError(
+            f"Configuration ID {cfg_id!r} is reserved.", status_code=400
+        )
 
 
 def _config_path(cfg_id: str) -> Path:
@@ -321,7 +352,7 @@ def _write_live_default(path: Path) -> NetConfig:
     # written; an adapter plugged in later is not in it until the file is
     # deleted. Upgrade path: regenerate while the file is unedited.
     default_config = get_default_config("default")
-    path.write_text(default_config.model_dump_json(indent=4))
+    _atomic_write(path, default_config.model_dump_json(indent=4))
     return default_config
 
 
@@ -337,7 +368,7 @@ def is_active(cfg_id: str) -> bool:
 
 
 def _revert_current_config_to_default() -> None:
-    ccf.write_text("default")
+    _atomic_write(ccf, "default")
 
 
 def get_current_config() -> str:
@@ -401,10 +432,11 @@ def _rollback_activated_configs(
 
 def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
+    _reject_reserved_id(config.id)
     path = _config_path(config.id)
     if path.exists():
         raise FileExistsError(f"Configuration {config.id} already exists.")
-    path.write_text(config.model_dump_json(indent=4))
+    _atomic_write(path, config.model_dump_json(indent=4))
     return True
 
 
@@ -426,17 +458,23 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
         raise ValidationError(str(e), status_code=422) from None
 
     # Write updated config back to file
-    path.write_text(cfg.model_dump_json(indent=4))
+    _atomic_write(path, cfg.model_dump_json(indent=4))
 
     return cfg
 
 
 def delete_config(cfg_id: str, force: bool = False) -> bool:
-    """Delete a configuration by cfg_id."""
+    """Delete a configuration by cfg_id.
+
+    The active configuration is refused unless `force`, which deactivates it
+    first so current.txt never names a file that no longer exists.
+    """
     path = _config_path(cfg_id)
 
-    if is_active(cfg_id) and not force:
-        raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+    if is_active(cfg_id):
+        if not force:
+            raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+        deactivate_config(cfg_id)
     path.unlink()
     return True
 
@@ -503,7 +541,7 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
         acceptable_statuses = {"connected", "provisioned"}
         if all(status in acceptable_statuses for status in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
-            ccf.write_text(cfg_id)
+            _atomic_write(ccf, cfg_id)
             return True
         # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
         log.error(
@@ -569,7 +607,7 @@ def _teardown_profile(cfg_id: str) -> None:
 
 def _fall_back_to_default(failed_cfg_id: str) -> None:
     """After a failed activation, record and apply `default` so state matches."""
-    ccf.write_text("default")
+    _atomic_write(ccf, "default")
     if failed_cfg_id != "default":
         _apply_default()
 
@@ -611,7 +649,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             log.info(f"Deactivating root config for interface {root_cfg.interface}")
             ns.deactivate_config(root_cfg)
 
-        ccf.write_text("default")
+        _atomic_write(ccf, "default")
         ns.revert_to_root(None)
         # current.txt now says default, so apply it (#271)
         if cfg_id != "default":
@@ -622,7 +660,7 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
         log.error(f"Failed to deactivate config {cfg_id}: {ex}")
         # Ensure ccf/revert complete even when a later adapter raises (mirror activate rollback)
         try:
-            ccf.write_text("default")
+            _atomic_write(ccf, "default")
             ns.revert_to_root(None)
         except Exception as cleanup_error:
             log.warning(

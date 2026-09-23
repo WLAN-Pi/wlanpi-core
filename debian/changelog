@@ -1,3 +1,16 @@
+wlanpi-core (2.3.15-1) unstable; urgency=medium
+
+  * Write network profiles and current.txt atomically (temp file, fsync,
+    rename), so a crash or full disk never leaves a truncated profile. New
+    profile files are created 0600 (#277).
+  * Deleting the active profile with force now deactivates it first, so
+    current.txt never names a deleted profile; without force it is still
+    refused with 409.
+  * Reject the configuration IDs default, root and status in any letter
+    case with 400.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:42:09 -0500
+
 wlanpi-core (2.3.14-1) unstable; urgency=medium
 
   * Tear down the active profile before activating another, so its

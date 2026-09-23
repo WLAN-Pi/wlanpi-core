@@ -524,6 +524,17 @@ def handle_network_config_change_busy_409(client, auth_headers, scenario, netcfg
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_network_config_reserved_ids_400(client, auth_headers, scenario, netcfg_env):
+    for cfg_id in ("Default", "STATUS", "root"):
+        response = client.post(
+            "/api/v1/network/config/",
+            json={"id": cfg_id, "namespaces": [], "roots": []},
+        )
+        _expect_status(response, scenario.expected_http)
+        assert "reserved" in response.json()["detail"]
+    assert sorted(p.name for p in netcfg_env["cfg_dir"].iterdir()) == []
+
+
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
     from wlanpi_core.core.config import Settings
 
@@ -740,6 +751,7 @@ HANDLERS.update(
         "network_config_activate_default_single_radio": handle_network_config_activate_default_single_radio,
         "network_config_create_snapshots_mac": handle_network_config_create_snapshots_mac,
         "network_config_change_busy_409": handle_network_config_change_busy_409,
+        "network_config_reserved_ids_400": handle_network_config_reserved_ids_400,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,

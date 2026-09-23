@@ -1621,6 +1621,46 @@ def handle_profile_skips_foreign_namespace_radio(
     assert inventory.netns == {"user_ns"}
 
 
+def handle_atomic_write_failure_keeps_old_file(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#277: a failed write leaves the previous file intact and no temp files."""
+    cfg = NetConfig(id="keep_me", namespaces=[], roots=[_root(interface="wlan0")])
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        assert nc.add_config(cfg) is True
+        path = netcfg_env["cfg_dir"] / "keep_me.json"
+        before = path.read_text()
+        update = NetConfigUpdate(roots=[_root(interface="wlan1", phy="phy1")])
+        with patch.object(nc.os, "replace", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                nc.edit_config("keep_me", update)
+    assert path.read_text() == before
+    assert not [
+        f.name for f in netcfg_env["cfg_dir"].iterdir() if f.name.startswith(".")
+    ]
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def handle_force_delete_active_deactivates(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#277: deleting the active profile is refused, or with force deactivates it first."""
+    _write_netconfig(
+        netcfg_env,
+        "active_cfg",
+        namespaces=[_ns("ns_a", interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("active_cfg", override_active=True) is True
+        with pytest.raises(ConfigActiveError):
+            nc.delete_config("active_cfg")
+        assert nc.delete_config("active_cfg", force=True) is True
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+    assert not (netcfg_env["cfg_dir"] / "active_cfg.json").exists()
+    assert inventory.live() == JOSH_LIVE
+    assert "ns_a" not in inventory.netns
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1703,6 +1743,8 @@ HANDLERS = {
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,
+    "atomic_write_failure_keeps_old_file": handle_atomic_write_failure_keeps_old_file,
+    "force_delete_active_deactivates": handle_force_delete_active_deactivates,
     "failed_override_falls_back_to_default": handle_failed_override_falls_back_to_default,
     "deactivate_applies_default": handle_deactivate_applies_default,
     "validate_duplicate_interface": handle_validate_duplicate_interface,

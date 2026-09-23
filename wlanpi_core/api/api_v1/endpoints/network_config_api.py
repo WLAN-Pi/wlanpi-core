@@ -98,13 +98,13 @@ async def get_config_by_id(id: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def create_config(config: NetConfig) -> Any:
-    """Create a new network configuration."""
+    """
+    Create a new network configuration.
+
+    The IDs `default`, `root` and `status` are reserved in any letter case
+    and return 400.
+    """
     try:
-        if config.id in ["root", "default"]:
-            raise ValidationError(
-                status_code=400,
-                error_msg="Configuration ID cannot be 'root' or 'default'.",
-            )
         success = network_config.add_config(config)
         if not success:
             log.error(f"Failed to add configuration: {config.id}")
@@ -162,9 +162,14 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def delete_config(id: str, force: bool = False) -> Any:
-    """Delete a network configuration by ID."""
+    """
+    Delete a network configuration by ID.
+
+    Deleting the active configuration returns 409 unless `force=true`, which
+    deactivates it first (the default configuration becomes active).
+    """
     try:
-        success = network_config.delete_config(id, force)
+        success = await asyncio.to_thread(network_config.delete_config, id, force)
         if not success:
             log.error(f"Failed to delete configuration: {id}")
             raise HTTPException(
@@ -175,6 +180,8 @@ async def delete_config(id: str, force: bool = False) -> Any:
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be deleted: {cae}")
         raise HTTPException(status_code=409, detail=str(cae)) from None
+    except ConfigBusyError as cbe:
+        raise HTTPException(status_code=409, detail=cbe.message) from None
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e)) from None
