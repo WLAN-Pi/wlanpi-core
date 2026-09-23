@@ -174,10 +174,10 @@ Core is stateless: wlanpi-ui should cache/dedupe within the freshness window.
 
 ```bash
 # Reachability with custom pings
-lhapitest -e /utils/reachability -q "targets=8.8.8.8,1.1.1.1" -p 8000
+lhapitest -e /utils/reachability -q "targets=8.8.8.8,1.1.1.1" -p 8000 --http
 
 # Speedtest (long-running)
-lhapitest -e /utils/speedtest -p 8000
+lhapitest -e /utils/speedtest -p 8000 --http
 ```
 
 ---
