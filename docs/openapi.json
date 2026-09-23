@@ -3,7 +3,7 @@
   "info": {
     "title": "wlanpi-core",
     "description": "\n# wlanpi-core REST API\n\nHTTP API for WLAN Pi device control, network configuration, Wi-Fi primitives, and utilities.\n\n**Base path:** `/api/v1`\n**Interactive docs:** `/docs` (this page) \u00b7 **OpenAPI JSON:** `/api/v1/openapi.json`\n\n## Authentication\n\n| Caller | Header | How to obtain |\n|--------|--------|----------------|\n| WebUI and other on-device services | `Authorization: Bearer <jwt>` | Mint a token on-device with `sudo getjwt <device-id>`. |\n| Remote apps (mobile) | `Authorization: Bearer <jwt>` | On-device: `POST /api/v1/auth/token` via **localhost HMAC** (see authentication tag). Remote callers cannot bootstrap JWT without device-local pairing. |\n| Local bootstrap (`getjwt`, root) | `X-Request-Signature: \u2026` | HMAC with the root-only shared secret; localhost only. |\n\nJWT default lifetime: **7 days**. During the issuing boot, expiry uses a monotonic\nclock and is unaffected by wall-clock changes. After a reboot, Core evaluates\nthe signed `iat` and `exp` claims. If the restored clock is more than 30 seconds\nbehind `iat`, Bearer authentication returns\n`503 {\"error\":\"AUTH_CLOCK_NOT_SET\",\"message\":\"NTP needs set; cannot proceed\"}`.\nRetry the unchanged token after time synchronization. Branch on the `error`\nfield because unrelated 503 responses are not clock errors.\n\nAll documented routes require auth unless noted.\n\n## Conventions\n\n- **JSON keys** are camelCase on the wire where Pydantic aliases are defined (e.g. `selectedAdapter`, `downloadSpeed`).\n- **Device mode** (`classic`, `hotspot`, `wiperf`, \u2026) is read from `/etc/wlanpi-state`. Some routes return **409** when the wrong mode is active.\n- **Namespace configs** activate only in **classic** mode. See `network_config` tag and the integration guide.\n- **Deprecated** routes are grouped under the **`deprecated`** OpenAPI tag (legacy `/network/wlan/*`). Canonical replacements are listed per operation.\n- **WLAN scan:** `GET /utils/wlan/scan` is canonical. `GET /network/wlan/scan` is deprecated and returns a legacy `nets[]` shape.\n\n## Long-running and multi-step work\n\n| Pattern | Examples | Client approach |\n|---------|----------|-----------------|\n| Single slow HTTP call | `GET /utils/speedtest` (30-90s) | Use generous timeout; poll is not required |\n| Provision then poll | `POST /network/config/activate/{id}` | Returns `provisioned` immediately; poll `GET /network/config/status` for SSID |\n| WebSocket stream | `WS /streaming/capture` | JSON command protocol; see streaming tag |\n| Mode-gated read | Hotspot clients, stations | Expect **409** outside hotspot mode |\n\n**Workflow guide:** see `docs/API-INTEGRATION-GUIDE.md` in the repository (progressive worked examples for app and MCP authors).\n\n## Related deep-dive docs\n\n| Topic | Document |\n|-------|----------|\n| WLAN scan | `docs/api/wlan-scan.md` |\n| Speedtest / reachability | `docs/api/reachability-speedtest.md` |\n| WLAN USB/PCI drivers | `docs/api/network-wlan-drivers.md` |\n| Date/time | `docs/api/system-datetime.md` |\n| Reg domain | `docs/api/system-reg-domain.md` |\n| Deprecated routes | `docs/API-DEPRECATED-ENDPOINTS.md` |\n",
-    "version": "2.3.7"
+    "version": "2.3.23"
   },
   "paths": {
     "/api/v1/auth/token": {
@@ -1327,8 +1327,9 @@
           "network"
         ],
         "summary": "Revert Wlan Namespace",
-        "description": "Revert the PHY and interface back to the root namespace.",
+        "description": "Return every radio Core manages to the root namespace (deprecated).\n\n**Replacement:** `POST /api/v1/network/config/deactivate/{id}`.\n\nThis reverts everything, not one interface: it tears down the active\nconfiguration, returns every namespace Core created to root (deleting\neach once it is empty), and makes the default configuration active.\n`iface`, `namespace` and `delete_namespace` are accepted for\ncompatibility and ignored. `left_alone` lists namespaces still holding\nradios that Core did not create; clear them with\n`POST /network/config/reset`. Returns 409 while another network change is\nrunning.",
         "operationId": "revert_wlan_namespace_api_v1_network_wlan_revert_post",
+        "deprecated": true,
         "security": [
           {
             "HTTPBearer": []
@@ -1757,13 +1758,13 @@
           "network_config"
         ],
         "summary": "Create Config",
-        "description": "Create a new network configuration.",
+        "description": "Create a new network configuration.\n\nThe IDs `default`, `root` and `status` are reserved in any letter case\nand return 400.",
         "operationId": "create_config_api_v1_network_config__post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NetConfig-Input"
+                "$ref": "#/components/schemas/NetConfig"
               }
             }
           },
@@ -1802,13 +1803,87 @@
         ]
       }
     },
+    "/api/v1/network/config/leftovers": {
+      "get": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Get Leftovers",
+        "description": "List namespaces holding radios that Core has left alone.\n\nThat is a namespace Core created that is still present outside the\nactive configuration, or any other namespace that holds wireless phys or\ninterfaces. Core never clears these on its own; clear them with\n`POST /network/config/reset`.",
+        "operationId": "get_leftovers_api_v1_network_config_leftovers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeftoversResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/network/config/reset": {
+      "post": {
+        "tags": [
+          "network_config"
+        ],
+        "summary": "Reset Namespaces",
+        "description": "Return the radios in the named namespaces to root.\n\nOnly the namespaces listed are touched, whoever created them: every phy\nin each is moved to the root namespace and the namespace is deleted once\nempty. Processes running inside are not stopped. A namespace used by the\nactive configuration is refused (deactivate it first). Each result says\nwhat happened. Returns 409 while another network change is running.",
+        "operationId": "reset_namespaces_api_v1_network_config_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamespaceResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceResetResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/network/config/{id}": {
       "get": {
         "tags": [
           "network_config"
         ],
         "summary": "Get Config By Id",
-        "description": "Get a specific network configuration by ID.",
+        "description": "Get a specific network configuration by ID.\n\nSecrets are never returned: each `security` block has `psk_set` and\n`password_set` instead of `psk` and `password`.",
         "operationId": "get_config_by_id_api_v1_network_config__id__get",
         "security": [
           {
@@ -1832,7 +1907,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NetConfig-Output"
+                  "$ref": "#/components/schemas/NetConfigPublic"
                 }
               }
             }
@@ -1854,7 +1929,7 @@
           "network_config"
         ],
         "summary": "Update Config",
-        "description": "Update an existing network configuration.",
+        "description": "Update an existing network configuration.\n\n`roots` and `namespaces` replace the stored lists. An entry sent without\n`psk` or `password` keeps the stored secret for the same namespace and\ninterface, so a configuration read with GET can be edited and sent back.\nThe response omits secrets like GET does.",
         "operationId": "update_config_api_v1_network_config__id__patch",
         "security": [
           {
@@ -1892,7 +1967,7 @@
                   "additionalProperties": {
                     "anyOf": [
                       {
-                        "$ref": "#/components/schemas/NetConfig-Output"
+                        "$ref": "#/components/schemas/NetConfigPublic"
                       },
                       {
                         "type": "string"
@@ -1921,7 +1996,7 @@
           "network_config"
         ],
         "summary": "Delete Config",
-        "description": "Delete a network configuration by ID.",
+        "description": "Delete a network configuration by ID.\n\nDeleting the active configuration returns 409 unless `force=true`, which\ndeactivates it first (the default configuration becomes active).",
         "operationId": "delete_config_api_v1_network_config__id__delete",
         "security": [
           {
@@ -1983,7 +2058,7 @@
           "network_config"
         ],
         "summary": "Activate Config",
-        "description": "Activate a network configuration by ID.",
+        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). Activating `default` only touches interfaces\nCore created; the others are reported `skipped` and left alone. A radio\nanother tool is using (a mode Core never sets such as AP, a\nwpa_supplicant or hostapd Core did not start, or a program capturing on\nanother interface of the same radio) is never taken: its entry is reported\n`in_use` with the reason, and the rest of the configuration still runs.\nTo use that radio, stop the other tool first. If an entry fails configuration validation the\nrequest returns 422, and if an adapter fails it returns 500; in both\ncases `detail` holds the message and the outcomes, and the default\nconfiguration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.",
         "operationId": "activate_config_api_v1_network_config_activate__id__post",
         "security": [
           {
@@ -2017,11 +2092,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Activate Config Api V1 Network Config Activate  Id  Post"
+                  "$ref": "#/components/schemas/ActivationResponse"
                 }
               }
             }
@@ -2045,7 +2116,7 @@
           "network_config"
         ],
         "summary": "Deactivate Config",
-        "description": "Deactivate a network configuration by ID.",
+        "description": "Deactivate a network configuration by ID.\n\n`left_alone` lists namespaces still holding radios that Core did not\nclean up (another tool's, or Core's own that could not be removed).\nClear them with `POST /network/config/reset`.",
         "operationId": "deactivate_config_api_v1_network_config_deactivate__id__post",
         "security": [
           {
@@ -2079,11 +2150,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Deactivate Config Api V1 Network Config Deactivate  Id  Post"
+                  "$ref": "#/components/schemas/DeactivationResponse"
                 }
               }
             }
@@ -3718,6 +3785,75 @@
   },
   "components": {
     "schemas": {
+      "ActivationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/AdapterOutcome"
+            },
+            "type": "array",
+            "title": "Outcomes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "message"
+        ],
+        "title": "ActivationResponse",
+        "description": "Result of activating a configuration, with one outcome per entry."
+      },
+      "AdapterOutcome": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "title": "Interface"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "connected, provisioned or error; skipped for a default entry whose radio Core did not create; in_use for a radio another tool is using (left alone, the rest of the configuration still runs)"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "invalid": {
+            "type": "boolean",
+            "title": "Invalid",
+            "description": "The entry failed configuration validation",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "interface",
+          "status"
+        ],
+        "title": "AdapterOutcome",
+        "description": "What happened to one configuration entry during activation."
+      },
       "ApiErrorResponse": {
         "properties": {
           "error": {
@@ -4064,6 +4200,33 @@
         ],
         "title": "DateTimeInfo",
         "description": "Device local date/time. Always parse `datetime` as ISO 8601 / RFC 3339."
+      },
+      "DeactivationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "left_alone": {
+            "items": {
+              "$ref": "#/components/schemas/LeftAlone"
+            },
+            "type": "array",
+            "title": "Left Alone",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "message"
+        ],
+        "title": "DeactivationResponse",
+        "description": "Result of deactivating a configuration."
       },
       "DeprecatedEndpointResponse": {
         "properties": {
@@ -5153,6 +5316,61 @@
         "title": "IwInterfaceStatus",
         "description": "Parsed `iw dev` fields for one interface (extra keys allowed)."
       },
+      "LeftAlone": {
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          },
+          "interfaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Interfaces",
+            "default": []
+          },
+          "phys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Phys",
+            "default": []
+          },
+          "core_created": {
+            "type": "boolean",
+            "title": "Core Created",
+            "default": false
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "namespace",
+          "reason"
+        ],
+        "title": "LeftAlone",
+        "description": "A namespace holding radios that Core did not clean up, and why."
+      },
+      "LeftoversResponse": {
+        "properties": {
+          "left_alone": {
+            "items": {
+              "$ref": "#/components/schemas/LeftAlone"
+            },
+            "type": "array",
+            "title": "Left Alone",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "LeftoversResponse",
+        "description": "Namespaces Core left alone; clear them with POST /network/config/reset."
+      },
       "LinkStats": {
         "properties": {
           "interface": {
@@ -5279,7 +5497,7 @@
         "title": "MessageResponse",
         "description": "Simple human-readable message response."
       },
-      "NamespaceConfig-Input": {
+      "NamespaceConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5343,7 +5561,7 @@
         "title": "NamespaceConfig",
         "description": "Configuration for an interface in a network namespace."
       },
-      "NamespaceConfig-Output": {
+      "NamespaceConfigPublic": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -5364,7 +5582,7 @@
           "security": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetSecurity"
+                "$ref": "#/components/schemas/NetSecurityPublic"
               },
               {
                 "type": "null"
@@ -5404,8 +5622,83 @@
           "interface",
           "namespace"
         ],
-        "title": "NamespaceConfig",
-        "description": "Configuration for an interface in a network namespace."
+        "title": "NamespaceConfigPublic",
+        "description": "A namespace entry as the API returns it (no secrets)."
+      },
+      "NamespaceResetRequest": {
+        "properties": {
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Namespaces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "namespaces"
+        ],
+        "title": "NamespaceResetRequest",
+        "description": "Namespaces to return to root, named explicitly by the caller."
+      },
+      "NamespaceResetResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/NamespaceResetResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "NamespaceResetResponse",
+        "description": "Per-namespace results of a reset."
+      },
+      "NamespaceResetResult": {
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          },
+          "phys_returned": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Phys Returned",
+            "default": []
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "default": false
+          },
+          "remaining": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Remaining",
+            "default": []
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "namespace"
+        ],
+        "title": "NamespaceResetResult",
+        "description": "What resetting one namespace did."
       },
       "NamespaceStatusError": {
         "properties": {
@@ -5422,7 +5715,7 @@
         "title": "NamespaceStatusError",
         "description": "Error marker when a namespace could not be queried."
       },
-      "NetConfig-Input": {
+      "NetConfig": {
         "properties": {
           "id": {
             "type": "string",
@@ -5432,7 +5725,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5446,7 +5739,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5464,7 +5757,7 @@
         "title": "NetConfig",
         "description": "A named network configuration with root and namespace interfaces."
       },
-      "NetConfig-Output": {
+      "NetConfigPublic": {
         "properties": {
           "id": {
             "type": "string",
@@ -5474,7 +5767,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Output"
+                  "$ref": "#/components/schemas/NamespaceConfigPublic"
                 },
                 "type": "array"
               },
@@ -5488,7 +5781,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Output"
+                  "$ref": "#/components/schemas/RootConfigPublic"
                 },
                 "type": "array"
               },
@@ -5503,8 +5796,8 @@
         "required": [
           "id"
         ],
-        "title": "NetConfig",
-        "description": "A named network configuration with root and namespace interfaces."
+        "title": "NetConfigPublic",
+        "description": "A configuration as the API returns it: psk and password omitted.\n\n`psk_set` / `password_set` say whether a secret is stored. Send the\nentry back without `psk` or `password` in a PATCH to keep it."
       },
       "NetConfigUpdate": {
         "properties": {
@@ -5512,7 +5805,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NamespaceConfig-Input"
+                  "$ref": "#/components/schemas/NamespaceConfig"
                 },
                 "type": "array"
               },
@@ -5526,7 +5819,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RootConfig-Input"
+                  "$ref": "#/components/schemas/RootConfig"
                 },
                 "type": "array"
               },
@@ -5646,6 +5939,100 @@
         ],
         "title": "NetSecurity",
         "description": "WLAN security settings for a connection."
+      },
+      "NetSecurityPublic": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "title": "Ssid"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecurityTypes"
+          },
+          "psk_set": {
+            "type": "boolean",
+            "title": "Psk Set",
+            "default": false
+          },
+          "password_set": {
+            "type": "boolean",
+            "title": "Password Set",
+            "default": false
+          },
+          "sae_pwe": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sae Pwe"
+          },
+          "pmf": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pmf"
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity"
+          },
+          "client_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Cert"
+          },
+          "private_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Key"
+          },
+          "ca_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ca Cert"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid",
+          "security"
+        ],
+        "title": "NetSecurityPublic",
+        "description": "Security settings as the API returns them: secrets become flags."
       },
       "NetworkConfigResponse": {
         "properties": {
@@ -6308,6 +6695,14 @@
           "message": {
             "type": "string",
             "title": "Message"
+          },
+          "left_alone": {
+            "items": {
+              "$ref": "#/components/schemas/LeftAlone"
+            },
+            "type": "array",
+            "title": "Left Alone",
+            "default": []
           }
         },
         "type": "object",
@@ -6349,7 +6744,7 @@
         "title": "RfkillState",
         "description": "One rfkill switch."
       },
-      "RootConfig-Input": {
+      "RootConfig": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -6408,7 +6803,7 @@
         "title": "RootConfig",
         "description": "Configuration for a root (non-namespaced) interface."
       },
-      "RootConfig-Output": {
+      "RootConfigPublic": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/NetworkModeEnum",
@@ -6429,7 +6824,7 @@
           "security": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetSecurity"
+                "$ref": "#/components/schemas/NetSecurityPublic"
               },
               {
                 "type": "null"
@@ -6464,8 +6859,8 @@
           "phy",
           "interface"
         ],
-        "title": "RootConfig",
-        "description": "Configuration for a root (non-namespaced) interface."
+        "title": "RootConfigPublic",
+        "description": "A root entry as the API returns it (no secrets)."
       },
       "RoutingTable": {
         "properties": {
@@ -7507,7 +7902,7 @@
             "example": "wlan0"
           },
           "netConfig": {
-            "$ref": "#/components/schemas/NetConfig-Input"
+            "$ref": "#/components/schemas/NetConfig"
           },
           "removeAllFirst": {
             "type": "boolean",
