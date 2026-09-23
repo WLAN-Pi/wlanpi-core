@@ -191,3 +191,24 @@ def test_start_is_not_blocked_by_a_reused_pid(mocker, tmp_path):
     assert apps.start_app_in_namespace(None, "orb", pid_dir=tmp_path) is True
     popen.assert_called_once()
     assert json.loads((tmp_path / "root.pid").read_text())["pid"] == 20
+
+
+def test_namespace_prefix_does_not_verify_a_pid_from_another_namespace(
+    mocker, tmp_path
+):
+    # `ip netns identify` says ns_ab; the pidfile belongs to ns_a (#304 review).
+    (tmp_path / "ns_a.pid").write_text(
+        json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    mocker.patch.object(apps, "_is_recorded_app", return_value=True)
+    mocker.patch("wlanpi_core.namespaces.namespace.namespace_exists", return_value=True)
+    mocker.patch.object(
+        apps.processes,
+        "get_processes_in_namespace",
+        side_effect=apps.RunCommandError("enumeration failed", 1),
+    )
+    run = mocker.patch.object(apps, "run_command")
+    run.return_value = MagicMock(return_code=0, stdout="ns_ab\n")
+
+    assert apps.stop_app_in_namespace("ns_a", pid_dir=tmp_path) is False
+    assert not [c for c in run.call_args_list if c.args[0][0] == "kill"]

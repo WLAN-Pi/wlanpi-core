@@ -475,7 +475,10 @@ def _stop_app_in_namespace_safe(
             identify_result = run_command(
                 ["ip", "netns", "identify", str(pid)], raise_on_fail=False
             )
-            if identify_result.return_code == 0 and namespace in identify_result.stdout:
+            if (
+                identify_result.return_code == 0
+                and namespace in identify_result.stdout.split()
+            ):
                 verified_pid = pid
                 log.info(f"PID {pid} confirmed in namespace {namespace}")
             else:
