@@ -1,3 +1,16 @@
+wlanpi-core (2.3.14-1) unstable; urgency=medium
+
+  * Tear down the active profile before activating another, so its
+    namespaces, supplicants and apps no longer linger beside the new one
+    (#271).
+  * When an activation fails (including at boot), record and apply the
+    default configuration instead of leaving current.txt on a profile that
+    is no longer in effect. Apply the default after deactivate as well.
+  * Leave radios in namespaces Core did not create out of the default
+    configuration.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:12:44 -0500
+
 wlanpi-core (2.3.13-1) unstable; urgency=medium
 
   * Serialise activate, deactivate, /wlan/revert and boot activation with an

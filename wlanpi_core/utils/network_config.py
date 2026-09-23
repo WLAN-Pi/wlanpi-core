@@ -114,12 +114,14 @@ def _is_system_monitor(name: str) -> bool:
 def get_default_config(cfg_id: str = "default") -> NetConfig:
     """Build the default configuration from the radios present now.
 
-    One root entry per wireless interface in any namespace, on the phy it is
-    really on, keeping monitor interfaces in monitor mode. No security and no
+    One root entry per wireless interface in root or in a namespace Core
+    created, on the phy it is really on, keeping monitor interfaces in monitor mode. No security and no
     default route: the default returns radios to root without connecting.
     The `wlanpiN` monitor interfaces that SystemManager creates at startup
-    (with its own flags) are left out.
+    (with its own flags) are left out, as are radios in namespaces Core did
+    not create: the default must not claim a user's or another tool's radio.
     """
+    core_namespaces = set(ns.core_namespaces())
     roots = [
         RootConfig(
             mode=(
@@ -135,7 +137,8 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
             autostart_app=None,
         )
         for live in discovery.list_interfaces_all_namespaces()
-        if not (live.type == "monitor" and _is_system_monitor(live.name))
+        if (live.netns is None or live.netns in core_namespaces)
+        and not (live.type == "monitor" and _is_system_monitor(live.name))
     ]
     return NetConfig(id=cfg_id, namespaces=[], roots=roots)
 
@@ -481,59 +484,34 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
 
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
+
+    # Tear down the active profile first so its namespaces, supplicants and
+    # apps do not linger beside the new one (#271).
+    _teardown_profile(active_cfg)
+    if override_active:
+        log.info(
+            "Override active set: stopping Core's wpa_supplicants before activation"
+        )
+        ns.kill_all_supplicants()
+
     activated_configs: list[NamespaceConfig | RootConfig] = []
     try:
-        if override_active:
-            log.info(
-                "Override active set: killing all wpa_supplicant processes before activation"
-            )
-            ns.kill_all_supplicants()
-        outcomes: list[str] = []
-        activated_configs.clear()
-
-        for ns_cfg in cfg.namespaces or []:
-            log.info(
-                f"Activating namespace {ns_cfg.namespace} for interface {ns_cfg.interface}"
-            )
-            result = ns.activate_config(ns_cfg)
-            status = (
-                getattr(result, "status", "error") if result is not None else "error"
-            )
-            outcomes.append(status)
-            # Only track as activated if it succeeded (not error, not skipped)
-            if status in {"connected", "provisioned"}:
-                activated_configs.append(ns_cfg)
-
-        for root_cfg in cfg.roots or []:
-            log.info(f"Activating root config for interface {root_cfg.interface}")
-            result = ns.activate_config(root_cfg)
-            status = (
-                getattr(result, "status", "error") if result is not None else "error"
-            )
-            outcomes.append(status)
-            if status in {"connected", "provisioned"}:
-                activated_configs.append(root_cfg)
+        outcomes = _apply_entries(cfg, activated_configs)
 
         # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
         # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
         acceptable_statuses = {"connected", "provisioned"}
-        all_ok = (
-            all(status in acceptable_statuses for status in outcomes)
-            if outcomes
-            else True
-        )
-
-        if all_ok:
+        if all(status in acceptable_statuses for status in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
             ccf.write_text(cfg_id)
             return True
-        else:
-            # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
-            log.error(
-                f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs"
-            )
-            _rollback_activated_configs(activated_configs)
-            return False
+        # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
+        log.error(
+            f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs"
+        )
+        _rollback_activated_configs(activated_configs)
+        _fall_back_to_default(cfg_id)
+        return False
 
     except Exception as ex:
         # Path 3: hard failure mid-loop — same rollback as path 2, then propagate
@@ -543,7 +521,66 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
                 "Rolling back successfully activated configs after activation exception"
             )
             _rollback_activated_configs(activated_configs)
+        _fall_back_to_default(cfg_id)
         raise
+
+
+def _apply_entries(
+    cfg: NetConfig, activated: list[NamespaceConfig | RootConfig]
+) -> list[str]:
+    """Activate every entry of cfg, namespaces first; return per-entry statuses.
+
+    Entries that come up connected or provisioned are appended to `activated`
+    as they succeed, so a caller can roll them back after an exception.
+    """
+    outcomes: list[str] = []
+    entries: list[NamespaceConfig | RootConfig] = [
+        *(cfg.namespaces or []),
+        *(cfg.roots or []),
+    ]
+    for entry in entries:
+        where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
+        log.info(f"Activating {entry.interface} in {where}")
+        result = ns.activate_config(entry)
+        status = getattr(result, "status", "error") if result is not None else "error"
+        outcomes.append(status)
+        if status in {"connected", "provisioned"}:
+            activated.append(entry)
+    return outcomes
+
+
+def _teardown_profile(cfg_id: str) -> None:
+    """Best effort: deactivate cfg_id's entries and return Core's namespaces."""
+    try:
+        profile: NetConfig | None = get_config(cfg_id)
+    except (FileNotFoundError, ConfigMalformedError, ValidationError) as e:
+        log.warning(f"Cannot read active configuration {cfg_id} to tear down: {e}")
+        profile = None
+    entries: list[NamespaceConfig | RootConfig] = []
+    if profile is not None:
+        entries = [*(profile.namespaces or []), *(profile.roots or [])]
+    for entry in entries:
+        try:
+            ns.deactivate_config(entry)
+        except Exception as e:
+            log.warning(f"Error tearing down {entry.interface} from {cfg_id}: {e}")
+    ns.revert_to_root(None)
+
+
+def _fall_back_to_default(failed_cfg_id: str) -> None:
+    """After a failed activation, record and apply `default` so state matches."""
+    ccf.write_text("default")
+    if failed_cfg_id != "default":
+        _apply_default()
+
+
+def _apply_default() -> None:
+    """Best effort: put the radios into the default configuration."""
+    try:
+        outcomes = _apply_entries(get_config("default"), [])
+        log.info(f"Applied default configuration: {outcomes}")
+    except Exception as e:
+        log.warning(f"Could not apply default configuration: {e}")
 
 
 def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
@@ -575,8 +612,10 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             ns.deactivate_config(root_cfg)
 
         ccf.write_text("default")
-        # activate_config("default", override_active=True)
         ns.revert_to_root(None)
+        # current.txt now says default, so apply it (#271)
+        if cfg_id != "default":
+            _apply_default()
         return True
 
     except Exception as ex:
@@ -589,4 +628,6 @@ def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
             log.warning(
                 f"Error completing deactivate cleanup for {cfg_id}: {cleanup_error} (non-critical)"
             )
+        if cfg_id != "default":
+            _apply_default()
         raise
