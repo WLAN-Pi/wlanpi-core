@@ -692,7 +692,7 @@ class NetworkNamespaceService:
             and other.netns == live.netns
             and other.name != live.name
             and other.type == "monitor"
-            and not other.name.startswith(MONITOR_IFACE_PREFIX)
+            and not re.fullmatch(rf"{MONITOR_IFACE_PREFIX}[0-9]+", other.name)
             and not self._is_owned(other)
         ]
         if siblings:

@@ -2555,6 +2555,32 @@ def handle_deactivate_missing_iface_still_stops_processes(
         stop_dhcp.assert_called_once_with("wlan2", None)
 
 
+def handle_in_use_foreign_monitor_with_wlanpi_prefix(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Treat a capturing monitor that only starts with "wlanpi" as another tool's."""
+    layout = {
+        **JOSH_THREE_RADIO,
+        "wlanpi-prof": {
+            "phy": "phy1",
+            "mac": "00:11:22:33:44:02",
+            "type": "monitor",
+            "up": "1",
+            "bound": "1",
+        },
+    }
+    _write_netconfig(
+        netcfg_env,
+        "root_cfg",
+        roots=[_root(interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(layout):
+        ok, outcomes = nc.activate_config_report("root_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["in_use"]
+    assert "wlanpi-prof" in outcomes[0].detail
+
+
 HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
@@ -2631,6 +2657,7 @@ HANDLERS = {
     "in_use_ignores_core_monitor_capturing": handle_in_use_ignores_core_monitor_capturing,
     "deactivate_in_use_root_still_stops_processes": handle_deactivate_in_use_root_still_stops_processes,
     "deactivate_missing_iface_still_stops_processes": handle_deactivate_missing_iface_still_stops_processes,
+    "in_use_foreign_monitor_with_wlanpi_prefix": handle_in_use_foreign_monitor_with_wlanpi_prefix,
     "core_netdev_moved_home_by_hand_still_reverted": handle_core_netdev_moved_home_by_hand_still_reverted,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,
     "override_tears_down_previous": handle_override_tears_down_previous,
