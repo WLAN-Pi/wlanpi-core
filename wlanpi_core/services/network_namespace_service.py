@@ -577,6 +577,7 @@ class NetworkNamespaceService:
             if live.name != iface or live.type != "managed":
                 self._recreate_in_root(live, iface)
             else:
+                self._take_down(live.name)
                 self._release(live.name, None)
             return
 
@@ -586,6 +587,17 @@ class NetworkNamespaceService:
         # Delete the namespace only if Core created it and nothing is left in it
         if delete_namespace and namespace in self.core_namespaces():
             self._delete_namespace_if_empty(namespace)
+
+    def _take_down(self, name: str) -> None:
+        """Best effort: bring a root managed netdev Core hands back down.
+
+        Its supplicant is gone; left up, it makes cfg80211 refuse channel
+        changes on the radio's monitor, so captures there stop working.
+        """
+        try:
+            interface.bring_interface_down(name, namespace=None)
+        except RunCommandError as e:
+            self.log.warning(f"Could not bring {name} down: {e}")
 
     def _recreate_in_root(self, live: discovery.LiveInterface, name: str) -> None:
         """Delete `live`, return its phy to root, and recreate it as managed `name`.
@@ -603,10 +615,11 @@ class NetworkNamespaceService:
             if live.netns is not None:
                 phy.move_phy_to_root(live.phy, live.netns)
                 moved_to = None
+            # Left down, as at boot: an up managed netdev with no supplicant
+            # makes cfg80211 refuse channel changes on the radio's monitor.
             interface.create_interface(
                 live.phy, name, interface_type="managed", namespace=None
             )
-            interface.bring_interface_up(name, namespace=None)
         except RunCommandError as e:
             self.log.error(f"Could not return {live.name} on {live.phy} to root: {e}")
             self._restore_live(live, name, moved_to, None)

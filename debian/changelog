@@ -1,3 +1,16 @@
+wlanpi-core (2.3.27-1) unstable; urgency=medium
+
+  * Packet capture works on a radio that a network configuration moved
+    into a namespace, and again after it is deactivated. A namespace
+    move took the radio's wlanpiN monitor down, so a capture on it ended
+    at once with no data. Deactivating a configuration left the radio's
+    managed interface up without a supplicant, and the kernel then
+    refused channel changes on the monitor. The monitor now stays up
+    across the move, and the managed interface is handed back down, as
+    at boot.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 18:24:03 -0400
+
 wlanpi-core (2.3.26-1) unstable; urgency=medium
 
   * WLAN scan on a monitor (GET /utils/wlan/scan?iface=wlanpiN) runs on

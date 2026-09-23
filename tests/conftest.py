@@ -589,6 +589,8 @@ class InventoryRecorder:
         for key in travelling:
             meta = self.ifaces.pop(key)
             meta.netns = target
+            # The kernel closes a netdev that changes netns: it arrives down.
+            meta.up = False
             meta.ifindex = self.next_ifindex
             self.next_ifindex += 1
             name = key[1]
@@ -642,10 +644,12 @@ class InventoryRecorder:
     ) -> CommandResult:
         if netns is None and args[:1] == ["netns"]:
             return self._ip_netns(args[1:], raise_on_fail)
-        if args == ["-o", "link", "show"]:
+        if args in (["-o", "link", "show"], ["-o", "link", "show", "up"]):
+            only_up = args[-1] == "up"
             stdout = "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n" + "".join(
                 f"{meta.ifindex}: {name}: <BROADCAST,MULTICAST{',UP' if meta.up else ''}> mtu 1500\n"
                 for name, meta in self._netns_ifaces(netns)
+                if meta.up or not only_up
             )
             return self._ok(stdout)
         if len(args) == 4 and args[:2] == ["link", "set"] and args[3] in {"up", "down"}:
