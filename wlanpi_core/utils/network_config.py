@@ -617,8 +617,10 @@ def _activate_config_locked(
             # boot-time re-activation): tear down whatever of it still runs
             # and stop claiming it is active. Another active profile is left
             # running and current.txt keeps naming it.
-            _teardown_profile(cfg_id)
-            _fall_back_to_default(cfg_id)
+            try:
+                _teardown_profile(cfg_id)
+            finally:
+                _fall_back_to_default(cfg_id)
         return False, invalid_outcomes
 
     # Tear down the active profile first so its namespaces, supplicants and

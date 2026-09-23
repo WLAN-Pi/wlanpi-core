@@ -161,9 +161,10 @@ def test_default_preflight_skips_entries_core_does_not_own(client, netcfg_env, m
         },
     )
     mocker.patch.object(netcfg_env["service"], "is_core_managed", return_value=False)
-    # Tearing down the current (default) profile asks may_undo, which lists
-    # live interfaces with the real `iw`; absent on CI runners.
-    mocker.patch.object(netcfg_env["service"], "may_undo", return_value=False)
+    # The rest of activation must not reach the host: teardown lists live
+    # interfaces with `iw`, and kill_all_supplicants scans /proc and signals.
+    teardown = mocker.patch("wlanpi_core.utils.network_config._teardown_profile")
+    kill = mocker.patch.object(netcfg_env["service"], "kill_all_supplicants")
     activate = mocker.patch.object(netcfg_env["service"], "activate_config")
 
     response = client.post(
@@ -173,4 +174,40 @@ def test_default_preflight_skips_entries_core_does_not_own(client, netcfg_env, m
     assert response.status_code == 200
     assert [o["status"] for o in response.json()["outcomes"]] == ["skipped"]
     activate.assert_not_called()
+    teardown.assert_called_once_with("default")
+    kill.assert_called_once_with()
+    assert netcfg_env["ccf"].read_text() == "default"
+
+
+def test_invalid_current_profile_resets_current_even_if_teardown_fails(
+    client, netcfg_env, mocker
+):
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "bad_261",
+        {
+            "id": "bad_261",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan0",
+                    "phy": "phy1",
+                    "interface": "wlan0",
+                    "security": {"security": "WPA2-PSK", "ssid": "x", "psk": None},
+                }
+            ],
+        },
+    )
+    netcfg_env["ccf"].write_text("bad_261")
+    mocker.patch(
+        "wlanpi_core.utils.network_config._teardown_profile",
+        side_effect=RuntimeError("revert failed"),
+    )
+
+    response = client.post(
+        "/api/v1/network/config/activate/bad_261", params={"override_active": True}
+    )
+
+    assert response.status_code == 500
     assert netcfg_env["ccf"].read_text() == "default"
