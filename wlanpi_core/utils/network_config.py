@@ -51,6 +51,12 @@ def network_change_lock() -> Iterator[None]:
     opens its own file description) and other processes, such as an old
     gunicorn worker still finishing during a reload. Does not wait.
 
+    Not reentrant: acquiring it again while held, even in the same thread,
+    raises ConfigBusyError. Code already holding it (activate's rollback)
+    must call the unlocked service methods, not deactivate_config(). The
+    lock does not cover ConnectionMonitor threads, which run DHCP, routes
+    and app start after the change that started them has returned.
+
     Raises:
         ConfigBusyError: If another activate, deactivate or revert is running
     """
