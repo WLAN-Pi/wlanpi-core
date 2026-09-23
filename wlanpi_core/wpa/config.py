@@ -205,6 +205,7 @@ def write_wpa_config(
 
     conf_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # the create mode does not apply to an existing file
     with os.fdopen(fd, "w") as f:
         f.write(content)
     log.debug(f"Wrote WPA config to {conf_path}")

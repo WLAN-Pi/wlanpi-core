@@ -25,8 +25,11 @@ _ROOT_DIR_NAME = "@root"
 # (/run/dhcpcd, /var/lib/dhcpcd) that every netns shares, so a second dhcpcd
 # for the same interface name in another namespace just talks to the first.
 # Run each one in a private mount namespace with its own copies of both.
+# /run/dhcpcd is tmpfs and absent until something runs dhcpcd, so create the
+# mount points first or the bind fails on a freshly booted device.
 _DHCPCD_WRAPPER = (
-    'mount --bind "$1" /run/dhcpcd && mount --bind "$2" /var/lib/dhcpcd '
+    "mkdir -p /run/dhcpcd /var/lib/dhcpcd "
+    '&& mount --bind "$1" /run/dhcpcd && mount --bind "$2" /var/lib/dhcpcd '
     '&& shift 2 && exec dhcpcd "$@"'
 )
 
@@ -53,8 +56,10 @@ def _stop_dhcpcd_dir(state: Path) -> None:
     except (OSError, ValueError):
         return
     argv = _read_cmdline(pid)
-    # dhcpcd rewrites its title to "dhcpcd: <iface> [ip4]"; check before signalling.
-    if not argv or not argv[0].startswith("dhcpcd") or iface not in " ".join(argv):
+    # dhcpcd rewrites its title to "dhcpcd: <iface> [ip4]"; match the name
+    # exactly, so a reused PID running dhcpcd for wlan10 is not taken for wlan1.
+    title = " ".join(argv)
+    if not argv or not (title.startswith(f"dhcpcd: {iface} ") or iface in argv[1:]):
         return
     try:
         os.kill(pid, signal.SIGHUP)  # dhcpcd: release the lease and exit
