@@ -120,6 +120,7 @@ def _isolate_run_dir(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("wlanpi_core.wpa.supplicant.RUN_DIR", str(run_dir))
     monkeypatch.setattr("wlanpi_core.utils.network_config.RUN_DIR", str(run_dir))
+    monkeypatch.setattr("wlanpi_core.utils.network_management.RUN_DIR", str(run_dir))
     monkeypatch.setattr(
         "wlanpi_core.services.network_namespace_service.NETNS_ETC_DIR",
         str(tmp_path / "etc-netns"),
@@ -288,7 +289,7 @@ _RUN_COMMAND_SITES = (
 )
 
 # Commands with no inventory effect that prepare/revert issue as cleanup.
-_NOOP_COMMANDS = {"pkill", "rm", "dhclient"}
+_NOOP_COMMANDS = {"pkill", "rm"}
 
 
 @dataclass
@@ -325,6 +326,7 @@ class InventoryRecorder:
     deleted: list[tuple[str, str | None]] = field(default_factory=list)
     adds: list[tuple[str, str, str | None]] = field(default_factory=list)
     phy_moves: list[tuple[str, str | None]] = field(default_factory=list)
+    routes: list[tuple[str | None, list[str]]] = field(default_factory=list)
     commands: list[tuple[str | None, list[str]]] = field(default_factory=list)
     unrecognised: list[tuple[str | None, list[str]]] = field(default_factory=list)
     next_ifindex: int = 3
@@ -597,6 +599,12 @@ class InventoryRecorder:
         if len(args) == 4 and args[:2] == ["link", "set"] and args[3] in {"up", "down"}:
             if (netns, args[2]) not in self.ifaces:
                 return self._fail(f'Cannot find device "{args[2]}"\n', 1, raise_on_fail)
+            return self._ok()
+        if args[:4] == ["-4", "route", "show", "default"]:
+            # No DHCP server is modelled, so no interface has a gateway.
+            return self._ok()
+        if args[:3] == ["route", "replace", "default"]:
+            self.routes.append((netns, args[2:]))
             return self._ok()
         if len(args) == 5 and args[:2] == ["link", "set"] and args[3] == "netns":
             # Wireless netdevs are netns-local; only the phy can move.

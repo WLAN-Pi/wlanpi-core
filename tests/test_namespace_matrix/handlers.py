@@ -974,7 +974,9 @@ def handle_ssid_delayed_beyond_monitor_timeout(
     # One poll per fake second for 15 s proves the timeout path ran, not the
     # stop-event path.
     assert wpa.call_count == 15
-    dhcp.assert_not_called()
+    # dhcpcd is left waiting in the background for a late association; the
+    # app still needs a confirmed connection.
+    dhcp.assert_called_once_with("wlan0", None, timeout=1, default_route=False)
     start_app.assert_not_called()
 
 
@@ -1661,6 +1663,110 @@ def handle_force_delete_active_deactivates(
     assert "ns_a" not in inventory.netns
 
 
+def handle_monitor_restart_keeps_new_generation(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#279: a superseded monitor must not deregister the one that replaced it."""
+    from wlanpi_core.connection import monitor as mon
+
+    stop_all_connection_monitors()
+    _wait_for_monitors_idle()
+    cfg = _root(interface="wlan0", security=_security("SlowNet"))
+    first_polling = threading.Event()
+    release = threading.Event()
+
+    def wpa_status(*args, **kwargs):
+        first_polling.set()
+        assert release.wait(timeout=10), "test never released the status call"
+        return {"wpa_status": {"wpa_state": "SCANNING"}}
+
+    dhcp_threads: list[threading.Thread] = []
+
+    def record_dhcp(*args, **kwargs):
+        dhcp_threads.append(threading.current_thread())
+
+    with patch("wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_status):
+        with patch(
+            "wlanpi_core.connection.monitor.restart_dhcp_with_timeout",
+            side_effect=record_dhcp,
+        ):
+            with _patch_monitor_clock():
+                try:
+                    ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
+                    assert first_polling.wait(timeout=5), "first monitor never polled"
+                    with mon._monitor_lock:
+                        first = mon._connection_monitors["root:wlan0"]
+                    # The first is still blocked in its poll; replacing it
+                    # signals it, waits (bounded), then registers the second.
+                    ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
+                    with mon._monitor_lock:
+                        second = mon._connection_monitors["root:wlan0"]
+                    assert second is not first
+                finally:
+                    release.set()
+                first.join(timeout=5)
+                assert not first.is_alive(), "superseded monitor did not exit"
+                with mon._monitor_lock:
+                    assert mon._connection_monitors.get("root:wlan0") is second
+                stop_all_connection_monitors()
+                _wait_for_monitors_idle()
+    # The superseded monitor must never reach DHCP; only the live one may.
+    assert first not in dhcp_threads
+
+
+def handle_monitor_stop_during_poll_skips_dhcp(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#279: a stop that lands while a poll is in flight must skip DHCP and the app."""
+    from wlanpi_core.connection import monitor as mon
+
+    stop_all_connection_monitors()
+    _wait_for_monitors_idle()
+    cfg = _root(interface="wlan0", security=_security("Net"), autostart_app="orb")
+    polling = threading.Event()
+    proceed = threading.Event()
+
+    def wpa_status(*args, **kwargs):
+        polling.set()
+        assert proceed.wait(timeout=10), "test never released the status call"
+        return {"wpa_status": {"wpa_state": "COMPLETED"}}
+
+    with patch("wlanpi_core.connection.monitor.get_wpa_status", side_effect=wpa_status):
+        with patch("wlanpi_core.connection.monitor.restart_dhcp_with_timeout") as dhcp:
+            with patch(
+                "wlanpi_core.namespaces.apps.start_app_in_namespace"
+            ) as start_app:
+                with _patch_monitor_clock():
+                    ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
+                    try:
+                        assert polling.wait(timeout=5), "monitor never polled"
+                        with mon._monitor_lock:
+                            mon._monitor_stop_flags["root:wlan0"].set()
+                    finally:
+                        proceed.set()
+                    _wait_for_monitors_idle()
+    dhcp.assert_not_called()
+    start_app.assert_not_called()
+
+
+def handle_no_gatewayless_default_route(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#279: default_route on an interface with no gateway adds no route."""
+    _write_netconfig(
+        netcfg_env,
+        "route_cfg",
+        roots=[
+            _root(interface="wlan1", phy="phy2", default_route=True).model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        assert nc.activate_config("route_cfg", override_active=True) is True
+    assert inventory.routes == []
+
+
 def handle_rollback_after_partial_prepare(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -1744,6 +1850,9 @@ HANDLERS = {
     "override_tears_down_previous": handle_override_tears_down_previous,
     "profile_skips_foreign_namespace_radio": handle_profile_skips_foreign_namespace_radio,
     "atomic_write_failure_keeps_old_file": handle_atomic_write_failure_keeps_old_file,
+    "monitor_restart_keeps_new_generation": handle_monitor_restart_keeps_new_generation,
+    "monitor_stop_during_poll_skips_dhcp": handle_monitor_stop_during_poll_skips_dhcp,
+    "no_gatewayless_default_route": handle_no_gatewayless_default_route,
     "force_delete_active_deactivates": handle_force_delete_active_deactivates,
     "failed_override_falls_back_to_default": handle_failed_override_falls_back_to_default,
     "deactivate_applies_default": handle_deactivate_applies_default,

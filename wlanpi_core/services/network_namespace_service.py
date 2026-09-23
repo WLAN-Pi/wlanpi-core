@@ -35,7 +35,11 @@ from wlanpi_core.schemas.network.network import (
     SecurityTypes,
 )
 from wlanpi_core.utils.namespace_execution import ns_exec
-from wlanpi_core.utils.network_management import set_default_route
+from wlanpi_core.utils.network_management import (
+    set_default_route,
+    stop_dhcp,
+    stop_namespace_dhcp,
+)
 from wlanpi_core.wpa import config as wpa_config
 from wlanpi_core.wpa import status as wpa_status
 from wlanpi_core.wpa import supplicant as wpa_supplicant
@@ -493,7 +497,7 @@ class NetworkNamespaceService:
 
         wpa_supplicant.stop_supplicant(iface, namespace)
         self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
-        self._ns_exec(["dhclient", "-r", iface], namespace)
+        stop_dhcp(iface, namespace)
 
     def revert_to_root(
         self,
@@ -523,13 +527,10 @@ class NetworkNamespaceService:
             f"Reverting {live.name} ({live.phy}) from namespace {namespace_display} to root namespace."
         )
 
-        # Stop the supplicant and dhclient tied to this interface
+        # Stop the supplicant and DHCP client tied to this interface
         wpa_supplicant.stop_supplicant(live.name, namespace)
         self._safe_unlink(Path(self._ctrl_dir(namespace)) / live.name)
-        try:
-            self._ns_exec(["dhclient", "-r", live.name], namespace)
-        except RunCommandError:
-            pass
+        stop_dhcp(live.name, namespace)
 
         # Already in root: nothing to move, and root is not a real namespace
         if namespace is None:
@@ -586,6 +587,7 @@ class NetworkNamespaceService:
         """Stop Core's supplicants in `namespace` and move every phy in it to root."""
         self.log.info(f"Returning phys in namespace {namespace} to root")
         wpa_supplicant.stop_namespace_supplicants(namespace)
+        stop_namespace_dhcp(namespace)
         try:
             phys = phy.list_phys(namespace=namespace)
         except RunCommandError as e:

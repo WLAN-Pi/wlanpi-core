@@ -55,6 +55,14 @@ class ConnectionMonitor:
         namespace_display = namespace if namespace else "root"
         monitor_key = f"{namespace_display}:{iface}"
 
+        # One monitor per (namespace, iface): an older one would otherwise
+        # keep polling and run DHCP or start an app for a superseded config.
+        stop_connection_monitor(namespace, iface)
+
+        # Each generation owns its own stop event; it is captured here, not
+        # looked up by key, so a newer monitor cannot hand it a different one.
+        stop_event = threading.Event()
+
         def monitor_loop() -> None:
             try:
                 _monitor_body()
@@ -62,9 +70,12 @@ class ConnectionMonitor:
                 # Deregister only after ALL side effects (dhcp, route, app
                 # start) have run, and on every exit path, so stop helpers
                 # and tests observe a live thread until it is truly done.
+                # Only remove our own generation's entries.
                 with _monitor_lock:
-                    _connection_monitors.pop(monitor_key, None)
-                    _monitor_stop_flags.pop(monitor_key, None)
+                    if _connection_monitors.get(monitor_key) is monitor_thread:
+                        _connection_monitors.pop(monitor_key, None)
+                    if _monitor_stop_flags.get(monitor_key) is stop_event:
+                        _monitor_stop_flags.pop(monitor_key, None)
 
         def _monitor_body() -> None:
             log.info(
@@ -75,13 +86,6 @@ class ConnectionMonitor:
             poll_interval = 1
             connected_state = False
             poll_count = 0
-
-            stop_event = _monitor_stop_flags.get(monitor_key)
-            if not stop_event:
-                log.error(
-                    f"[ConnectionMonitor] No stop event found for {monitor_key}, monitor cannot start"
-                )
-                return
 
             log.info(
                 f"[ConnectionMonitor] Monitor loop started for {iface} in {namespace_display}, "
@@ -129,12 +133,24 @@ class ConnectionMonitor:
                     time.sleep(poll_interval)
 
             if connected_state:
+                # A stop request can arrive while a poll was in flight; check
+                # before every side effect, not just between polls.
+                if stop_event.is_set():
+                    log.info(f"[ConnectionMonitor] {monitor_key} stopped before DHCP")
+                    return
                 # Start DHCP after connection
                 try:
                     log.info(
                         f"[ConnectionMonitor] Starting DHCP for {iface} in {namespace_display} after connection"
                     )
-                    restart_dhcp_with_timeout(iface, namespace, timeout=15)
+                    restart_dhcp_with_timeout(
+                        iface, namespace, timeout=15, default_route=cfg.default_route
+                    )
+                    if stop_event.is_set():
+                        log.info(
+                            f"[ConnectionMonitor] {monitor_key} stopped after DHCP; skipping route and app"
+                        )
+                        return
 
                     # Set default route if requested
                     if cfg.default_route:
@@ -143,8 +159,8 @@ class ConnectionMonitor:
                         )
                         set_default_route(iface, namespace)
 
-                    # Start app if configured
-                    if cfg.autostart_app:
+                    # Start app if configured (and still wanted)
+                    if cfg.autostart_app and not stop_event.is_set():
                         log.info(
                             f"[ConnectionMonitor] Starting autostart app '{cfg.autostart_app}' "
                             f"for {iface} in {namespace_display}"
@@ -169,13 +185,26 @@ class ConnectionMonitor:
                     f"in {namespace_display} (elapsed={elapsed}s, checks={poll_count}). "
                     f"Configuration remains active for future connection."
                 )
+                if stop_event.is_set():
+                    return
+                # Leave dhcpcd waiting in the background: it follows the link
+                # and leases when a late association completes (a Wi-Fi 7
+                # radio scanning 2.4/5/6 GHz can take longer than `timeout`).
+                # The app still waits for a confirmed connection.
+                try:
+                    restart_dhcp_with_timeout(
+                        iface, namespace, timeout=1, default_route=cfg.default_route
+                    )
+                except Exception as e:
+                    log.warning(
+                        f"[ConnectionMonitor] Could not leave DHCP running for {iface}: {e}"
+                    )
 
         # Create and start monitor thread
         log.info(
             f"[ConnectionMonitor] Creating monitor thread for {iface} in {namespace_display} "
             f"(monitor_key={monitor_key})"
         )
-        stop_event = threading.Event()
         monitor_thread = threading.Thread(
             target=monitor_loop,
             name=f"ConnectionMonitor-{monitor_key}",

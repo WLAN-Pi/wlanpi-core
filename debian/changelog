@@ -1,3 +1,19 @@
+wlanpi-core (2.3.16-1) unstable; urgency=medium
+
+  * Replace dhclient, which Trixie does not ship, with dhcpcd (#261). Each
+    dhcpcd runs in a private mount namespace with its own state under
+    /run/wlanpi-core/dhcpcd/<netns>/<iface>, so the same interface name in
+    two namespaces gets two leases, and is released and stopped by PID.
+    No IPv4 link-local fallback; the hostname and timesyncd hooks are off,
+    and in root so is the resolv.conf hook.
+  * Never install a gatewayless default route: default_route uses the DHCP
+    router, and adds nothing when there is none (#279).
+  * Starting a connection monitor stops the previous one for the same
+    interface, a superseded monitor no longer deregisters its successor,
+    and a stop request is honoured before DHCP, route and app start.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:58:51 -0500
+
 wlanpi-core (2.3.15-1) unstable; urgency=medium
 
   * Write network profiles and current.txt atomically (temp file, fsync,
