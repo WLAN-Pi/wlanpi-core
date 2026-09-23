@@ -24,9 +24,14 @@ _ROOT_DIR_NAME = "@root"
 ROOT_CTRL_DIR = "/run/wpa_supplicant"
 
 
+# Short on purpose: the control socket <this>/<netns>/ctrl/<iface> must fit
+# in a unix socket path (107 bytes) for a 63-char netns and 15-char iface.
+_RUNTIME_SUBDIR = "wpa"
+
+
 def runtime_dir(namespace: str | None) -> Path:
     """Return Core's runtime directory for supplicants in `namespace`."""
-    return Path(RUN_DIR) / "wpa_supplicant" / (namespace or _ROOT_DIR_NAME)
+    return Path(RUN_DIR) / _RUNTIME_SUBDIR / (namespace or _ROOT_DIR_NAME)
 
 
 def pidfile_path(iface: str, namespace: str | None) -> Path:
@@ -58,11 +63,13 @@ def ctrl_dir(namespace: str | None) -> str:
 def wpa_cli_command(iface: str, namespace: str | None, *args: str) -> list[str]:
     """Build a wpa_cli command for (namespace, iface).
 
-    Uses Core's control directory when Core's supplicant owns the interface,
-    and the default directory otherwise (a supplicant started by another tool).
+    Uses Core's control directory when Core started the supplicant for the
+    interface (its pidfile exists), and the default directory otherwise (a
+    supplicant started by another tool). Deciding by the pidfile, not the
+    socket, avoids falling back while Core's supplicant is still starting.
     """
     ctrl = ctrl_dir(namespace)
-    if namespace is not None and not (Path(ctrl) / iface).exists():
+    if namespace is not None and not pidfile_path(iface, namespace).exists():
         ctrl = ROOT_CTRL_DIR
     return ["wpa_cli", "-p", ctrl, "-i", iface, *args]
 
@@ -242,7 +249,7 @@ def kill_all_supplicants() -> None:
     Best effort; does not raise.
     """
     try:
-        for path in sorted((Path(RUN_DIR) / "wpa_supplicant").glob("*/*.pid")):
+        for path in sorted((Path(RUN_DIR) / _RUNTIME_SUBDIR).glob("*/*.pid")):
             _stop_pidfile(path)
         for pid in _proc_pids():
             argv = _read_cmdline(pid)
