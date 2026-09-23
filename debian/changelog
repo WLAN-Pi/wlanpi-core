@@ -9,9 +9,9 @@ wlanpi-core (2.3.26-1) unstable; urgency=medium
     and autostart app for every entry Core set up, even when the radio
     itself is left to another tool that started using it, or the adapter
     is gone. Entries Core never set up are not touched.
-  * A stale app or dhcpcd pidfile (after a reboot or service restart) no
-    longer signals whatever process now holds that PID: Core checks the
-    command line first.
+  * A stale root-namespace app pidfile or dhcpcd pidfile (after a reboot
+    or service restart) no longer signals whatever process now holds that
+    PID: Core checks the command line first.
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 15:10:49 -0400
 

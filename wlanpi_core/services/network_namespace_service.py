@@ -532,7 +532,10 @@ class NetworkNamespaceService:
             self._safe_unlink(config_file)
 
         wpa_supplicant.stop_supplicant(iface, namespace)
-        self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
+        # /run/wpa_supplicant is also the default control directory for other
+        # supplicants: keep the socket of one that has since taken the netdev.
+        if not usage.foreign_users(iface, namespace):
+            self._safe_unlink(Path(self._ctrl_dir(namespace)) / iface)
         stop_dhcp(iface, namespace)
 
     def revert_to_root(
