@@ -25,7 +25,7 @@ from wlanpi_core.wlan.scan import iter_adapters
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
-# shortcut: fixed subscriber budget. 1024 blocks is ~0.37s at the ~2800
+# ponytail: fixed subscriber budget. 1024 blocks is ~0.37s at the ~2800
 # packets/s measured on a busy 5 GHz channel (ch40, ~2 MB/s) and ~2.3s at
 # ~450 packets/s on a quieter 2.4 GHz one (ch6). Tolerates bursts and
 # transient stalls before evicting; make it adaptive (e.g. per-consumer
