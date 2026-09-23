@@ -16,6 +16,7 @@ from wlanpi_core.models.network_config_errors import (
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.config_status import NetworkConfigStatus
 from wlanpi_core.schemas.network.network import (
+    ActivationResponse,
     NetConfig,
     NetConfigPublic,
     NetConfigUpdate,
@@ -207,24 +208,41 @@ async def delete_config(id: str, force: bool = False) -> Any:
 
 @router.post(
     "/activate/{id}",
-    response_model=dict[str, str],
-    response_model_exclude_none=True,
+    response_model=ActivationResponse,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def activate_config(id: str, override_active: bool = False) -> Any:
-    """Activate a network configuration by ID."""
+    """
+    Activate a network configuration by ID.
+
+    The response lists one outcome per entry (`connected`, `provisioned`, or
+    `error` with a `detail`). If an entry fails configuration validation the
+    request returns 422, and if an adapter fails it returns 500; in both
+    cases `detail` holds the message and the outcomes, and the default
+    configuration is active again. 409 means another change is running or
+    the configuration is already active.
+    """
     try:
         require_wlan_management_enabled()
-        success = await asyncio.to_thread(
-            network_config.activate_config, id, override_active
+        success, outcomes = await asyncio.to_thread(
+            network_config.activate_config_report, id, override_active
         )
         if not success:
             log.error(f"Failed to activate configuration: {id}")
+            invalid = any(outcome.invalid for outcome in outcomes)
             raise HTTPException(
-                status_code=500, detail="Failed to activate configuration"
+                status_code=422 if invalid else 500,
+                detail={
+                    "message": "Configuration is invalid"
+                    if invalid
+                    else "Failed to activate configuration",
+                    "outcomes": [outcome.model_dump() for outcome in outcomes],
+                },
             )
         log.info(f"Configuration activated: {id}")
-        return {"id": id, "message": "Configuration activated successfully"}
+        return ActivationResponse(
+            id=id, message="Configuration activated successfully", outcomes=outcomes
+        )
     except ConfigBusyError as cbe:
         raise HTTPException(status_code=409, detail=cbe.message) from None
     except ConfigActiveError as cae:
@@ -238,6 +256,8 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
         raise HTTPException(status_code=404, detail=str(e)) from None
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
+    except HTTPException:
+        raise
     except Exception as ex:
         log.error(ex)
         raise HTTPException(status_code=500, detail="Internal Server Error") from None

@@ -429,6 +429,26 @@ class NetworkEvent(BaseModel):
     time: str = Field(json_schema_extra={"example": "2024-09-01 03:52:31.232828"})
 
 
+class AdapterOutcome(BaseModel):
+    """What happened to one configuration entry during activation."""
+
+    interface: str
+    namespace: str | None = None
+    status: str = Field(description="connected, provisioned or error")
+    detail: str = ""
+    invalid: bool = Field(
+        default=False, description="The entry failed configuration validation"
+    )
+
+
+class ActivationResponse(BaseModel):
+    """Result of activating a configuration, with one outcome per entry."""
+
+    id: str
+    message: str
+    outcomes: list[AdapterOutcome] = []
+
+
 class NetworkSetupLog(BaseModel):
     """Log of events during network setup."""
 

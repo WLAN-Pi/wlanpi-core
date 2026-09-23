@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock
 
 from wlanpi_core.api.api_v1.endpoints import network_config_api
+from wlanpi_core.schemas.network.network import ActivationResponse, AdapterOutcome
 from wlanpi_core.utils import network_config
 
 
@@ -32,21 +33,25 @@ def test_get_configs_uses_to_thread(mocker):
 
 
 def test_activate_config_uses_to_thread(mocker):
+    outcome = AdapterOutcome(interface="wlan0", status="provisioned")
     to_thread = mocker.patch.object(
         network_config_api.asyncio,
         "to_thread",
-        new=AsyncMock(return_value=True),
+        new=AsyncMock(return_value=(True, [outcome])),
     )
 
     result = asyncio.run(
         network_config_api.activate_config("lab_cfg", override_active=True)
     )
 
-    to_thread.assert_awaited_once_with(network_config.activate_config, "lab_cfg", True)
-    assert result == {
-        "id": "lab_cfg",
-        "message": "Configuration activated successfully",
-    }
+    to_thread.assert_awaited_once_with(
+        network_config.activate_config_report, "lab_cfg", True
+    )
+    assert result == ActivationResponse(
+        id="lab_cfg",
+        message="Configuration activated successfully",
+        outcomes=[outcome],
+    )
 
 
 def test_deactivate_config_uses_to_thread(mocker):

@@ -24,6 +24,7 @@ from wlanpi_core.models.network_config_errors import (
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import (
+    AdapterOutcome,
     NamespaceConfig,
     NetConfig,
     NetConfigUpdate,
@@ -527,11 +528,20 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
 
     Raises ConfigBusyError if another change holds network_change_lock().
     """
+    return activate_config_report(cfg_id, override_active)[0]
+
+
+def activate_config_report(
+    cfg_id: str, override_active: bool = False
+) -> tuple[bool, list[AdapterOutcome]]:
+    """Activate cfg_id as activate_config does, and report each entry's outcome."""
     with network_change_lock():
         return _activate_config_locked(cfg_id, override_active)
 
 
-def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
+def _activate_config_locked(
+    cfg_id: str, override_active: bool
+) -> tuple[bool, list[AdapterOutcome]]:
     cfg = get_config(cfg_id)
     try:
         active_cfg = get_current_config()
@@ -568,17 +578,17 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
         # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
         # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
         acceptable_statuses = {"connected", "provisioned"}
-        if all(status in acceptable_statuses for status in outcomes):
+        if all(outcome.status in acceptable_statuses for outcome in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
             _atomic_write(ccf, cfg_id)
-            return True
+            return True, outcomes
         # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
         log.error(
-            f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs"
+            f"Activation outcomes unacceptable {[o.status for o in outcomes]}. Rolling back only successfully activated configs"
         )
         _rollback_activated_configs(activated_configs)
         _fall_back_to_default(cfg_id)
-        return False
+        return False, outcomes
 
     except Exception as ex:
         # Path 3: hard failure mid-loop — same rollback as path 2, then propagate
@@ -594,13 +604,13 @@ def _activate_config_locked(cfg_id: str, override_active: bool) -> bool:
 
 def _apply_entries(
     cfg: NetConfig, activated: list[NamespaceConfig | RootConfig]
-) -> list[str]:
-    """Activate every entry of cfg, namespaces first; return per-entry statuses.
+) -> list[AdapterOutcome]:
+    """Activate every entry of cfg, namespaces first; return per-entry outcomes.
 
     Entries that come up connected or provisioned are appended to `activated`
     as they succeed, so a caller can roll them back after an exception.
     """
-    outcomes: list[str] = []
+    outcomes: list[AdapterOutcome] = []
     entries: list[NamespaceConfig | RootConfig] = [
         *(cfg.namespaces or []),
         *(cfg.roots or []),
@@ -610,7 +620,19 @@ def _apply_entries(
         log.info(f"Activating {entry.interface} in {where}")
         result = ns.activate_config(entry)
         status = getattr(result, "status", "error") if result is not None else "error"
-        outcomes.append(status)
+        detail = result.response.selectErr if result is not None else ""
+        outcomes.append(
+            AdapterOutcome(
+                interface=entry.interface,
+                namespace=entry.namespace
+                if isinstance(entry, NamespaceConfig)
+                else None,
+                status=status,
+                detail=detail,
+                invalid=status == "error"
+                and detail.startswith("Config validation failed"),
+            )
+        )
         if status in {"connected", "provisioned"}:
             activated.append(entry)
     return outcomes
@@ -645,7 +667,7 @@ def _apply_default() -> None:
     """Best effort: put the radios into the default configuration."""
     try:
         outcomes = _apply_entries(get_config("default"), [])
-        log.info(f"Applied default configuration: {outcomes}")
+        log.info(f"Applied default configuration: {[o.status for o in outcomes]}")
     except Exception as e:
         log.warning(f"Could not apply default configuration: {e}")
 

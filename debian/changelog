@@ -1,3 +1,13 @@
+wlanpi-core (2.3.20-1) unstable; urgency=medium
+
+  * Report one outcome per configuration entry (connected, provisioned or
+    error, with a detail) in the activate response (#276).
+  * Return 422 instead of 500 when an entry fails configuration
+    validation, and include the per-entry outcomes in the error detail of
+    both the 422 and the 500 an adapter fault still returns.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:13:52 -0500
+
 wlanpi-core (2.3.19-1) unstable; urgency=medium
 
   * Stop returning Wi-Fi secrets from the network config API (#272).

@@ -432,10 +432,12 @@ def handle_network_config_activate_stale_phy_mismatch(
             params={"override_active": True},
         )
     _expect_status(response, scenario.expected_http)
-    assert response.json() == {
-        "id": "stale_phy_cfg",
-        "message": "Configuration activated successfully",
-    }
+    body = response.json()
+    assert body["id"] == "stale_phy_cfg"
+    assert body["message"] == "Configuration activated successfully"
+    assert [(o["interface"], o["status"]) for o in body["outcomes"]] == [
+        ("wlan1", "connected")
+    ]
     assert inventory.adds == [("phy2", "wlan1", None)]
     assert inventory.live() == {
         "wlan0": ("phy0", None, "managed"),
@@ -455,10 +457,11 @@ def handle_network_config_activate_default_single_radio(
             params={"override_active": True},
         )
     _expect_status(response, scenario.expected_http)
-    assert response.json() == {
-        "id": "default",
-        "message": "Configuration activated successfully",
-    }
+    body = response.json()
+    assert body["message"] == "Configuration activated successfully"
+    assert [(o["interface"], o["status"]) for o in body["outcomes"]] == [
+        ("wlan0", "connected")
+    ]
     assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
@@ -615,6 +618,82 @@ def handle_network_config_secrets_not_returned(
             == "second-passphrase"
         )
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def _root_entry(interface, phy, security=None):
+    return {
+        "mode": "managed",
+        "iface_display_name": interface,
+        "phy": phy,
+        "interface": interface,
+        "security": security,
+        "mlo": False,
+        "default_route": False,
+        "autostart_app": None,
+    }
+
+
+def handle_network_config_activate_invalid_entry_422(
+    client, auth_headers, scenario, netcfg_env
+):
+    # WPA2 without a psk passes the schema but fails activation validation.
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "nopsk_cfg",
+        {
+            "id": "nopsk_cfg",
+            "namespaces": [],
+            "roots": [
+                _root_entry("wlan0", "phy0", {"ssid": "Net", "security": "WPA2-PSK"})
+            ],
+        },
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        response = client.post(
+            "/api/v1/network/config/activate/nopsk_cfg",
+            params={"override_active": True},
+        )
+    _expect_status(response, scenario.expected_http)
+    detail = response.json()["detail"]
+    assert detail["message"] == "Configuration is invalid"
+    [outcome] = detail["outcomes"]
+    assert outcome["interface"] == "wlan0" and outcome["invalid"] is True
+    assert "psk is required" in outcome["detail"]
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_network_config_activate_fault_500_outcomes(
+    client, auth_headers, scenario, netcfg_env
+):
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "fault_cfg",
+        {
+            "id": "fault_cfg",
+            "namespaces": [{**_root_entry("wlan1", "phy2"), "namespace": "bad_ns"}],
+            "roots": [_root_entry("wlan2", "phy1")],
+        },
+    )
+    faults = {
+        (None, ("iw", "phy#2", "set", "netns", "name", "bad_ns")): (
+            "command failed: Operation not supported (-95)\n"
+        )
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults) as inventory:
+        response = client.post(
+            "/api/v1/network/config/activate/fault_cfg",
+            params={"override_active": True},
+        )
+    _expect_status(response, scenario.expected_http)
+    detail = response.json()["detail"]
+    assert detail["message"] == "Failed to activate configuration"
+    statuses = {
+        (o["namespace"], o["interface"]): o["status"] for o in detail["outcomes"]
+    }
+    assert statuses == {("bad_ns", "wlan1"): "error", (None, "wlan2"): "connected"}
+    assert not any(o["invalid"] for o in detail["outcomes"])
+    assert inventory.live()["wlan1"] == ("phy2", None, "managed")
+    assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
@@ -836,6 +915,8 @@ HANDLERS.update(
         "network_config_reserved_ids_400": handle_network_config_reserved_ids_400,
         "network_config_create_invalid_psk_422": handle_network_config_create_invalid_psk_422,
         "network_config_secrets_not_returned": handle_network_config_secrets_not_returned,
+        "network_config_activate_invalid_entry_422": handle_network_config_activate_invalid_entry_422,
+        "network_config_activate_fault_500_outcomes": handle_network_config_activate_fault_500_outcomes,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,
