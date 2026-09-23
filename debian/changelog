@@ -14,8 +14,8 @@ wlanpi-core (2.3.23-1) unstable; urgency=medium
 wlanpi-core (2.3.22-1) unstable; urgency=medium
 
   * Track the interfaces Core creates (by name and cfg80211 wdev id, which
-    survives netns moves, on tmpfs) and make the default configuration touch only those and radios
-    in namespaces Core created. Interfaces from drivers or other tools, such
+    survives netns moves, on tmpfs) and make the default configuration
+    touch only those and radios in namespaces Core created. Interfaces from drivers or other tools, such
     as wlanpi-profiler's hostapd, are left alone and reported as skipped;
     after a reboot the default is a no-op (#202).
   * Deactivate restores its own root entries (the interface name, managed)
