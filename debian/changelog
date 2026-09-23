@@ -1,3 +1,28 @@
+wlanpi-core (2.3.25-1) unstable; urgency=medium
+
+  * Network configuration activation validates every entry before
+    touching any radio. An invalid entry now returns 422 with nothing
+    changed; previously valid siblings listed before it were deleted and
+    recreated, then rolled back. A stored current profile that fails
+    validation is torn down and current.txt reset to default.
+  * Declare dhcpcd-base as a dependency; the activation path has run
+    dhcpcd since 2.3.23.
+  * Network configuration: a radio is no longer refused as in_use
+    because lldpd holds a packet socket on a second managed netdev of
+    the same radio, or because Core's own streaming capture runs on its
+    wlanpiN monitor. Only a capture on another tool's monitor netdev
+    counts.
+  * Deactivate stops Core's wpa_supplicant, dhcpcd, connection monitor
+    and autostart app for every entry Core set up, even when the radio
+    itself is left to another tool that started using it, or the adapter
+    is gone. Entries Core never set up are not touched.
+  * A stale app or dhcpcd pidfile (after a reboot or service restart) no
+    longer signals whatever process now holds that PID: Core checks the
+    command line first. Stopping a namespaced app no longer kills other
+    processes whose command line merely contains the app's name.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 15:10:49 -0400
+
 wlanpi-core (2.3.24-1) unstable; urgency=medium
 
   * lhapitest: rewrite in Python so localhost HMAC requests sign

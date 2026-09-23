@@ -43,6 +43,14 @@ def test_foreign_supplicant_is_reported(fake_proc):
     assert usage.foreign_users("wlan1", None) == []
 
 
+def test_in_netns_matches_the_exact_namespace(fake_proc):
+    fake_proc(50, ["dhcpcd: wlan1 [ip4]"], netns="ns_a")
+    assert usage.in_netns(50, "ns_a") and not usage.in_netns(50, None)
+    assert not usage.in_netns(1, "ns_a") and usage.in_netns(1, None)
+    assert not usage.in_netns(99, None)  # gone
+    assert not usage.in_netns(50, "ns_missing")
+
+
 def test_cores_own_supplicant_is_not_foreign(fake_proc):
     fake_proc(
         41,

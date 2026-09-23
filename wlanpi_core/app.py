@@ -31,6 +31,7 @@ from wlanpi_core.constants import (
     CURRENT_CONFIG_FILE,
     HOME_DIR,
     MODE_FILE,
+    MONITOR_IFACE_PREFIX,
     SECRETS_DIR,
     SUPPORTED_MODELS,
 )
@@ -401,7 +402,7 @@ class InitializationManager:
                 if CREATE_MONITOR_PAIRS_DEFAULT:
                     try:
                         system_initialized = await self._initialize_system_manager(
-                            "wlanpi", exclusions=[]
+                            MONITOR_IFACE_PREFIX, exclusions=[]
                         )
                         if not system_initialized:
                             self.log.warning(
@@ -433,7 +434,7 @@ class InitializationManager:
                     if CREATE_MONITOR_PAIRS_DEFAULT:
                         try:
                             system_initialized = await self._initialize_system_manager(
-                                "wlanpi", exclusions=[]
+                                MONITOR_IFACE_PREFIX, exclusions=[]
                             )
                             if not system_initialized:
                                 self.log.warning(
@@ -466,7 +467,7 @@ class InitializationManager:
                         try:
                             interfaces_in_root(current_config)
                             system_initialized = await self._initialize_system_manager(
-                                "wlanpi", exclusions=[]
+                                MONITOR_IFACE_PREFIX, exclusions=[]
                             )
                             if not system_initialized:
                                 self.log.warning(

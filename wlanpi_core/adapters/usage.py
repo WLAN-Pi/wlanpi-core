@@ -59,6 +59,17 @@ def _netns_inode(namespace: str | None) -> int | None:
         return None
 
 
+def in_netns(pid: int, namespace: str | None) -> bool:
+    """Return whether `pid` runs in network namespace `namespace` (None: root)."""
+    want = _netns_inode(namespace)
+    try:
+        return (
+            want is not None and os.stat(PROC / str(pid) / "ns" / "net").st_ino == want
+        )
+    except OSError:
+        return False
+
+
 def _cmdline(pid: str) -> list[str]:
     try:
         raw = (PROC / pid / "cmdline").read_bytes()

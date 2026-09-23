@@ -109,3 +109,23 @@ def test_reused_namespace_name_starts_with_empty_dns(netcfg_env):
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
         netcfg_env["service"].activate_config(cfg)
     assert resolv.read_text() == ""
+
+
+def test_remove_network_keeps_a_foreign_supplicants_socket(tmp_path):
+    # #304 review: another supplicant took over the netdev Core used.
+    ctrl = tmp_path / "ctrl"
+    ctrl.mkdir()
+    (ctrl / "wlan1").write_text("")
+    service = NetworkNamespaceService(
+        config_dir=str(tmp_path), dhcp_dir=str(tmp_path), ctrl_interface=str(ctrl)
+    )
+    with (
+        patch.object(supplicant, "stop_supplicant", return_value=True),
+        patch("wlanpi_core.services.network_namespace_service.stop_dhcp"),
+        patch(
+            "wlanpi_core.adapters.usage.foreign_users",
+            return_value=["wpa_supplicant (pid 42)"],
+        ),
+    ):
+        service.remove_network("wlan1", None)
+    assert (ctrl / "wlan1").exists()
