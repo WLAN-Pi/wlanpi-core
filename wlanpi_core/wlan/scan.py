@@ -84,7 +84,12 @@ def _adapter_response(adapter: dict[str, Any]) -> dict[str, Any]:
 def find_managed_sibling(
     adapter: dict[str, Any], adapters: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    """Return the managed interface on the same PHY and namespace (wlan0 for wlanpi0)."""
+    """Return the managed interface on the same PHY and namespace (wlan0 for wlanpi0).
+
+    None when the monitor's PHY is unknown: never guess another radio.
+    """
+    if adapter.get("phy") is None:
+        return None
     for candidate in adapters:
         if (
             candidate["namespace"] == adapter["namespace"]

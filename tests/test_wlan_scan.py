@@ -91,8 +91,8 @@ def test_wlan_scan_returns_needs_selection_without_scanning():
 def test_wlan_scan_runs_scan_for_single_monitor():
     status = {
         "root": {
-            "wlanpi0": {"type": "monitor"},
-            "wlan0": {"type": "managed"},
+            "wlanpi0": {"type": "monitor", "wiphy": "0"},
+            "wlan0": {"type": "managed", "wiphy": "0"},
         }
     }
     networks = [
@@ -138,6 +138,7 @@ def test_resolve_scan_target_monitor_delegates_to_managed():
             "namespace": None,
             "namespace_display": "root",
             "mode": "monitor",
+            "phy": "0",
             "label": "wlanpi0",
         },
         {
@@ -145,11 +146,17 @@ def test_resolve_scan_target_monitor_delegates_to_managed():
             "namespace": None,
             "namespace_display": "root",
             "mode": "managed",
+            "phy": "0",
             "label": "wlan0",
         },
     ]
     target = resolve_scan_target(adapters[0], adapters)
     assert target["iface"] == "wlan0"
+
+    # PHY unknown: the monitor scans itself rather than guessing a radio.
+    for adapter in adapters:
+        adapter["phy"] = None
+    assert resolve_scan_target(adapters[0], adapters)["iface"] == "wlanpi0"
 
 
 # Real `iw dev` from the M4+ in #313: two MediaTek radios and an Intel BE200.
