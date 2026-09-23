@@ -161,6 +161,9 @@ def test_default_preflight_skips_entries_core_does_not_own(client, netcfg_env, m
         },
     )
     mocker.patch.object(netcfg_env["service"], "is_core_managed", return_value=False)
+    # Tearing down the current (default) profile asks may_undo, which lists
+    # live interfaces with the real `iw`; absent on CI runners.
+    mocker.patch.object(netcfg_env["service"], "may_undo", return_value=False)
     activate = mocker.patch.object(netcfg_env["service"], "activate_config")
 
     response = client.post(
