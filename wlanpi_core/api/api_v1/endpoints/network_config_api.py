@@ -218,7 +218,12 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
 
     The response lists one outcome per entry (`connected`, `provisioned`, or
     `error` with a `detail`). Activating `default` only touches interfaces
-    Core created; the others are reported `skipped` and left alone. If an entry fails configuration validation the
+    Core created; the others are reported `skipped` and left alone. A radio
+    another tool is using (a mode Core never sets such as AP, a
+    wpa_supplicant or hostapd Core did not start, or another interface on
+    the same radio that is up) is never taken: its entry is reported
+    `in_use` with the reason, and the rest of the configuration still runs.
+    To use that radio, stop the other tool first. If an entry fails configuration validation the
     request returns 422, and if an adapter fails it returns 500; in both
     cases `detail` holds the message and the outcomes, and the default
     configuration is active again. If an adapter command fails outright

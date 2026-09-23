@@ -437,7 +437,8 @@ class AdapterOutcome(BaseModel):
     status: str = Field(
         description=(
             "connected, provisioned or error; skipped for a default entry whose "
-            "radio Core did not create"
+            "radio Core did not create; in_use for a radio another tool is using "
+            "(left alone, the rest of the configuration still runs)"
         )
     )
     detail: str = ""

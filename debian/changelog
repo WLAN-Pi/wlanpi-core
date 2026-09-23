@@ -8,6 +8,13 @@ wlanpi-core (2.3.22-1) unstable; urgency=medium
   * Deactivate restores its own root entries (the interface name, managed)
     instead of applying the default afterwards, and a failed activation only
     records default (#288, #271).
+  * Never take a radio another tool is using: one in a mode Core never sets
+    (e.g. AP), with a wpa_supplicant or hostapd Core did not start, or with
+    another interface on the same radio up (wlanpi-profiler's monitor,
+    kismet). Its entry is reported in_use with the reason and the rest of
+    the configuration still runs; teardown leaves it alone too.
+  * Interfaces a deactivate restores are handed back: Core only owns what
+    the active profile uses, so a later default never resets them.
   * A revert step that fails is reported instead of leaving a radio without
     an interface, and a failure after prepare (e.g. wpa_supplicant not
     starting) puts that entry back.

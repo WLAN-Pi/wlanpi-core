@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from wlanpi_core.adapters import discovery, interface, phy
+from wlanpi_core.adapters import discovery, interface, phy, usage
 from wlanpi_core.connection.monitor import (
     ConnectionMonitor,
     stop_all_connection_monitors,
@@ -310,6 +310,19 @@ class NetworkNamespaceService:
                 input=cfg.__str__(),
             )
 
+        # Never take a radio another tool is using; the rest of the profile
+        # still runs and the outcome says why this entry did not.
+        reason = self.in_use_reason(live)
+        if reason is not None:
+            self.log.warning(f"Not activating {iface}: {reason}")
+            log = NetworkSetupLog(selectErr=reason, eventLog=self.event_log)
+            return NetworkSetupStatus(
+                status="in_use",
+                response=log,
+                connectedNet=None,
+                input=cfg.__str__(),
+            )
+
         namespace_display = namespace if namespace else "root"
         self.log.info("Adding network on %s in namespace %s", iface, namespace_display)
 
@@ -543,6 +556,8 @@ class NetworkNamespaceService:
             # profile's name and mode do not outlive it (#288).
             if live.name != iface or live.type != "managed":
                 self._recreate_in_root(live, iface)
+            else:
+                self._release(live.name, None)
             return
 
         self._recreate_in_root(live, iface)
@@ -557,8 +572,10 @@ class NetworkNamespaceService:
 
         Each step is checked: if one fails, the original netdev is restored
         and the error propagates, so a revert that did not happen is never
-        reported as done and its namespace is not deleted.
+        reported as done and its namespace is not deleted. The result is
+        handed back: Core no longer owns it.
         """
+        self._release(live.name, live.netns)
         # A failed delete changes nothing; let it propagate as is.
         interface.delete_interface(live.name, namespace=live.netns)
         moved_to = live.netns
@@ -574,7 +591,6 @@ class NetworkNamespaceService:
             self.log.error(f"Could not return {live.name} on {live.phy} to root: {e}")
             self._restore_live(live, name, moved_to, None)
             raise
-        self._claim(name, None)
 
     def _ctrl_dir(self, namespace: str | None) -> str:
         """Return the control socket directory for a supplicant in `namespace`."""
@@ -603,6 +619,9 @@ class NetworkNamespaceService:
     # (hostapd, wlanpi-profiler, a user's mon0) are left alone. Keyed by
     # (netns, name) and checked against the ifindex, which a netns move keeps
     # and a recreate by anyone else changes. On tmpfs, so a reboot resets it.
+    # A netdev is owned only while a profile uses it: reverting an entry hands
+    # it back, since another tool may take it over without recreating it
+    # (wlanpi-profiler reuses the netdev, keeping its ifindex).
 
     def _owned_path(self, name: str, netns: str | None) -> Path:
         return Path(RUN_DIR) / "owned" / (netns or "@root") / name
@@ -616,12 +635,46 @@ class NetworkNamespaceService:
                 path.write_text(str(live.ifindex))
                 return
 
+    def _release(self, name: str, netns: str | None) -> None:
+        """Hand a netdev back: Core no longer owns it."""
+        self._owned_path(name, netns).unlink(missing_ok=True)
+
     def _is_owned(self, live: discovery.LiveInterface) -> bool:
         try:
             recorded = self._owned_path(live.name, live.netns).read_text().strip()
         except OSError:
             return False
         return live.ifindex is not None and recorded == str(live.ifindex)
+
+    def in_use_reason(self, live: discovery.LiveInterface) -> str | None:
+        """Return why another tool is using `live`'s radio, or None if it is free.
+
+        In use means: a mode Core never sets (e.g. AP), a wpa_supplicant or
+        hostapd Core did not start bound to it, or another netdev on the same
+        radio that is up and was not created by Core.
+        """
+        if live.type and live.type not in usage.CORE_MODES:
+            return f"{live.name} is in {live.type} mode, set by another tool"
+        users = usage.foreign_users(live.name, live.netns)
+        if users:
+            return f"{live.name} is used by {', '.join(users)}"
+        siblings = [
+            other
+            for other in discovery.list_interfaces_all_namespaces()
+            if other.phy_index == live.phy_index
+            and other.netns == live.netns
+            and other.name != live.name
+            and not self._is_owned(other)
+        ]
+        if siblings:
+            up = usage.up_links(live.netns)
+            for other in siblings:
+                if other.name in up:
+                    return (
+                        f"{other.name} on the same radio ({live.phy}) is up; "
+                        "another tool is using it"
+                    )
+        return None
 
     def is_core_managed(self, cfg: NamespaceConfig | RootConfig) -> bool:
         """Return whether automatic changes may touch cfg's radio.
@@ -635,6 +688,28 @@ class NetworkNamespaceService:
         if live.netns is not None:
             return live.netns in self.core_namespaces()
         return self._is_owned(live)
+
+    def may_undo(self, cfg: NamespaceConfig | RootConfig) -> bool:
+        """Return whether tearing a profile down may revert cfg's radio.
+
+        Only what Core set up: a radio in a namespace Core created, or a root
+        netdev Core created. An entry left alone as in_use was never Core's.
+        A Core netdev that another tool has since started using is handed
+        back instead of reverted, so that tool keeps it.
+        """
+        live = self._find_live(cfg)
+        if live is None:
+            return True
+        if live.netns is not None:
+            return live.netns in self.core_namespaces()
+        if not self._is_owned(live):
+            return False
+        reason = self.in_use_reason(live)
+        if reason is not None:
+            self.log.warning(f"Leaving {live.name} as it is: {reason}")
+            self._release(live.name, None)
+            return False
+        return True
 
     def core_namespaces(self) -> list[str]:
         """Return the existing namespaces that Core created, dropping stale markers."""
@@ -696,10 +771,9 @@ class NetworkNamespaceService:
             except RunCommandError as e:
                 self.log.warning(f"Could not move {phy_name} from {namespace}: {e}")
                 continue
-            # Core's netdevs travel with the phy and keep their ifindex.
+            # Core's netdevs travel home with the phy and are handed back.
             for live in travelling:
-                self._owned_path(live.name, namespace).unlink(missing_ok=True)
-                self._claim(live.name, None)
+                self._release(live.name, namespace)
 
     def _delete_namespace_if_empty(self, namespace: str) -> None:
         """Delete a Core namespace once no phys or non-loopback links remain."""
@@ -838,7 +912,6 @@ class NetworkNamespaceService:
                 interface_type=live.type or "managed",
                 namespace=live.netns,
             )
-            self._claim(live.name, live.netns)
         except RunCommandError as e:
             self.log.error(f"Could not restore {live.name} on {live.phy}: {e}")
         if created_namespace is not None:

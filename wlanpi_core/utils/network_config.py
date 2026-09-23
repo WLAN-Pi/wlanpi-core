@@ -619,8 +619,9 @@ def _activate_config_locked(
 
         # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
         # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
-        # "skipped" is a default entry left alone because Core did not create it.
-        acceptable_statuses = {"connected", "provisioned", "skipped"}
+        # "skipped" is a default entry left alone because Core did not create it;
+        # "in_use" is a radio another tool is using, left alone.
+        acceptable_statuses = {"connected", "provisioned", "skipped", "in_use"}
         if all(outcome.status in acceptable_statuses for outcome in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
             _write_current(cfg_id)
@@ -736,16 +737,14 @@ def revert_all() -> None:
 def _entries_to_undo(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
     """Return cfg's entries that tearing it down may touch.
 
-    Every entry of a profile the user activated; for the default, only
-    entries whose radio Core created, so other tools' interfaces survive.
+    Only entries whose radio Core set up (see NetworkNamespaceService.may_undo),
+    so an entry left alone as in_use, and other tools' interfaces, survive.
     """
     entries: list[NamespaceConfig | RootConfig] = [
         *(cfg.namespaces or []),
         *(cfg.roots or []),
     ]
-    if cfg.id == "default":
-        entries = [entry for entry in entries if ns.is_core_managed(entry)]
-    return entries
+    return [entry for entry in entries if ns.may_undo(entry)]
 
 
 def _fall_back_to_default(failed_cfg_id: str) -> None:
