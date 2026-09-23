@@ -1,3 +1,14 @@
+wlanpi-core (2.3.24-1) unstable; urgency=medium
+
+  * lhapitest: rewrite in Python so localhost HMAC requests sign
+    correctly on every device; the bash version dropped NUL bytes from
+    the shared secret. Adds --http for the dev server and -v to show the
+    canonical string.
+  * DELETE /auth/token now rejects a device_id that does not match the
+    token being revoked (403) instead of ignoring it.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 14:19:09 -0400
+
 wlanpi-core (2.3.23-1) unstable; urgency=medium
 
   * Report namespaces Core has left alone: GET /network/config/leftovers,
