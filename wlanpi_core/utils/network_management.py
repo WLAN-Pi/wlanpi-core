@@ -7,6 +7,7 @@ in namespaces.
 
 import logging
 import os
+import shutil
 import signal
 import time
 from pathlib import Path
@@ -47,40 +48,62 @@ def _read_cmdline(pid: int) -> list[str]:
     return [arg.decode(errors="replace") for arg in raw.split(b"\0") if arg]
 
 
-def _stop_dhcpcd_dir(state: Path) -> None:
-    """Release and stop the dhcpcd whose private state is `state`."""
+def _stop_dhcpcd_dir(state: Path) -> bool:
+    """Release and stop the dhcpcd whose private state is `state`.
+
+    Returns:
+        False if that dhcpcd is still running afterwards
+    """
     iface = state.name
     pidfile = state / "run" / f"{iface}-4.pid"
     try:
         pid = int(pidfile.read_text().strip())
     except (OSError, ValueError):
-        return
+        return True
     argv = _read_cmdline(pid)
     # dhcpcd rewrites its title to "dhcpcd: <iface> [ip4]"; match the name
     # exactly, so a reused PID running dhcpcd for wlan10 is not taken for wlan1.
     title = " ".join(argv)
     if not argv or not (title.startswith(f"dhcpcd: {iface} ") or iface in argv[1:]):
-        return
+        return True
     try:
-        os.kill(pid, signal.SIGHUP)  # dhcpcd: release the lease and exit
+        # SIGALRM: release the lease and exit. (SIGHUP only rebinds in
+        # dhcpcd 10, leaving it running.)
+        os.kill(pid, signal.SIGALRM)
     except ProcessLookupError:
-        return
+        return True
     for _ in range(30):
         if not _read_cmdline(pid):
-            return
+            return True
         time.sleep(0.1)
-    log.warning(f"dhcpcd {pid} for {iface} did not exit after SIGHUP")
+    log.warning(f"dhcpcd {pid} for {iface} did not exit after SIGALRM")
+    return False
+
+
+def _remove_dhcpcd_dir(state: Path) -> None:
+    # The lease file is named after the SSID; don't leave it behind.
+    shutil.rmtree(state, ignore_errors=True)
+    try:
+        state.parent.rmdir()
+    except OSError:
+        pass  # other interfaces' state remains
 
 
 def stop_dhcp(iface: str, namespace: str | None) -> None:
-    """Release the lease and stop the dhcpcd Core started for (namespace, iface)."""
-    _stop_dhcpcd_dir(dhcp_dir(iface, namespace))
+    """Release the lease and stop the dhcpcd Core started for (namespace, iface).
+
+    Its private state directory is removed once it has exited.
+    """
+    state = dhcp_dir(iface, namespace)
+    if _stop_dhcpcd_dir(state):
+        _remove_dhcpcd_dir(state)
 
 
 def stop_namespace_dhcp(namespace: str) -> None:
-    """Stop every dhcpcd Core started in `namespace`."""
+    """Stop every dhcpcd Core started in `namespace`, removing its state."""
     for state in sorted(dhcp_dir("x", namespace).parent.glob("*")):
-        _stop_dhcpcd_dir(state)
+        if _stop_dhcpcd_dir(state):
+            _remove_dhcpcd_dir(state)
 
 
 def restart_dhcp_with_timeout(
@@ -113,8 +136,8 @@ def restart_dhcp_with_timeout(
     log.info(
         f"Starting DHCP client for {iface} in namespace {namespace_display} with timeout {timeout}s"
     )
-    stop_dhcp(iface, namespace)
     state = dhcp_dir(iface, namespace)
+    _stop_dhcpcd_dir(state)  # keep the state: the DUID and lease are reused
     for sub in ("run", "lib"):
         (state / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
 
