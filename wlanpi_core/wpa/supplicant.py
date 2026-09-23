@@ -24,9 +24,14 @@ _ROOT_DIR_NAME = "@root"
 ROOT_CTRL_DIR = "/run/wpa_supplicant"
 
 
+# Short on purpose: the control socket <this>/<netns>/ctrl/<iface> must fit
+# in a unix socket path (107 bytes) for a 63-char netns and 15-char iface.
+_RUNTIME_SUBDIR = "wpa"
+
+
 def runtime_dir(namespace: str | None) -> Path:
     """Return Core's runtime directory for supplicants in `namespace`."""
-    return Path(RUN_DIR) / "wpa_supplicant" / (namespace or _ROOT_DIR_NAME)
+    return Path(RUN_DIR) / _RUNTIME_SUBDIR / (namespace or _ROOT_DIR_NAME)
 
 
 def pidfile_path(iface: str, namespace: str | None) -> Path:
@@ -58,11 +63,13 @@ def ctrl_dir(namespace: str | None) -> str:
 def wpa_cli_command(iface: str, namespace: str | None, *args: str) -> list[str]:
     """Build a wpa_cli command for (namespace, iface).
 
-    Uses Core's control directory when Core's supplicant owns the interface,
-    and the default directory otherwise (a supplicant started by another tool).
+    Uses Core's control directory when Core started the supplicant for the
+    interface (its pidfile exists), and the default directory otherwise (a
+    supplicant started by another tool). Deciding by the pidfile, not the
+    socket, avoids falling back while Core's supplicant is still starting.
     """
     ctrl = ctrl_dir(namespace)
-    if namespace is not None and not (Path(ctrl) / iface).exists():
+    if namespace is not None and not pidfile_path(iface, namespace).exists():
         ctrl = ROOT_CTRL_DIR
     return ["wpa_cli", "-p", ctrl, "-i", iface, *args]
 
@@ -87,39 +94,64 @@ def _supplicant_iface(argv: list[str]) -> str | None:
     return argv[index] if index < len(argv) else None
 
 
-def _terminate(pid: int) -> None:
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    for _ in range(20):
+def _wait_gone(pid: int, seconds: float) -> bool:
+    for _ in range(int(seconds * 10)):
         if not _read_cmdline(pid):
-            return
+            return True
         time.sleep(0.1)
-    log.warning(f"wpa_supplicant {pid} did not exit after SIGTERM")
+    return not _read_cmdline(pid)
 
 
-def _stop_pidfile(path: Path) -> None:
-    iface = path.stem
+def _terminate(pid: int) -> bool:
+    """SIGTERM, then SIGKILL after a 2 s grace; return whether the PID is gone."""
+    for sig, grace in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 1.0)):
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return True
+        if _wait_gone(pid, grace):
+            return True
+        log.warning(f"wpa_supplicant {pid} still running after {sig.name}")
+    return False
+
+
+def _is_core_supplicant(argv: list[str], path: Path) -> bool:
+    """Return whether argv is the supplicant Core started with this pidfile.
+
+    Checking `-P <path>` as well as `-i` guards against PID reuse by another
+    supplicant for the same interface name, such as Core's own in another
+    namespace.
+    """
+    if _supplicant_iface(argv) != path.stem or "-P" not in argv:
+        return False
+    index = argv.index("-P") + 1
+    return index < len(argv) and argv[index] == str(path)
+
+
+def _stop_pidfile(path: Path) -> bool:
+    """Stop the supplicant named in `path`; return False if it survived."""
     try:
         pid = int(path.read_text().strip())
     except (OSError, ValueError):
         pid = None
-    # Guard against PID reuse: only signal a supplicant for this iface.
-    if pid is not None and _supplicant_iface(_read_cmdline(pid)) == iface:
-        log.info(f"Stopping wpa_supplicant {pid} for {iface}")
-        _terminate(pid)
+    if pid is not None and _is_core_supplicant(_read_cmdline(pid), path):
+        log.info(f"Stopping wpa_supplicant {pid} for {path.stem}")
+        if not _terminate(pid):
+            log.error(f"Could not stop wpa_supplicant {pid}; keeping {path}")
+            return False
     path.unlink(missing_ok=True)
+    return True
 
 
-def stop_supplicant(iface: str, namespace: str | None) -> None:
+def stop_supplicant(iface: str, namespace: str | None) -> bool:
     """
     Stop the wpa_supplicant Core started for (namespace, iface), if any.
 
     Only the process named in Core's pidfile is signalled, and only if it is
-    still a wpa_supplicant for `iface`; nothing else on the host is touched.
+    still the wpa_supplicant Core started with that pidfile; nothing else on
+    the host is touched. Returns False if the process would not die.
     """
-    _stop_pidfile(pidfile_path(iface, namespace))
+    return _stop_pidfile(pidfile_path(iface, namespace))
 
 
 def stop_namespace_supplicants(namespace: str) -> None:
@@ -150,8 +182,12 @@ def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
         f"Starting/restarting wpa_supplicant for {iface} in namespace {namespace_display}"
     )
 
-    # Stop the supplicant Core previously started for this (namespace, iface)
-    stop_supplicant(iface, namespace)
+    # Stop the supplicant Core previously started for this (namespace, iface);
+    # never start a second one beside a supplicant that would not die.
+    if not stop_supplicant(iface, namespace):
+        raise RunCommandError(
+            f"wpa_supplicant for {iface} in {namespace_display} did not stop", 1
+        )
 
     # Remove a stale control socket left by a supplicant that died
     (Path(ctrl_dir(namespace)) / iface).unlink(missing_ok=True)
@@ -242,7 +278,7 @@ def kill_all_supplicants() -> None:
     Best effort; does not raise.
     """
     try:
-        for path in sorted((Path(RUN_DIR) / "wpa_supplicant").glob("*/*.pid")):
+        for path in sorted((Path(RUN_DIR) / _RUNTIME_SUBDIR).glob("*/*.pid")):
             _stop_pidfile(path)
         for pid in _proc_pids():
             argv = _read_cmdline(pid)
