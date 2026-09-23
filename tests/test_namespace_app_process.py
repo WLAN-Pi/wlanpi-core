@@ -127,3 +127,35 @@ def test_root_stop_signals_only_the_recorded_command(mocker, tmp_path, cmdline, 
     assert apps.stop_app_in_namespace(None, pid_dir=tmp_path) is True
     assert run.called is killed
     assert not (tmp_path / "root.pid").exists()
+
+
+def test_namespace_stop_signals_only_the_recorded_command(mocker, tmp_path):
+    # #304 review: after a restart the pidfile PID may be reused inside the
+    # namespace; neither it nor a process that merely contains "orb" is killed.
+    (tmp_path / "ns_a.pid").write_text(
+        json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    cmdlines = {
+        10: b"/usr/sbin/sshd\0-D\0",  # reused PID from the file
+        11: b"/usr/bin/python3\0/usr/bin/orb\0--serve\0",  # Core's app
+        12: b"orbital-tool\0--serve\0",  # substring only
+    }
+    real_read_bytes = apps.Path.read_bytes
+
+    def read_bytes(path):
+        name = str(path)
+        if name.startswith("/proc/") and name.endswith("/cmdline"):
+            return cmdlines.get(int(name.split("/")[2]), b"")
+        return real_read_bytes(path)
+
+    mocker.patch.object(apps.Path, "read_bytes", read_bytes)
+    mocker.patch("wlanpi_core.namespaces.namespace.namespace_exists", return_value=True)
+    mocker.patch.object(
+        apps.processes, "get_processes_in_namespace", return_value=[10, 11, 12]
+    )
+    run = mocker.patch.object(apps, "run_command")
+    run.return_value = MagicMock(return_code=0, stdout="ns_a\n")
+
+    assert apps.stop_app_in_namespace("ns_a", pid_dir=tmp_path) is True
+    kills = [c.args[0] for c in run.call_args_list if c.args[0][0] == "kill"]
+    assert kills == [["kill", "11"]]

@@ -394,29 +394,37 @@ def stop_app_in_namespace(
         return False
 
 
+def _is_recorded_app(pid: int, app_command: str) -> bool:
+    """Return whether `pid` still runs `app_command` as Core started it.
+
+    App pidfiles outlive reboots and service restarts, so a PID may now
+    belong to something else. The argv must end with the recorded command,
+    the program compared by basename, so a script started through PATH and
+    its shebang (python3 /usr/bin/orb --serve) matches.
+    """
+    parts = app_command.split()
+    if not parts:
+        return False
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    argv = [arg.decode(errors="replace") for arg in raw.split(b"\0") if arg]
+    tail = argv[-len(parts) :]
+    return (
+        len(tail) == len(parts)
+        and tail[1:] == parts[1:]
+        and os.path.basename(tail[0]) == os.path.basename(parts[0])
+    )
+
+
 def _stop_app_in_root(
     pid: int | None, app_command: str, namespace_display: str
 ) -> bool:
     """Stop app in root namespace."""
     try:
         if pid:
-            # The pidfile outlives reboots and service restarts, so the PID may
-            # now belong to something else: only signal the recorded command.
-            # Compared as a suffix with the program by basename, so a script
-            # started through PATH and its shebang (python3 /usr/bin/orb) matches.
-            parts = app_command.split()
-            try:
-                raw = Path(f"/proc/{pid}/cmdline").read_bytes()
-            except OSError:
-                raw = b""
-            argv = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
-            tail = argv[-len(parts) :] if parts else []
-            if (
-                len(tail) != len(parts)
-                or not parts
-                or tail[1:] != parts[1:]
-                or os.path.basename(tail[0]) != os.path.basename(parts[0])
-            ):
+            if not _is_recorded_app(pid, app_command):
                 log.info(f"PID {pid} is not the recorded app; dropping its pidfile")
                 return True
             run_command(["kill", str(pid)], raise_on_fail=True)
@@ -484,43 +492,11 @@ def _stop_app_in_namespace_safe(
 
         log.debug(f"Found {len(ns_pids)} process(es) in namespace {namespace}")
 
-        # Step 4: Find matching PIDs by checking command lines
-        matching_pids = []
-        if app_command:
-            cmd_parts = app_command.split()
-            base_cmd = cmd_parts[0] if cmd_parts else ""
-
-            # Also check if verified_pid is in the namespace PIDs list
-            if verified_pid and verified_pid in ns_pids:
-                matching_pids.append(verified_pid)
-                log.info(
-                    f"PID {verified_pid} from file is in namespace and matches app"
-                )
-
-            # Check other PIDs in namespace for command match
-            for ns_pid in ns_pids:
-                if ns_pid == verified_pid:
-                    continue  # Already added
-
-                try:
-                    # Check /proc/<pid>/cmdline to see if it matches our app
-                    cmdline_result = run_command(
-                        ["cat", f"/proc/{ns_pid}/cmdline"],
-                        raise_on_fail=False,
-                    )
-                    if cmdline_result.return_code == 0:
-                        cmdline = cmdline_result.stdout.replace("\0", " ")
-                        if base_cmd in cmdline:
-                            matching_pids.append(ns_pid)
-                            log.debug(
-                                f"Found matching PID {ns_pid} in namespace: {cmdline.strip()}"
-                            )
-                except RunCommandError:
-                    # Process may have exited, skip it
-                    continue
-        elif verified_pid and verified_pid in ns_pids:
-            # No app_command but we have a verified PID in namespace
-            matching_pids.append(verified_pid)
+        # Step 4: only processes in the namespace still running the recorded
+        # command (a PID from the file may have been reused, #304).
+        matching_pids = [
+            ns_pid for ns_pid in ns_pids if _is_recorded_app(ns_pid, app_command)
+        ]
 
         # Step 5: Kill only the matching PIDs that are confirmed in namespace
         if matching_pids:
@@ -551,7 +527,7 @@ def _stop_app_in_namespace_safe(
     except RunCommandError as e:
         log.error(f"Failed to get PIDs from namespace {namespace}: {e}")
         # Fallback: if we have a verified PID, try to kill it directly
-        if verified_pid:
+        if verified_pid and _is_recorded_app(verified_pid, app_command):
             try:
                 run_command(["kill", str(verified_pid)], raise_on_fail=True)
                 log.info(
