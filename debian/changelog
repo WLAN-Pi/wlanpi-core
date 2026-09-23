@@ -1,3 +1,15 @@
+wlanpi-core (2.3.28-1) unstable; urgency=medium
+
+  * A profile with autostart_app no longer fails with 500 on a device
+    whose apps.json is empty (#311). An empty file now means no apps, a
+    missing one is created as {}, and an autostart_app that apps.json
+    does not define is rejected with 422 before any radio moves.
+  * Stopping an app whose pidfile has no PID no longer runs a host-wide
+    pkill -f on its command; the unused kill_processes_in_namespace is
+    removed (#305).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 19:06:34 -0400
+
 wlanpi-core (2.3.27-1) unstable; urgency=medium
 
   * Packet capture works on a radio that a network configuration moved
