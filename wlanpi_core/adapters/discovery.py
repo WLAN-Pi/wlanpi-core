@@ -133,19 +133,25 @@ def _parse_iw_dev(output: str, netns: str | None) -> list[LiveInterface]:
     """Parse bare `iw dev` output, which groups interfaces under `phy#N`."""
     entries: list[dict[str, Any]] = []
     phy_index: int | None = None
+    # The netdev that following `type` lines describe; None under a phy header
+    # or an "Unnamed/non-netdev interface" (P2P-device wdev), whose type is not
+    # the previous netdev's.
+    current: dict[str, Any] | None = None
     for raw in output.splitlines():
         line = raw.strip()
         if line.startswith("phy#"):
+            current = None
             try:
                 phy_index = int(line.removeprefix("phy#"))
             except ValueError:
                 phy_index = None
         elif line.startswith("Interface ") and phy_index is not None:
-            entries.append(
-                {"name": line.split()[1], "phy_index": phy_index, "type": ""}
-            )
-        elif line.startswith("type ") and entries:
-            entries[-1]["type"] = line.split()[1]
+            current = {"name": line.split()[1], "phy_index": phy_index, "type": ""}
+            entries.append(current)
+        elif line.startswith("Unnamed/non-netdev"):
+            current = None
+        elif line.startswith("type ") and current is not None:
+            current["type"] = line.split()[1]
     return [LiveInterface(e["name"], e["phy_index"], netns, e["type"]) for e in entries]
 
 
@@ -153,8 +159,9 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
     """
     List wireless interfaces in the root namespace and every named netns.
 
-    Read-only. A namespace whose `iw dev` fails is logged and skipped, so one
-    broken namespace does not hide the rest of the inventory.
+    Read-only. A namespace whose `iw dev` fails, or whose name Core's
+    validator refuses (the kernel accepts names such as `lab:1`), is logged
+    and skipped, so one namespace does not hide the rest of the inventory.
 
     Returns:
         LiveInterface entries, root namespace first.
@@ -167,7 +174,7 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
     for netns in ns_namespace.list_namespaces():
         try:
             ns_result = ns_exec([IW_FILE, "dev"], namespace=netns, no_output=True)
-        except RunCommandError as e:
+        except (RunCommandError, ValueError) as e:
             log.warning(f"Could not list wireless interfaces in {netns}: {e}")
             continue
         found += _parse_iw_dev(ns_result.stdout, netns)
