@@ -99,6 +99,6 @@ def test_restart_aborts_when_the_old_supplicant_survives(run_dir):
         patch.object(supplicant, "ns_exec") as ns_exec,
     ):
         with pytest.raises(RunCommandError):
-            supplicant.start_or_restart_supplicant("wlan1", None, Path("/tmp/x.conf"))
+            supplicant.start_or_restart_supplicant("wlan1", None)
     ns_exec.assert_not_called()
     assert path.exists()

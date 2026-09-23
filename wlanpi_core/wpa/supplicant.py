@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from wlanpi_core.constants import RUN_DIR
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
