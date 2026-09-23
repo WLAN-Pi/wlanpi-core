@@ -98,12 +98,17 @@ def _recorded_app_running(pid_file: Path) -> bool:
 
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         pid_file.unlink(missing_ok=True)
         return False
     except PermissionError:
         return True
+    app_command = pid_data.get("app_command", "") if isinstance(pid_data, dict) else ""
+    if app_command and not _is_recorded_app(pid, app_command):
+        # The PID was reused (reboot, service restart): the app is not running.
+        pid_file.unlink(missing_ok=True)
+        return False
+    return True
 
 
 def get_app_command(app_id: str) -> str | None:
@@ -487,8 +492,9 @@ def _stop_app_in_namespace_safe(
         ns_pids = processes.get_processes_in_namespace(namespace)
 
         if not ns_pids:
+            # Nothing runs there, so the app is not running: the pidfile is stale.
             log.info(f"No processes found in namespace {namespace}")
-            return False
+            return True
 
         log.debug(f"Found {len(ns_pids)} process(es) in namespace {namespace}")
 
@@ -519,10 +525,13 @@ def _stop_app_in_namespace_safe(
                 )
                 return True
         else:
+            # The app is not running: drop the stale pidfile so a reused PID
+            # never blocks the next start.
             log.info(
                 f"No matching processes found in namespace {namespace} "
                 f"(checked {len(ns_pids)} process(es))"
             )
+            return True
 
     except RunCommandError as e:
         log.error(f"Failed to get PIDs from namespace {namespace}: {e}")

@@ -159,3 +159,35 @@ def test_namespace_stop_signals_only_the_recorded_command(mocker, tmp_path):
     assert apps.stop_app_in_namespace("ns_a", pid_dir=tmp_path) is True
     kills = [c.args[0] for c in run.call_args_list if c.args[0][0] == "kill"]
     assert kills == [["kill", "11"]]
+
+
+def test_stale_namespace_pidfile_is_dropped_without_signalling(mocker, tmp_path):
+    (tmp_path / "ns_a.pid").write_text(
+        json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    mocker.patch.object(apps, "_is_recorded_app", return_value=False)
+    mocker.patch("wlanpi_core.namespaces.namespace.namespace_exists", return_value=True)
+    mocker.patch.object(apps.processes, "get_processes_in_namespace", return_value=[10])
+    run = mocker.patch.object(apps, "run_command")
+    run.return_value = MagicMock(return_code=0, stdout="ns_a\n")
+
+    assert apps.stop_app_in_namespace("ns_a", pid_dir=tmp_path) is True
+    assert not [c for c in run.call_args_list if c.args[0][0] == "kill"]
+    assert not (tmp_path / "ns_a.pid").exists()
+
+
+def test_start_is_not_blocked_by_a_reused_pid(mocker, tmp_path):
+    (tmp_path / "root.pid").write_text(
+        json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
+    )
+    mocker.patch.object(apps.os, "kill")  # PID 10 is alive...
+    mocker.patch.object(apps, "_is_recorded_app", return_value=False)  # ...not orb
+    mocker.patch.object(apps, "get_app_command", return_value="orb --serve")
+    process = MagicMock(pid=20)
+    process.poll.return_value = None
+    popen = mocker.patch.object(apps.subprocess, "Popen", return_value=process)
+    mocker.patch.object(apps.time, "sleep")
+
+    assert apps.start_app_in_namespace(None, "orb", pid_dir=tmp_path) is True
+    popen.assert_called_once()
+    assert json.loads((tmp_path / "root.pid").read_text())["pid"] == 20
