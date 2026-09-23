@@ -656,6 +656,26 @@ def _teardown_profile(cfg_id: str) -> None:
     ns.revert_to_root(None)
 
 
+def revert_all() -> None:
+    """Return every radio Core manages to root and make `default` active.
+
+    Tears down the active configuration, returns every namespace Core created
+    to root (deleting each once empty), then records and applies the default.
+    Backs the deprecated /wlan/revert endpoint (#274).
+
+    Raises:
+        ConfigBusyError: If another change holds network_change_lock()
+    """
+    with network_change_lock():
+        try:
+            active = get_current_config()
+        except (FileNotFoundError, ConfigMalformedError):
+            active = "default"
+        _teardown_profile(active)
+        _atomic_write(ccf, "default")
+        _apply_default()
+
+
 def _fall_back_to_default(failed_cfg_id: str) -> None:
     """After a failed activation, record and apply `default` so state matches."""
     _atomic_write(ccf, "default")

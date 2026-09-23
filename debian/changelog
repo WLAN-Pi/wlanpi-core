@@ -1,3 +1,14 @@
+wlanpi-core (2.3.21-1) unstable; urgency=medium
+
+  * Make the deprecated POST /network/wlan/revert do what it says and say
+    what it does (#274): it reverts everything Core manages (tears down the
+    active configuration, returns every Core namespace to root, and makes
+    the default configuration active, updating current.txt). iface,
+    namespace and delete_namespace are ignored, as now documented; the
+    response no longer claims a single interface was reverted.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:27:18 -0500
+
 wlanpi-core (2.3.20-1) unstable; urgency=medium
 
   * Report one outcome per configuration entry (connected, provisioned or

@@ -27,7 +27,6 @@ from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core.services import (
     network_ethernet_service,
-    network_namespace_service,
 )
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.validation import validate_vlan_id
@@ -617,23 +616,30 @@ async def set_a_systemd_network(
     "/wlan/revert",
     response_model=network.RevertNamespace,
     dependencies=[Depends(verify_auth_wrapper)],
+    deprecated=True,
 )
 async def revert_wlan_namespace(
     req: network.WlanRevertRequest, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
-    """Revert the PHY and interface back to the root namespace."""
+    """
+    Return every radio Core manages to the root namespace (deprecated).
+
+    **Replacement:** `POST /api/v1/network/config/deactivate/{id}`.
+
+    This reverts everything, not one interface: it tears down the active
+    configuration, returns every namespace Core created to root (deleting
+    each once it is empty), and makes the default configuration active.
+    `iface`, `namespace` and `delete_namespace` are accepted for
+    compatibility and ignored. Returns 409 while another network change is
+    running.
+    """
+    del req, timeout
     try:
         require_wlan_management_enabled()
-        namespace_service = network_namespace_service.NetworkNamespaceService()
-
-        def _revert() -> None:
-            with network_config.network_change_lock():
-                namespace_service.revert_to_root(None, req.delete_namespace)
-
-        await asyncio.to_thread(_revert)
+        await asyncio.to_thread(network_config.revert_all)
         return {
             "success": True,
-            "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
+            "message": "Reverted every Core namespace to root; the default configuration is active.",
         }
 
     except ConfigBusyError as cbe:

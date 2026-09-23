@@ -696,6 +696,43 @@ def handle_network_config_activate_fault_500_outcomes(
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_wlan_revert_reverts_all(client, auth_headers, scenario, netcfg_env):
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "two_ns",
+        {
+            "id": "two_ns",
+            "namespaces": [
+                {**_root_entry("wlan1", "phy2"), "namespace": "ns_a"},
+                {**_root_entry("wlan2", "phy1"), "namespace": "ns_b"},
+            ],
+            "roots": [],
+        },
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        activated = client.post(
+            "/api/v1/network/config/activate/two_ns", params={"override_active": True}
+        )
+        _expect_status(activated, "200")
+        # iface/namespace name only one of them; revert is documented as revert-all.
+        response = client.post(
+            "/api/v1/network/wlan/revert",
+            json={"iface": "wlan1", "namespace": "ns_a", "delete_namespace": False},
+        )
+    _expect_status(response, scenario.expected_http)
+    assert response.json() == {
+        "success": True,
+        "message": "Reverted every Core namespace to root; the default configuration is active.",
+    }
+    assert not inventory.netns
+    assert inventory.live() == {
+        "wlan0": ("phy0", None, "managed"),
+        "wlan1": ("phy2", None, "managed"),
+        "wlan2": ("phy1", None, "managed"),
+    }
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
     from wlanpi_core.core.config import Settings
 
@@ -917,6 +954,7 @@ HANDLERS.update(
         "network_config_secrets_not_returned": handle_network_config_secrets_not_returned,
         "network_config_activate_invalid_entry_422": handle_network_config_activate_invalid_entry_422,
         "network_config_activate_fault_500_outcomes": handle_network_config_activate_fault_500_outcomes,
+        "wlan_revert_reverts_all": handle_wlan_revert_reverts_all,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,
