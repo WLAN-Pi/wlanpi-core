@@ -2,22 +2,32 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
+from wlanpi_core.adapters import discovery
+from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE, RUN_DIR
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
+    ConfigBusyError,
     ConfigMalformedError,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import (
+    AdapterOutcome,
+    LeftAlone,
     NamespaceConfig,
+    NamespaceResetResult,
     NetConfig,
     NetConfigUpdate,
     NetSecurity,
@@ -37,16 +47,90 @@ cfg_dir = Path(CONFIG_DIR)
 ccf = Path(CURRENT_CONFIG_FILE)
 
 
+@contextmanager
+def network_change_lock() -> Iterator[None]:
+    """Hold the process-wide lock for changing adapter and namespace state.
+
+    An flock on a file under /run, so it excludes other threads (each call
+    opens its own file description) and other processes, such as an old
+    gunicorn worker still finishing during a reload. Does not wait.
+
+    Not reentrant: acquiring it again while held, even in the same thread,
+    raises ConfigBusyError. Code already holding it (activate's rollback)
+    must call the unlocked service methods, not deactivate_config(). The
+    lock does not cover ConnectionMonitor threads, which run DHCP, routes
+    and app start after the change that started them has returned.
+
+    Raises:
+        ConfigBusyError: If another activate, deactivate or revert is running
+    """
+    path = Path(RUN_DIR) / "netcfg.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ConfigBusyError(
+                "Another network configuration change is in progress; try again."
+            ) from None
+        yield
+    finally:
+        os.close(fd)
+
+
+def _atomic_write(path: Path, text: str, mode: int = 0o600) -> None:
+    """Replace `path` with `text` so readers never see a partial file.
+
+    Writes a sibling temp file with `mode` (0600 by default, since profiles
+    hold PSKs), fsyncs it, then renames it over `path`.
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _write_current(cfg_id: str) -> None:
+    # current.txt holds no secret and may be read by other wlanpi tools.
+    _atomic_write(ccf, cfg_id, mode=0o644)
+
+
+# IDs that clash with the built-in default, the root namespace or the
+# /network/config/status route, in any letter case.
+_RESERVED_IDS = {"default", "root", "status", "leftovers", "reset"}
+
+
+def _reject_reserved_id(cfg_id: str) -> None:
+    if cfg_id.lower() in _RESERVED_IDS:
+        raise ValidationError(
+            f"Configuration ID {cfg_id!r} is reserved.", status_code=400
+        )
+
+
 def _config_path(cfg_id: str) -> Path:
     try:
         validated_id = validate_config_id(cfg_id)
     except ValueError as error:
         raise ValidationError(str(error), status_code=400) from error
-    return cfg_dir / f"{validated_id}.json"
+    # validate_config_id already forbids "/", "." and ".."; this normpath +
+    # prefix check is the confinement CodeQL's py/path-injection recognises.
+    base = os.path.normpath(cfg_dir)
+    path = os.path.normpath(os.path.join(base, f"{validated_id}.json"))
+    if not path.startswith(base + os.sep):
+        raise ValidationError("Invalid configuration ID", status_code=400)
+    return Path(path)
 
 
-def get_default_config(cfg_id: str = "default") -> NetConfig:
-    """Get the default configuration structure."""
+def _legacy_default_config(cfg_id: str = "default") -> NetConfig:
+    """Return the hardcoded default shipped before #202, for migration only."""
     return NetConfig(
         id=cfg_id,
         namespaces=[],
@@ -73,6 +157,53 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
             ),
         ],
     )
+
+
+def _is_system_monitor(name: str) -> bool:
+    return name.startswith("wlanpi") and name.removeprefix("wlanpi").isdigit()
+
+
+def get_default_config(cfg_id: str = "default") -> NetConfig:
+    """Build the default configuration from the radios present now.
+
+    One root entry per wireless interface in root or in a namespace Core
+    created, on the phy it is really on, keeping monitor interfaces in monitor mode. No security and no
+    default route: the default returns radios to root without connecting.
+    The `wlanpiN` monitor interfaces that SystemManager creates at startup
+    (with its own flags) are left out, as are radios in namespaces Core did
+    not create: the default must not claim a user's or another tool's radio.
+    """
+    core_namespaces = set(ns.core_namespaces())
+    roots: list[RootConfig] = []
+    for live in discovery.list_interfaces_all_namespaces():
+        if live.netns is not None and live.netns not in core_namespaces:
+            continue
+        if live.type == "monitor" and _is_system_monitor(live.name):
+            continue
+        if any(r.interface == live.name for r in roots):
+            # The same name in root and a Core namespace is legal, but one
+            # NetConfig cannot hold both; root is listed first and wins.
+            log.warning(
+                f"{live.name} exists in more than one namespace; leaving the "
+                f"{live.netns or 'root'} one out of the default"
+            )
+            continue
+        roots.append(
+            RootConfig(
+                mode=(
+                    NetworkModeEnum.monitor
+                    if live.type == "monitor"
+                    else NetworkModeEnum.managed
+                ),
+                iface_display_name=live.name,
+                phy=f"phy{live.phy_index}",
+                interface=live.name,
+                security=None,
+                default_route=False,
+                autostart_app=None,
+            )
+        )
+    return NetConfig(id=cfg_id, namespaces=[], roots=roots)
 
 
 def parse_iw_dev_output(output: str) -> dict[str, Any]:
@@ -213,9 +344,7 @@ def get_config(cfg_id: str) -> NetConfig:
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info("Default configuration file not found. Creating default config.")
-            default_config = get_default_config("default")
-            path.write_text(default_config.model_dump_json(indent=4))
-            return default_config
+            return _write_live_default()
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
     try:
@@ -228,7 +357,13 @@ def get_config(cfg_id: str) -> NetConfig:
             )
 
         data = json.loads(file_content)
-        return NetConfig(**data)
+        config = NetConfig(**data)
+        if cfg_id == "default" and config == _legacy_default_config():
+            # Devices upgraded from before #202 still hold the hardcoded
+            # default (fake WPA2 on wlan0, wlan1 on phy1); replace it.
+            log.info("Replacing the legacy hardcoded default configuration.")
+            return _write_live_default()
+        return config
     except json.JSONDecodeError as e:
         log.error(f"Configuration file {cfg_id}.json contains malformed JSON: {e}")
         raise ConfigMalformedError(
@@ -244,6 +379,23 @@ def get_config(cfg_id: str) -> NetConfig:
         ) from None
 
 
+def _write_live_default() -> NetConfig:
+    # shortcut: default.json snapshots the radios present when it is first
+    # written; an adapter plugged in later is not in it until the file is
+    # deleted. Upgrade path: regenerate while the file is unedited.
+    try:
+        default_config = get_default_config("default")
+    except Exception as e:
+        # Core must start even when the live inventory cannot be read or
+        # yields an invalid default; nothing is written, so the next start
+        # tries again.
+        log.error(f"Could not build the default configuration: {e}")
+        return NetConfig(id="default", namespaces=[], roots=[])
+    # A fixed name (not a caller's ID), so no user data reaches this path.
+    _atomic_write(cfg_dir / "default.json", default_config.model_dump_json(indent=4))
+    return default_config
+
+
 def is_active(cfg_id: str) -> bool:
     """Return whether the configuration is currently active."""
     try:
@@ -256,7 +408,7 @@ def is_active(cfg_id: str) -> bool:
 
 
 def _revert_current_config_to_default() -> None:
-    ccf.write_text("default")
+    _write_current("default")
 
 
 def get_current_config() -> str:
@@ -320,11 +472,38 @@ def _rollback_activated_configs(
 
 def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
+    _reject_reserved_id(config.id)
     path = _config_path(config.id)
     if path.exists():
         raise FileExistsError(f"Configuration {config.id} already exists.")
-    path.write_text(config.model_dump_json(indent=4))
+    _atomic_write(path, config.model_dump_json(indent=4))
     return True
+
+
+def _keep_stored_secrets(stored: NetConfig, updated: NetConfig) -> None:
+    """Keep an entry's stored psk/password when an update omits them (#272).
+
+    The API never returns secrets, so a client that edits and sends back an
+    entry cannot include them. Entries are matched by (namespace, interface).
+    """
+
+    def by_key(cfg: NetConfig) -> dict[tuple[str | None, str], Any]:
+        entries: dict[tuple[str | None, str], Any] = {}
+        for ns_entry in cfg.namespaces or []:
+            entries[(ns_entry.namespace, ns_entry.interface)] = ns_entry
+        for root_entry in cfg.roots or []:
+            entries[(None, root_entry.interface)] = root_entry
+        return entries
+
+    old_entries = by_key(stored)
+    for key, entry in by_key(updated).items():
+        old = old_entries.get(key)
+        if old is None or old.security is None or entry.security is None:
+            continue
+        if entry.security.psk is None and old.security.psk:
+            entry.security.psk = old.security.psk
+        if entry.security.password is None and old.security.password:
+            entry.security.password = old.security.password
 
 
 def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
@@ -335,23 +514,40 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     if is_active(cfg_id):
         raise ConfigActiveError(f"Cannot edit active configuration {cfg_id}.")
 
-    for field, value in config_update.model_dump().items():
+    stored = cfg.model_copy(deep=True)
+    for field in type(config_update).model_fields:
+        value = getattr(config_update, field)
         if value is not None and field != "cfg_id":
             setattr(cfg, field, value)
+    # setattr skips model validation; re-run it (uniqueness across entries)
+    try:
+        cfg = NetConfig.model_validate(cfg.model_dump())
+    except PydanticValidationError as e:
+        raise ValidationError(str(e), status_code=422) from None
+    _keep_stored_secrets(stored, cfg)
 
     # Write updated config back to file
-    path.write_text(cfg.model_dump_json(indent=4))
+    _atomic_write(path, cfg.model_dump_json(indent=4))
 
     return cfg
 
 
 def delete_config(cfg_id: str, force: bool = False) -> bool:
-    """Delete a configuration by cfg_id."""
+    """Delete a configuration by cfg_id.
+
+    The active configuration is refused unless `force`, which deactivates it
+    first so current.txt never names a file that no longer exists.
+    """
     path = _config_path(cfg_id)
 
-    if is_active(cfg_id) and not force:
-        raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
-    path.unlink()
+    # Under the change lock, so no activation can make cfg_id active again
+    # between the deactivate and the unlink.
+    with network_change_lock():
+        if is_active(cfg_id):
+            if not force:
+                raise ConfigActiveError(f"Cannot delete active configuration {cfg_id}.")
+            _deactivate_config_locked(cfg_id, False)
+        path.unlink()
     return True
 
 
@@ -371,8 +567,23 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
        status=error). Deactivates activated_configs, re-raises; ccf unchanged.
 
     Provisioned-but-not-yet-connected is success path (1), not rollback.
-    """
 
+    Raises ConfigBusyError if another change holds network_change_lock().
+    """
+    return activate_config_report(cfg_id, override_active)[0]
+
+
+def activate_config_report(
+    cfg_id: str, override_active: bool = False
+) -> tuple[bool, list[AdapterOutcome]]:
+    """Activate cfg_id as activate_config does, and report each entry's outcome."""
+    with network_change_lock():
+        return _activate_config_locked(cfg_id, override_active)
+
+
+def _activate_config_locked(
+    cfg_id: str, override_active: bool
+) -> tuple[bool, list[AdapterOutcome]]:
     cfg = get_config(cfg_id)
     try:
         active_cfg = get_current_config()
@@ -392,59 +603,38 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
 
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
+
+    # Tear down the active profile first so its namespaces, supplicants and
+    # apps do not linger beside the new one (#271).
+    _teardown_profile(active_cfg)
+    if override_active:
+        log.info(
+            "Override active set: stopping Core's wpa_supplicants before activation"
+        )
+        ns.kill_all_supplicants()
+
     activated_configs: list[NamespaceConfig | RootConfig] = []
     try:
-        if override_active:
-            log.info(
-                "Override active set: killing all wpa_supplicant processes before activation"
-            )
-            ns.kill_all_supplicants()
-        outcomes: list[str] = []
-        activated_configs.clear()
-
-        for ns_cfg in cfg.namespaces or []:
-            log.info(
-                f"Activating namespace {ns_cfg.namespace} for interface {ns_cfg.interface}"
-            )
-            result = ns.activate_config(ns_cfg)
-            status = (
-                getattr(result, "status", "error") if result is not None else "error"
-            )
-            outcomes.append(status)
-            # Only track as activated if it succeeded (not error, not skipped)
-            if status in {"connected", "provisioned"}:
-                activated_configs.append(ns_cfg)
-
-        for root_cfg in cfg.roots or []:
-            log.info(f"Activating root config for interface {root_cfg.interface}")
-            result = ns.activate_config(root_cfg)
-            status = (
-                getattr(result, "status", "error") if result is not None else "error"
-            )
-            outcomes.append(status)
-            if status in {"connected", "provisioned"}:
-                activated_configs.append(root_cfg)
+        outcomes = _apply_entries(
+            cfg, activated_configs, only_core_managed=cfg_id == "default"
+        )
 
         # Path 1 vs 2: provisioned and connected are both acceptable — do not roll back
         # partial success (missing adapter, delayed SSID, etc.) when all outcomes qualify.
-        acceptable_statuses = {"connected", "provisioned"}
-        all_ok = (
-            all(status in acceptable_statuses for status in outcomes)
-            if outcomes
-            else True
-        )
-
-        if all_ok:
+        # "skipped" is a default entry left alone because Core did not create it;
+        # "in_use" is a radio another tool is using, left alone.
+        acceptable_statuses = {"connected", "provisioned", "skipped", "in_use"}
+        if all(outcome.status in acceptable_statuses for outcome in outcomes):
             # Path 1: persist active config (monitors may still be connecting WPA)
-            ccf.write_text(cfg_id)
-            return True
-        else:
-            # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
-            log.error(
-                f"Activation outcomes unacceptable {outcomes}. Rolling back only successfully activated configs"
-            )
-            _rollback_activated_configs(activated_configs)
-            return False
+            _write_current(cfg_id)
+            return True, outcomes
+        # Path 2: UNACCEPTABLE status=error — roll back adapters that were applied
+        log.error(
+            f"Activation outcomes unacceptable {[o.status for o in outcomes]}. Rolling back only successfully activated configs"
+        )
+        _rollback_activated_configs(activated_configs)
+        _fall_back_to_default(cfg_id)
+        return False, outcomes
 
     except Exception as ex:
         # Path 3: hard failure mid-loop — same rollback as path 2, then propagate
@@ -454,7 +644,158 @@ def activate_config(cfg_id: str, override_active: bool = False) -> bool:
                 "Rolling back successfully activated configs after activation exception"
             )
             _rollback_activated_configs(activated_configs)
+        _fall_back_to_default(cfg_id)
         raise
+
+
+def _apply_entries(
+    cfg: NetConfig,
+    activated: list[NamespaceConfig | RootConfig],
+    only_core_managed: bool = False,
+) -> list[AdapterOutcome]:
+    """Activate every entry of cfg, namespaces first; return per-entry outcomes.
+
+    Entries that come up connected or provisioned are appended to `activated`
+    as they succeed, so a caller can roll them back after an exception. With
+    `only_core_managed` (the default configuration), an entry whose radio
+    Core did not create is reported "skipped" and not touched.
+    """
+    outcomes: list[AdapterOutcome] = []
+    entries: list[NamespaceConfig | RootConfig] = [
+        *(cfg.namespaces or []),
+        *(cfg.roots or []),
+    ]
+    for entry in entries:
+        where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
+        if only_core_managed and not ns.is_core_managed(entry):
+            log.info(f"Leaving {entry.interface} in {where} alone: not created by Core")
+            outcomes.append(
+                AdapterOutcome(
+                    interface=entry.interface,
+                    namespace=entry.namespace
+                    if isinstance(entry, NamespaceConfig)
+                    else None,
+                    status="skipped",
+                    detail="Not created by Core; left alone",
+                )
+            )
+            continue
+        log.info(f"Activating {entry.interface} in {where}")
+        result = ns.activate_config(entry)
+        status = getattr(result, "status", "error") if result is not None else "error"
+        detail = result.response.selectErr if result is not None else ""
+        outcomes.append(
+            AdapterOutcome(
+                interface=entry.interface,
+                namespace=entry.namespace
+                if isinstance(entry, NamespaceConfig)
+                else None,
+                status=status,
+                detail=detail,
+                invalid=status == "error"
+                and detail.startswith("Config validation failed"),
+            )
+        )
+        if status in {"connected", "provisioned"}:
+            activated.append(entry)
+    return outcomes
+
+
+def _teardown_profile(cfg_id: str) -> None:
+    """Best effort: deactivate cfg_id's entries and return Core's namespaces."""
+    try:
+        profile: NetConfig | None = get_config(cfg_id)
+    except (FileNotFoundError, ConfigMalformedError, ValidationError) as e:
+        log.warning(f"Cannot read active configuration {cfg_id} to tear down: {e}")
+        profile = None
+    entries = _entries_to_undo(profile) if profile is not None else []
+    for entry in entries:
+        try:
+            ns.deactivate_config(entry)
+        except Exception as e:
+            log.warning(f"Error tearing down {entry.interface} from {cfg_id}: {e}")
+    ns.revert_to_root(None)
+
+
+def revert_all() -> None:
+    """Return every radio Core manages to root and make `default` active.
+
+    Tears down the active configuration, returns every namespace Core created
+    to root (deleting each once empty), then records and applies the default.
+    Backs the deprecated /wlan/revert endpoint (#274).
+
+    Raises:
+        ConfigBusyError: If another change holds network_change_lock()
+    """
+    with network_change_lock():
+        try:
+            active = get_current_config()
+        except (FileNotFoundError, ConfigMalformedError):
+            active = "default"
+        _teardown_profile(active)
+        _write_current("default")
+
+
+def _entries_to_undo(cfg: NetConfig) -> list[NamespaceConfig | RootConfig]:
+    """Return cfg's entries that tearing it down may touch.
+
+    Only entries whose radio Core set up (see NetworkNamespaceService.may_undo),
+    so an entry left alone as in_use, and other tools' interfaces, survive.
+    """
+    entries: list[NamespaceConfig | RootConfig] = [
+        *(cfg.namespaces or []),
+        *(cfg.roots or []),
+    ]
+    return [entry for entry in entries if ns.may_undo(entry)]
+
+
+def _active_namespaces() -> set[str]:
+    try:
+        active = get_current_config()
+        if active == "default":
+            return set()
+        return {entry.namespace for entry in get_config(active).namespaces or []}
+    except (OSError, ConfigMalformedError, ValidationError):
+        return set()
+
+
+def left_alone() -> list[LeftAlone]:
+    """Return the namespaces holding radios that Core has left alone."""
+    return [LeftAlone(**entry) for entry in ns.left_alone(_active_namespaces())]
+
+
+def reset_namespaces(names: list[str]) -> list[NamespaceResetResult]:
+    """Return the radios in the named namespaces to root, deleting each once empty.
+
+    Only the namespaces named are touched, whoever created them; one used by
+    the active configuration is refused (deactivate it first).
+
+    Raises:
+        ConfigBusyError: If another change holds network_change_lock()
+    """
+    with network_change_lock():
+        existing = {entry["namespace"] for entry in ns.left_alone(set())}
+        in_use = _active_namespaces()
+        results = []
+        for name in names:
+            if name in in_use:
+                detail = "In use by the active configuration; deactivate it first"
+                results.append(NamespaceResetResult(namespace=name, detail=detail))
+            elif name not in existing:
+                detail = "No such namespace holding radios"
+                results.append(NamespaceResetResult(namespace=name, detail=detail))
+            else:
+                results.append(NamespaceResetResult(**ns.reset_namespace(name)))
+        return results
+
+
+def _fall_back_to_default(failed_cfg_id: str) -> None:
+    """After a failed activation, record `default`: no profile is active.
+
+    Rollback has already returned the entries that were applied; nothing
+    else is changed, so other tools' interfaces are left alone.
+    """
+    _write_current("default")
 
 
 def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
@@ -462,24 +803,26 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
 
     On per-adapter failure mid-loop, still writes current.txt to default and calls
     revert_to_root so ccf and runtime state stay consistent before re-raising.
+
+    Raises ConfigBusyError if another change holds network_change_lock().
     """
+    with network_change_lock():
+        return _deactivate_config_locked(cfg_id, override_active)
+
+
+def _deactivate_config_locked(cfg_id: str, override_active: bool) -> bool:
     cfg = get_config(cfg_id)
     if not override_active:
         if not is_active(cfg_id):
             raise ConfigActiveError(f"Configuration {cfg_id} is not active.")
 
     try:
-        for ns_cfg in cfg.namespaces or []:
-            log.info(
-                f"Deactivating namespace {ns_cfg.namespace} for interface {ns_cfg.interface}"
-            )
-            ns.deactivate_config(ns_cfg)
-        for root_cfg in cfg.roots or []:
-            log.info(f"Deactivating root config for interface {root_cfg.interface}")
-            ns.deactivate_config(root_cfg)
+        for entry in _entries_to_undo(cfg):
+            where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
+            log.info(f"Deactivating {entry.interface} in {where}")
+            ns.deactivate_config(entry)
 
-        ccf.write_text("default")
-        # activate_config("default", override_active=True)
+        _write_current("default")
         ns.revert_to_root(None)
         return True
 
@@ -487,7 +830,7 @@ def deactivate_config(cfg_id: str, override_active: bool = False) -> bool:
         log.error(f"Failed to deactivate config {cfg_id}: {ex}")
         # Ensure ccf/revert complete even when a later adapter raises (mirror activate rollback)
         try:
-            ccf.write_text("default")
+            _write_current("default")
             ns.revert_to_root(None)
         except Exception as cleanup_error:
             log.warning(

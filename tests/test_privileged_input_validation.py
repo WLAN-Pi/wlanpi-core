@@ -74,7 +74,13 @@ def test_security_rejects_unsafe_ssids(ssid):
         NetSecurity(ssid=ssid, security=SecurityTypes.wpa2)
 
 
-def test_wpa_values_are_quoted_without_config_injection():
+def test_wpa_values_round_trip_without_config_injection():
+    """#278: wpa_supplicant reads "quoted" values literally up to the last quote.
+
+    Escaping inside quotes would change the value, so the SSID goes as hex, a
+    passphrase goes unescaped (checked on wpa_supplicant 2.12), and EAP
+    string fields go as printf-escaped P"...".
+    """
     security = NetSecurity(
         ssid='Cafe "Guest"\\5G',
         security=SecurityTypes.wpa2,
@@ -82,8 +88,42 @@ def test_wpa_values_are_quoted_without_config_injection():
     )
     block = generate_network_block(_root_config(security=security))
 
-    assert 'ssid="Cafe \\"Guest\\"\\\\5G"' in block
-    assert 'psk="safe\\"pass\\\\word"' in block
+    assert f"ssid={security.ssid.encode().hex()}" in block
+    assert 'psk="safe"pass\\word"' in block
+
+
+def test_wpa_raw_hex_psk_is_unquoted():
+    key = "A" * 64
+    security = NetSecurity(ssid="Net", security=SecurityTypes.wpa2, psk=key)
+    block = generate_network_block(_root_config(security=security))
+    assert f"psk={key.lower()}" in block
+
+
+def test_eap_strings_are_printf_escaped():
+    security = NetSecurity(
+        ssid="Corp",
+        security=SecurityTypes.wpa2,
+        psk="unused-passphrase",
+    )
+    cfg = _root_config(security=security)
+    from wlanpi_core.wpa.config import _string_value
+
+    assert _string_value('us"er\\x') == 'P"us\\"er\\\\x"'
+    assert cfg.security.ssid == "Corp"
+
+
+@pytest.mark.parametrize(
+    ("security", "psk"),
+    [
+        (SecurityTypes.wpa2, "abc"),
+        (SecurityTypes.wpa2, "x" * 64),
+        (SecurityTypes.wpa2, "caf\u00e9-passphrase"),
+        (SecurityTypes.wpa3, "a" * 64),
+    ],
+)
+def test_psk_rejected_before_wpa_supplicant_would_refuse_it(security, psk):
+    with pytest.raises(PydanticValidationError):
+        NetSecurity(ssid="Net", security=security, psk=psk)
 
 
 def test_namespace_execution_rejects_path_syntax_before_command(mocker):

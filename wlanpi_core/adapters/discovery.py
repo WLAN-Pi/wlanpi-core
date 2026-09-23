@@ -6,11 +6,13 @@ on the system.
 """
 
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.namespaces import namespace as ns_namespace
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
 
@@ -111,3 +113,92 @@ def get_interface_by_name(interface_name: str) -> dict[str, Any] | None:
     except RunCommandError as e:
         log.error(f"Failed to get interface info for {interface_name}: {e}")
         raise
+
+
+class LiveInterface(NamedTuple):
+    """A wireless netdev as the kernel reports it now."""
+
+    name: str
+    phy_index: int
+    netns: str | None
+    type: str
+    # Kernel ifindex, per network namespace: a netns move may change it.
+    ifindex: int | None = None
+    # cfg80211 wdev id: kept across netns moves and new when a netdev is
+    # recreated, so it tells a netdev apart from a later one of the same name.
+    wdev: str | None = None
+
+    @property
+    def phy(self) -> str:
+        """Return the iw selector for this netdev's phy (`phy#N`)."""
+        return f"phy#{self.phy_index}"
+
+
+def _parse_iw_dev(output: str, netns: str | None) -> list[LiveInterface]:
+    """Parse bare `iw dev` output, which groups interfaces under `phy#N`."""
+    entries: list[dict[str, Any]] = []
+    phy_index: int | None = None
+    # The netdev that following `type` lines describe; None under a phy header
+    # or an "Unnamed/non-netdev interface" (P2P-device wdev), whose type is not
+    # the previous netdev's.
+    current: dict[str, Any] | None = None
+    for raw in output.splitlines():
+        line = raw.strip()
+        if line.startswith("phy#"):
+            current = None
+            try:
+                phy_index = int(line.removeprefix("phy#"))
+            except ValueError:
+                phy_index = None
+        elif line.startswith("Interface ") and phy_index is not None:
+            current = {
+                "name": line.split()[1],
+                "phy_index": phy_index,
+                "type": "",
+                "ifindex": None,
+                "wdev": None,
+            }
+            entries.append(current)
+        elif line.startswith("Unnamed/non-netdev"):
+            current = None
+        elif line.startswith("type ") and current is not None:
+            current["type"] = line.split()[1]
+        elif line.startswith("ifindex ") and current is not None:
+            try:
+                current["ifindex"] = int(line.split()[1])
+            except ValueError:
+                pass
+        elif line.startswith("wdev ") and current is not None:
+            current["wdev"] = line.split()[1]
+    return [
+        LiveInterface(
+            e["name"], e["phy_index"], netns, e["type"], e["ifindex"], e["wdev"]
+        )
+        for e in entries
+    ]
+
+
+def list_interfaces_all_namespaces() -> list[LiveInterface]:
+    """
+    List wireless interfaces in the root namespace and every named netns.
+
+    Read-only. A namespace whose `iw dev` fails, or whose name Core's
+    validator refuses (the kernel accepts names such as `lab:1`), is logged
+    and skipped, so one namespace does not hide the rest of the inventory.
+
+    Returns:
+        LiveInterface entries, root namespace first.
+
+    Raises:
+        RunCommandError: If `iw dev` fails in the root namespace
+    """
+    result = run_command([IW_FILE, "dev"], raise_on_fail=True)
+    found = _parse_iw_dev(result.stdout, None)
+    for netns in ns_namespace.list_namespaces():
+        try:
+            ns_result = ns_exec([IW_FILE, "dev"], namespace=netns, no_output=True)
+        except (RunCommandError, ValueError) as e:
+            log.warning(f"Could not list wireless interfaces in {netns}: {e}")
+            continue
+        found += _parse_iw_dev(ns_result.stdout, netns)
+    return found

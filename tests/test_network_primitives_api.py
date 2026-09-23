@@ -213,11 +213,9 @@ def test_api_get_network_wlan_pci_drivers(client):
     assert body["pci_devices"][0]["pci_id"] == "0000:01:00.0"
 
 
-def test_api_revert_wlan_namespace_delegates_to_service(client, mocker):
-    revert = mocker.patch(
-        "wlanpi_core.services.network_namespace_service."
-        "NetworkNamespaceService.revert_to_root"
-    )
+def test_api_revert_wlan_namespace_delegates_to_revert_all(client, mocker):
+    revert = mocker.patch("wlanpi_core.utils.network_config.revert_all")
+    mocker.patch("wlanpi_core.utils.network_config.left_alone", return_value=[])
 
     response = client.post(
         "/api/v1/network/wlan/revert",
@@ -230,4 +228,5 @@ def test_api_revert_wlan_namespace_delegates_to_service(client, mocker):
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    revert.assert_called_once_with(None, True)
+    assert response.json()["left_alone"] == []
+    revert.assert_called_once_with()

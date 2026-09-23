@@ -16,3 +16,11 @@ class ConfigMalformedError(Exception):
         super().__init__(message)
         self.message = message
         self.cfg_id = cfg_id
+
+
+class ConfigBusyError(Exception):
+    """Raised when another network configuration change is already running."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message

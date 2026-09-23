@@ -161,6 +161,32 @@ class NetSecurity(BaseModel):
             return None
         return validate_wpa_text(value, info.field_name)
 
+    @model_validator(mode="after")
+    def validate_psk_format(self) -> "NetSecurity":
+        """Reject PSKs that wpa_supplicant would refuse at start (#278).
+
+        WPA2: an 8-63 character printable-ASCII passphrase, or 64 hex digits.
+        WPA3 (SAE): a passphrase only; SAE cannot use a raw hex PSK.
+        """
+        if self.psk is None or self.security not in (
+            SecurityTypes.wpa2,
+            SecurityTypes.wpa3,
+        ):
+            return self
+        is_hex_key = len(self.psk) == 64 and all(
+            c in "0123456789abcdefABCDEF" for c in self.psk
+        )
+        if is_hex_key and self.security == SecurityTypes.wpa2:
+            return self
+        if not 8 <= len(self.psk) <= 63 or not all(
+            32 <= ord(c) <= 126 for c in self.psk
+        ):
+            raise ValueError(
+                "psk must be 8-63 printable ASCII characters"
+                + (" or 64 hex digits" if self.security == SecurityTypes.wpa2 else "")
+            )
+        return self
+
     def __str__(self) -> str:
         """Return the redacted security dict as a string."""
         return str(_redact_security_dict(self.model_dump()))
@@ -224,6 +250,39 @@ class NetConfig(BaseModel):
         """Validate the configuration ID."""
         return validate_config_id(value)
 
+    @model_validator(mode="after")
+    def validate_unique_interfaces(self) -> "NetConfig":
+        """Reject entries that would claim the same radio or the same name.
+
+        Runtime state is keyed by (namespace, interface name), and each
+        `interface` names one live radio, so two entries may not share an
+        `interface`, reuse another entry's `interface` as a display name, or
+        use the same display name in the same namespace.
+        """
+        entries: list[tuple[str | None, RootConfig]] = [
+            (entry.namespace, entry) for entry in self.namespaces or []
+        ]
+        entries += [(None, entry) for entry in self.roots or []]
+        interfaces = [entry.interface for _ns, entry in entries]
+        duplicates = sorted({i for i in interfaces if interfaces.count(i) > 1})
+        if duplicates:
+            raise ValueError(f"interface used by more than one entry: {duplicates}")
+        for _ns, entry in entries:
+            display = entry.iface_display_name
+            if display and display != entry.interface and display in interfaces:
+                raise ValueError(
+                    f"iface_display_name {display!r} is another entry's interface"
+                )
+        names = [
+            (ns, entry.iface_display_name or entry.interface) for ns, entry in entries
+        ]
+        clashes = sorted(
+            {f"{ns or 'root'}/{n}" for ns, n in names if names.count((ns, n)) > 1}
+        )
+        if clashes:
+            raise ValueError(f"interface name used twice in one namespace: {clashes}")
+        return self
+
     def __str__(self) -> str:
         """Return the config with credentials redacted."""
         data = self.model_dump()
@@ -236,6 +295,73 @@ class NetConfig(BaseModel):
         return str(data)
 
     __repr__ = __str__
+
+
+class NetSecurityPublic(BaseModel):
+    """Security settings as the API returns them: secrets become flags."""
+
+    ssid: str
+    security: SecurityTypes
+    psk_set: bool = False
+    password_set: bool = False
+    sae_pwe: int | None = None
+    pmf: int | None = None
+    identity: str | None = None
+    client_cert: str | None = None
+    private_key: str | None = None
+    ca_cert: str | None = None
+
+    @classmethod
+    def from_security(cls, security: NetSecurity) -> "NetSecurityPublic":
+        """Drop psk and password, recording only whether each is set."""
+        return cls(
+            **security.model_dump(exclude={"psk", "password"}),
+            psk_set=bool(security.psk),
+            password_set=bool(security.password),
+        )
+
+
+class RootConfigPublic(RootConfig):
+    """A root entry as the API returns it (no secrets)."""
+
+    # Narrower public type for the same field.
+    security: NetSecurityPublic | None = None  # type: ignore[assignment]
+
+
+class NamespaceConfigPublic(NamespaceConfig):
+    """A namespace entry as the API returns it (no secrets)."""
+
+    security: NetSecurityPublic | None = None  # type: ignore[assignment]
+
+
+class NetConfigPublic(NetConfig):
+    """A configuration as the API returns it: psk and password omitted.
+
+    `psk_set` / `password_set` say whether a secret is stored. Send the
+    entry back without `psk` or `password` in a PATCH to keep it.
+    """
+
+    namespaces: list[NamespaceConfigPublic] | None = None  # type: ignore[assignment]
+    roots: list[RootConfigPublic] | None = None  # type: ignore[assignment]
+
+    @classmethod
+    def from_config(cls, cfg: NetConfig) -> "NetConfigPublic":
+        """Build the public view of a stored configuration."""
+
+        def public(entry: RootConfig) -> dict[str, Any]:
+            data = entry.model_dump(exclude={"security"})
+            data["security"] = (
+                NetSecurityPublic.from_security(entry.security)
+                if entry.security
+                else None
+            )
+            return data
+
+        return cls(
+            id=cfg.id,
+            namespaces=[public(e) for e in cfg.namespaces or []],  # type: ignore[misc]
+            roots=[public(e) for e in cfg.roots or []],  # type: ignore[misc]
+        )
 
 
 class NetConfigUpdate(BaseModel):
@@ -303,6 +429,32 @@ class NetworkEvent(BaseModel):
     time: str = Field(json_schema_extra={"example": "2024-09-01 03:52:31.232828"})
 
 
+class AdapterOutcome(BaseModel):
+    """What happened to one configuration entry during activation."""
+
+    interface: str
+    namespace: str | None = None
+    status: str = Field(
+        description=(
+            "connected, provisioned or error; skipped for a default entry whose "
+            "radio Core did not create; in_use for a radio another tool is using "
+            "(left alone, the rest of the configuration still runs)"
+        )
+    )
+    detail: str = ""
+    invalid: bool = Field(
+        default=False, description="The entry failed configuration validation"
+    )
+
+
+class ActivationResponse(BaseModel):
+    """Result of activating a configuration, with one outcome per entry."""
+
+    id: str
+    message: str
+    outcomes: list[AdapterOutcome] = []
+
+
 class NetworkSetupLog(BaseModel):
     """Log of events during network setup."""
 
@@ -328,11 +480,64 @@ class ConnectedNetwork(BaseModel):
     connectedNet: ScanItem | None
 
 
+class LeftAlone(BaseModel):
+    """A namespace holding radios that Core did not clean up, and why."""
+
+    namespace: str
+    interfaces: list[str] = []
+    phys: list[str] = []
+    core_created: bool = False
+    reason: str
+
+
+class LeftoversResponse(BaseModel):
+    """Namespaces Core left alone; clear them with POST /network/config/reset."""
+
+    left_alone: list[LeftAlone] = []
+
+
+class DeactivationResponse(BaseModel):
+    """Result of deactivating a configuration."""
+
+    id: str
+    message: str
+    left_alone: list[LeftAlone] = []
+
+
+class NamespaceResetRequest(BaseModel):
+    """Namespaces to return to root, named explicitly by the caller."""
+
+    namespaces: list[str] = Field(min_length=1)
+
+    @field_validator("namespaces")
+    @classmethod
+    def validate_namespaces(cls, value: list[str]) -> list[str]:
+        """Validate each namespace name."""
+        return [validate_namespace_name(name) for name in value]
+
+
+class NamespaceResetResult(BaseModel):
+    """What resetting one namespace did."""
+
+    namespace: str
+    phys_returned: list[str] = []
+    deleted: bool = False
+    remaining: list[str] = []
+    detail: str = ""
+
+
+class NamespaceResetResponse(BaseModel):
+    """Per-namespace results of a reset."""
+
+    results: list[NamespaceResetResult]
+
+
 class RevertNamespace(BaseModel):
     """Result of reverting a namespace."""
 
     success: bool = Field(json_schema_extra={"example": True})
     message: str
+    left_alone: list[LeftAlone] = []
 
 
 class Interface(BaseModel):
