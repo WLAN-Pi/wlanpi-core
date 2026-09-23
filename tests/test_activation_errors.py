@@ -62,3 +62,54 @@ def test_driver_refusing_delete_returns_its_error(client, netcfg_env):
     assert detail["message"] == "An adapter command failed"
     assert "-524" in detail["error"]
     assert inventory.live()["wlan1"] == ("phy2", None, "managed")
+
+
+def test_invalid_entry_is_rejected_before_any_radio_is_touched(
+    client, netcfg_env, mocker
+):
+    # #261: a valid wlan2 entry listed before an invalid wlan0 entry used to be
+    # deleted and recreated, then rolled back. Now nothing runs.
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "bad_261",
+        {
+            "id": "bad_261",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan2",
+                    "phy": "phy2",
+                    "interface": "wlan2",
+                },
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan0",
+                    "phy": "phy1",
+                    "interface": "wlan0",
+                    "security": {
+                        "security": "WPA2-PSK",
+                        "ssid": "nonexistent",
+                        "psk": None,
+                    },
+                },
+            ],
+        },
+    )
+    activate = mocker.patch.object(netcfg_env["service"], "activate_config")
+    kill = mocker.patch.object(netcfg_env["service"], "kill_all_supplicants")
+    teardown = mocker.patch("wlanpi_core.utils.network_config._teardown_profile")
+
+    response = client.post(
+        "/api/v1/network/config/activate/bad_261", params={"override_active": True}
+    )
+
+    assert response.status_code == 422
+    outcomes = response.json()["detail"]["outcomes"]
+    assert [o["interface"] for o in outcomes] == ["wlan0"]
+    assert outcomes[0]["invalid"] is True
+    assert "psk is required" in outcomes[0]["detail"]
+    activate.assert_not_called()
+    kill.assert_not_called()
+    teardown.assert_not_called()
+    assert netcfg_env["ccf"].read_text() == "default"

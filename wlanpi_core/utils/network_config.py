@@ -604,6 +604,16 @@ def _activate_config_locked(
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
 
+    # Validate every entry before touching any radio, so an invalid entry
+    # cannot cost a valid sibling its interface (#261).
+    invalid_outcomes = _invalid_entries(cfg)
+    if invalid_outcomes:
+        log.error(
+            f"Configuration {cfg_id} is invalid, nothing changed: "
+            f"{[o.detail for o in invalid_outcomes]}"
+        )
+        return False, invalid_outcomes
+
     # Tear down the active profile first so its namespaces, supplicants and
     # apps do not linger beside the new one (#271).
     _teardown_profile(active_cfg)
@@ -646,6 +656,26 @@ def _activate_config_locked(
             _rollback_activated_configs(activated_configs)
         _fall_back_to_default(cfg_id)
         raise
+
+
+def _invalid_entries(cfg: NetConfig) -> list[AdapterOutcome]:
+    """Return an error outcome for every entry that fails schema validation."""
+    outcomes: list[AdapterOutcome] = []
+    for entry in [*(cfg.namespaces or []), *(cfg.roots or [])]:
+        is_valid, detail = ns._validate_config(entry)
+        if not is_valid:
+            outcomes.append(
+                AdapterOutcome(
+                    interface=entry.interface,
+                    namespace=entry.namespace
+                    if isinstance(entry, NamespaceConfig)
+                    else None,
+                    status="error",
+                    detail=detail,
+                    invalid=True,
+                )
+            )
+    return outcomes
 
 
 def _apply_entries(
