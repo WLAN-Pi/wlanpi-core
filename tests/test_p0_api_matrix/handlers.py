@@ -535,6 +535,34 @@ def handle_network_config_reserved_ids_400(client, auth_headers, scenario, netcf
     assert sorted(p.name for p in netcfg_env["cfg_dir"].iterdir()) == []
 
 
+def handle_network_config_create_invalid_psk_422(
+    client, auth_headers, scenario, netcfg_env
+):
+    def payload(security, psk):
+        return {
+            "id": "psk_cfg",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan0",
+                    "phy": "phy0",
+                    "interface": "wlan0",
+                    "security": {"ssid": "Net", "security": security, "psk": psk},
+                    "mlo": False,
+                    "default_route": False,
+                    "autostart_app": None,
+                }
+            ],
+        }
+
+    for security, psk in (("WPA2-PSK", "abc"), ("WPA3-PSK", "a" * 64)):
+        response = client.post("/api/v1/network/config/", json=payload(security, psk))
+        _expect_status(response, scenario.expected_http)
+        assert "psk must be 8-63 printable ASCII" in response.text
+    assert not (netcfg_env["cfg_dir"] / "psk_cfg.json").exists()
+
+
 def handle_wlan_management_settings_parse(client, auth_headers, scenario):
     from wlanpi_core.core.config import Settings
 
@@ -752,6 +780,7 @@ HANDLERS.update(
         "network_config_create_snapshots_mac": handle_network_config_create_snapshots_mac,
         "network_config_change_busy_409": handle_network_config_change_busy_409,
         "network_config_reserved_ids_400": handle_network_config_reserved_ids_400,
+        "network_config_create_invalid_psk_422": handle_network_config_create_invalid_psk_422,
         "wlan_management_settings_parse": handle_wlan_management_settings_parse,
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,

@@ -161,6 +161,32 @@ class NetSecurity(BaseModel):
             return None
         return validate_wpa_text(value, info.field_name)
 
+    @model_validator(mode="after")
+    def validate_psk_format(self) -> "NetSecurity":
+        """Reject PSKs that wpa_supplicant would refuse at start (#278).
+
+        WPA2: an 8-63 character printable-ASCII passphrase, or 64 hex digits.
+        WPA3 (SAE): a passphrase only; SAE cannot use a raw hex PSK.
+        """
+        if self.psk is None or self.security not in (
+            SecurityTypes.wpa2,
+            SecurityTypes.wpa3,
+        ):
+            return self
+        is_hex_key = len(self.psk) == 64 and all(
+            c in "0123456789abcdefABCDEF" for c in self.psk
+        )
+        if is_hex_key and self.security == SecurityTypes.wpa2:
+            return self
+        if not 8 <= len(self.psk) <= 63 or not all(
+            32 <= ord(c) <= 126 for c in self.psk
+        ):
+            raise ValueError(
+                "psk must be 8-63 printable ASCII characters"
+                + (" or 64 hex digits" if self.security == SecurityTypes.wpa2 else "")
+            )
+        return self
+
     def __str__(self) -> str:
         """Return the redacted security dict as a string."""
         return str(_redact_security_dict(self.model_dump()))

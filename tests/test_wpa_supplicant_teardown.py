@@ -234,6 +234,6 @@ def test_wpa_config_holds_one_network_and_is_private(tmp_path):
 
     text = path.read_text()
     assert text.count("network={") == 1
-    assert "NewNet" in text and "OldNet" not in text
+    assert b"NewNet".hex() in text and b"OldNet".hex() not in text
     assert "ctrl_interface=/run/x/ctrl" in text
     assert path.stat().st_mode & 0o777 == 0o600

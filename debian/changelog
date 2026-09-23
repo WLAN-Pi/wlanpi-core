@@ -1,3 +1,17 @@
+wlanpi-core (2.3.17-1) unstable; urgency=medium
+
+  * Write wpa_supplicant values so they round-trip exactly (#278).
+    wpa_supplicant reads a "quoted" value literally up to the last quote,
+    so the backslash escaping Core used changed any SSID or passphrase
+    containing a quote or backslash. SSIDs are now written as hex,
+    passphrases unescaped in quotes (or a 64-hex PSK bare), and EAP
+    identity, password and certificate paths as printf-escaped P"...".
+  * Reject a WPA2 PSK that is not 8-63 printable ASCII characters or 64 hex
+    digits, and a WPA3 PSK that is not a passphrase, with 422 instead of
+    failing when wpa_supplicant starts.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:32:46 -0500
+
 wlanpi-core (2.3.16-1) unstable; urgency=medium
 
   * Replace dhclient, which Trixie does not ship, with dhcpcd (#261). Each

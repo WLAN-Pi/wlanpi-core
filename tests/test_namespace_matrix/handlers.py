@@ -45,7 +45,7 @@ from wlanpi_core.schemas.network.network import (
 from wlanpi_core.utils import network_config as nc
 
 
-def _security(ssid: str, psk: str | None = "secret") -> NetSecurity:
+def _security(ssid: str, psk: str | None = "secret-passphrase") -> NetSecurity:
     return NetSecurity(ssid=ssid, security=SecurityTypes.wpa2, psk=psk)
 
 
