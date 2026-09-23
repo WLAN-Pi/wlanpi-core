@@ -30,12 +30,12 @@ jobs:
 
     steps:
       - name: Check out dev
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: dev
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -60,7 +60,7 @@ jobs:
 
       - name: Open or update OpenAPI reference PR
         id: cpr
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           base: dev
@@ -129,7 +129,7 @@ jobs:
     runs-on: 'ubuntu-26.04'
     steps:
       - name: Slack Workflow Notification
-        uses: Gamesight/slack-workflow-status@master
+        uses: Gamesight/slack-workflow-status@2e709ce51fd47f02b7221db8547e6e6f49f81f1d # v2.0.0
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
