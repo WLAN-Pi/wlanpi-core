@@ -162,7 +162,7 @@ def handle_validate_empty_phy(namespace_service, netcfg_env, scenario: Scenario)
 def handle_validate_empty_iface_display_name(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    valid, msg = namespace_service._validate_config(
+    valid, msg = namespace_service.validate_config(
         RootConfig.model_construct(
             mode=NetworkModeEnum.managed,
             iface_display_name="",

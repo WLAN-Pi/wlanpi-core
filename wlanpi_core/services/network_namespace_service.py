@@ -76,7 +76,7 @@ class NetworkNamespaceService:
 
         # Connection monitoring is now handled by connection.monitor module
 
-    def _validate_config(self, cfg: NamespaceConfig | RootConfig) -> tuple[bool, str]:
+    def validate_config(self, cfg: NamespaceConfig | RootConfig) -> tuple[bool, str]:
         """
         Perform comprehensive validation of config against schema before any state changes.
 
@@ -275,7 +275,7 @@ class NetworkNamespaceService:
         any state changes.
         """
         # Validate config before any state changes
-        is_valid, error_msg = self._validate_config(cfg)
+        is_valid, error_msg = self.validate_config(cfg)
         if not is_valid:
             self.log.error(
                 f"Config validation failed, aborting activation: {error_msg}"

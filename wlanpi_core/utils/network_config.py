@@ -604,6 +604,25 @@ def _activate_config_locked(
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
 
+    # Validate every entry before touching any radio, so an invalid entry
+    # cannot cost a valid sibling its interface (#261).
+    invalid_outcomes = _invalid_entries(cfg, only_core_managed=cfg_id == "default")
+    if invalid_outcomes:
+        log.error(
+            f"Configuration {cfg_id} is invalid, nothing changed: "
+            f"{[o.detail for o in invalid_outcomes]}"
+        )
+        if active_cfg == cfg_id:
+            # The stored current profile is now invalid (edited on disk, or a
+            # boot-time re-activation): tear down whatever of it still runs
+            # and stop claiming it is active. Another active profile is left
+            # running and current.txt keeps naming it.
+            try:
+                _teardown_profile(cfg_id)
+            finally:
+                _fall_back_to_default(cfg_id)
+        return False, invalid_outcomes
+
     # Tear down the active profile first so its namespaces, supplicants and
     # apps do not linger beside the new one (#271).
     _teardown_profile(active_cfg)
@@ -646,6 +665,34 @@ def _activate_config_locked(
             _rollback_activated_configs(activated_configs)
         _fall_back_to_default(cfg_id)
         raise
+
+
+def _invalid_entries(
+    cfg: NetConfig, only_core_managed: bool = False
+) -> list[AdapterOutcome]:
+    """Return an error outcome for every entry that fails schema validation.
+
+    With `only_core_managed`, entries whose radio Core did not create are not
+    checked: _apply_entries reports them "skipped" without touching them.
+    """
+    outcomes: list[AdapterOutcome] = []
+    for entry in [*(cfg.namespaces or []), *(cfg.roots or [])]:
+        if only_core_managed and not ns.is_core_managed(entry):
+            continue
+        is_valid, detail = ns.validate_config(entry)
+        if not is_valid:
+            outcomes.append(
+                AdapterOutcome(
+                    interface=entry.interface,
+                    namespace=entry.namespace
+                    if isinstance(entry, NamespaceConfig)
+                    else None,
+                    status="error",
+                    detail=detail,
+                    invalid=True,
+                )
+            )
+    return outcomes
 
 
 def _apply_entries(
