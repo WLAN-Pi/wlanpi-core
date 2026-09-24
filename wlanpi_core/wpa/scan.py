@@ -563,5 +563,6 @@ def run_interface_scan(
                 for mon in paused:
                     try:
                         _set_interface_state(mon, True, namespace)
-                    except RunCommandError as e:
+                    except Exception as e:
+                        # Keep going: every paused monitor gets its restore.
                         log.error("Could not bring %s back up after a scan: %s", mon, e)

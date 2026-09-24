@@ -318,3 +318,24 @@ def test_iwlwifi_scan_restores_monitor_when_scan_and_teardown_fail():
                         run_interface_scan("wlan0", mode="monitor")
 
     assert state.call_args_list[-1] == call("wlanpi1", True, None)
+
+
+def test_iwlwifi_scan_restores_every_monitor_when_one_restore_fails():
+    driver, siblings, ss = _iwlwifi(["wlanpi1", "wlanpi2"])
+
+    def set_state(iface, up, _ns):
+        if iface == "wlanpi1" and up:
+            raise OSError("gone")
+
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+            with patch(
+                "wlanpi_core.wpa.scan._set_interface_state", side_effect=set_state
+            ) as state:
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+                    assert run_interface_scan("wlan0", mode="managed") == []
+
+    assert state.call_args_list[-2:] == [
+        call("wlanpi1", True, None),
+        call("wlanpi2", True, None),
+    ]

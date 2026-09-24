@@ -78,9 +78,7 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
 
     assert await cli.stop_profiler() is True
 
-    terminate_process.assert_awaited_once_with(
-        process, grace=cli._PROFILER_STOP_GRACE_SEC
-    )
+    terminate_process.assert_awaited_once_with(process, grace=10.0)
     assert cli.profiler_process is None
 
 

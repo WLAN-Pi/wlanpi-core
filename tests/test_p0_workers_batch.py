@@ -386,6 +386,23 @@ def test_legacy_wlan_scan_reports_concurrent_scan(client, mocker):
     assert response.json()["error"] == "SCAN_IN_PROGRESS"
 
 
+def test_legacy_wlan_scan_reports_monitor_in_use(client, mocker):
+    from wlanpi_core.wpa.scan import MonitorInUseError
+
+    mocker.patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.wlan_scan",
+        side_effect=MonitorInUseError("wlan0", ["wlanpi1"]),
+    )
+    response = client.get(
+        "/api/v1/network/wlan/scan",
+        params={"type": "active", "interface": "wlan0"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "MONITOR_IN_USE"
+    assert "wlanpi1" in response.json()["message"]
+
+
 def test_require_mode_raises_validation_error():
     with patch("wlanpi_core.core.mode_guard.get_mode", return_value="classic"):
         with pytest.raises(ValidationError) as exc:
