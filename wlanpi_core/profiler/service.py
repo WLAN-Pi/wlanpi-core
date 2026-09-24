@@ -107,7 +107,7 @@ def profiler_active() -> bool:
         return True
     if _status_pid_alive():
         return True
-    return get_service_active_state("wlanpi-profiler") not in ("inactive", "failed")
+    return get_service_active_state(cli.PROFILER_UNIT) not in ("inactive", "failed")
 
 
 def _ignore_missing(func: Any, path: str, exc: BaseException) -> None:
@@ -167,13 +167,14 @@ async def purge_data() -> dict[str, int]:
     are removed, never followed. Raises ValidationError (409) while the
     profiler is active.
 
-    Holds the lock Core's own start and stop take, so a purge never overlaps
-    another purge or a profiler Core is spawning, and checks for activity
-    under that lock right before deleting.
+    Holds the lock Core takes to start or stop the profiler, whether it
+    spawns it directly or starts the systemd unit, so a purge never overlaps
+    another purge or a start through Core. Activity is checked under that
+    lock right before deleting.
     """
-    # ponytail: a start from outside Core (systemctl, the front panel) takes
-    # no lock, so it can still begin between the check and the delete and
-    # lose a file it is writing. The fix is a lock the profiler itself honours.
+    # ponytail: only starts from outside Core (direct systemctl, FPMS) take no
+    # lock, so they can still begin between the check and the delete and lose
+    # a file being written. Upgrade path: a lock the profiler itself honours.
     async with cli._profiler_lock:
         if await asyncio.to_thread(profiler_active):
             raise ValidationError(

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,21 @@ from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.profiler import cli, service
+from wlanpi_core.services import system_service
+
+
+class ObservedLock(asyncio.Lock):
+    """asyncio.Lock that flags when someone has to wait for it."""
+
+    def __init__(self):
+        super().__init__()
+        self.contended = asyncio.Event()
+
+    async def acquire(self):
+        """Flag contention, then acquire as usual."""
+        if self.locked():
+            self.contended.set()
+        return await super().acquire()
 
 
 class ExitedProcess:
@@ -163,6 +179,75 @@ async def test_purge_waits_for_start_lock_and_rechecks(root):
 
     assert exc.value.status_code == 409
     assert report.exists()
+
+
+@pytest.mark.parametrize(
+    "start, blocking_call",
+    [
+        (system_service.start_systemd_service, "start_service"),
+        (system_service.restart_systemd_service, "restart_service"),
+    ],
+)
+@pytest.mark.parametrize("unit", ["wlanpi-profiler", "wlanpi-profiler.service"])
+@pytest.mark.asyncio
+async def test_profiler_unit_start_waits_for_purge(
+    root, monkeypatch, start, blocking_call, unit
+):
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def blocking_delete():
+        entered.set()
+        if not release.wait(timeout=5):
+            raise AssertionError("purge was never released")
+        return {"files": 0, "bytes": 0}
+
+    lock = ObservedLock()
+    monkeypatch.setattr(cli, "_profiler_lock", lock)
+    monkeypatch.setattr(service, "_delete_contents", blocking_delete)
+    monkeypatch.setattr(system_service, blocking_call, calls.append)
+
+    purge_task = asyncio.create_task(service.purge_data())
+    start_task = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5), "purge never started"
+        start_task = asyncio.create_task(start(unit))
+        await asyncio.wait_for(lock.contended.wait(), timeout=5)
+        assert not start_task.done()
+        assert calls == []
+    finally:
+        release.set()
+        await purge_task
+    await start_task
+
+    assert calls == [unit]
+
+
+@pytest.mark.parametrize(
+    "start, blocking_call",
+    [
+        (system_service.start_systemd_service, "start_service"),
+        (system_service.restart_systemd_service, "restart_service"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_other_unit_start_ignores_profiler_lock(
+    root, monkeypatch, start, blocking_call
+):
+    calls = []
+    lock = ObservedLock()
+    monkeypatch.setattr(cli, "_profiler_lock", lock)
+    monkeypatch.setattr(system_service, blocking_call, calls.append)
+
+    await lock.acquire()
+    try:
+        await asyncio.wait_for(start("iperf"), timeout=5)
+    finally:
+        lock.release()
+
+    assert calls == ["iperf"]
+    assert not lock.contended.is_set()
 
 
 @pytest.mark.parametrize(
