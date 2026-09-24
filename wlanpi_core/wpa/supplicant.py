@@ -7,6 +7,7 @@ wpa_supplicant processes.
 
 import logging
 import os
+import re
 import signal
 import time
 from pathlib import Path
@@ -161,6 +162,30 @@ def stop_namespace_supplicants(namespace: str) -> None:
         _stop_pidfile(path)
 
 
+# The whole line (with the -t timestamp) must match, so a value that merely
+# contains this text is still redacted.
+_UNKNOWN_FIELD = re.compile(
+    r"^[\d.]+: Line \d+: unknown (?:network|global) field '\w+'\.$"
+)
+
+
+def _log_tail(path: Path, lines: int = 10) -> str:
+    """Return the last lines of a supplicant log with quoted values redacted.
+
+    wpa_supplicant echoes a rejected value in quotes ("Invalid PSK '...'"),
+    which can be a secret. Only an unknown field's name is kept. Greedy
+    first-to-last-quote redaction also covers values containing quotes.
+    """
+    try:
+        tail = path.read_text(errors="replace").splitlines()[-lines:]
+    except OSError:
+        return ""
+    return "\n".join(
+        line if _UNKNOWN_FIELD.match(line) else re.sub(r"'.*'", "'[redacted]'", line)
+        for line in tail
+    )
+
+
 def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
     """
     Start or restart wpa_supplicant for an interface.
@@ -199,24 +224,31 @@ def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
     log_file.touch()
 
     # Start wpa_supplicant, recording its PID for targeted teardown
-    ns_exec(
-        [
-            "wpa_supplicant",
-            "-B",
-            "-i",
-            iface,
-            "-c",
-            str(config_path(iface, namespace)),
-            "-D",
-            "nl80211",
-            "-f",
-            str(log_file),
-            "-t",
-            "-P",
-            str(pidfile_path(iface, namespace)),
-        ],
-        namespace=namespace,
-    )
+    try:
+        ns_exec(
+            [
+                "wpa_supplicant",
+                "-B",
+                "-i",
+                iface,
+                "-c",
+                str(config_path(iface, namespace)),
+                "-D",
+                "nl80211",
+                "-f",
+                str(log_file),
+                "-t",
+                "-P",
+                str(pidfile_path(iface, namespace)),
+            ],
+            namespace=namespace,
+        )
+    except RunCommandError as e:
+        # With -f, the reason (e.g. a config parse error) is in the log, not stderr.
+        reason = "\n".join(filter(None, [e.error_msg.strip(), _log_tail(log_file)]))
+        raise RunCommandError(
+            f"wpa_supplicant failed to start for {iface}: {reason}", e.return_code
+        ) from e
 
     log.info(f"wpa_supplicant started for {iface} in namespace {namespace_display}")
 

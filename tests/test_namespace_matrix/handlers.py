@@ -62,7 +62,6 @@ def _root(**kwargs) -> RootConfig:
         "default_route": False,
         "autostart_app": None,
         "security": None,
-        "mlo": False,
     }
     base.update(kwargs)
     return RootConfig(**base)
@@ -137,7 +136,6 @@ def handle_validate_empty_interface(namespace_service, netcfg_env, scenario: Sce
         default_route=False,
         autostart_app=None,
         security=None,
-        mlo=False,
     )
     with patch.object(namespace_service, "get_interfaces", return_value=["wlan0"]):
         result = namespace_service.activate_config(cfg)
@@ -154,7 +152,6 @@ def handle_validate_empty_phy(namespace_service, netcfg_env, scenario: Scenario)
         default_route=False,
         autostart_app=None,
         security=None,
-        mlo=False,
     )
     result = namespace_service.activate_config(cfg)
     assert result.status == "error"
@@ -173,7 +170,6 @@ def handle_validate_empty_iface_display_name(
             default_route=False,
             autostart_app=None,
             security=None,
-            mlo=False,
         )
     )
     assert valid is False
@@ -189,7 +185,6 @@ def handle_validate_invalid_mode(namespace_service, netcfg_env, scenario: Scenar
         default_route=False,
         autostart_app=None,
         security=None,
-        mlo=False,
     )
     with warnings.catch_warnings():
         # intentionally-invalid model; pydantic serializer warnings are expected
@@ -209,7 +204,6 @@ def handle_validate_empty_namespace(namespace_service, netcfg_env, scenario: Sce
         default_route=False,
         autostart_app=None,
         security=None,
-        mlo=False,
     )
     result = namespace_service.activate_config(cfg)
     assert result.status == "error"
@@ -226,7 +220,6 @@ def handle_validate_security_missing_ssid(
         interface="wlan0",
         default_route=False,
         autostart_app=None,
-        mlo=False,
         security=NetSecurity.model_construct(
             ssid="", security=SecurityTypes.wpa2, psk="x"
         ),
@@ -255,7 +248,6 @@ def handle_validate_invalid_security_type(
         interface="wlan0",
         default_route=False,
         autostart_app=None,
-        mlo=False,
         security=NetSecurity.model_construct(ssid="x", security="WEP-OLD", psk="x"),
     )
     with warnings.catch_warnings():
@@ -277,7 +269,6 @@ def handle_validate_autostart_app_empty_string(
         default_route=False,
         autostart_app="   ",
         security=None,
-        mlo=False,
     )
     result = namespace_service.activate_config(cfg)
     assert result.status == "error"
@@ -295,7 +286,6 @@ def handle_validate_default_route_non_bool(
         default_route="yes",
         autostart_app=None,
         security=None,
-        mlo=False,
     )
     with warnings.catch_warnings():
         # intentionally-invalid model; pydantic serializer warnings are expected
@@ -473,7 +463,6 @@ def handle_default_file_override(namespace_service, netcfg_env, scenario: Scenar
                 "phy": "phy0",
                 "interface": "wlan0",
                 "security": None,
-                "mlo": False,
                 "default_route": False,
                 "autostart_app": None,
             }
