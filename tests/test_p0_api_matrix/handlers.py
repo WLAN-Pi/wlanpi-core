@@ -617,6 +617,51 @@ def handle_network_config_secrets_not_returned(
     assert path.stat().st_mode & 0o777 == 0o600
 
 
+def handle_network_config_legacy_mlo_accepted(
+    client, auth_headers, scenario, netcfg_env
+):
+    """Clients that still send `mlo` get 200; it is dropped, never stored."""
+    import json as _json
+
+    security = {"ssid": "MLO", "security": "WPA3-PSK", "psk": "secret-passphrase"}
+    root = {**_root_entry("wlan0", "phy0", security), "mlo": True}
+    namespaced = {
+        **_root_entry("wlan1", "phy2", security),
+        "namespace": "mlo_ns",
+        "mlo": True,
+    }
+    path = netcfg_env["cfg_dir"] / "legacy_mlo.json"
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        created = client.post(
+            "/api/v1/network/config/",
+            json={"id": "legacy_mlo", "namespaces": [namespaced], "roots": [root]},
+        )
+        _expect_status(created, scenario.expected_http)
+        stored = _json.loads(path.read_text())
+        assert [e["interface"] for e in stored["roots"] + stored["namespaces"]] == [
+            "wlan0",
+            "wlan1",
+        ]
+        assert not any("mlo" in e for e in stored["roots"] + stored["namespaces"])
+
+        fetched = client.get("/api/v1/network/config/legacy_mlo")
+        _expect_status(fetched, scenario.expected_http)
+        assert "mlo" not in fetched.json()["roots"][0]
+
+        root["mode"] = "monitor"
+        patched = client.patch(
+            "/api/v1/network/config/legacy_mlo",
+            json={"roots": [root], "namespaces": [namespaced]},
+        )
+        _expect_status(patched, scenario.expected_http)
+        returned = patched.json()["config"]
+        assert returned["roots"][0]["mode"] == "monitor"
+        assert not any("mlo" in e for e in returned["roots"] + returned["namespaces"])
+        stored = _json.loads(path.read_text())
+        assert stored["roots"][0]["mode"] == "monitor"
+        assert not any("mlo" in e for e in stored["roots"] + stored["namespaces"])
+
+
 def _root_entry(interface, phy, security=None):
     return {
         "mode": "managed",
@@ -1037,6 +1082,7 @@ HANDLERS.update(
         "network_config_reserved_ids_400": handle_network_config_reserved_ids_400,
         "network_config_create_invalid_psk_422": handle_network_config_create_invalid_psk_422,
         "network_config_secrets_not_returned": handle_network_config_secrets_not_returned,
+        "network_config_legacy_mlo_accepted": handle_network_config_legacy_mlo_accepted,
         "network_config_activate_invalid_entry_422": handle_network_config_activate_invalid_entry_422,
         "network_config_activate_fault_500_outcomes": handle_network_config_activate_fault_500_outcomes,
         "wlan_revert_reverts_all": handle_wlan_revert_reverts_all,

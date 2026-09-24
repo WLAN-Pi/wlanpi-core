@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,6 +15,11 @@ from tests.conftest import (
 )
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.wpa import supplicant
+
+# Captured before any test patches it; conftest mocks the start by default.
+_real_start_supplicant = supplicant.start_or_restart_supplicant
 
 
 @pytest.fixture
@@ -61,6 +69,64 @@ def test_driver_refusing_delete_returns_its_error(client, netcfg_env):
     assert detail["message"] == "An adapter command failed"
     assert "-524" in detail["error"]
     assert inventory.live()["wlan1"] == ("phy2", None, "managed")
+
+
+def test_supplicant_start_failure_returns_its_log_reason(client, netcfg_env):
+    # wpa_supplicant 2.12 with -f exits 255 with empty stderr; the reason
+    # (here the `mlo=1` Core used to write) is only in its log file.
+    write_json_config(
+        netcfg_env["cfg_dir"],
+        "wpa_cfg",
+        {
+            "id": "wpa_cfg",
+            "namespaces": [],
+            "roots": [
+                {
+                    "mode": "managed",
+                    "iface_display_name": "wlan0",
+                    "phy": "phy0",
+                    "interface": "wlan0",
+                    "security": {
+                        "ssid": "Net",
+                        "security": "WPA2-PSK",
+                        "psk": "hunter2-passphrase",
+                    },
+                }
+            ],
+        },
+    )
+    log_lines = [
+        "1.0: Successfully initialized wpa_supplicant",
+        "1.0: Line 5: failed to parse psk '\"hunter2-passphrase\"'.",
+        "1.0: Line 9: unknown network field 'mlo'.",
+        "1.0: Line 10: failed to parse network block.",
+    ]
+
+    def failing_start(argv, namespace=None):
+        Path(argv[argv.index("-f") + 1]).write_text("\n".join(log_lines) + "\n")
+        raise RunCommandError("", 255)
+
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        with (
+            patch.object(
+                supplicant, "start_or_restart_supplicant", new=_real_start_supplicant
+            ),
+            patch.object(supplicant, "ns_exec", side_effect=failing_start) as start,
+        ):
+            response = client.post(
+                "/api/v1/network/config/activate/wpa_cfg",
+                params={"override_active": True},
+            )
+
+    start.assert_called_once()
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert detail["message"] == "An adapter command failed"
+    assert "wpa_supplicant failed to start for wlan0" in detail["error"]
+    assert "unknown network field 'mlo'" in detail["error"]
+    assert "hunter2" not in response.text
+    assert netcfg_env["ccf"].read_text() == "default"
+    assert inventory.live()["wlan0"] == ("phy0", None, "managed")
 
 
 def test_invalid_entry_is_rejected_before_any_radio_is_touched(
