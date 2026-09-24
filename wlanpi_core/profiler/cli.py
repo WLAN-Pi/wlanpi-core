@@ -8,6 +8,8 @@ import wlanpi_core.profiler.models as models
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import terminate_process_async
 
+_PROFILER_STOP_GRACE_SEC = 10.0
+
 log = get_logger(__name__)
 profiler_process: Process | None = None
 _profiler_lock = asyncio.Lock()
@@ -78,6 +80,9 @@ async def stop_profiler() -> Any:
             profiler_process = None
             return False
 
-        await terminate_process_async(process)
+        # The profiler needs ~2 s after SIGTERM to stop hostapd, delete its
+        # monitor vif and restore the primary; a SIGKILL before that leaves
+        # the radio staged and breaks later captures on it.
+        await terminate_process_async(process, grace=_PROFILER_STOP_GRACE_SEC)
         profiler_process = None
         return True

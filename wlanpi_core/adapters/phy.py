@@ -57,6 +57,22 @@ def _up_monitors(phy: str, namespace: str | None) -> list[str]:
     return [m.name for m in monitors if m.name in up]
 
 
+def up_sibling_monitors(iface: str, namespace: str | None) -> list[str]:
+    """Return the monitors other than `iface` that are up on its phy.
+
+    Best effort: [] when the state cannot be read.
+    """
+    try:
+        result = ns_exec([IW_FILE, "dev"], namespace=namespace, no_output=True)
+    except (RunCommandError, ValueError) as e:
+        log.warning(f"Could not list the netdevs next to {iface}: {e}")
+        return []
+    for live in discovery._parse_iw_dev(result.stdout, namespace):
+        if live.name == iface:
+            return [m for m in _up_monitors(live.phy, namespace) if m != iface]
+    return []
+
+
 def _bring_up(phy: str, names: list[str], namespace: str | None) -> None:
     """Bring `names` up again in `namespace` if they are still `phy`'s monitors.
 

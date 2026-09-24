@@ -182,3 +182,18 @@ def test_api_wlan_scan_error_never_returned_as_200(client):
         response = client.get("/api/v1/utils/wlan/scan")
     assert response.status_code == 503
     assert response.json()["error"] == "scan failed"
+
+
+def test_api_wlan_scan_reports_capture_blocking_an_iwlwifi_scan(client):
+    from wlanpi_core.wpa.scan import MonitorInUseError
+
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.wlan_scan",
+        side_effect=MonitorInUseError("wlan0", ["wlanpi1"]),
+    ):
+        response = client.get("/api/v1/utils/wlan/scan")
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["error"] == "MONITOR_IN_USE"
+    assert "wlanpi1" in body["message"]
