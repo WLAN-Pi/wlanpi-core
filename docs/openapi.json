@@ -12,7 +12,7 @@
           "authentication"
         ],
         "summary": "Issue JWT bearer token",
-        "description": "Issue a JWT for remote clients.\n\n**Authentication for this call:** localhost HMAC (`X-Request-Signature`) from\non-device services. Remote HTTP clients already holding a Bearer token may also\ncall this to rotate. Pure remote bootstrap requires a device-local pairing step\n(UI proxy) \u2014 see `docs/API-INTEGRATION-GUIDE.md` \u00a71.\n\nSend the returned `access_token` as `Authorization: Bearer <token>` on all\nsubsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.",
+        "description": "Issue a JWT for remote clients.\n\n**Authentication for this call:** localhost HMAC (`X-Request-Signature`) from\non-device services. Remote HTTP clients already holding a Bearer token may also\ncall this to rotate. Pure remote bootstrap requires a device-local pairing step\n(UI proxy) \u2014 see `docs/API-INTEGRATION-GUIDE.md` \u00a71.\n\nThe `wlanpi-webui` device id is reserved: only localhost HMAC callers can\nmint it (403 otherwise).\n\nSend the returned `access_token` as `Authorization: Bearer <token>` on all\nsubsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.",
         "operationId": "generate_token_api_v1_auth_token_post",
         "requestBody": {
           "content": {
@@ -44,6 +44,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "device_id is reserved for on-device use"
           },
           "412": {
             "description": "device_id missing from request body"
