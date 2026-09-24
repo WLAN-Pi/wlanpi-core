@@ -1,5 +1,6 @@
 """Profiler beaconing status and data helpers."""
 
+import asyncio
 import json
 import os
 import shutil
@@ -11,7 +12,7 @@ import psutil
 import wlanpi_core.profiler.cli as cli
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.services.system_service import check_service_status
+from wlanpi_core.services.system_service import get_service_active_state
 
 INFO_FILE = "/run/wlanpi-profiler.info.json"
 # The profiler writes its output here; purge empties these subdirectories.
@@ -70,26 +71,49 @@ def profiler_beaconing_ssid() -> str | None:
     return None
 
 
-def profiler_active() -> bool:
-    """Return True while any profiler run could still be writing its output.
+def _status_pid_alive() -> bool:
+    """Return True if the status file says starting/running for a live pid.
 
-    Covers the wlanpi-profiler systemd unit, a profiler Core spawned itself,
-    and a profiler started some other way that reports `starting` or
-    `running` in its status file (ignored when its pid is gone).
+    A file without a valid pid is not trusted: a crashed profiler leaves one
+    behind, and the pre-status window is covered by Core's process handle and
+    the systemd unit state.
     """
-    process = cli.profiler_process
-    if process is not None and process.returncode is None:
-        return True
     try:
         with open(cli.STATUS_FILE) as f:
             status = json.load(f)
     except (OSError, ValueError):
-        status = {}
-    if isinstance(status, dict) and status.get("state") in ("starting", "running"):
-        pid = status.get("pid")
-        if not isinstance(pid, int) or psutil.pid_exists(pid):
-            return True
-    return check_service_status("wlanpi-profiler")
+        return False
+    if not isinstance(status, dict) or status.get("state") not in (
+        "starting",
+        "running",
+    ):
+        return False
+    pid = status.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    return bool(psutil.pid_exists(pid))
+
+
+def profiler_active() -> bool:
+    """Return True while any profiler run could still be writing its output.
+
+    Covers a profiler Core spawned itself, one whose status file reports
+    `starting` or `running` with a live pid, and the wlanpi-profiler systemd
+    unit in any state but inactive or failed (so activating, deactivating and
+    reloading count as busy).
+    """
+    process = cli.profiler_process
+    if process is not None and process.returncode is None:
+        return True
+    if _status_pid_alive():
+        return True
+    return get_service_active_state("wlanpi-profiler") not in ("inactive", "failed")
+
+
+def _ignore_missing(func: Any, path: str, exc: BaseException) -> None:
+    """Let rmtree skip entries that disappeared underneath it."""
+    if not isinstance(exc, FileNotFoundError):
+        raise exc
 
 
 def _tree_usage(path: str) -> tuple[int, int]:
@@ -98,27 +122,18 @@ def _tree_usage(path: str) -> tuple[int, int]:
     for dirpath, dirnames, filenames in os.walk(path):
         # os.walk lists a symlink to a directory under dirnames.
         for name in dirnames + filenames:
-            st = os.lstat(os.path.join(dirpath, name))
+            try:
+                st = os.lstat(os.path.join(dirpath, name))
+            except FileNotFoundError:
+                continue
             if not stat.S_ISDIR(st.st_mode):
                 files += 1
                 size += st.st_size
     return files, size
 
 
-def purge_data() -> dict[str, int]:
-    """Delete everything inside the profiler clients and reports directories.
-
-    The directories themselves stay, with their mode and ownership. Symlinks
-    are removed, never followed. Raises ValidationError (409) while the
-    profiler is active.
-    """
-    # ponytail: check-then-delete; a profiler started in between may lose a
-    # file it is writing. Hold a start lock here if that ever matters.
-    if profiler_active():
-        raise ValidationError(
-            "The profiler is running; stop it before purging its data.",
-            status_code=409,
-        )
+def _delete_contents() -> dict[str, int]:
+    """Empty the purge directories; entries removed concurrently are skipped."""
     files = size = 0
     for name in PURGE_DIRS:
         path = os.path.join(DATA_ROOT, name)
@@ -130,13 +145,39 @@ def purge_data() -> dict[str, int]:
         except FileNotFoundError:
             continue
         for entry in entries:
-            if entry.is_dir(follow_symlinks=False):
-                count, used = _tree_usage(entry.path)
-                shutil.rmtree(entry.path)
-            else:
-                count, used = 1, entry.stat(follow_symlinks=False).st_size
-                os.unlink(entry.path)
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    count, used = _tree_usage(entry.path)
+                    shutil.rmtree(entry.path, onexc=_ignore_missing)
+                else:
+                    count, used = 1, entry.stat(follow_symlinks=False).st_size
+                    os.unlink(entry.path)
+            except FileNotFoundError:
+                continue
             files += count
             size += used
     log.info("Purged %d profiler files (%d bytes)", files, size)
     return {"files": files, "bytes": size}
+
+
+async def purge_data() -> dict[str, int]:
+    """Delete everything inside the profiler clients and reports directories.
+
+    The directories themselves stay, with their mode and ownership. Symlinks
+    are removed, never followed. Raises ValidationError (409) while the
+    profiler is active.
+
+    Holds the lock Core's own start and stop take, so a purge never overlaps
+    another purge or a profiler Core is spawning, and checks for activity
+    under that lock right before deleting.
+    """
+    # ponytail: a start from outside Core (systemctl, the front panel) takes
+    # no lock, so it can still begin between the check and the delete and
+    # lose a file it is writing. The fix is a lock the profiler itself honours.
+    async with cli._profiler_lock:
+        if await asyncio.to_thread(profiler_active):
+            raise ValidationError(
+                "The profiler is running; stop it before purging its data.",
+                status_code=409,
+            )
+        return await asyncio.to_thread(_delete_contents)

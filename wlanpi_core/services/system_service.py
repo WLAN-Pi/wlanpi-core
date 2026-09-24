@@ -420,7 +420,15 @@ def check_service_status(service: str) -> bool:
 
     You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
-    service_running = False
+    return get_service_active_state(service) == "active"
+
+
+def get_service_active_state(service: str) -> str:
+    """Return the unit's systemd ActiveState, or "inactive" if it is not loaded.
+
+    Values are systemd's: active, reloading, inactive, failed, activating,
+    deactivating (and on newer systemd, maintenance or refreshing).
+    """
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -448,11 +456,11 @@ def check_service_status(service: str) -> bool:
                 "ActiveState",
                 timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-            if service_load_state == "loaded" and service_active_state == "active":
-                service_running = True
+            if service_load_state == "loaded":
+                return str(service_active_state)
         except DBusException as exc:
             if exc.args and "not loaded" in str(exc.args[0]):
-                return service_running
+                return "inactive"
             _raise_systemd_dbus_error(
                 exc,
                 action="checking",
@@ -461,7 +469,7 @@ def check_service_status(service: str) -> bool:
             )
         except ValueError as error:
             raise ValidationError(f"{error}", status_code=400) from None
-    return service_running
+    return "inactive"
 
 
 async def get_systemd_service_status(name: str) -> dict[str, Any]:

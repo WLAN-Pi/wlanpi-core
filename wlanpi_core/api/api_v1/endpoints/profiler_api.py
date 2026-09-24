@@ -1,6 +1,5 @@
 """Profiler status and control endpoints."""
 
-import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
@@ -107,7 +106,7 @@ async def purge_profiler() -> Any:
     """
 
     try:
-        return await asyncio.to_thread(service.purge_data)
+        return await service.purge_data()
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

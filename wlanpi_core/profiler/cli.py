@@ -22,6 +22,7 @@ LAST_SESSION_FILE = "/var/lib/wlanpi-profiler/last-session.json"
 
 log = get_logger(__name__)
 profiler_process: Process | None = None
+# Serialises start, stop and service.purge_data.
 _profiler_lock = asyncio.Lock()
 
 
