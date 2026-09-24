@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,42 +12,128 @@ from wlanpi_core.profiler.models import Start
 
 
 class ProfilerProcess:
+    """Fake child; wait() blocks until exit() is called, like a real process."""
+
     def __init__(self):
         self.returncode = None
+        self._exited = asyncio.Event()
+
+    def exit(self, code):
+        self.returncode = code
+        self._exited.set()
 
     async def wait(self):
+        await self._exited.wait()
         return self.returncode
 
 
 @pytest.fixture(autouse=True)
-def reset_profiler_state():
+def reset_profiler_state(tmp_path, monkeypatch):
     cli.profiler_process = None
     cli._profiler_lock = asyncio.Lock()
+    monkeypatch.setattr(cli, "STATUS_FILE", str(tmp_path / "status.json"))
+    monkeypatch.setattr(cli, "LAST_SESSION_FILE", str(tmp_path / "last.json"))
+    monkeypatch.setattr(cli, "_PROFILER_START_POLL_SEC", 0.01)
     yield
     cli.profiler_process = None
 
 
-@pytest.mark.asyncio
-async def test_start_profiler_discards_output_and_isolates_process(mocker):
-    process = ProfilerProcess()
-    create_process = mocker.patch.object(
-        cli.asyncio,
-        "create_subprocess_exec",
-        new=AsyncMock(return_value=process),
+def write_json(path, data, mtime=None):
+    with open(path, "w") as f:
+        json.dump(data, f)
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
+
+
+def spawn(mocker, process, on_spawn=None):
+    """Patch process creation; on_spawn runs as the child would at startup."""
+
+    async def create(*args, **kwargs):
+        if on_spawn:
+            on_spawn()
+        return process
+
+    return mocker.patch.object(
+        cli.asyncio, "create_subprocess_exec", new=AsyncMock(side_effect=create)
     )
 
-    assert await cli.start_profiler(Start(interface="wlanpi0", debug=True)) is True
 
+@pytest.mark.asyncio
+async def test_start_profiler_waits_for_running_and_isolates_process(mocker):
+    process = ProfilerProcess()
+    create_process = spawn(
+        mocker, process, lambda: write_json(cli.STATUS_FILE, {"state": "running"})
+    )
+
+    result = await cli.start_profiler(Start(interface="wlanpi0", debug=True))
+
+    assert result == {"success": True}
     create_process.assert_awaited_once_with(
-        "profiler",
-        "-i",
-        "wlanpi0",
-        "--debug",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-        start_new_session=True,
+        "profiler", "-i", "wlanpi0", "--debug", start_new_session=True
     )
     assert cli.profiler_process is process
+
+
+@pytest.mark.asyncio
+async def test_start_profiler_reports_exit_reason_from_last_session(mocker):
+    process = ProfilerProcess()
+
+    def fail():
+        write_json(
+            cli.LAST_SESSION_FILE,
+            {"exit": {"reason": "interface_validation", "message": "no wlan9"}},
+        )
+        process.exit(1)
+
+    spawn(mocker, process, fail)
+
+    result = await cli.start_profiler(Start(interface="wlan9"))
+
+    assert result == {
+        "success": False,
+        "reason": "interface_validation",
+        "message": "no wlan9",
+    }
+
+
+@pytest.mark.asyncio
+async def test_start_profiler_ignores_files_from_an_earlier_run(mocker):
+    write_json(cli.STATUS_FILE, {"state": "running"}, mtime=1)
+    write_json(cli.LAST_SESSION_FILE, {"exit": {"reason": "stale"}}, mtime=1)
+    process = ProfilerProcess()
+    spawn(mocker, process, lambda: process.exit(2))
+
+    result = await cli.start_profiler(Start())
+
+    assert result["success"] is False
+    assert result["reason"] == "exited"
+    assert "code 2" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_start_profiler_reports_starting_when_wait_runs_out(mocker):
+    mocker.patch.object(cli, "_PROFILER_START_WAIT_SEC", 0)
+    spawn(mocker, ProfilerProcess())
+
+    result = await cli.start_profiler(Start())
+
+    assert result["success"] is True
+    assert result["reason"] == "starting"
+
+
+@pytest.mark.asyncio
+async def test_start_profiler_reports_spawn_failure(mocker):
+    mocker.patch.object(
+        cli.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(side_effect=FileNotFoundError("profiler")),
+    )
+
+    result = await cli.start_profiler(Start())
+
+    assert result["success"] is False
+    assert result["reason"] == "spawn_failed"
+    assert cli.profiler_process is None
 
 
 @pytest.mark.asyncio
@@ -57,7 +145,10 @@ async def test_start_profiler_rejects_duplicate_process(mocker):
         new=AsyncMock(),
     )
 
-    assert await cli.start_profiler(Start()) is False
+    result = await cli.start_profiler(Start())
+
+    assert result["success"] is False
+    assert result["reason"] == "already_running"
     create_process.assert_not_awaited()
 
 
@@ -68,7 +159,7 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
 
     async def terminate(target, grace):
         assert target is process
-        process.returncode = -15
+        process.exit(-15)
 
     terminate_process = mocker.patch.object(
         cli,

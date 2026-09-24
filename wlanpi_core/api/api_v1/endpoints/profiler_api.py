@@ -40,16 +40,22 @@ async def profiler_status() -> Any:
 @router.post(
     "/start",
     response_model=schemas.Start,
+    response_model_exclude_none=True,
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_profiler(args: models.Start) -> Any:
-    """Start the profiler with the provided arguments."""
+    """Start the profiler and wait (up to about 25 s) until it runs or fails.
+
+    `success` is false when the profiler exited during startup. `reason` and
+    `message` then carry the profiler's own exit reason, for example
+    `country_code_detection` (no reg domain set) or `interface_validation`
+    (unknown interface), or `already_running`. If it is still starting when the
+    wait ends, `success` is true with `reason` `starting`: poll
+    `GET /profiler/status` for `running`.
+    """
 
     try:
-        # start with args
-        result = await cli.start_profiler(args)
-
-        return {"success": result}
+        return await cli.start_profiler(args)
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

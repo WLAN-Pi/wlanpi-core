@@ -3705,7 +3705,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Start the profiler with the provided arguments.",
+        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler exited during startup. `reason` and\n`message` then carry the profiler's own exit reason, for example\n`country_code_detection` (no reg domain set) or `interface_validation`\n(unknown interface), or `already_running`. If it is still starting when the\nwait ends, `success` is true with `reason` `starting`: poll\n`GET /profiler/status` for `running`.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
@@ -7410,6 +7410,34 @@
               true,
               false
             ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why it did not start, or `starting` if still starting",
+            "examples": [
+              "country_code_detection",
+              "starting"
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Human-readable detail for `reason`"
           }
         },
         "type": "object",

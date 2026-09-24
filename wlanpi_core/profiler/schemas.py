@@ -21,6 +21,14 @@ class Start(BaseModel):
     """Result of starting the profiler."""
 
     success: bool = Field(examples=[True, False])
+    reason: str | None = Field(
+        default=None,
+        examples=["country_code_detection", "starting"],
+        description="Why it did not start, or `starting` if still starting",
+    )
+    message: str | None = Field(
+        default=None, description="Human-readable detail for `reason`"
+    )
 
 
 class Stop(BaseModel):
