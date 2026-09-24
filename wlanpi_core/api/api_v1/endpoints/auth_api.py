@@ -187,8 +187,11 @@ async def pam_change_password(body: PAMChangePasswordRequest) -> PAMAuthResponse
 
     old_code = await asyncio.to_thread(_pam_authenticate, username, current)
     if old_code not in _PAM_EXPIRED:
-        # Wrong current password, or the account is not expired
-        if old_code in _PAM_AUTH_DENIED or old_code == 0:
+        if old_code == 0:
+            # Right password, account not expired: refuse on the same timing
+            # as a wrong one, or a fast "failure" confirms the password.
+            return await _refuse_non_administrator()
+        if old_code in _PAM_AUTH_DENIED:
             return PAMAuthResponse(status="failure")
         raise HTTPException(
             status_code=503, detail="Authentication service unavailable"

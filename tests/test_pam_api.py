@@ -166,6 +166,20 @@ async def test_change_password_with_non_expired_current_is_failure():
 
 
 @pytest.mark.asyncio
+async def test_change_password_non_expired_refusal_waits_like_a_wrong_password(
+    monkeypatch,
+):
+    """A fast "failure" would confirm the current password was right."""
+    monkeypatch.setattr(
+        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", 0.05
+    )
+    started = time.monotonic()
+    resp = await _change("alice", "current", "new", SUCCESS, SUCCESS, admin=False)
+    assert resp.status == "failure"
+    assert time.monotonic() - started >= 0.05
+
+
+@pytest.mark.asyncio
 async def test_change_password_wrong_current_is_failure():
     resp = await _change("wlanpi", "wrong", "new", AUTH_ERR, SUCCESS)
     assert resp.status == "failure"
