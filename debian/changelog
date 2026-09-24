@@ -1,3 +1,15 @@
+wlanpi-core (2.3.29-1) unstable; urgency=medium
+
+  * On Intel BE200/iwlwifi, a Wi-Fi scan no longer crashes the firmware:
+    Core takes the same-radio monitor down for the scan and brings it
+    back up on its channel afterwards. A scan is refused with 409
+    MONITOR_IN_USE while a capture is running on that monitor (#314).
+  * Stopping the profiler through the API now gives it 10 s to stop
+    hostapd and remove its monitor before SIGKILL, so later captures on
+    that radio work.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 22:36:57 -0400
+
 wlanpi-core (2.3.28-1) unstable; urgency=medium
 
   * A profile with autostart_app no longer fails with 500 on a device
