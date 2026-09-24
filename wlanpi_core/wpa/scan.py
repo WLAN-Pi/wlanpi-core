@@ -61,18 +61,24 @@ class MonitorInUseError(ScanInProgressError):
 
 
 @contextmanager
-def _claim_scan(iface: str, namespace: str | None = None) -> Iterator[None]:
-    """Claim a scan target without retaining an unbounded lock cache."""
-    key = (namespace, iface)
+def _claim_scan(
+    iface: str, namespace: str | None = None, also: list[str] | None = None
+) -> Iterator[None]:
+    """Claim a scan target, plus the monitors it pauses, all or nothing.
+
+    Claiming the paused monitors too means a second scan on the same radio
+    gets ScanInProgressError instead of restoring a monitor mid-scan.
+    """
+    keys = {(namespace, name) for name in [iface, *(also or [])]}
     with _active_scans_lock:
-        if key in _active_scans:
+        if keys & _active_scans:
             raise ScanInProgressError(iface, namespace)
-        _active_scans.add(key)
+        _active_scans.update(keys)
     try:
         yield
     finally:
         with _active_scans_lock:
-            _active_scans.discard(key)
+            _active_scans.difference_update(keys)
 
 
 def normalize_scan_detail(detail: str) -> str:
@@ -474,14 +480,12 @@ def _monitors_to_pause(iface: str, namespace: str | None) -> list[str]:
     Intel iwlwifi firmware (BE200) crashes when an interface scans while a
     monitor on the same radio is up (#314, wlanpi-misc-firmware#23). mac80211
     keeps the monitor's channel across down/up. Other drivers scan with the
-    monitor up, so this returns [] for them.
+    monitor up, so the caller only asks for iwlwifi.
 
     Raises:
         MonitorInUseError: A capture holds one of those monitors; taking it
             down would end the capture.
     """
-    if discovery.interface_driver(iface, namespace) != "iwlwifi":
-        return []
     monitors = adapter_phy.up_sibling_monitors(iface, namespace)
     if not monitors:
         return []
@@ -517,8 +521,13 @@ def run_interface_scan(
     )
     mode = (mode or "").lower()
 
-    with _claim_scan(iface, namespace):
-        paused = _monitors_to_pause(iface, namespace)
+    iwlwifi = discovery.interface_driver(iface, namespace) == "iwlwifi"
+    paused = _monitors_to_pause(iface, namespace) if iwlwifi else []
+    # ponytail: one claim for all iwlwifi scans, so no scan can restore a
+    # monitor while another scans on its radio. Two Intel radios scanning at
+    # once also get 409; key the claim by phy if that bites.
+    also = [*paused, "iwlwifi"] if iwlwifi else []
+    with _claim_scan(iface, namespace, also=also):
         originally_up = _interface_is_up(iface, namespace)
         try:
             for mon in paused:

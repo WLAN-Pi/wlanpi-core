@@ -339,3 +339,29 @@ def test_iwlwifi_scan_restores_every_monitor_when_one_restore_fails():
         call("wlanpi1", True, None),
         call("wlanpi2", True, None),
     ]
+
+
+def test_iwlwifi_scan_refuses_a_second_scan_on_the_same_radio():
+    # Scan A on wlan0 pauses wlanpi1; no other scan on that radio (wlanpi1,
+    # or a second managed wlan2) may run and restore it while A runs.
+    driver, siblings, ss = _iwlwifi(["wlanpi1"])
+    refused = []
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+            with patch("wlanpi_core.wpa.scan._set_interface_state"):
+
+                def scan_a(*_a, **_k):
+                    # B sees A's monitor already down, so it pauses nothing.
+                    with patch(
+                        "wlanpi_core.adapters.phy.up_sibling_monitors",
+                        return_value=[],
+                    ):
+                        for other in ("wlanpi1", "wlan2"):
+                            with pytest.raises(ScanInProgressError):
+                                run_interface_scan(other, mode="monitor")
+                    refused.append(True)
+                    return []
+
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=scan_a):
+                    assert run_interface_scan("wlan0", mode="managed") == []
+    assert refused == [True]
