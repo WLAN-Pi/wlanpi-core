@@ -1,6 +1,7 @@
 """System service layer querying device and systemd state."""
 
 import asyncio
+import contextlib
 import json
 import os
 import socket
@@ -29,6 +30,7 @@ from wlanpi_core.data.reg_domain_countries import (
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.profiler import cli as profiler_cli
 from wlanpi_core.utils.general import run_command
 
 log = get_logger(__name__)
@@ -420,7 +422,15 @@ def check_service_status(service: str) -> bool:
 
     You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
-    service_running = False
+    return get_service_active_state(service) == "active"
+
+
+def get_service_active_state(service: str) -> str:
+    """Return the unit's systemd ActiveState, or "inactive" if it is not loaded.
+
+    Values are systemd's: active, reloading, inactive, failed, activating,
+    deactivating (and on newer systemd, maintenance or refreshing).
+    """
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -448,11 +458,11 @@ def check_service_status(service: str) -> bool:
                 "ActiveState",
                 timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-            if service_load_state == "loaded" and service_active_state == "active":
-                service_running = True
+            if service_load_state == "loaded":
+                return str(service_active_state)
         except DBusException as exc:
             if exc.args and "not loaded" in str(exc.args[0]):
-                return service_running
+                return "inactive"
             _raise_systemd_dbus_error(
                 exc,
                 action="checking",
@@ -461,7 +471,18 @@ def check_service_status(service: str) -> bool:
             )
         except ValueError as error:
             raise ValidationError(f"{error}", status_code=400) from None
-    return service_running
+    return "inactive"
+
+
+def _start_lock(name: str) -> contextlib.AbstractAsyncContextManager[None]:
+    """Return the profiler lock for the profiler unit, else a no-op.
+
+    Starting the profiler unit takes the lock a profiler purge holds, so the
+    purge's is-it-running check cannot race a start through Core.
+    """
+    if name.removesuffix(".service") == profiler_cli.PROFILER_UNIT:
+        return profiler_cli._profiler_lock
+    return contextlib.nullcontext()
 
 
 async def get_systemd_service_status(name: str) -> dict[str, Any]:
@@ -539,7 +560,8 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
     status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
-        status = await asyncio.to_thread(start_service, name)
+        async with _start_lock(name):
+            status = await asyncio.to_thread(start_service, name)
         return {"name": name, "active": status}
 
     raise ValidationError(
@@ -572,7 +594,8 @@ async def restart_systemd_service(name: str) -> dict[str, Any]:
     """Restart an allowed systemd service via dbus."""
     name = name.strip().lower()
     if is_allowed_service(name):
-        active = await asyncio.to_thread(restart_service, name)
+        async with _start_lock(name):
+            active = await asyncio.to_thread(restart_service, name)
         return {"name": name, "active": active}
 
     raise ValidationError(

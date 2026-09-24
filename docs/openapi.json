@@ -3773,6 +3773,33 @@
         ]
       }
     },
+    "/api/v1/profiler/purge": {
+      "post": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Purge Profiler",
+        "description": "Delete all profiler client profiles, captures and session reports.\n\nRemoves everything inside `/var/www/html/profiler/clients` and\n`/var/www/html/profiler/reports`; the two directories stay. Symlinks are\nremoved, never followed. This cannot be undone.\n\nReturns `409` while the profiler is running or starting; stop it first.",
+        "operationId": "purge_profiler_api_v1_profiler_purge_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Purge"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/streaming/capture": {
       "get": {
         "tags": [
@@ -6491,6 +6518,33 @@
         "type": "object",
         "title": "PublicIpInfo",
         "description": "Public IP probe output."
+      },
+      "Purge": {
+        "properties": {
+          "files": {
+            "type": "integer",
+            "title": "Files",
+            "description": "Files and symlinks removed",
+            "examples": [
+              12
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes",
+            "description": "Total size of those files",
+            "examples": [
+              48213
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "bytes"
+        ],
+        "title": "Purge",
+        "description": "What purging the profiler data removed."
       },
       "ReachabilityTest": {
         "properties": {

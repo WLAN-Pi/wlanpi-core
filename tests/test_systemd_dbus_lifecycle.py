@@ -228,3 +228,43 @@ def test_systemd_dbus_calls_are_serialized(mocker):
 
     assert results == [True, True]
     assert max_active_calls == 1
+
+
+@pytest.mark.parametrize(
+    "load_state, active_state, expected",
+    [
+        ("loaded", "activating", "activating"),
+        ("loaded", "active", "active"),
+        ("not-found", "inactive", "inactive"),
+    ],
+)
+def test_get_service_active_state_reports_systemd_state(
+    mocker, load_state, active_state, expected
+):
+    service_properties = MagicMock()
+    service_properties.Get.side_effect = lambda _interface, name, **_kwargs: (
+        load_state if name == "LoadState" else active_state
+    )
+    mocker.patch.object(
+        system_service,
+        "_get_systemd_client",
+        return_value=(MagicMock(), MagicMock()),
+    )
+    mocker.patch.object(system_service, "Interface", return_value=service_properties)
+
+    assert system_service.get_service_active_state("wlanpi-profiler") == expected
+    assert system_service.check_service_status("wlanpi-profiler") is (
+        expected == "active"
+    )
+
+
+def test_get_service_active_state_unloaded_unit_is_inactive(mocker):
+    manager = MagicMock()
+    manager.GetUnit.side_effect = DBusException(
+        "Unit wlanpi-profiler.service not loaded."
+    )
+    mocker.patch.object(
+        system_service, "_get_systemd_client", return_value=(MagicMock(), manager)
+    )
+
+    assert system_service.get_service_active_state("wlanpi-profiler") == "inactive"

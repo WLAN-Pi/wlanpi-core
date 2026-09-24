@@ -17,11 +17,14 @@ _PROFILER_STOP_GRACE_SEC = 10.0
 # (No IR wait on a self-managed radio) returns reason "starting" instead.
 _PROFILER_START_WAIT_SEC = 25.0
 _PROFILER_START_POLL_SEC = 0.5
+PROFILER_UNIT = "wlanpi-profiler"
 STATUS_FILE = "/run/wlanpi-profiler.status.json"
 LAST_SESSION_FILE = "/var/lib/wlanpi-profiler/last-session.json"
 
 log = get_logger(__name__)
 profiler_process: Process | None = None
+# Serialises start, stop, service.purge_data and Core's systemd starts of
+# PROFILER_UNIT (system_service.start/restart_systemd_service).
 _profiler_lock = asyncio.Lock()
 
 
