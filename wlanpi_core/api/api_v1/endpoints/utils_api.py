@@ -166,7 +166,9 @@ async def blinker_status() -> Any:
         409: {
             "model": utils.WlanScanErrorResponse,
             "description": (
-                "Selected adapter is already scanning (`error`: `SCAN_IN_PROGRESS`)"
+                "Selected adapter is already scanning (`error`: `SCAN_IN_PROGRESS`), "
+                "or a capture holds a monitor on the same Intel (iwlwifi) radio, "
+                "which must go down for the scan (`error`: `MONITOR_IN_USE`)"
             ),
         },
         422: {
@@ -221,7 +223,7 @@ async def wlan_scan_endpoint(
         return JSONResponse(
             status_code=409,
             content={
-                "error": "SCAN_IN_PROGRESS",
+                "error": exc.code,
                 "message": str(exc),
             },
         )

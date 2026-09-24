@@ -202,3 +202,23 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
             continue
         found += _parse_iw_dev(ns_result.stdout, netns)
     return found
+
+
+def interface_driver(iface: str, namespace: str | None = None) -> str | None:
+    """Return the kernel driver bound to `iface` (e.g. `iwlwifi`), or None.
+
+    Reads `/sys/class/net/<iface>/device/driver`, as wlanpi-profiler does,
+    inside `namespace`: `ip netns exec` mounts that namespace's sysfs, and a
+    phy moved into a namespace is hidden from the root one.
+    """
+    try:
+        result = ns_exec(
+            ["readlink", "-f", f"/sys/class/net/{iface}/device/driver"],
+            namespace=namespace,
+            no_output=True,
+            raise_on_fail=False,
+        )
+    except (RunCommandError, ValueError) as e:
+        log.warning(f"Could not read the driver of {iface}: {e}")
+        return None
+    return result.stdout.strip().rpartition("/")[2] or None

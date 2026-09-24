@@ -555,7 +555,7 @@ async def get_a_systemd_network_scan(
     except ScanInProgressError as exc:
         return JSONResponse(
             status_code=409,
-            content={"error": "SCAN_IN_PROGRESS", "message": str(exc)},
+            content={"error": exc.code, "message": str(exc)},
         )
     except ValueError as exc:
         return Response(content=str(exc), status_code=400)

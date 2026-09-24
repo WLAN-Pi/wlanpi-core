@@ -77,12 +77,15 @@ class WlanScanErrorResponse(BaseModel):
     """Error result of a WLAN scan."""
 
     error: str = Field(
-        description="Machine-readable code: `NO_SCAN_ADAPTER` or `SCAN_IN_PROGRESS`",
-        examples=["NO_SCAN_ADAPTER", "SCAN_IN_PROGRESS"],
+        description=(
+            "Machine-readable code: `NO_SCAN_ADAPTER`, `SCAN_IN_PROGRESS` or "
+            "`MONITOR_IN_USE`"
+        ),
+        examples=["NO_SCAN_ADAPTER", "SCAN_IN_PROGRESS", "MONITOR_IN_USE"],
     )
     message: str | None = Field(
         default=None,
-        description="Human-readable detail (set for SCAN_IN_PROGRESS)",
+        description="Human-readable detail (set for SCAN_IN_PROGRESS and MONITOR_IN_USE)",
         examples=["A scan is already in progress on wlan0 in root"],
     )
     candidates: list[ScanAdapter] = Field(

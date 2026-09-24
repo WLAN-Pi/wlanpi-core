@@ -176,7 +176,9 @@ RESPONSES_SCAN: dict[int | str, dict[str, Any]] = {
         "description": (
             "Conflict — branch on JSON `error`: "
             "`NEEDS_SELECTION` (multiple monitors; pass `iface`/`namespace`) or "
-            "`SCAN_IN_PROGRESS` (same adapter already scanning; coalesce/retry)."
+            "`SCAN_IN_PROGRESS` (same adapter already scanning; coalesce/retry) or "
+            "`MONITOR_IN_USE` (a capture holds a monitor on the same Intel "
+            "radio; stop the capture first)."
         ),
     },
     422: {
