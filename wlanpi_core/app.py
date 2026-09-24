@@ -35,7 +35,11 @@ from wlanpi_core.constants import (
     SECRETS_DIR,
     SUPPORTED_MODELS,
 )
-from wlanpi_core.core.auth import AUTH_CLOCK_MESSAGE, AuthClockNotSetError
+from wlanpi_core.core.auth import (
+    AUTH_CLOCK_MESSAGE,
+    PAM_CLIENT_DEVICE_ID,
+    AuthClockNotSetError,
+)
 from wlanpi_core.core.config import (
     endpoints,
     settings,
@@ -572,10 +576,26 @@ class InitializationManager:
             # ponytail: retain token rows; add cleanup only if table growth is
             # measurable on deployed devices.
             self.log.debug("Token manager initialized successfully")
-            return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
+        await self._revoke_pam_client_tokens()
+        return True
+
+    async def _revoke_pam_client_tokens(self) -> None:
+        """Revoke the WebUI's PAM tokens so only fresh getjwt (HMAC) ones work.
+
+        Older cores let any bearer mint the reserved `wlanpi-webui` id. The
+        WebUI re-mints through getjwt after a 401, so revoking on every start
+        costs one extra mint. Failure is logged and never blocks startup.
+        """
+        try:
+            count = await self.app.state.token_manager.revoke_device_tokens(
+                PAM_CLIENT_DEVICE_ID
+            )
+            self.log.info(f"Revoked {count} {PAM_CLIENT_DEVICE_ID} token(s)")
+        except Exception as e:
+            self.log.warning(f"Could not revoke {PAM_CLIENT_DEVICE_ID} tokens: {e}")
 
     async def _initialize_system_manager(
         self, iface_name: str, exclusions: list[str] | None = None

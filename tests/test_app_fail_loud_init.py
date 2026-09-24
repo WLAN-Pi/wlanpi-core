@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -34,3 +34,31 @@ async def test_initialize_components_fails_loud_when_system_not_ready(monkeypatc
 
     with pytest.raises(CriticalInitializationError, match="System not ready"):
         await manager.initialize_components()
+
+
+async def test_token_manager_init_revokes_pam_client_tokens(monkeypatch):
+    """Tokens minted for wlanpi-webui by any bearer before the fix must die."""
+    revoke = AsyncMock(return_value=2)
+    monkeypatch.setattr(
+        app_module,
+        "TokenManager",
+        lambda state: MagicMock(revoke_device_tokens=revoke),
+    )
+    manager = InitializationManager(MagicMock())
+
+    assert await manager._initialize_token_manager() is True
+    revoke.assert_awaited_once_with("wlanpi-webui")
+
+
+async def test_pam_client_token_revocation_failure_never_blocks_startup(
+    monkeypatch,
+):
+    revoke = AsyncMock(side_effect=RuntimeError("database locked"))
+    monkeypatch.setattr(
+        app_module,
+        "TokenManager",
+        lambda state: MagicMock(revoke_device_tokens=revoke),
+    )
+    manager = InitializationManager(MagicMock())
+
+    assert await manager._initialize_token_manager() is True

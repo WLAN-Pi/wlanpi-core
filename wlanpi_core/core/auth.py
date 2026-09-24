@@ -19,6 +19,11 @@ DEFAULT_SECURITY = Security(SECURITY)
 DEFAULT_DEPENDS = Depends(SECURITY)
 AUTH_CLOCK_MESSAGE = "NTP needs set; cannot proceed"
 
+# The only device id whose bearer token may call the PAM endpoints. The WebUI
+# mints it with `getjwt` over root-only HMAC; generate_token refuses to mint it
+# for any other bearer, so a token held by another client cannot reach PAM.
+PAM_CLIENT_DEVICE_ID = "wlanpi-webui"
+
 
 class AuthClockNotSetError(Exception):
     """Raised when the auth clock is not set (NTP)."""
@@ -54,16 +59,21 @@ async def verify_local_auth(
 ) -> Any:
     """Bearer or HMAC, localhost only.
 
-    For the password-handling PAM endpoints: accept a device JWT (so on-device
-    services do not need the shared secret) or the legacy localhost HMAC, but
-    never expose them off-device.
+    For the password-handling PAM endpoints: accept the WebUI's device JWT (so
+    it does not need the shared secret) or the legacy localhost HMAC, but never
+    expose them off-device or to another client's token.
     """
     if not is_localhost_request(request):
         raise HTTPException(
             status_code=403,
             detail="Access forbidden: endpoint available only on localhost",
         )
-    return await verify_auth_wrapper(request, credentials)
+    result = await verify_auth_wrapper(request, credentials)
+    if credentials and getattr(result, "device_id", None) != PAM_CLIENT_DEVICE_ID:
+        raise HTTPException(
+            status_code=403, detail="Access forbidden: token not permitted"
+        )
+    return result
 
 
 async def verify_jwt_token(

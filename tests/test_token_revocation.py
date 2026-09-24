@@ -344,3 +344,17 @@ async def test_unexpected_header_parser_failure_is_operational(
 
     with pytest.raises(RuntimeError, match="parser failed"):
         await token_manager.verify_token(token)
+
+
+@pytest.mark.asyncio
+async def test_revoke_device_tokens_only_touches_that_device(token_manager):
+    webui = await token_manager.create_token("wlanpi-webui")
+    webui_2 = await token_manager.create_token("wlanpi-webui")
+    other = await token_manager.create_token("mcp-client")
+
+    assert await token_manager.revoke_device_tokens("wlanpi-webui") == 2
+    assert await token_manager.revoke_device_tokens("wlanpi-webui") == 0
+
+    for token in (webui, webui_2):
+        assert (await token_manager.verify_token(token)).error == "Token revoked"
+    assert (await token_manager.verify_token(other)).is_valid

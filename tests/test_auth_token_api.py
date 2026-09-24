@@ -22,7 +22,7 @@ async def test_generate_token_returns_412_for_missing_or_blank_device_id(device_
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id=device_id))
+        await generate_token(request, TokenRequest(device_id=device_id), True)
 
     assert exc.value.status_code == 412
     token_manager.create_token.assert_not_awaited()
@@ -33,7 +33,9 @@ async def test_generate_token_normalizes_device_id():
     token_manager = SimpleNamespace(create_token=AsyncMock(return_value="jwt"))
     request = _request_with_token_manager(token_manager)
 
-    response = await generate_token(request, TokenRequest(device_id="  mcp-client  "))
+    response = await generate_token(
+        request, TokenRequest(device_id="  mcp-client  "), True
+    )
 
     assert response.access_token == "jwt"
     assert response.token_type == "bearer"
@@ -48,10 +50,35 @@ async def test_generate_token_maps_unexpected_error_to_500():
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id="mcp-client"))
+        await generate_token(request, TokenRequest(device_id="mcp-client"), True)
 
     assert exc.value.status_code == 500
     assert "database unavailable" not in exc.value.detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("caller", "allowed"),
+    [
+        (True, True),  # HMAC (getjwt, root)
+        (SimpleNamespace(device_id="wlanpi-webui"), False),  # not even its own
+        (SimpleNamespace(device_id="mcp-client"), False),  # another client
+    ],
+)
+async def test_generate_token_reserves_the_pam_client_device_id(caller, allowed):
+    token_manager = SimpleNamespace(create_token=AsyncMock(return_value="jwt"))
+    request = _request_with_token_manager(token_manager)
+
+    if allowed:
+        await generate_token(request, TokenRequest(device_id="wlanpi-webui"), caller)
+        token_manager.create_token.assert_awaited_once()
+    else:
+        with pytest.raises(HTTPException) as exc:
+            await generate_token(
+                request, TokenRequest(device_id="wlanpi-webui"), caller
+            )
+        assert exc.value.status_code == 403
+        token_manager.create_token.assert_not_awaited()
 
 
 def test_token_request_bounds_device_id():
