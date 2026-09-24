@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from wlanpi_core.api.api_v1.endpoints import auth_api
 from wlanpi_core.api.api_v1.endpoints.auth_api import (
     _is_administrator,
     _pam_change_password,
@@ -115,7 +116,20 @@ async def test_non_administrator_refusal_waits_like_a_wrong_password(monkeypatch
     started = time.monotonic()
     resp = await _verify("alice", "secret", code, admin=False)
     assert resp.status == "failure"
-    assert time.monotonic() - started >= 0.05
+    assert time.monotonic() - started >= 0.025  # 0.5x the delay at least
+
+
+@pytest.mark.parametrize("draw,factor", [(0.0, 0.5), (0.5, 1.0), (1.0, 1.5)])
+def test_fail_delay_spreads_like_libpam(monkeypatch, draw, factor):
+    """A fixed sleep would stand out from pam_unix's randomized delay."""
+    monkeypatch.setattr(
+        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", 2.0
+    )
+    monkeypatch.setattr(
+        "wlanpi_core.api.api_v1.endpoints.auth_api._RNG",
+        MagicMock(random=lambda: draw),
+    )
+    assert auth_api._fail_delay() == pytest.approx(2.0 * factor)
 
 
 def test_is_administrator_fails_closed_on_embedded_nul():
@@ -163,6 +177,20 @@ async def test_change_password_success():
 async def test_change_password_with_non_expired_current_is_failure():
     resp = await _change("wlanpi", "current", "new", SUCCESS, SUCCESS)
     assert resp.status == "failure"
+
+
+@pytest.mark.asyncio
+async def test_change_password_non_expired_refusal_waits_like_a_wrong_password(
+    monkeypatch,
+):
+    """A fast "failure" would confirm the current password was right."""
+    monkeypatch.setattr(
+        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", 0.05
+    )
+    started = time.monotonic()
+    resp = await _change("alice", "current", "new", SUCCESS, SUCCESS, admin=False)
+    assert resp.status == "failure"
+    assert time.monotonic() - started >= 0.025  # 0.5x the delay at least
 
 
 @pytest.mark.asyncio

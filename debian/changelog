@@ -1,3 +1,18 @@
+wlanpi-core (2.4.0-1) unstable; urgency=medium
+
+  * WebUI login (PAM) hardening (#320). Changing an expired password now
+    applies the same password policy as over SSH; weak passwords are
+    rejected with the new status password_rejected. The PAM endpoints
+    accept only the WebUI's token (device id wlanpi-webui) or the HMAC,
+    only HMAC callers can mint that token, and existing WebUI tokens are
+    revoked on every start. Usernames with control characters are
+    rejected. A right password refused because the account isn't an
+    administrator, or on a change because the account isn't expired,
+    gets the same status as a wrong one after a delay drawn the way PAM
+    draws its own. WebUI 1.22.0 depends on this release (#321).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 23:42:00 -0400
+
 wlanpi-core (2.3.29-1) unstable; urgency=medium
 
   * On Intel BE200/iwlwifi, a Wi-Fi scan no longer crashes the firmware:

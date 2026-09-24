@@ -9,6 +9,7 @@ import asyncio
 import grp
 import os
 import pwd
+import random
 from datetime import timedelta
 from typing import Annotated, Any
 
@@ -59,10 +60,11 @@ _PAM_AUTH_DENIED = frozenset(
 )
 _PAM_EXPIRED = frozenset({12, 27})  # PAM_NEW_AUTHTOK_REQD / PAM_AUTHTOK_EXPIRED
 _PAM_AUTHTOK_ERR = 20  # the new password failed the PAM password policy
-# pam_unix's delay after a wrong password (about 2 s). A non-administrator's
-# correct password is refused after the same wait, so the response time does
-# not confirm the guess. ponytail: fixed value; measure if pam_unix changes.
+# pam_unix's base delay after a wrong password (2 s). A refused correct
+# password waits a delay drawn like libpam's, so the response time does not
+# confirm the guess. ponytail: fixed base; measure if pam_unix changes.
 _PAM_FAIL_DELAY = 2.0
+_RNG = random.SystemRandom()
 # linux-pam flag (not exported by pamela): change only an expired token. It
 # also makes pam_unix apply its policy (minlen, obscure) and verify the current
 # password, which it skips for root without it.
@@ -122,9 +124,19 @@ def _is_administrator(username: str) -> bool:
     return sudo_gid in os.getgrouplist(username, gid)
 
 
+def _fail_delay() -> float:
+    """Return a failure delay drawn the way libpam draws pam_unix's.
+
+    pam_delay.c: base times 0.5 plus the mean of three uniform draws, so 0.5x
+    to 1.5x, peaked at 1x. A fixed sleep would stand out after a few repeated
+    guesses.
+    """
+    return _PAM_FAIL_DELAY * (0.5 + sum(_RNG.random() for _ in range(3)) / 3)
+
+
 async def _refuse_non_administrator() -> PAMAuthResponse:
     """Answer like a wrong password, including pam_unix's failure delay."""
-    await asyncio.sleep(_PAM_FAIL_DELAY)
+    await asyncio.sleep(_fail_delay())
     return PAMAuthResponse(status="failure")
 
 
@@ -187,8 +199,11 @@ async def pam_change_password(body: PAMChangePasswordRequest) -> PAMAuthResponse
 
     old_code = await asyncio.to_thread(_pam_authenticate, username, current)
     if old_code not in _PAM_EXPIRED:
-        # Wrong current password, or the account is not expired
-        if old_code in _PAM_AUTH_DENIED or old_code == 0:
+        if old_code == 0:
+            # Right password, account not expired: refuse on the same timing
+            # as a wrong one, or a fast "failure" confirms the password.
+            return await _refuse_non_administrator()
+        if old_code in _PAM_AUTH_DENIED:
             return PAMAuthResponse(status="failure")
         raise HTTPException(
             status_code=503, detail="Authentication service unavailable"
