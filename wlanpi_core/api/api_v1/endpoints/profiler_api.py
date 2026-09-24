@@ -46,12 +46,18 @@ async def profiler_status() -> Any:
 async def start_profiler(args: models.Start) -> Any:
     """Start the profiler and wait (up to about 25 s) until it runs or fails.
 
-    `success` is false when the profiler exited during startup. `reason` and
-    `message` then carry the profiler's own exit reason, for example
-    `country_code_detection` (no reg domain set) or `interface_validation`
-    (unknown interface), or `already_running`. If it is still starting when the
-    wait ends, `success` is true with `reason` `starting`: poll
-    `GET /profiler/status` for `running`.
+    `success` is false when the profiler did not start; `reason` and `message`
+    say why:
+
+    - the profiler's own exit reason when it exited during startup, for example
+      `country_code_detection` (no reg domain set) or `interface_validation`
+      (unknown interface), or `exited` if it gave none
+    - `already_running` when a profiler started by Core is still running
+    - `spawn_failed` when the profiler could not be launched
+
+    If it is still starting when the wait ends, `success` is true with
+    `reason` `starting`. In AP mode, poll `GET /profiler/status` until
+    `running` is true.
     """
 
     try:

@@ -25,11 +25,25 @@ profiler_process: Process | None = None
 _profiler_lock = asyncio.Lock()
 
 
-def _read_since(path: str, since: float) -> dict[str, Any]:
-    """Return the JSON object in path if it was written at or after since."""
+def _stamp(path: str) -> tuple[int, int] | None:
+    """Return (inode, mtime_ns) for path, or None when it does not exist."""
     try:
-        if os.path.getmtime(path) < since:
-            return {}
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_ino, st.st_mtime_ns)
+
+
+def _read_if_changed(path: str, before: tuple[int, int] | None) -> dict[str, Any]:
+    """Return the JSON object in path if it was rewritten since before.
+
+    The profiler replaces these files atomically, so a new write shows up as a
+    new inode or mtime. Comparing identities avoids trusting wall-clock order,
+    which file mtime granularity makes unreliable.
+    """
+    if _stamp(path) in (None, before):
+        return {}
+    try:
         with open(path) as f:
             data = json.load(f)
     except (OSError, ValueError):
@@ -37,24 +51,31 @@ def _read_since(path: str, since: float) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-async def _await_start(process: Process, since: float) -> dict[str, Any]:
+async def _await_start(
+    process: Process, session_before: tuple[int, int] | None
+) -> dict[str, Any]:
     """Wait until the profiler reports running, exits, or the wait runs out.
 
-    The profiler writes STATUS_FILE (state starting, running or failed) and,
-    on exit, LAST_SESSION_FILE with the reason. Only files written by this
-    run (mtime >= since) count; a failed run leaves its status behind.
+    The profiler writes STATUS_FILE (state starting, running or failed, plus
+    its pid) and, on exit, LAST_SESSION_FILE with the reason. A running state
+    counts only when its pid is this child's. A last session counts only if
+    it differs from session_before, taken before the spawn; a failed run
+    leaves its files behind.
     """
     deadline = time.monotonic() + _PROFILER_START_WAIT_SEC
     while True:
         if process.returncode is not None:
-            exit_info = _read_since(LAST_SESSION_FILE, since).get("exit") or {}
+            exit_info = _read_if_changed(LAST_SESSION_FILE, session_before).get("exit")
+            if not isinstance(exit_info, dict):
+                exit_info = {}
             return {
                 "success": False,
                 "reason": exit_info.get("reason") or "exited",
                 "message": exit_info.get("message")
                 or f"profiler exited with code {process.returncode} during startup",
             }
-        if _read_since(STATUS_FILE, since).get("state") == "running":
+        status = _read_if_changed(STATUS_FILE, None)
+        if status.get("state") == "running" and status.get("pid") == process.pid:
             return {"success": True}
         if time.monotonic() >= deadline:
             return {
@@ -115,7 +136,7 @@ async def start_profiler(args: models.Start) -> dict[str, Any]:
             await profiler_process.wait()
             profiler_process = None
 
-        since = time.time()
+        session_before = _stamp(LAST_SESSION_FILE)
         try:
             # Output is inherited so the profiler's log lands in Core's journal.
             process = await asyncio.create_subprocess_exec(
@@ -128,7 +149,7 @@ async def start_profiler(args: models.Start) -> dict[str, Any]:
         profiler_process = process
 
     # Outside the lock, so a stop during startup is not blocked by this wait.
-    result = await _await_start(process, since)
+    result = await _await_start(process, session_before)
     if not result["success"]:
         log.error("Profiler did not start: %s: %s", result["reason"], result["message"])
     return result

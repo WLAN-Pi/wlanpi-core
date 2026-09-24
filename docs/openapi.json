@@ -3705,7 +3705,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler exited during startup. `reason` and\n`message` then carry the profiler's own exit reason, for example\n`country_code_detection` (no reg domain set) or `interface_validation`\n(unknown interface), or `already_running`. If it is still starting when the\nwait ends, `success` is true with `reason` `starting`: poll\n`GET /profiler/status` for `running`.",
+        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
