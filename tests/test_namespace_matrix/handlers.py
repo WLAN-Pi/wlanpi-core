@@ -45,6 +45,11 @@ from wlanpi_core.schemas.network.network import (
     SecurityTypes,
 )
 from wlanpi_core.utils import network_config as nc
+from wlanpi_core.wpa import config as wpa_config
+from wlanpi_core.wpa import supplicant as wpa_supplicant
+
+# Captured before any test patches it; conftest mocks the writer by default.
+_real_write_wpa_config = wpa_config.write_wpa_config
 
 
 def _security(ssid: str, psk: str | None = "secret-passphrase") -> NetSecurity:
@@ -500,6 +505,40 @@ def _write_netconfig(netcfg_env, cfg_id: str, namespaces=None, roots=None):
         "roots": roots or [],
     }
     return write_json_config(netcfg_env["cfg_dir"], cfg_id, payload)
+
+
+def handle_saved_profile_with_mlo_activates(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """`mlo` in a saved profile is ignored and never reaches wpa_supplicant.
+
+    Core used to write `mlo=1`, which wpa_supplicant 2.12 rejects as an
+    unknown network field and exits. The real config writer runs here so
+    the generated files themselves are checked.
+    """
+    wpa3 = NetSecurity(ssid="MLO", security=SecurityTypes.wpa3, psk="secret-passphrase")
+    root = _root(security=wpa3).model_dump(mode="json")
+    namespaced = _ns("mlo_ns", interface="wlan1", phy="phy2", security=wpa3)
+    namespaced = namespaced.model_dump(mode="json")
+    _write_netconfig(
+        netcfg_env,
+        "mlo_cfg",
+        namespaces=[{**namespaced, "mlo": True}],
+        roots=[{**root, "mlo": True}],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        with patch.object(wpa_config, "write_wpa_config", new=_real_write_wpa_config):
+            loaded = nc.get_config("mlo_cfg")
+            ok = nc.activate_config("mlo_cfg", override_active=True)
+
+    entries = [*loaded.roots, *loaded.namespaces]
+    assert len(entries) == 2
+    assert not any("mlo" in entry.model_dump() for entry in entries)
+    assert ok is True
+    for iface, namespace in (("wlan0", None), ("wlan1", "mlo_ns")):
+        conf = wpa_supplicant.config_path(iface, namespace).read_text()
+        assert "key_mgmt=SAE" in conf
+        assert "mlo=" not in conf
 
 
 def handle_adapter_interface_not_in_iw_list(
@@ -2773,6 +2812,7 @@ HANDLERS = {
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
     "default_skips_system_monitors": handle_default_skips_system_monitors,
     "default_file_override": handle_default_file_override,
+    "saved_profile_with_mlo_activates": handle_saved_profile_with_mlo_activates,
     "dual_ns_split_adapters": handle_dual_ns_split_adapters,
     "move_wlan1_to_ns_orb_no_security": handle_move_wlan1_to_ns_orb_no_security,
     "move_wlan1_to_ns_with_orb_monitor": handle_move_wlan1_to_ns_with_orb_monitor,
