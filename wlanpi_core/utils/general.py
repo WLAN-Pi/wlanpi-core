@@ -58,8 +58,8 @@ def terminate_process(proc: subprocess.Popen[Any]) -> None:
         proc.communicate()
 
 
-async def terminate_process_async(proc: Process) -> None:
-    """Terminate, force-kill when needed, and reap an asyncio child group."""
+async def terminate_process_async(proc: Process, grace: float | None = None) -> None:
+    """Terminate, force-kill after ``grace`` seconds, and reap an asyncio child group."""
     if proc.returncode is not None:
         return
 
@@ -67,7 +67,7 @@ async def terminate_process_async(proc: Process) -> None:
     try:
         await asyncio.wait_for(
             proc.wait(),
-            timeout=_PROCESS_TERMINATE_GRACE_SEC,
+            timeout=_PROCESS_TERMINATE_GRACE_SEC if grace is None else grace,
         )
     except TimeoutError:
         if proc.returncode is None:

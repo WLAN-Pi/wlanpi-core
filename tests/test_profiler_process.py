@@ -66,7 +66,7 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
     process = ProfilerProcess()
     cli.profiler_process = process
 
-    async def terminate(target):
+    async def terminate(target, grace):
         assert target is process
         process.returncode = -15
 
@@ -78,7 +78,9 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
 
     assert await cli.stop_profiler() is True
 
-    terminate_process.assert_awaited_once_with(process)
+    terminate_process.assert_awaited_once_with(
+        process, grace=cli._PROFILER_STOP_GRACE_SEC
+    )
     assert cli.profiler_process is None
 
 
