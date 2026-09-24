@@ -1,5 +1,6 @@
 """Profiler status and control endpoints."""
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
@@ -82,6 +83,31 @@ async def stop_profiler() -> Any:
         result = await cli.stop_profiler()
 
         return {"success": result}
+
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/purge",
+    response_model=schemas.Purge,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def purge_profiler() -> Any:
+    """Delete all profiler client profiles, captures and session reports.
+
+    Removes everything inside `/var/www/html/profiler/clients` and
+    `/var/www/html/profiler/reports`; the two directories stay. Symlinks are
+    removed, never followed. This cannot be undone.
+
+    Returns `409` while the profiler is running or starting; stop it first.
+    """
+
+    try:
+        return await asyncio.to_thread(service.purge_data)
 
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)

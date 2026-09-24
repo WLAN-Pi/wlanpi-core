@@ -35,3 +35,10 @@ class Stop(BaseModel):
     """Result of stopping the profiler."""
 
     success: bool = Field(examples=[True, False])
+
+
+class Purge(BaseModel):
+    """What purging the profiler data removed."""
+
+    files: int = Field(examples=[12], description="Files and symlinks removed")
+    bytes: int = Field(examples=[48213], description="Total size of those files")
