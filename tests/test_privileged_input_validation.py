@@ -18,7 +18,7 @@ from wlanpi_core.services import network_ethernet_service, utils_service
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.utils.validation import validate_vlan_id
-from wlanpi_core.wpa.config import generate_network_block
+from wlanpi_core.wpa.config import generate_global_header, generate_network_block
 
 
 def _root_config(**overrides):
@@ -180,3 +180,18 @@ def test_blinker_rejects_interface_before_starting_process(mocker):
         utils_service.start_port_blinker("--help")
 
     popen.assert_not_called()
+
+
+def test_wpa3_offers_sae_ext_key_for_wifi7():
+    """SAE-EXT-KEY (AKM 24) and its GCMP-256 cipher sit beside plain SAE."""
+    security = NetSecurity(ssid="Net", security=SecurityTypes.wpa3, psk="passphrase")
+    block = generate_network_block(_root_config(security=security))
+    assert "key_mgmt=SAE SAE-EXT-KEY" in block
+    assert "pairwise=GCMP-256 CCMP" in block
+    assert "group=GCMP-256 CCMP" in block
+    assert "ieee80211w=2" in block
+
+
+def test_global_header_enables_sae_h2e():
+    """6 GHz SAE requires H2E; sae_pwe=2 allows it while keeping older APs."""
+    assert "sae_pwe=2" in generate_global_header().splitlines()
