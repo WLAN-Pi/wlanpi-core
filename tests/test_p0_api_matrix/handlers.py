@@ -419,7 +419,6 @@ def handle_network_config_activate_stale_phy_mismatch(
                     "phy": "phy1",
                     "interface": "wlan1",
                     "security": None,
-                    "mlo": False,
                     "default_route": False,
                     "autostart_app": None,
                 }
@@ -480,7 +479,6 @@ def handle_network_config_create_snapshots_mac(
                 "phy": "phy1",
                 "interface": "wlan1",
                 "security": None,
-                "mlo": False,
                 "default_route": False,
                 "autostart_app": None,
             }
@@ -553,7 +551,6 @@ def handle_network_config_create_invalid_psk_422(
                     "phy": "phy0",
                     "interface": "wlan0",
                     "security": {"ssid": "Net", "security": security, "psk": psk},
-                    "mlo": False,
                     "default_route": False,
                     "autostart_app": None,
                 }
@@ -578,7 +575,6 @@ def handle_network_config_secrets_not_returned(
         "phy": "phy0",
         "interface": "wlan0",
         "security": {"ssid": "Net", "security": "WPA2-PSK", "psk": "first-passphrase"},
-        "mlo": False,
         "default_route": False,
         "autostart_app": None,
     }
@@ -628,7 +624,6 @@ def _root_entry(interface, phy, security=None):
         "phy": phy,
         "interface": interface,
         "security": security,
-        "mlo": False,
         "default_route": False,
         "autostart_app": None,
     }

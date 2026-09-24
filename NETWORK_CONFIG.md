@@ -44,7 +44,6 @@ security ↓
     client_cert:    optional
     private_key:    optional
     ca_cert:        optional
-mlo:                whether to use mlo or not (optional, default False)
 default_route:      whether to set this namespace as the default route (default False)
 autostart_app:      name of the app defined in the apps list above (optional)
 ```
@@ -64,7 +63,6 @@ Here is an example config that connects to a WPA2 network and runs orb:
     "security": "WPA2-PSK",
     "psk": "PSK"
   },
-  "mlo": false,
   "default_route": false,
   "autostart_app": "orb",
 }

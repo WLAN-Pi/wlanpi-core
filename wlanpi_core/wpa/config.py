@@ -162,9 +162,6 @@ def generate_network_block(
         else:
             lines.append("    ieee80211w=1")
 
-    if cfg.mlo:
-        lines.append("    mlo=1")
-
     lines.append("}")
     return "\n".join(lines)
 

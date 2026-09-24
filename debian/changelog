@@ -1,3 +1,19 @@
+wlanpi-core (2.4.1-1) unstable; urgency=medium
+
+  * Stop writing mlo=1 to wpa_supplicant network blocks. mlo is not a
+    wpa_supplicant option (2.11 or 2.12): the supplicant rejected the
+    config and exited, so activating a profile with mlo set returned
+    500. MLO needs no option; wpa_supplicant uses it when the driver and
+    AP support it. The mlo field is removed from the network config
+    schema and CLI; saved configs that still contain it load and ignore
+    it.
+  * When wpa_supplicant fails to start, the activation error now
+    includes the tail of its log (the reason is written there, not to
+    stderr), with quoted values redacted because wpa_supplicant echoes
+    rejected PSKs.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 24 Sep 2026 12:26:21 -0400
+
 wlanpi-core (2.4.0-1) unstable; urgency=medium
 
   * WebUI login (PAM) hardening (#320). Changing an expired password now

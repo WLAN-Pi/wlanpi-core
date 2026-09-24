@@ -224,13 +224,6 @@ class NetworkNamespaceService:
                 except (OSError, ValueError) as e:
                     errors.append(f"cannot read apps file: {e}")
 
-        if (
-            hasattr(cfg, "mlo")
-            and cfg.mlo is not None
-            and not isinstance(cfg.mlo, bool)
-        ):
-            errors.append("mlo must be a boolean")
-
         if errors:
             error_msg = "; ".join(errors)
             return False, f"Config validation failed: {error_msg}"

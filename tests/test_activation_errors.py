@@ -40,7 +40,6 @@ def test_driver_refusing_delete_returns_its_error(client, netcfg_env):
                     "phy": "phy2",
                     "interface": "wlan1",
                     "security": None,
-                    "mlo": False,
                     "default_route": False,
                     "autostart_app": None,
                 }

@@ -238,3 +238,74 @@ def test_wpa_config_holds_one_network_and_is_private(tmp_path):
     assert b"NewNet".hex() in text and b"OldNet".hex() not in text
     assert "ctrl_interface=/run/x/ctrl" in text
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_saved_mlo_key_is_ignored_and_never_written(tmp_path):
+    """`mlo` is not a wpa_supplicant field; writing it made the start fail.
+
+    wpa_supplicant (2.11, 2.12) rejects unknown network fields and exits.
+    MLO needs no option: it is used when the driver and AP support it.
+    Configs saved with `mlo` must still load.
+    """
+    from wlanpi_core.schemas.network.network import RootConfig
+    from wlanpi_core.wpa.config import generate_network_block
+
+    cfg = RootConfig.model_validate(
+        {
+            "iface_display_name": "wlan0",
+            "phy": "phy0",
+            "interface": "wlan0",
+            "security": {"ssid": "MLO", "security": "WPA3-PSK", "psk": "secret123"},
+            "mlo": True,
+        }
+    )
+
+    assert "mlo" not in cfg.model_dump()
+    assert "mlo" not in generate_network_block(cfg)
+
+
+def _fail_start_with_log(run_dir, log_lines: list[str]):
+    from wlanpi_core.models.runcommand_error import RunCommandError
+
+    def fake_ns_exec(argv, namespace=None):
+        Path(argv[argv.index("-f") + 1]).write_text("\n".join(log_lines) + "\n")
+        raise RunCommandError("", 255)
+
+    with patch.object(supplicant, "ns_exec", side_effect=fake_ns_exec):
+        with pytest.raises(RunCommandError) as err:
+            supplicant.start_or_restart_supplicant("wlan0", None)
+    return err.value
+
+
+def test_start_failure_reports_the_supplicant_log(run_dir, procs):
+    """With -f, stderr is empty; the reason must come from the log (seen on 2.12)."""
+    err = _fail_start_with_log(
+        run_dir,
+        [
+            "1790267050.978898: Successfully initialized wpa_supplicant",
+            "1790267050.989342: Line 9: unknown network field 'mlo'.",
+            "1790267050.991296: Line 10: failed to parse network block.",
+        ],
+    )
+
+    assert err.return_code == 255
+    assert "wpa_supplicant failed to start for wlan0" in err.error_msg
+    assert "Line 9: unknown network field 'mlo'." in err.error_msg
+    assert "failed to parse network block" in err.error_msg
+
+
+def test_start_failure_log_redacts_echoed_values(run_dir, procs):
+    """wpa_supplicant echoes rejected values in quotes; they can be secrets."""
+    err = _fail_start_with_log(
+        run_dir,
+        [
+            "1.0: Line 5: Invalid passphrase length 7 (expected: 8..63) 'hunter2'.",
+            "1.0: Line 5: failed to parse psk 'it's a secret'.",
+            # A value crafted to look like the allowlisted line is still redacted.
+            "1.0: Line 5: Invalid PSK 'x: Line 1: unknown network field 'a'.'.",
+        ],
+    )
+
+    for secret in ("hunter2", "it's a secret", "unknown network field"):
+        assert secret not in err.error_msg
+    assert err.error_msg.count("'[redacted]'") == 3

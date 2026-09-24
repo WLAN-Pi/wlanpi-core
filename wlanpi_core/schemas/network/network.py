@@ -202,7 +202,6 @@ class RootConfig(BaseModel):
     phy: str
     interface: str
     security: NetSecurity | None = None
-    mlo: bool = False
     default_route: bool = False
     autostart_app: str | None = None
 
