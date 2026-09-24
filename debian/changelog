@@ -1,3 +1,18 @@
+wlanpi-core (2.4.2-1) unstable; urgency=medium
+
+  * POST /api/v1/profiler/start waits for the profiler to report running
+    and returns success false with a reason and message when it exits
+    instead, rather than reporting a start that never happened (#326).
+    Profiler output now goes to wlanpi-core's journal.
+  * Add POST /api/v1/profiler/purge, which deletes the profiler's
+    reports and captures in /var/www/html/profiler/clients and /reports
+    without following symlinks and returns the number of files and bytes
+    removed. It returns 409 while the profiler is starting, running or
+    stopping, and is serialised with profiler starts made through
+    wlanpi-core.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 24 Sep 2026 17:03:46 -0400
+
 wlanpi-core (2.4.1-1) unstable; urgency=medium
 
   * Stop writing mlo=1 to wpa_supplicant network blocks. mlo is not a
