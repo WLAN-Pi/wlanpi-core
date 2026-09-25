@@ -48,29 +48,29 @@ def test_system_service_start_and_stop_routes(client, mocker):
     start = mocker.patch.object(
         system_service,
         "start_systemd_service",
-        new=AsyncMock(return_value={"name": "iperf", "active": True}),
+        new=AsyncMock(return_value={"name": "iperf2", "active": True}),
     )
     stop = mocker.patch.object(
         system_service,
         "stop_systemd_service",
-        new=AsyncMock(return_value={"name": "iperf", "active": False}),
+        new=AsyncMock(return_value={"name": "iperf2", "active": False}),
     )
 
     start_response = client.post(
         "/api/v1/system/service/start",
-        params={"name": "iperf"},
+        params={"name": "iperf2"},
     )
     stop_response = client.post(
         "/api/v1/system/service/stop",
-        params={"name": "iperf"},
+        params={"name": "iperf2"},
     )
 
     assert start_response.status_code == 200
-    assert start_response.json() == {"name": "iperf", "active": True}
+    assert start_response.json() == {"name": "iperf2", "active": True}
     assert stop_response.status_code == 200
-    assert stop_response.json() == {"name": "iperf", "active": False}
-    start.assert_awaited_once_with("iperf")
-    stop.assert_awaited_once_with("iperf")
+    assert stop_response.json() == {"name": "iperf2", "active": False}
+    start.assert_awaited_once_with("iperf2")
+    stop.assert_awaited_once_with("iperf2")
 
 
 def test_set_reg_domain_happy_path(client, mocker):
