@@ -1,15 +1,3 @@
-wlanpi-core (2.4.4-1) unstable; urgency=medium
-
-  * Scan results and connection status report key_mgmt for WPA3 and
-    enterprise networks. wpa_cli scans returned "unknown" for SAE, OWE
-    and EAP, and iw scans called every RSN network "wpa-psk". Both now
-    read the AKMs: "sae" (SAE, SAE-EXT-KEY), "wpa-eap", "owe", "wpa-psk"
-    (including WPA2/WPA3 transition), and iw scans now report "open" and
-    "wep" as wpa_cli scans do. On a live scan, both parsers agree for
-    every BSS.
-
- -- bentumbler <bentumbler@gmail.com>  Thu, 24 Sep 2026 19:30:00 +0100
-
 wlanpi-core (2.4.2-1) unstable; urgency=medium
 
   * POST /api/v1/profiler/start waits for the profiler to report running
