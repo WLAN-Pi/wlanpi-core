@@ -12,7 +12,7 @@
 
 ## What these endpoints do
 
-Both endpoints start by listing **all** wireless interfaces (`iw dev`). Debug logs such as `Found 2 wireless interfaces` refer to that step only.
+Both endpoints start by listing **all** wireless interfaces (`iw dev`), in the root namespace and in every network namespace. A network configuration can move a radio into a namespace, and it stays listed there with its `namespace`. Debug logs such as `Found 2 wireless interfaces` refer to the root step only.
 
 They then **filter by hardware bus** and return only matching adapters:
 
@@ -34,6 +34,7 @@ On a WLAN Pi Pro / R4 with built-in Intel Wi-Fi, **`usb-drivers` legitimately re
   "adapters": [
     {
       "interface": "wlan1",
+      "namespace": null,
       "driver": "ath9k_htc",
       "bus": "usb"
     }
@@ -49,11 +50,13 @@ On a WLAN Pi Pro / R4 with built-in Intel Wi-Fi, **`usb-drivers` legitimately re
   "adapters": [
     {
       "interface": "wlan0",
+      "namespace": null,
       "driver": "iwlwifi",
       "bus": "pci"
     },
     {
       "interface": "wlanpi0",
+      "namespace": null,
       "driver": "iwlwifi",
       "bus": "pci"
     }
@@ -72,9 +75,10 @@ On a WLAN Pi Pro / R4 with built-in Intel Wi-Fi, **`usb-drivers` legitimately re
 |-------|------|---------|
 | `adapters` | array | Interfaces that passed bus filter, with driver name |
 | `adapters[].interface` | string | Linux netdev (`wlan0`, `wlanpi0`, …) |
+| `adapters[].namespace` | string \| null | Network namespace the interface is in; `null` for the root namespace |
 | `adapters[].driver` | string \| null | From `ethtool -i`; null if ethtool unavailable |
 | `adapters[].bus` | string | `usb`, `pci`, or `platform` |
-| `interfaces_scanned` | number | How many `iw dev` interfaces were checked |
+| `interfaces_scanned` | number | How many `iw dev` interfaces were checked, across all namespaces |
 | `pci_devices` | array | (pci-drivers only) Raw `lspci` wireless lines |
 
 ---
@@ -116,6 +120,7 @@ For a **generic “Wi-Fi drivers” screen** on unknown hardware, call **both** 
 ```typescript
 type WlanAdapter = {
   interface: string;
+  namespace: string | null;
   driver: string | null;
   bus: "usb" | "pci" | "platform";
 };

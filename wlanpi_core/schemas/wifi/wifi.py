@@ -9,6 +9,13 @@ class PhyCapabilities(BaseModel):
     """Capabilities reported by one Wi-Fi PHY."""
 
     phy: str = Field(json_schema_extra={"example": "phy0"})
+    namespace: str | None = Field(
+        default=None,
+        description=(
+            "Network namespace the radio is in, or null for the root namespace. "
+            "A network configuration can move a radio into a namespace."
+        ),
+    )
     info: str | None = Field(default=None, description="Raw iw phy info output")
     error: str | None = Field(default=None)
 

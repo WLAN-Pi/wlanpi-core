@@ -11,8 +11,13 @@ from typing import Any
 
 from wlanpi_core.adapters import discovery
 from wlanpi_core.constants import ETHTOOL_FILE, IW_FILE
+from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.network.namespace.namespace_errors import (
+    NetworkNamespaceError,
+)
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
 
@@ -22,12 +27,19 @@ _driver_inventory_cache: tuple[float, dict[str, Any]] | None = None
 _driver_inventory_lock = threading.Lock()
 
 
-def _driver_for_interface(iface: str) -> str | None:
+def _run(cmd: list[str], namespace: str | None) -> CommandResult:
+    """Run `cmd` in root, or inside `namespace`, without raising on failure."""
+    if namespace is None:
+        return run_command(cmd, raise_on_fail=False)
+    return ns_exec(cmd, namespace=namespace, no_output=True, raise_on_fail=False)
+
+
+def _driver_for_interface(iface: str, namespace: str | None = None) -> str | None:
     try:
-        output = run_command([ETHTOOL_FILE, "-i", iface], raise_on_fail=False).stdout
+        output = _run([ETHTOOL_FILE, "-i", iface], namespace).stdout
         match = re.search(r"driver:\s+(\S+)", output)
         return match.group(1) if match else None
-    except (RunCommandError, FileNotFoundError):
+    except (RunCommandError, FileNotFoundError, ValueError):
         return None
 
 
@@ -37,6 +49,11 @@ def _bus_from_sysfs_path(device_path: Path) -> str | None:
         resolved = str(device_path.resolve())
     except OSError:
         return None
+    return _bus_from_resolved_path(resolved)
+
+
+def _bus_from_resolved_path(resolved: str) -> str | None:
+    """Classify bus from a resolved sysfs device path."""
     if "/usb" in resolved:
         return "usb"
     if "/pci" in resolved or _PCI_DEVICE_RE.search(resolved):
@@ -46,18 +63,23 @@ def _bus_from_sysfs_path(device_path: Path) -> str | None:
     return None
 
 
-def _bus_for_interface(iface: str) -> str | None:
+def _bus_for_interface(iface: str, namespace: str | None = None) -> str | None:
     try:
-        info = run_command([IW_FILE, "dev", iface, "info"], raise_on_fail=False).stdout
+        info = _run([IW_FILE, "dev", iface, "info"], namespace).stdout
         match = re.search(r"wiphy\s+(\d+)", info)
         if not match:
             return None
         wiphy = match.group(1)
         device_path = Path(f"/sys/class/ieee80211/phy{wiphy}/device")
+        if namespace is not None:
+            # A phy moved into a netns leaves the root sysfs; `ip netns exec`
+            # mounts that namespace's sysfs, so resolve the path in there.
+            resolved = _run(["readlink", "-f", str(device_path)], namespace)
+            return _bus_from_resolved_path(resolved.stdout.strip())
         if not device_path.exists():
             return None
         return _bus_from_sysfs_path(device_path)
-    except (RunCommandError, FileNotFoundError, OSError):
+    except (RunCommandError, FileNotFoundError, OSError, ValueError):
         pass
     return None
 
@@ -76,21 +98,29 @@ def _collect_wlan_driver_inventory() -> dict[str, Any]:
     except (RunCommandError, FileNotFoundError):
         pci_devices = []
 
+    interfaces: list[tuple[str, str | None]] = []
     try:
-        interfaces = discovery.list_interfaces()
+        try:
+            interfaces = [
+                (live.name, live.netns)
+                for live in discovery.list_interfaces_all_namespaces()
+            ]
+        except NetworkNamespaceError as exc:
+            log.warning("Could not list namespaces; root only: %r", exc)
+            interfaces = [(name, None) for name in discovery.list_interfaces()]
     except RunCommandError as exc:
         log.warning("Could not list WLAN interfaces: %r", exc)
-        interfaces = []
 
     adapters: list[dict[str, Any]] = []
-    for iface in interfaces:
-        bus = _bus_for_interface(iface)
+    for iface, namespace in interfaces:
+        bus = _bus_for_interface(iface, namespace)
         if bus not in ("usb", "pci", "platform"):
             continue
         adapters.append(
             {
                 "interface": iface,
-                "driver": _driver_for_interface(iface),
+                "namespace": namespace,
+                "driver": _driver_for_interface(iface, namespace),
                 "bus": bus,
             }
         )

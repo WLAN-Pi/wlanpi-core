@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from wlanpi_core.adapters.discovery import LiveInterface
 from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.network.namespace.namespace_errors import (
+    NetworkNamespaceError,
+)
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network import (
@@ -357,10 +361,14 @@ def test_resolve_interface_namespace_rejects_missing_interface():
     assert exc.value.status_code == 404
 
 
+def _live(name, netns=None, phy_index=0):
+    return LiveInterface(name, phy_index, netns, "managed")
+
+
 def test_get_usb_wlan_drivers_filters_bus():
     with patch(
-        "wlanpi_core.network.wlan_drivers.discovery.list_interfaces",
-        return_value=["wlan0", "wlanpi0"],
+        "wlanpi_core.network.wlan_drivers.discovery.list_interfaces_all_namespaces",
+        return_value=[_live("wlan0"), _live("wlanpi0")],
     ):
         with patch(
             "wlanpi_core.network.wlan_drivers._bus_for_interface",
@@ -406,8 +414,8 @@ def test_get_pci_wlan_drivers():
         ),
     ):
         with patch(
-            "wlanpi_core.network.wlan_drivers.discovery.list_interfaces",
-            return_value=["wlanpi0"],
+            "wlanpi_core.network.wlan_drivers.discovery.list_interfaces_all_namespaces",
+            return_value=[_live("wlanpi0")],
         ):
             with patch(
                 "wlanpi_core.network.wlan_drivers._bus_for_interface",
@@ -422,6 +430,83 @@ def test_get_pci_wlan_drivers():
     assert len(result["pci_devices"]) == 1
     assert result["adapters"][0]["interface"] == "wlanpi0"
     assert result["adapters"][0]["driver"] == "brcmfmac"
+    assert result["adapters"][0]["namespace"] is None
+
+
+def test_wlan_driver_inventory_includes_namespaced_interfaces():
+    """A radio moved into a namespace stays listed, with its namespace (#333)."""
+    with patch.object(wlan_drivers, "run_command", return_value=MagicMock(stdout="")):
+        with patch.object(
+            wlan_drivers.discovery,
+            "list_interfaces_all_namespaces",
+            return_value=[_live("wlan1"), _live("wlan2", "nsvis", 1)],
+        ):
+            with patch.object(
+                wlan_drivers, "_bus_for_interface", return_value="pci"
+            ) as bus:
+                with patch.object(
+                    wlan_drivers, "_driver_for_interface", return_value="mt7921e"
+                ) as driver:
+                    result = wlan_drivers._collect_wlan_driver_inventory()
+
+    assert [(a["interface"], a["namespace"]) for a in result["adapters"]] == [
+        ("wlan1", None),
+        ("wlan2", "nsvis"),
+    ]
+    assert result["interfaces_scanned"] == 2
+    bus.assert_any_call("wlan2", "nsvis")
+    driver.assert_any_call("wlan2", "nsvis")
+
+
+def test_wlan_driver_inventory_falls_back_to_root_without_namespaces():
+    with patch.object(wlan_drivers, "run_command", return_value=MagicMock(stdout="")):
+        with patch.object(
+            wlan_drivers.discovery,
+            "list_interfaces_all_namespaces",
+            side_effect=NetworkNamespaceError("ip netns list failed"),
+        ):
+            with patch.object(
+                wlan_drivers.discovery, "list_interfaces", return_value=["wlan0"]
+            ):
+                with patch.object(
+                    wlan_drivers, "_bus_for_interface", return_value="usb"
+                ):
+                    with patch.object(
+                        wlan_drivers, "_driver_for_interface", return_value="mt7921u"
+                    ):
+                        result = wlan_drivers._collect_wlan_driver_inventory()
+
+    assert result["adapters"] == [
+        {"interface": "wlan0", "namespace": None, "driver": "mt7921u", "bus": "usb"}
+    ]
+
+
+def test_bus_and_driver_for_namespaced_interface_run_in_the_namespace():
+    """The phy's sysfs is only visible in its namespace, so iw/readlink run there."""
+    outputs = {
+        ("iw", "dev", "wlan2", "info"): "Interface wlan2\n\twiphy 1\n",
+        ("readlink", "-f", "/sys/class/ieee80211/phy1/device"): (
+            "/sys/devices/platform/axi/1000110000.pcie/pci0000:00/0000:01:00.0\n"
+        ),
+        ("/sbin/ethtool", "-i", "wlan2"): "driver: mt7921e\n",
+    }
+
+    def fake_ns_exec(cmd, namespace, no_output, raise_on_fail):
+        assert namespace == "nsvis"
+        assert raise_on_fail is False
+        return MagicMock(stdout=outputs[tuple(cmd)])
+
+    with patch.object(wlan_drivers, "IW_FILE", "iw"):
+        with patch.object(wlan_drivers, "ETHTOOL_FILE", "/sbin/ethtool"):
+            with patch.object(wlan_drivers, "ns_exec", side_effect=fake_ns_exec):
+                with patch.object(wlan_drivers, "run_command") as root:
+                    assert wlan_drivers._bus_for_interface("wlan2", "nsvis") == "pci"
+                    assert (
+                        wlan_drivers._driver_for_interface("wlan2", "nsvis")
+                        == "mt7921e"
+                    )
+
+    root.assert_not_called()
 
 
 def test_wlan_driver_inventory_cache_is_shared_within_ttl():

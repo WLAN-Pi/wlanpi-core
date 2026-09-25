@@ -6351,6 +6351,18 @@
             "title": "Phy",
             "example": "phy0"
           },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace the radio is in, or null for the root namespace. A network configuration can move a radio into a namespace."
+          },
           "info": {
             "anyOf": [
               {
@@ -7936,6 +7948,18 @@
             "type": "string",
             "title": "Interface",
             "description": "Linux interface name from iw dev, e.g. wlan0"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace the interface is in, or null for the root namespace. A network configuration can move an interface into a namespace."
           },
           "driver": {
             "anyOf": [
