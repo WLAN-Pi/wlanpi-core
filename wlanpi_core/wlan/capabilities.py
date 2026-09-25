@@ -25,6 +25,9 @@ def get_wifi_capabilities() -> dict[str, Any]:
     A phy moved into a namespace is only visible from inside it, so each
     namespace is listed there. One failing namespace is logged and skipped.
     """
+    # ponytail: uncached (by design) and unserialised, so each call runs
+    # 1 + namespaces + phys commands; add a lock like the driver inventory's
+    # if many namespaces or tight polling make that costly.
     try:
         phys_by_ns: list[tuple[str | None, list[str]]] = [
             (None, list_phys(namespace=None))

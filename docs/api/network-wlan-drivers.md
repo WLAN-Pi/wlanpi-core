@@ -12,7 +12,7 @@
 
 ## What these endpoints do
 
-Both endpoints start by listing **all** wireless interfaces (`iw dev`), in the root namespace and in every network namespace. A network configuration can move a radio into a namespace, and it stays listed there with its `namespace`. Debug logs such as `Found 2 wireless interfaces` refer to the root step only.
+Both endpoints start by listing **all** wireless interfaces (`iw dev`), in the root namespace and in every network namespace that can be read. A network configuration can move a radio into a namespace, and it stays listed there with its `namespace`. A namespace whose interfaces can't be listed is skipped, so the inventory is best effort. Debug logs such as `Found 2 wireless interfaces` refer to the root step only.
 
 They then **filter by hardware bus** and return only matching adapters:
 
@@ -88,7 +88,7 @@ On a WLAN Pi Pro / R4 with built-in Intel Wi-Fi, **`usb-drivers` legitimately re
 1. **Always expect HTTP 200** on success, even when `adapters` is empty.
 2. **Do not treat empty `adapters` as failure** — check `interfaces_scanned`:
    - `interfaces_scanned > 0` and `adapters.length === 0` on **usb-drivers** → show “No USB Wi-Fi adapters” and offer pci-drivers data if relevant.
-   - `interfaces_scanned === 0` → no wireless interfaces at all (unusual).
+   - `interfaces_scanned === 0` → no wireless interfaces found in the root namespace or any readable namespace (unusual).
 3. **Same PHY, multiple interfaces:** `wlan0` and `wlanpi0` often share one chip; pci-drivers may list both with the same `driver`. Display as separate rows or collapse by driver — both are valid.
 4. **`pci_devices` vs `adapters`:** `pci_devices` can be non-empty while `adapters` was empty on older core builds; after bus-detection fix they should align on PCI hardware. Prefer `adapters` for per-interface driver display.
 5. **`driver` null:** Show interface name and bus; omit driver or show “unknown”.
