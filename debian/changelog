@@ -1,3 +1,22 @@
+wlanpi-core (2.4.3-1) unstable; urgency=medium
+
+  * WPA3-PSK offers SAE-EXT-KEY (AKM 24) beside SAE, with GCMP-256
+    beside CCMP, so Wi-Fi 7 APs that offer AKM 24 use it. Checked on
+    ath12k (WCN7850) against a Cisco MLO AP (SAE + SAE-EXT-KEY, 2 links)
+    and a 2.4/5/6 GHz MLO AP (SAE only, 3 links) (#337).
+  * Connection status on an MLO link reports the signal again: wpa_cli
+    gives the AP MLD address as the BSSID, which no scan entry has, so
+    the association link is now matched by SSID and frequency when
+    exactly one scan entry has both (#337, #338).
+  * Scan results and connection status report key_mgmt for WPA3 and
+    enterprise networks. wpa_cli scans returned "unknown" for SAE, OWE
+    and EAP, and iw scans called every RSN network "wpa-psk". Both now
+    read the AKMs: "sae" (SAE, SAE-EXT-KEY), "wpa-eap", "owe", "wpa-psk"
+    (including WPA2/WPA3 transition), and iw scans report "open" and
+    "wep" as wpa_cli scans do (#338).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 25 Sep 2026 02:51:59 -0400
+
 wlanpi-core (2.4.2-1) unstable; urgency=medium
 
   * POST /api/v1/profiler/start waits for the profiler to report running
