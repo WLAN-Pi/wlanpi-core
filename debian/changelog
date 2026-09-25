@@ -1,3 +1,13 @@
+wlanpi-core (2.4.4-1) unstable; urgency=medium
+
+  * GET /api/v1/wifi/capabilities, /network/wlan/usb-drivers and
+    /network/wlan/pci-drivers list radios that a network configuration
+    moved into a network namespace, with a new namespace field (null for
+    the root namespace). They were missing from all three while the
+    configuration was active (#333).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 25 Sep 2026 03:25:00 -0400
+
 wlanpi-core (2.4.3-1) unstable; urgency=medium
 
   * WPA3-PSK offers SAE-EXT-KEY (AKM 24) beside SAE, with GCMP-256
