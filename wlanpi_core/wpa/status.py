@@ -69,6 +69,17 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
                 include_hidden=True,
             )
             matched = find_bss(networks, connected_bssid)
+            if matched is None and wpa_status.get("ap_mld_addr"):
+                # MLO: bssid is the AP MLD address, which no scan entry has.
+                # Scans list each link's BSSID; freq is the association link.
+                matched = next(
+                    (
+                        n
+                        for n in networks
+                        if n.get("ssid") == connected_ssid and n.get("freq") == freq
+                    ),
+                    None,
+                )
             if matched:
                 log.info("Found connected network in scan results: %s", matched)
                 signal = matched.get("signal")

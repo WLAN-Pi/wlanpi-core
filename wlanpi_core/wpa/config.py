@@ -68,7 +68,7 @@ def generate_global_header(
     lines = [
         f"ctrl_interface={ctrl_interface}",
         f"update_config={update_config}",
-        "sae_pwe=2",  # SAE PWE in global context
+        "sae_pwe=2",  # H2E when the AP offers it, as 6 GHz requires
     ]
     return "\n".join(lines)
 
@@ -128,7 +128,11 @@ def generate_network_block(
     elif sec == "WPA3-PSK":
         if cfg.security.psk:
             lines.append(f"    psk={_psk_value(cfg.security.psk)}")
-        lines.append("    key_mgmt=SAE")  # WPA3 uses SAE
+        # SAE-EXT-KEY (AKM 24) is preferred when the AP offers it, as Wi-Fi 7
+        # MLO APs do; GCMP-256 is its cipher, CCMP stays for plain SAE.
+        lines.append("    key_mgmt=SAE SAE-EXT-KEY")
+        lines.append("    pairwise=GCMP-256 CCMP")
+        lines.append("    group=GCMP-256 CCMP")
         lines.append("    ieee80211w=2")  # PMF required for WPA3
     elif sec in ("802.1X", "WPA2-EAP", "WPA3-EAP"):
         lines.append("    key_mgmt=WPA-EAP")
