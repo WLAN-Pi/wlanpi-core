@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from wlanpi_core.wpa import status
 
 _GET_WPA_STATUS = status.get_wpa_status
@@ -58,6 +60,7 @@ def test_get_wpa_status_matches_mlo_link_by_ssid_and_freq(mocker):
                 "ssid": "676Eval",
                 "freq": 6375,
                 "signal": -45,
+                "key_mgmt": "sae",
             },
             {
                 "bssid": "aa:bb:cc:dd:ee:ff",
@@ -71,7 +74,75 @@ def test_get_wpa_status_matches_mlo_link_by_ssid_and_freq(mocker):
     result = _GET_WPA_STATUS("wlan2", None)
 
     assert result["connected_scan"]["signal"] == -45
+    assert result["connected_scan"]["key_mgmt"] == "sae"
     assert result["connected_scan"]["bssid"] == "cc:2d:d2:a9:a6:00"
+
+
+@pytest.mark.parametrize(
+    "networks",
+    [
+        pytest.param(
+            [
+                {
+                    "bssid": "02:00:00:00:00:01",
+                    "ssid": "Net",
+                    "freq": 5180,
+                    "signal": -30,
+                    "key_mgmt": "wpa-psk",
+                },
+                {
+                    "bssid": "02:00:00:00:00:02",
+                    "ssid": "Net",
+                    "freq": 5180,
+                    "signal": -60,
+                    "key_mgmt": "sae",
+                },
+            ],
+            id="two-aps-same-ssid-and-channel",
+        ),
+        pytest.param(
+            [
+                {
+                    "bssid": "02:00:00:00:00:01",
+                    "ssid": "Net",
+                    "freq": 5200,
+                    "signal": -30,
+                    "key_mgmt": "sae",
+                },
+                {
+                    "bssid": "02:00:00:00:00:02",
+                    "ssid": "Other",
+                    "freq": 5180,
+                    "signal": -30,
+                    "key_mgmt": "sae",
+                },
+            ],
+            id="no-ssid-and-freq-match",
+        ),
+    ],
+)
+def test_get_wpa_status_mlo_needs_a_unique_link_match(mocker, networks):
+    """An ambiguous or missing SSID+freq match reports no signal rather than a guess."""
+    mocker.patch.object(
+        status,
+        "ns_exec",
+        side_effect=[
+            MagicMock(
+                stdout=(
+                    "bssid=02:00:00:00:00:aa\nfreq=5180\nssid=Net\n"
+                    "ap_mld_addr=02:00:00:00:00:aa\n"
+                )
+            ),
+            MagicMock(stdout="3: wlan0: <UP>\n"),
+        ],
+    )
+    mocker.patch.object(status, "fetch_scan_results", return_value="")
+    mocker.patch.object(status, "parse_wpa_scan_results", return_value=networks)
+
+    result = _GET_WPA_STATUS("wlan0", None)
+
+    assert result["connected_scan"]["signal"] == 0
+    assert result["connected_scan"]["key_mgmt"] == "unknown"
 
 
 def test_get_wpa_status_non_mlo_miss_stays_unmatched(mocker):

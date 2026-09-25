@@ -102,15 +102,38 @@ def freq_to_channel(freq_mhz: int) -> int | None:
     return None
 
 
+def _classify_akms(akms: list[str]) -> str:
+    """Collapse a BSS's AKM names to one key_mgmt value.
+
+    PSK wins, so a WPA2/WPA3 transition network stays ``wpa-psk``: a WPA2
+    client can join it. SAE and SAE-EXT-KEY (WPA3-Personal) are ``sae``.
+    The raw flags carry the full AKM list.
+    """
+    names = [a.upper() for a in akms]
+    if any(n.endswith("PSK") or "PSK/" in n or "PSK-" in n for n in names):
+        return "wpa-psk"
+    if any("SAE" in n for n in names):
+        return "sae"
+    if any("EAP" in n or "802.1X" in n for n in names):
+        return "wpa-eap"
+    if any("OWE" in n for n in names):
+        return "owe"
+    return "unknown"
+
+
 def parse_key_mgmt(flags: str) -> str:
-    """Parse key management type from WPA scan-result flags."""
-    if "WPA2-PSK" in flags:
-        return "wpa-psk"
-    if "WPA-PSK" in flags:
-        return "wpa-psk"
+    """Parse key management type from WPA scan-result flags.
+
+    wpa_cli writes one group per WPA/RSN element, e.g.
+    ``[WPA2-SAE+SAE-EXT-KEY-GCMP-256+CCMP]``: AKMs joined by ``+``, then
+    the ciphers.
+    """
+    groups = re.findall(r"\[(?:WPA2?|RSN)-([^\]]*)\]", flags)
+    if groups:
+        return _classify_akms([a for g in groups for a in g.split("+")])
     if "WEP" in flags:
         return "wep"
-    if "[ESS]" in flags and "WPA" not in flags:
+    if "[ESS]" in flags:
         return "open"
     return "unknown"
 
@@ -282,6 +305,9 @@ def parse_iw_bss_block(
     signal = 0
     freq = 0
     key_mgmt = "unknown"
+    akms: list[str] = []
+    has_wpa = False
+    privacy: bool | None = None
 
     for line in block.splitlines():
         stripped = line.strip()
@@ -299,7 +325,20 @@ def parse_iw_bss_block(
             except (IndexError, ValueError):
                 pass
         elif stripped.startswith("RSN:") or stripped.startswith("WPA:"):
-            key_mgmt = "wpa-psk"
+            has_wpa = True
+        elif stripped.startswith("* Authentication suites:"):
+            # iw separates suites with spaces but writes "IEEE 802.1X".
+            suites = stripped.split(":", 1)[1].replace("IEEE 802.1X", "802.1X")
+            akms.extend(suites.split())
+        elif stripped.startswith("capability:"):
+            privacy = "Privacy" in stripped
+
+    if akms:
+        key_mgmt = _classify_akms(akms)
+    elif has_wpa:
+        key_mgmt = "wpa-psk"  # RSN/WPA element without a readable suite list
+    elif privacy is not None:
+        key_mgmt = "wep" if privacy else "open"
 
     if not include_hidden and not ssid:
         return None

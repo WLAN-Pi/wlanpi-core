@@ -60,6 +60,70 @@ def test_parse_key_mgmt_wpa2_psk():
     assert parse_key_mgmt("[WPA2-PSK-CCMP][ESS]") == "wpa-psk"
 
 
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        # Captured from wpa_cli scan_results (wpa_supplicant 2.12).
+        ("[WPA2-SAE-CCMP][SAE-H2E][ESS]", "sae"),
+        ("[WPA2-SAE+SAE-EXT-KEY-GCMP-256+CCMP][SAE-H2E][ESS]", "sae"),
+        ("[WPA2-PSK+SAE-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-PSK+SAE-CCMP][SAE-H2E][WPS][ESS][FILS]", "wpa-psk"),
+        ("[WPA2-PSK+PSK-SHA256-CCMP-256+CCMP][ESS]", "wpa-psk"),
+        ("[WEP][ESS]", "wep"),
+        ("[ESS]", "open"),
+        ("[WPA-PSK-TKIP][WPA2-PSK-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-FT/PSK-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-FT/SAE-CCMP][ESS]", "sae"),
+        ("[WPA2-EAP-CCMP][ESS]", "wpa-eap"),
+        ("[WPA2-EAP-SUITE-B-192-GCMP-256][ESS]", "wpa-eap"),
+        ("[WPA2-OWE-CCMP][ESS]", "owe"),
+        ("", "unknown"),
+    ],
+)
+def test_parse_key_mgmt_forms(flags, expected):
+    assert parse_key_mgmt(flags) == expected
+
+
+def _iw_block(capability: str, rsn: str | None) -> str:
+    lines = [
+        "BSS ae:88:91:5a:a3:40(on wlan2)",
+        "\tfreq: 5220",
+        "\tsignal: -33.00 dBm",
+        "\tSSID: Net",
+        f"\tcapability: {capability}",
+    ]
+    if rsn is not None:
+        lines += [
+            "\tRSN:\t * Version: 1",
+            "\t\t * Group cipher: CCMP",
+            "\t\t * Pairwise ciphers: GCMP-256 CCMP",
+        ]
+        if rsn:
+            lines.append(f"\t\t * Authentication suites: {rsn}")
+    return "\n".join(lines)
+
+
+@pytest.mark.parametrize(
+    ("capability", "rsn", "expected"),
+    [
+        # Suite lists captured from `iw dev wlan2 scan dump`.
+        ("ESS Privacy (0x1511)", "SAE SAE-EXT-KEY", "sae"),
+        ("ESS Privacy (0x1511)", "SAE", "sae"),
+        ("ESS Privacy (0x1511)", "PSK SAE", "wpa-psk"),
+        ("ESS Privacy (0x1511)", "PSK PSK/SHA-256", "wpa-psk"),
+        ("ESS Privacy (0x1511)", "IEEE 802.1X", "wpa-eap"),
+        ("ESS Privacy (0x1511)", "FT/IEEE 802.1X IEEE 802.1X/SHA-256", "wpa-eap"),
+        ("ESS Privacy (0x1511)", "OWE", "owe"),
+        ("ESS Privacy (0x1511)", "", "wpa-psk"),
+        ("ESS Privacy (0x0411)", None, "wep"),
+        ("ESS ShortSlotTime (0x0401)", None, "open"),
+    ],
+)
+def test_parse_iw_scan_key_mgmt(capability, rsn, expected):
+    networks = parse_iw_scan_output(_iw_block(capability, rsn))
+    assert networks[0]["key_mgmt"] == expected
+
+
 def test_find_bss_matches_lowercase():
     networks = parse_wpa_scan_results(SAMPLE)
     matched = find_bss(networks, "AA:BB:CC:DD:EE:01")
