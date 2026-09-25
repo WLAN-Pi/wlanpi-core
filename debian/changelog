@@ -1,15 +1,3 @@
-wlanpi-core (2.4.3-1) unstable; urgency=medium
-
-  * WPA3-PSK offers SAE-EXT-KEY (AKM 24) beside SAE, with GCMP-256 beside
-    CCMP, so Wi-Fi 7 APs that offer AKM 24 use it. Checked on ath12k
-    (WCN7850) against a Cisco MLO AP (SAE + SAE-EXT-KEY, 2 links) and a
-    2.4/5/6 GHz MLO AP (SAE only, 3 links).
-  * Connection status on an MLO link reports the signal again: wpa_cli
-    gives the AP MLD address as the BSSID, which no scan entry has, so the
-    association link is now matched by SSID and frequency.
-
- -- bentumbler <bentumbler@gmail.com>  Thu, 24 Sep 2026 18:30:00 +0100
-
 wlanpi-core (2.4.2-1) unstable; urgency=medium
 
   * POST /api/v1/profiler/start waits for the profiler to report running
