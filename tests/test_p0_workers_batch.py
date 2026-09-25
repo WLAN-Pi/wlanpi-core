@@ -164,11 +164,17 @@ def test_hotspot_ssid_passphrase(client, mocker, tmp_path):
 def test_wifi_capabilities(client, mocker):
     mocker.patch(
         "wlanpi_core.api.api_v1.endpoints.wifi_api.get_wifi_capabilities",
-        return_value={"adapters": [{"phy": "phy0", "info": "Wiphy phy0"}]},
+        return_value={
+            "adapters": [
+                {"phy": "phy0", "info": "Wiphy phy0"},
+                {"phy": "phy1", "namespace": "nsvis", "info": "Wiphy phy1"},
+            ]
+        },
     )
     response = client.get("/api/v1/wifi/capabilities")
     assert response.status_code == 200
     assert response.json()["adapters"][0]["phy"] == "phy0"
+    assert [a["namespace"] for a in response.json()["adapters"]] == [None, "nsvis"]
 
 
 def test_wifi_regulatory(client, mocker):

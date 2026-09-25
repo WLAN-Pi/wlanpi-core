@@ -1279,7 +1279,7 @@
           "network"
         ],
         "summary": "Show Wlan Usb Drivers",
-        "description": "USB-attached WLAN adapters and bound drivers.\n\nReturns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.\nCheck ``interfaces_scanned`` \u2014 if > 0 and ``adapters`` is empty, use\n``GET /network/wlan/pci-drivers`` for built-in Wi-Fi.",
+        "description": "USB-attached WLAN adapters and bound drivers.\n\nReturns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.\nCheck ``interfaces_scanned`` \u2014 if > 0 and ``adapters`` is empty, use\n``GET /network/wlan/pci-drivers`` for built-in Wi-Fi.\n\nInterfaces in network namespaces are included, with ``namespace`` set;\nit is null for the root namespace. A namespace that can't be read is skipped.",
         "operationId": "show_wlan_usb_drivers_api_v1_network_wlan_usb_drivers_get",
         "responses": {
           "200": {
@@ -1306,7 +1306,7 @@
           "network"
         ],
         "summary": "Show Wlan Pci Drivers",
-        "description": "PCI/platform wireless devices and bound WLAN interface drivers.\n\n``pci_devices`` comes from lspci; ``adapters`` maps iw dev interfaces to\ndrivers. Both lists can be populated independently.",
+        "description": "PCI/platform wireless devices and bound WLAN interface drivers.\n\n``pci_devices`` comes from lspci; ``adapters`` maps iw dev interfaces to\ndrivers. Both lists can be populated independently.\n\nInterfaces in network namespaces are included, with ``namespace`` set;\nit is null for the root namespace. A namespace that can't be read is skipped.",
         "operationId": "show_wlan_pci_drivers_api_v1_network_wlan_pci_drivers_get",
         "responses": {
           "200": {
@@ -3494,7 +3494,7 @@
           "wifi"
         ],
         "summary": "Show Wi-Fi capabilities",
-        "description": "Return ``iw phy`` capability dumps for each PHY.",
+        "description": "Return ``iw phy`` capability dumps for each PHY.\n\nRadios in network namespaces are included, with ``namespace`` set;\nit is null for the root namespace. A namespace that can't be read is skipped.",
         "operationId": "show_wifi_capabilities_api_v1_wifi_capabilities_get",
         "responses": {
           "200": {
@@ -6351,6 +6351,18 @@
             "title": "Phy",
             "example": "phy0"
           },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace the radio is in, or null for the root namespace. A network configuration can move a radio into a namespace."
+          },
           "info": {
             "anyOf": [
               {
@@ -7936,6 +7948,18 @@
             "type": "string",
             "title": "Interface",
             "description": "Linux interface name from iw dev, e.g. wlan0"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace the interface is in, or null for the root namespace. A network configuration can move an interface into a namespace."
           },
           "driver": {
             "anyOf": [

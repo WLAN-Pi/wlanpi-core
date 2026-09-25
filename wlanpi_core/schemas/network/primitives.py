@@ -63,6 +63,13 @@ class WlanAdapterDriver(BaseModel):
     """A WLAN interface and its bound driver."""
 
     interface: str = Field(description="Linux interface name from iw dev, e.g. wlan0")
+    namespace: str | None = Field(
+        default=None,
+        description=(
+            "Network namespace the interface is in, or null for the root namespace. "
+            "A network configuration can move an interface into a namespace."
+        ),
+    )
     driver: str | None = Field(
         default=None,
         description="Kernel driver from ethtool -i, e.g. iwlwifi, ath9k_htc",

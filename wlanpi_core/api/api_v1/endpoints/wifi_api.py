@@ -26,7 +26,12 @@ log = get_logger(__name__)
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_wifi_capabilities() -> Any:
-    """Return ``iw phy`` capability dumps for each PHY."""
+    """
+    Return ``iw phy`` capability dumps for each PHY.
+
+    Radios in network namespaces are included, with ``namespace`` set;
+    it is null for the root namespace. A namespace that can't be read is skipped.
+    """
     try:
         return await asyncio.to_thread(get_wifi_capabilities)
     except ValidationError as ve:

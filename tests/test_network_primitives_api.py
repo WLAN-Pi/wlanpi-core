@@ -183,6 +183,12 @@ def test_api_get_network_wlan_usb_drivers(client):
         return_value={
             "adapters": [
                 {"interface": "wlan0", "driver": "ath9k_htc", "bus": "usb"},
+                {
+                    "interface": "wlan2",
+                    "namespace": "nsvis",
+                    "driver": "mt7921u",
+                    "bus": "usb",
+                },
             ],
             "interfaces_scanned": 2,
         },
@@ -191,6 +197,7 @@ def test_api_get_network_wlan_usb_drivers(client):
     assert response.status_code == 200
     body = response.json()
     assert body["adapters"][0]["bus"] == "usb"
+    assert [a["namespace"] for a in body["adapters"]] == [None, "nsvis"]
 
 
 def test_api_get_network_wlan_pci_drivers(client):

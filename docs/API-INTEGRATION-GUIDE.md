@@ -331,7 +331,7 @@ GET /api/v1/network/wlan/usb-drivers
 ```
 
 ```json
-{ "adapters": [ { "interface": "wlan1", "driver": "ath9k_htc", "bus": "usb" } ], "interfaces_scanned": 2 }
+{ "adapters": [ { "interface": "wlan1", "namespace": null, "driver": "ath9k_htc", "bus": "usb" } ], "interfaces_scanned": 2 }
 ```
 
 **Empty `adapters` with `interfaces_scanned > 0` is normal** on PCI-only hardware.
