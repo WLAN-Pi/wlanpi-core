@@ -16,6 +16,20 @@ from wlanpi_core.services import system_service
 _GET_MODE = system_service.get_mode
 
 
+@pytest.mark.parametrize(
+    ("name", "allowed"),
+    [
+        ("iperf2", True),
+        ("iperf2-udp.service", True),
+        ("iperf3", True),
+        # No unit has this name; the iperf2 units replaced it.
+        ("iperf", False),
+    ],
+)
+def test_iperf_units_allowlist(name, allowed):
+    assert system_service.is_allowed_service(name) is allowed
+
+
 @pytest.mark.asyncio
 async def test_restart_systemd_service_allowed(mocker):
     worker_thread = None

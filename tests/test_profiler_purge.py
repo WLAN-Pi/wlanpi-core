@@ -242,11 +242,11 @@ async def test_other_unit_start_ignores_profiler_lock(
 
     await lock.acquire()
     try:
-        await asyncio.wait_for(start("iperf"), timeout=5)
+        await asyncio.wait_for(start("iperf2"), timeout=5)
     finally:
         lock.release()
 
-    assert calls == ["iperf"]
+    assert calls == ["iperf2"]
     assert not lock.contended.is_set()
 
 

@@ -76,7 +76,7 @@ def test_system_bus_connection_failure_is_a_scoped_503(mocker):
 
     try:
         with pytest.raises(ValidationError) as exc_info:
-            system_service.check_service_status("iperf")
+            system_service.check_service_status("iperf2")
     finally:
         system_service._reset_systemd_client()
 
@@ -127,7 +127,7 @@ def test_disconnected_system_bus_is_rebuilt_on_next_request(mocker):
 
     second_bus = MagicMock()
     second_manager = MagicMock()
-    second_manager.GetUnit.return_value = "/org/freedesktop/systemd1/unit/iperf"
+    second_manager.GetUnit.return_value = "/org/freedesktop/systemd1/unit/iperf2"
     service_properties = MagicMock()
     service_properties.Get.side_effect = ["loaded", "active"]
 
@@ -144,22 +144,22 @@ def test_disconnected_system_bus_is_rebuilt_on_next_request(mocker):
 
     try:
         with pytest.raises(ValidationError) as exc_info:
-            system_service.restart_service("iperf")
+            system_service.restart_service("iperf2")
 
         assert exc_info.value.status_code == 503
         assert system_service._systemd_client is None
-        assert system_service.restart_service("iperf") is True
+        assert system_service.restart_service("iperf2") is True
     finally:
         system_service._reset_systemd_client()
 
     assert connect.call_count == 2
     first_manager.RestartUnit.assert_called_once_with(
-        "iperf.service",
+        "iperf2.service",
         "replace",
         timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
     )
     second_manager.RestartUnit.assert_called_once_with(
-        "iperf.service",
+        "iperf2.service",
         "replace",
         timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
     )
@@ -173,16 +173,16 @@ def test_start_and_stop_service_use_bounded_systemd_calls(mocker):
         return_value=(MagicMock(), manager),
     )
 
-    assert system_service.start_service("iperf") is True
-    assert system_service.stop_service("iperf") is False
+    assert system_service.start_service("iperf2") is True
+    assert system_service.stop_service("iperf2") is False
 
     manager.StartUnit.assert_called_once_with(
-        "iperf.service",
+        "iperf2.service",
         "replace",
         timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
     )
     manager.StopUnit.assert_called_once_with(
-        "iperf.service",
+        "iperf2.service",
         "replace",
         timeout=system_service._SYSTEMD_DBUS_TIMEOUT_SEC,
     )
@@ -192,7 +192,7 @@ def test_systemd_dbus_calls_are_serialized(mocker):
     bus = MagicMock()
     manager = MagicMock()
     service_properties = MagicMock()
-    manager.GetUnit.return_value = "/org/freedesktop/systemd1/unit/iperf"
+    manager.GetUnit.return_value = "/org/freedesktop/systemd1/unit/iperf2"
     service_properties.Get.side_effect = lambda _interface, name, **_kwargs: (
         "loaded" if name == "LoadState" else "active"
     )
@@ -214,7 +214,7 @@ def test_systemd_dbus_calls_are_serialized(mocker):
             max_active_calls = max(max_active_calls, active_calls)
         try:
             time.sleep(0.025)
-            return "/org/freedesktop/systemd1/unit/iperf"
+            return "/org/freedesktop/systemd1/unit/iperf2"
         finally:
             with call_state_lock:
                 active_calls -= 1
@@ -223,7 +223,7 @@ def test_systemd_dbus_calls_are_serialized(mocker):
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(
-            executor.map(system_service.check_service_status, ["iperf", "iperf"])
+            executor.map(system_service.check_service_status, ["iperf2", "iperf2"])
         )
 
     assert results == [True, True]
