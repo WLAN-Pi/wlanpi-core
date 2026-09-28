@@ -37,7 +37,7 @@ def test_api_reachability_default(client):
     ) as reach:
         response = client.get("/api/v1/utils/reachability")
     assert response.status_code == 200
-    reach.assert_awaited_once_with(targets=None)
+    reach.assert_awaited_once_with(targets=None, namespace=None)
     assert response.json()["Ping Google"] == "5ms"
     assert response.json()["DNS Server 1 Resolution"] == "9.9.9.9: OK"
     assert response.json()["custom"] == []
@@ -72,7 +72,7 @@ def test_api_reachability_custom_targets(client):
             params=[("targets", "8.8.8.8"), ("targets", "1.1.1.1")],
         )
     assert response.status_code == 200
-    reach.assert_awaited_once_with(targets=["8.8.8.8", "1.1.1.1"])
+    reach.assert_awaited_once_with(targets=["8.8.8.8", "1.1.1.1"], namespace=None)
     assert response.json()["custom"][0]["target"] == "8.8.8.8"
 
 

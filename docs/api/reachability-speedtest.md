@@ -24,17 +24,21 @@ Runs a **single parallel batch** of network health checks:
 
 One HTTP request → one test run. Not streaming.
 
+By default every check runs in the root namespace. Pass `namespace` to test a link that lives in a named network namespace instead: the gateway comes from that namespace's routing table, the resolvers from `/etc/netns/<namespace>/resolv.conf` (falling back to `/etc/resolv.conf` when that file does not exist), and every ping, `curl`, `arping` and `dig` runs under `ip netns exec <namespace>`.
+
 ### 1.1 Request
 
 ```
 GET /api/v1/utils/reachability
 GET /api/v1/utils/reachability?targets=8.8.8.8,1.1.1.1
 GET /api/v1/utils/reachability?targets=8.8.8.8&targets=cloudflare.com
+GET /api/v1/utils/reachability?namespace=wlan_ns
 ```
 
 | Query param | Required | Default | Description |
 |-------------|----------|---------|-------------|
 | `targets` | No | — | Hostnames or IPs to ping. Repeat the parameter or use comma-separated values. Max **10** unique targets. |
+| `namespace` | No | root | Network namespace to run every check in. `root` is the same as omitting it. |
 
 ### 1.2 Successful response (`200`)
 
@@ -92,8 +96,8 @@ DNS fields are omitted (not `null`) when fewer than N resolvers are configured �
 
 | HTTP | When |
 |------|------|
-| **400** | Invalid `targets` value, or more than 10 targets |
-| **503** | No default gateway / network config could not be read |
+| **400** | Invalid `targets` value, more than 10 targets, or an invalid or unknown `namespace` |
+| **503** | No default gateway (in the tested namespace) / network config could not be read |
 | **500** | Unexpected server error |
 
 ```json
@@ -186,5 +190,6 @@ lhapitest -e /utils/speedtest -p 8000 --http
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Added `namespace` query param on reachability |
 | 2026-06-14 | Added `targets` query param and `custom[]` ping stats on reachability |
 | 2026-06-14 | Added `GET /utils/speedtest` (LibreSpeed CLI wrapper) |

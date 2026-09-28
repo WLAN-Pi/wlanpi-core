@@ -151,8 +151,49 @@ def handle_utils_reachability_custom_targets(client, auth_headers, scenario):
             params={"targets": "8.8.8.8"},
         )
     _expect_status(response, scenario.expected_http)
-    reach.assert_awaited_once_with(targets=["8.8.8.8"])
+    reach.assert_awaited_once_with(targets=["8.8.8.8"], namespace=None)
     assert response.json()["custom"][0]["target"] == "8.8.8.8"
+
+
+def handle_utils_reachability_namespace(client, auth_headers, scenario):
+    from unittest.mock import AsyncMock
+
+    reachability_results = {
+        "Ping Google": "1ms",
+        "Browse Google": "OK",
+        "Ping Gateway": "1ms",
+        "Arping Gateway": "1ms",
+        "custom": [],
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.utils_api.utils_service.show_reachability",
+        new=AsyncMock(return_value={"results": reachability_results}),
+    ) as reach:
+        response = client.get(
+            "/api/v1/utils/reachability", params={"namespace": "wlan_ns"}
+        )
+    _expect_status(response, scenario.expected_http)
+    reach.assert_awaited_once_with(targets=None, namespace="wlan_ns")
+
+
+def handle_utils_reachability_bad_namespace(client, auth_headers, scenario):
+    with (
+        patch(
+            "wlanpi_core.services.utils_service.namespace_exists", return_value=False
+        ),
+        patch("wlanpi_core.services.utils_service.get_default_gateways") as gateways,
+    ):
+        unknown = client.get(
+            "/api/v1/utils/reachability", params={"namespace": "ghost"}
+        )
+        malformed = client.get(
+            "/api/v1/utils/reachability", params={"namespace": "bad;ns"}
+        )
+    _expect_status(unknown, scenario.expected_http)
+    assert unknown.json() == {"error": "unknown namespace: ghost"}
+    _expect_status(malformed, scenario.expected_http)
+    assert malformed.json() == {"error": "invalid namespace name"}
+    gateways.assert_not_called()
 
 
 def handle_utils_speedtest(client, auth_headers, scenario):
@@ -1060,6 +1101,8 @@ HANDLERS.update(
         "system_device_info_any_mode": handle_system_device_info_any_mode,
         "utils_reachability_live": handle_utils_reachability_live,
         "utils_reachability_custom_targets": handle_utils_reachability_custom_targets,
+        "utils_reachability_namespace": handle_utils_reachability_namespace,
+        "utils_reachability_bad_namespace": handle_utils_reachability_bad_namespace,
         "utils_speedtest": handle_utils_speedtest,
         "reg_domain_list": handle_reg_domain_list,
         "routing_table": handle_routing_table,

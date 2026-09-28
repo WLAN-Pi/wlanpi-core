@@ -8,6 +8,7 @@ from typing import Any
 
 from wlanpi_core.constants import REACHABILITY_MAX_CUSTOM_TARGETS
 from wlanpi_core.utils.general import run_command_async
+from wlanpi_core.utils.namespace_execution import netns_prefix
 
 _HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
@@ -84,14 +85,14 @@ def ping_stats_from_jc(data: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-async def ping_target(target: str) -> dict[str, Any]:
-    """Ping one target and return structured stats."""
+async def ping_target(target: str, namespace: str | None = None) -> dict[str, Any]:
+    """Ping one target, in ``namespace`` when given, and return structured stats."""
     target = validate_ping_target(target)
     result = await run_command_async(
         # ponytail: -4 because hostnames otherwise resolve to IPv6 first and
         # fail on IPv4-only links (the old reachability.sh used -4 too).
         # Ceiling: IPv6 targets unsupported. Upgrade: pick the family per target.
-        ["jc", "ping", "-c1", "-W2", "-q", "-4", target],
+        [*netns_prefix(namespace), "jc", "ping", "-c1", "-W2", "-q", "-4", target],
         raise_on_fail=False,
     )
     parsed = result.output_from_json()

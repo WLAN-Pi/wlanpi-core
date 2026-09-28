@@ -61,6 +61,19 @@ def test_get_default_gateways_extracts_interface_name():
         }
 
 
+def test_get_default_gateways_reads_namespace_routes():
+    from wlanpi_core.utils import network as network_utils
+
+    output = "default via 10.0.0.1 dev wlan0 proto dhcp metric 200\n"
+    with patch.object(
+        network_utils, "run_command", return_value=CommandResult(output, "", 0)
+    ) as run:
+        assert network_utils.get_default_gateways("wlan_ns") == {"wlan0": "10.0.0.1"}
+    run.assert_called_once_with(
+        ["ip", "netns", "exec", "wlan_ns", "ip", "route", "show"]
+    )
+
+
 def test_parse_targets_param_enforces_limit():
     with pytest.raises(ValueError, match="at most"):
         parse_targets_param([",".join(f"10.0.0.{i}" for i in range(1, 12))])

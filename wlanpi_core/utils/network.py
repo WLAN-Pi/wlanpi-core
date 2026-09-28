@@ -3,11 +3,15 @@
 from typing import Any
 
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.namespace_execution import netns_prefix
 from wlanpi_core.utils.validation import validate_interface_name
 
 
-def get_default_gateways() -> dict[str, str]:
+def get_default_gateways(namespace: str | None = None) -> dict[str, str]:
     """Find the default gateway of each interface using 'ip route show'.
+
+    Args:
+        namespace: Network namespace to read routes from; None for root.
 
     Returns:
         a dictionary mapping interfaces to their default gateways.
@@ -16,7 +20,9 @@ def get_default_gateways() -> dict[str, str]:
     """
 
     # Execute 'ip route show' command which lists all network routes
-    output = run_command("ip route show").stdout.split("\n")
+    output = run_command(
+        [*netns_prefix(namespace), "ip", "route", "show"]
+    ).stdout.split("\n")
 
     gateways: dict[str, str] = {}
     for line in output:
