@@ -54,11 +54,12 @@ def test_get_default_gateways_extracts_interface_name():
     )
     with patch.object(
         network_utils, "run_command", return_value=CommandResult(output, "", 0)
-    ):
+    ) as run:
         assert network_utils.get_default_gateways() == {
             "eth0": "192.168.6.1",
             "wlan0": "10.0.0.1",
         }
+    run.assert_called_once_with(["ip", "route", "show"])
 
 
 def test_get_default_gateways_reads_namespace_routes():

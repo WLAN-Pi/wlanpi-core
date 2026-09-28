@@ -88,6 +88,26 @@ def test_api_reachability_invalid_targets(client):
     assert response.status_code == 400
 
 
+def test_api_reachability_namespace_without_default_route(client):
+    with (
+        patch("wlanpi_core.services.utils_service.namespace_exists", return_value=True),
+        patch(
+            "wlanpi_core.services.utils_service.get_default_gateways", return_value={}
+        ) as gateways,
+        patch(
+            "wlanpi_core.services.utils_service.run_command_async", new=AsyncMock()
+        ) as run_command,
+    ):
+        response = client.get(
+            "/api/v1/utils/reachability", params={"namespace": "wlan_ns"}
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "No default gateway found"}
+    gateways.assert_called_once_with("wlan_ns")
+    run_command.assert_not_awaited()
+
+
 def test_api_speedtest(client):
     payload = {
         "results": {
