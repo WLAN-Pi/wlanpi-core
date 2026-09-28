@@ -37,7 +37,7 @@ def test_api_reachability_default(client):
     ) as reach:
         response = client.get("/api/v1/utils/reachability")
     assert response.status_code == 200
-    reach.assert_awaited_once_with(targets=None)
+    reach.assert_awaited_once_with(targets=None, namespace=None)
     assert response.json()["Ping Google"] == "5ms"
     assert response.json()["DNS Server 1 Resolution"] == "9.9.9.9: OK"
     assert response.json()["custom"] == []
@@ -72,7 +72,7 @@ def test_api_reachability_custom_targets(client):
             params=[("targets", "8.8.8.8"), ("targets", "1.1.1.1")],
         )
     assert response.status_code == 200
-    reach.assert_awaited_once_with(targets=["8.8.8.8", "1.1.1.1"])
+    reach.assert_awaited_once_with(targets=["8.8.8.8", "1.1.1.1"], namespace=None)
     assert response.json()["custom"][0]["target"] == "8.8.8.8"
 
 
@@ -86,6 +86,26 @@ def test_api_reachability_invalid_targets(client):
             params={"targets": "bad;host"},
         )
     assert response.status_code == 400
+
+
+def test_api_reachability_namespace_without_default_route(client):
+    with (
+        patch("wlanpi_core.services.utils_service.namespace_exists", return_value=True),
+        patch(
+            "wlanpi_core.services.utils_service.get_default_gateways", return_value={}
+        ) as gateways,
+        patch(
+            "wlanpi_core.services.utils_service.run_command_async", new=AsyncMock()
+        ) as run_command,
+    ):
+        response = client.get(
+            "/api/v1/utils/reachability", params={"namespace": "wlan_ns"}
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "No default gateway found"}
+    gateways.assert_called_once_with("wlan_ns")
+    run_command.assert_not_awaited()
 
 
 def test_api_speedtest(client):

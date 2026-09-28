@@ -3072,7 +3072,7 @@
           "device utils"
         ],
         "summary": "Reachability",
-        "description": "Run reachability checks for gateway, internet, DNS, and optional custom targets.",
+        "description": "Run reachability checks for gateway, internet, DNS, and optional custom targets.\n\nWith `namespace`, the gateway comes from that namespace's routing table, DNS\nservers from `/etc/netns/<namespace>/resolv.conf` when it exists, and every\ncheck runs under `ip netns exec`.",
         "operationId": "reachability_api_v1_utils_reachability_get",
         "security": [
           {
@@ -3100,6 +3100,24 @@
               "title": "Targets"
             },
             "description": "Optional hostnames or IPs to ping. Repeat the parameter or use comma-separated values, e.g. targets=8.8.8.8&targets=1.1.1.1"
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Network namespace to run every check in. Omit, or pass `root`, for the root namespace.",
+              "title": "Namespace"
+            },
+            "description": "Network namespace to run every check in. Omit, or pass `root`, for the root namespace."
           }
         ],
         "responses": {
