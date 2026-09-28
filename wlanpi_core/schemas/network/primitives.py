@@ -123,6 +123,20 @@ class WlanPciDriversResponse(BaseModel):
     )
 
 
+class WlanMloLink(BaseModel):
+    """One set-up link of an MLO (Wi-Fi 7 multi-link) association."""
+
+    link_id: int = Field(json_schema_extra={"example": 0})
+    bssid: str | None = Field(
+        default=None, json_schema_extra={"example": "68:51:34:7c:32:05"}
+    )
+    freq_mhz: float | None = Field(default=None, json_schema_extra={"example": 6295.0})
+    active: bool | None = Field(
+        default=None,
+        description="Link holds a channel now (mac80211 active link); null if unknown",
+    )
+
+
 class WlanLink(BaseModel):
     """Wireless association state for one interface (from ``iw link``)."""
 
@@ -133,8 +147,23 @@ class WlanLink(BaseModel):
     bssid: str | None = Field(
         default=None, json_schema_extra={"example": "68:51:34:7c:32:13"}
     )
-    freq_mhz: float | None = Field(default=None, json_schema_extra={"example": 5200.0})
-    signal_dbm: float | None = Field(default=None, json_schema_extra={"example": -48.0})
+    freq_mhz: float | None = Field(
+        default=None,
+        description=(
+            "Operating frequency. For MLO, present only when exactly one "
+            "active link can be determined; otherwise null (see links)"
+        ),
+        json_schema_extra={"example": 5200.0},
+    )
+    signal_dbm: float | None = Field(
+        default=None,
+        description="Signal in dBm; null when the kernel has no reading",
+        json_schema_extra={"example": -48.0},
+    )
+    links: list[WlanMloLink] = Field(
+        default_factory=list,
+        description="MLO links set up in this association; empty when not MLO",
+    )
     rx_bitrate: str | None = Field(
         default=None, json_schema_extra={"example": "286.7 MBit/s HE-MCS 11"}
     )

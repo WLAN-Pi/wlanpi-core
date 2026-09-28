@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 from typing import Any
 
 from wlanpi_core.constants import IW_FILE
@@ -13,30 +14,57 @@ from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
+_MLO_LINK = re.compile(r"Link (\d+) BSSID ([0-9a-fA-F:]{17})")
+_INFO_LINK = re.compile(r"- link ID\s+(\d+)")
+_INFO_CHANNEL = re.compile(r"channel \d+ \((\d+(?:\.\d+)?) MHz\)")
+_DBM = re.compile(r"(-?\d+(?:\.\d+)?)")
+
 
 def _parse_iw_link(stdout: str) -> dict[str, Any]:
-    """Parse ``iw dev <iface> link`` output into structured fields."""
+    """Parse ``iw dev <iface> link`` output into structured fields.
+
+    For MLO, ``iw link`` lists every set-up link (``Link N BSSID`` plus a
+    ``freq:`` line each), active or not, in kernel BSS-list order. Those go
+    into ``links``; the top-level ``freq_mhz`` is only taken from a non-MLO
+    ``freq:`` line.
+    """
     text = stdout.strip()
-    if not text or text.startswith("Not connected"):
+    # iw prints "Not connected." whenever no link is associated, including
+    # after an "Authenticated with ..." line.
+    if not text or re.search(r"^Not connected", text, re.M):
         return {"connected": False}
 
-    parsed: dict[str, Any] = {"connected": True}
+    parsed: dict[str, Any] = {"connected": True, "links": []}
 
-    bssid = re.search(r"Connected to ([0-9a-fA-F:]{17})", text)
+    # Status lines start at column 0; the SSID is indented, so an SSID that
+    # contains these words cannot match.
+    bssid = re.search(r"^Connected to ([0-9a-fA-F:]{17})", text, re.M)
     if bssid:
         parsed["bssid"] = bssid.group(1)
+        parsed["managed"] = True
 
+    link: dict[str, Any] | None = None
     for line in text.splitlines():
         line = line.strip()
-        if line.startswith("SSID:"):
+        mlo = _MLO_LINK.match(line)
+        if mlo:
+            link = {"link_id": int(mlo.group(1)), "bssid": mlo.group(2)}
+            parsed["links"].append(link)
+        elif line.startswith("SSID:"):
             parsed["ssid"] = line.split(":", 1)[1].strip()
         elif line.startswith("freq:"):
             try:
-                parsed["freq_mhz"] = float(line.split(":", 1)[1].strip())
+                freq = float(line.split(":", 1)[1].strip())
             except ValueError:
-                pass
+                continue
+            if link is not None:
+                link["freq_mhz"] = freq
+            else:
+                parsed["freq_mhz"] = freq
+        elif line.startswith("MLD ") and line.endswith("stats:"):
+            link = None
         elif line.startswith("signal:"):
-            match = re.search(r"(-?\d+(?:\.\d+)?)", line)
+            match = _DBM.search(line)
             if match:
                 parsed["signal_dbm"] = float(match.group(1))
         elif line.startswith("rx bitrate:"):
@@ -54,6 +82,55 @@ def _parse_iw_link(stdout: str) -> dict[str, Any]:
     return parsed
 
 
+def _parse_active_links(stdout: str) -> dict[int, float]:
+    """Map link ID to operating frequency for the active MLO links.
+
+    ``iw dev <iface> info`` prints a channel only under links that hold a
+    channel context, which mac80211 assigns to active links only.
+    """
+    active: dict[int, float] = {}
+    link_id: int | None = None
+    for line in stdout.splitlines():
+        match = _INFO_LINK.search(line)
+        if match:
+            link_id = int(match.group(1))
+            continue
+        match = _INFO_CHANNEL.search(line)
+        if match and link_id is not None:
+            active[link_id] = float(match.group(1))
+    return active
+
+
+def _station_signal(stdout: str, keys: tuple[str, ...]) -> float | None:
+    """Return the first non-zero MLD-level value among ``keys``.
+
+    Stops at the first per-link ``Link N:`` block, whose values belong to one
+    link that may not be active.
+    """
+    top: list[str] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if re.match(r"Link \d+:", line):
+            break
+        top.append(line)
+    for key in keys:
+        for line in top:
+            if line.startswith(key):
+                match = _DBM.search(line[len(key) :])
+                if match and float(match.group(1)) != 0:
+                    return float(match.group(1))
+    return None
+
+
+def _iw(iface: str, namespace: str | None, *args: str) -> str | None:
+    """Run a supplementary ``iw dev <iface> ...`` query; None on failure."""
+    try:
+        return ns_exec([IW_FILE, "dev", iface, *args], namespace=namespace).stdout
+    except (RunCommandError, subprocess.TimeoutExpired) as exc:
+        log.warning("iw %s failed for %s: %r", " ".join(args), iface, exc)
+        return None
+
+
 def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
     """Return the wireless association for ``iface`` using ``iw link``."""
     iface = validate_interface_name(iface)
@@ -65,14 +142,43 @@ def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
         raise
 
     parsed = _parse_iw_link(result.stdout)
+    links: list[dict[str, Any]] = parsed.get("links", [])
+    freq = parsed.get("freq_mhz")
+    if links:
+        info = _iw(iface, namespace, "info")
+        active = _parse_active_links(info) if info is not None else {}
+        for link in links:
+            # None: activity unknown because iw dev info failed.
+            link["active"] = link["link_id"] in active if info is not None else None
+        # Several active links (EMLSR, STR): iw cannot tell which carries
+        # the traffic, so report no single frequency; see ``links``.
+        freq = next(iter(active.values())) if len(active) == 1 else None
+
+    # 0 dBm is the kernel's "no frame received yet" value, not a reading.
+    signal = parsed.get("signal_dbm") or None
+    keys: tuple[str, ...] = ("signal avg:", "beacon signal avg:")
+    if len(links) > 1:
+        # cfg80211 reports the MLD signal as the max over all set-up links,
+        # active or not: 0 while one never received a frame, else possibly
+        # an idle link's last reading. The driver's beacon average follows
+        # the primary (active) link.
+        signal = None
+        keys = ("beacon signal avg:", "signal avg:")
+    # Station fallback only for a managed association (one peer: the AP).
+    if signal is None and parsed.get("managed"):
+        # The AP (MLD address for MLO) only, not TDLS or other peers.
+        sta = _iw(iface, namespace, "station", "get", parsed["bssid"])
+        signal = _station_signal(sta, keys) if sta is not None else None
+
     return {
         "interface": iface,
         "namespace": namespace,
         "connected": parsed.get("connected", False),
         "ssid": parsed.get("ssid"),
         "bssid": parsed.get("bssid"),
-        "freq_mhz": parsed.get("freq_mhz"),
-        "signal_dbm": parsed.get("signal_dbm"),
+        "freq_mhz": freq,
+        "signal_dbm": signal,
+        "links": links,
         "rx_bitrate": parsed.get("rx_bitrate"),
         "tx_bitrate": parsed.get("tx_bitrate"),
         "rx_bytes": parsed.get("rx_bytes"),
