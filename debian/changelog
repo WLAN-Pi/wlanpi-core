@@ -1,3 +1,12 @@
+wlanpi-core (2.4.6-1) unstable; urgency=medium
+
+  * POST /api/v1/bluetooth/pair works when the adapter is already on.
+    The power check never matched hciconfig's UP line, so pairing failed
+    after 10 s with "Bluetooth did not power on" on every device since
+    2.3.4-1.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 29 Sep 2026 01:55:05 -0400
+
 wlanpi-core (2.4.5-1) unstable; urgency=medium
 
   * GET /api/v1/utils/reachability takes an optional namespace query
