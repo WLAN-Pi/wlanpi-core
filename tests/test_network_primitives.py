@@ -23,6 +23,7 @@ from wlanpi_core.network import (
     wlan_drivers,
     wlan_link,
 )
+from wlanpi_core.schemas.network import WlanLink
 
 
 @pytest.fixture(autouse=True)
@@ -866,3 +867,88 @@ def test_get_wlan_link_single_link_mld_keeps_iw_link_signal():
     assert result["freq_mhz"] == 5220.0
     assert result["signal_dbm"] == -47.0
     assert calls == ["link", "info"]
+
+
+@pytest.mark.parametrize(
+    ("station_lines", "expected"),
+    [
+        ("\tsignal avg:\t-44 dBm\n\tbeacon signal avg:\t-40 dBm\n", -44.0),
+        ("\tsignal avg:\t0 dBm\n\tbeacon signal avg:\t-40 dBm\n", -40.0),
+        ("\tsignal avg:\t0 dBm\n\tbeacon signal avg:\t0 dBm\n", None),
+        ("", None),
+    ],
+)
+def test_get_wlan_link_single_link_zero_signal_falls_back(station_lines, expected):
+    # iw link signal 0 = no reading yet: signal avg, then beacon avg, else null.
+    iw_out = (
+        "Connected to 68:51:34:7c:32:05 (on wlan0)\n"
+        "\tSSID: wlanpi-wifi6\n"
+        "\tfreq: 5220.0\n"
+        "\tsignal: 0 dBm\n"
+    )
+    station = "Station 68:51:34:7c:32:05 (on wlan0)\n" + station_lines
+    outputs = {"link": iw_out, "station": station}
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert result["freq_mhz"] == 5220.0
+    assert result["signal_dbm"] == expected
+
+
+def test_get_wlan_link_mlo_without_beacon_avg_uses_signal_avg():
+    # mt7925u: no beacon signal avg line; signal avg is the fallback.
+    info = _MLO_INFO_HEAD + _LINK0_ACTIVE + _LINK1_ACTIVE
+    station = (
+        "Station 68:51:34:7c:32:05 (on wlan0)\n"
+        "\tsignal:  \t-34 dBm\n"
+        "\tsignal avg:\t-36 dBm\n"
+    )
+    outputs = {"link": _MLO_IW_LINK, "info": info, "station": station}
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert result["freq_mhz"] is None
+    assert result["signal_dbm"] == -36.0
+
+
+def test_wlan_link_response_model_serializes_links():
+    info = _MLO_INFO_HEAD + _LINK0_ACTIVE
+    outputs = {"link": _MLO_IW_LINK, "info": info, "station": _STATION}
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    body = WlanLink.model_validate(result).model_dump(mode="json")
+    assert body["links"] == [
+        {
+            "link_id": 0,
+            "bssid": "68:51:34:7c:32:05",
+            "freq_mhz": 6295.0,
+            "active": True,
+        },
+        {
+            "link_id": 2,
+            "bssid": "68:51:34:7c:31:f5",
+            "freq_mhz": 2462.0,
+            "active": False,
+        },
+        {
+            "link_id": 1,
+            "bssid": "68:51:34:7c:32:15",
+            "freq_mhz": 5220.0,
+            "active": False,
+        },
+    ]
+    assert body["freq_mhz"] == 6295.0
+    assert body["signal_dbm"] == -42.0
+
+    non_mlo = WlanLink.model_validate({"interface": "wlan0", "connected": False})
+    assert non_mlo.model_dump(mode="json")["links"] == []
