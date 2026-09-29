@@ -38,21 +38,41 @@ async def reachability(
             ),
         ),
     ] = None,
+    namespace: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Network namespace to run every check in. Omit, or pass `root`, "
+                "for the root namespace."
+            ),
+        ),
+    ] = None,
 ) -> Any:
-    """Run reachability checks for gateway, internet, DNS, and optional custom targets."""
+    """
+    Run reachability checks for gateway, internet, DNS, and optional custom targets.
+
+    With `namespace`, the gateway comes from that namespace's routing table, DNS
+    servers from `/etc/netns/<namespace>/resolv.conf` when it exists, and every
+    check runs under `ip netns exec`.
+    """
 
     try:
-        reachability_result = await utils_service.show_reachability(targets=targets)
+        reachability_result = await utils_service.show_reachability(
+            targets=targets, namespace=namespace
+        )
 
         if reachability_result.get("error"):
-            message = reachability_result["error"]
+            message = reachability_result["error"].lower()
             status_code = (
                 400
-                if "invalid" in message.lower() or "at most" in message.lower()
+                if any(
+                    phrase in message
+                    for phrase in ("invalid", "at most", "unknown namespace")
+                )
                 else 503
             )
             return Response(
-                content=json.dumps({"error": message}),
+                content=json.dumps({"error": reachability_result["error"]}),
                 status_code=status_code,
                 media_type="application/json",
             )

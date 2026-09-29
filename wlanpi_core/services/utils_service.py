@@ -9,16 +9,18 @@ import threading
 import time
 from typing import Any
 
-from wlanpi_core.constants import BLINKER_FILE, UFW_FILE
+from wlanpi_core.constants import BLINKER_FILE, NETNS_ETC_DIR, UFW_FILE
 from wlanpi_core.core.logging import get_logger
 
 from ..models.command_result import CommandResult
 from ..models.runcommand_error import RunCommandError
+from ..namespaces import namespace_exists
 from ..utils.general import run_command_async, terminate_process
+from ..utils.namespace_execution import netns_prefix
 from ..utils.network import get_default_gateways
 from ..utils.reachability import parse_targets_param, ping_stats_from_jc, ping_target
 from ..utils.speedtest import run_speedtest
-from ..utils.validation import validate_interface_name
+from ..utils.validation import namespace_from_param, validate_interface_name
 
 log = get_logger(__name__)
 
@@ -50,24 +52,44 @@ async def _cancel_tasks(tasks: list[asyncio.Task[Any]]) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
+def _resolv_conf_path(namespace: str | None) -> str:
+    """resolv.conf that ``ip netns exec`` shows inside ``namespace``."""
+    if namespace is not None:
+        netns_resolv = os.path.join(NETNS_ETC_DIR, namespace, "resolv.conf")
+        if os.path.exists(netns_resolv):
+            return netns_resolv
+    return "/etc/resolv.conf"
+
+
+async def show_reachability(
+    targets: list[str] | None = None, namespace: str | None = None
+) -> dict[str, Any]:
     """
     Check if default gateway, internet and DNS are reachable and working.
 
     Optionally ping additional ``targets`` (hostnames or IPs) in parallel.
+    With ``namespace``, every check runs inside that network namespace.
     """
 
     output: dict[str, Any] = {"results": {}}
 
     # --- Variables ---
     try:
-        gateways = await asyncio.to_thread(get_default_gateways)
+        custom_targets = parse_targets_param(targets)
+        namespace = namespace_from_param(namespace)
+        if namespace is not None and not await asyncio.to_thread(
+            namespace_exists, namespace
+        ):
+            return {"error": f"unknown namespace: {namespace}"}
+
+        gateways = await asyncio.to_thread(get_default_gateways, namespace)
         if not gateways:
             return {"error": "No default gateway found"}
 
         dg_interface, default_gateway = next(iter(gateways.items()))
-        dns_servers = await asyncio.to_thread(_read_dns_servers)
-        custom_targets = parse_targets_param(targets)
+        dns_servers = await asyncio.to_thread(
+            _read_dns_servers, _resolv_conf_path(namespace)
+        )
     except ValueError as err:
         return {"error": str(err)}
     except RunCommandError as err:
@@ -77,28 +99,30 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
     if not default_gateway:
         return {"error": "No default gateway"}
 
+    netns = netns_prefix(namespace)
+
     ping_google_task = asyncio.create_task(
         run_command_async(
-            ["jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
+            [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
             raise_on_fail=False,
         )
     )
     browse_google_task = asyncio.create_task(
         run_command_async(
-            ["curl", "-s", "-L", "www.google.com"],
+            [*netns, "curl", "-s", "-L", "www.google.com"],
             raise_on_fail=False,
             timeout=2,
         )
     )
     ping_gateway_task = asyncio.create_task(
         run_command_async(
-            ["jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
+            [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
             raise_on_fail=False,
         )
     )
     arping_gateway_task = asyncio.create_task(
         run_command_async(
-            ["arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
+            [*netns, "arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
             raise_on_fail=False,
             timeout=2,
         )
@@ -107,6 +131,7 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
         asyncio.create_task(
             run_command_async(
                 [
+                    *netns,
                     "dig",
                     "+short",
                     "+time=2",
@@ -121,7 +146,7 @@ async def show_reachability(targets: list[str] | None = None) -> dict[str, Any]:
         for dns in dns_servers[:3]
     ]
     custom_tasks = [
-        asyncio.create_task(ping_target(target)) for target in custom_targets
+        asyncio.create_task(ping_target(target, namespace)) for target in custom_targets
     ]
     all_tasks = [
         ping_google_task,

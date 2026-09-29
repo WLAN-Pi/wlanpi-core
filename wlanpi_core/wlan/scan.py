@@ -7,10 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from wlanpi_core.utils import network_config
-from wlanpi_core.utils.validation import (
-    validate_interface_name,
-    validate_namespace_name,
-)
+from wlanpi_core.utils.validation import namespace_from_param, validate_interface_name
 from wlanpi_core.wpa import scan as wpa_scan
 
 log = logging.getLogger(__name__)
@@ -26,14 +23,6 @@ class NoScanAdapterError(Exception):
 
 def _ns_display(namespace: str | None) -> str:
     return "root" if namespace is None else namespace
-
-
-def _ns_from_param(namespace: str | None) -> str | None:
-    if not namespace:
-        return None
-    if namespace.strip().lower() == "root":
-        return None
-    return validate_namespace_name(namespace)
 
 
 def _iface_mode(iface_info: dict[str, Any]) -> str:
@@ -133,7 +122,7 @@ def select_scan_adapter(
     - ``{"action": "needs_selection", "candidates": [...]}``
     """
     adapters = iter_adapters(status)
-    ns = _ns_from_param(namespace)
+    ns = namespace_from_param(namespace)
 
     if iface:
         iface = validate_interface_name(iface)
