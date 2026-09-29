@@ -1,14 +1,15 @@
 wlanpi-core (2.4.5-1) unstable; urgency=medium
 
   * GET /api/v1/utils/reachability takes an optional namespace query
-    parameter. With it, the gateway, DNS servers and every ping, curl,
-    arping and dig come from that network namespace, so the check tests
-    a Wi-Fi link that a network configuration moved there. An invalid or
-    unknown namespace returns 400; without the parameter, behaviour is
-    unchanged (#352).
+    parameter, so the check can test a Wi-Fi link that a network
+    configuration moved into a network namespace. The gateway and every
+    ping, curl, arping and dig use that namespace. DNS servers come from
+    /etc/netns/<namespace>/resolv.conf, or /etc/resolv.conf when it does
+    not exist. An invalid or unknown namespace returns 400. Omitting the
+    parameter or passing root keeps the old behaviour (#352).
   * /api/v1/system/service/* can control iperf2 and iperf2-udp. The
     allowlist named iperf, a unit that does not exist, so iperf2 was
-    refused.
+    refused. name=iperf now returns 400.
 
  -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 29 Sep 2026 00:53:57 -0400
 
