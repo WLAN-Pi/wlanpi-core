@@ -18,6 +18,7 @@ from wlanpi_core.streaming.models import (
     validate_capture_interface,
     validate_capture_width,
 )
+from wlanpi_core.streaming.mt76_rxfilter import allow_other_unicast
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.general import run_command_async, terminate_process_async
 from wlanpi_core.utils.validation import validate_namespace_name
@@ -745,6 +746,11 @@ class ConnectionManager:
                             "CHANNEL_SET_FAILED",
                             f"Could not set initial channel for {iface}: {error}",
                         )
+
+        # mt7921 firmware drops other stations' unicast once a managed vif on
+        # the radio has been up; clear that before capturing (see mt76_rxfilter).
+        for iface in interfaces:
+            await asyncio.to_thread(allow_other_unicast, iface, namespace)
 
         args = [*self._ns_prefix(namespace), DUMPCAP_FILE]
         for iface in interfaces:
