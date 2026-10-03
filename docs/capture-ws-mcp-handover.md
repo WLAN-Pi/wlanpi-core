@@ -247,6 +247,34 @@ reason. For reliable multi-channel capture the device needs the managed
 interface down or a second adapter (its own phy). MCP tool docs should tell the
 user this rather than presenting a silent partial capture as complete.
 
+### MediaTek MT7921 monitors drop other stations' unicast
+
+On mt7921u/e/s radios the firmware sets `DROP_OTHER_UC` (bit 18 of the band-0
+RX filter register RFCR, `0x820e5000`) once a managed interface on the radio has
+been up. Core's own scans do this through the `wlanN` sibling of a `wlanpiN`
+monitor. From then on the monitor drops every unicast frame not addressed to
+itself, so authentication, association, EAPOL, ACK, RTS/CTS and Block Ack never
+reach the capture, while beacons and broadcast still do. Taking the monitor
+down and up or retuning it does not clear the bit, and the driver has no path
+that does: `mt7921_configure_filter` only maps FCSFAIL, CONTROL and OTHER_BSS.
+
+Until the driver is fixed, `start_streaming` clears the bit through mt76's
+debugfs register interface (`/sys/kernel/debug/ieee80211/<phy>/mt76/regidx` and
+`regval`) on every mt7921 capture interface just before dumpcap starts
+(`wlanpi_core/streaming/mt76_rxfilter.py`). It logs the change at INFO. It
+does nothing for other drivers, and it does nothing when debugfs is missing.
+
+To check by hand:
+
+```bash
+echo 0x820e5000 | sudo tee /sys/kernel/debug/ieee80211/phy0/mt76/regidx
+sudo cat /sys/kernel/debug/ieee80211/phy0/mt76/regval   # 0x0004000a = dropping
+```
+
+Seen on kernel 7.3.0-rc5 with two mt7921u adapters (RFCR `0x0004000a` after
+any scan; `0x0000000a` after the workaround). Only the mt7921 register address
+has been checked; other mt76 chips are left alone.
+
 ---
 
 ## 8. Open questions to confirm with the core owner before shipping
