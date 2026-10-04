@@ -23,6 +23,7 @@ from .primitives import (
     LinkStats,
     RoutingTable,
     WlanLink,
+    WlanMloLink,
     WlanPciDriversResponse,
     WlanUsbDriversResponse,
 )
