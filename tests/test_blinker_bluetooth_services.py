@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.services import bluetooth_service, utils_service
 
@@ -277,3 +278,33 @@ async def test_ensure_bluetooth_powered_unblocks_rfkill(mocker, tmp_path):
     await bluetooth_service._ensure_bluetooth_powered()
 
     assert run_command.await_args_list[0].args[0] == ["rfkill", "unblock", "bluetooth"]
+
+
+@pytest.mark.asyncio
+async def test_bluetooth_powered_async_matches_up_line(mocker):
+    mocker.patch.object(
+        bluetooth_service,
+        "run_command_async",
+        new=AsyncMock(
+            return_value=CommandResult(
+                "hci0:\tType: Primary  Bus: USB\n\tUP RUNNING\n", "", 0
+            )
+        ),
+    )
+
+    assert await bluetooth_service._bluetooth_powered_async() is True
+
+
+@pytest.mark.asyncio
+async def test_bluetooth_powered_async_false_when_down(mocker):
+    mocker.patch.object(
+        bluetooth_service,
+        "run_command_async",
+        new=AsyncMock(
+            return_value=CommandResult(
+                "hci0:\tType: Primary  Bus: USB\n\tDOWN\n", "", 0
+            )
+        ),
+    )
+
+    assert await bluetooth_service._bluetooth_powered_async() is False

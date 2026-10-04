@@ -212,7 +212,7 @@ async def _bluetooth_powered_async() -> bool:
         raise_on_fail=True,
         timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
     )
-    return bool(_grep_text(result, r"^\s+UP"))
+    return bool(result.grep_stdout_for_pattern(r"^\s+UP", split=True))
 
 
 async def _ensure_bluetooth_powered() -> None:
