@@ -159,6 +159,7 @@ class SystemManager:
                     log.info(
                         f"Not scanning on {iface}: phy {index} has another monitor"
                     )
+                    self._iface_down(iface)
                 elif driver == "iwlwifi":
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
