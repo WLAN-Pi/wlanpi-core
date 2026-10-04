@@ -141,15 +141,25 @@ class SystemManager:
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 
-        # Create missing <iface_name><index> interfaces
+        # Create missing <iface_name><index> interfaces. Match by phy, not name:
+        # a monitor's name can lag its phy index (#365), and a second monitor
+        # plus a scan crashes BE200 firmware (#314).
+        core_monitor_phys = {
+            index for name, index in monitor.items() if name.startswith(self.iface_name)
+        }
         for iface, index in managed.items():
             expected_mon = f"{self.iface_name}{index}"
-            if expected_mon not in monitor:
+            if index not in core_monitor_phys:
+                core_monitor_phys.add(index)
                 log.info(f"Creating monitor interface for {iface} → {expected_mon}")
                 self._iface_up(iface)
                 self._create_monitor(iface, index)
                 driver = self._get_driver(iface)
-                if driver == "iwlwifi":
+                if driver == "iwlwifi" and index in monitor.values():
+                    log.info(
+                        f"Not scanning on {iface}: phy {index} has another monitor"
+                    )
+                elif driver == "iwlwifi":
                     self._iface_up(expected_mon)
                     log.info(f"Bringing up and scanning on {iface}...")
 
