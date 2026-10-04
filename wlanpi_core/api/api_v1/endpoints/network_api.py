@@ -372,7 +372,8 @@ async def show_interface_wlan_link(iface: str) -> Any:
     For an MLO association, ``bssid`` is the AP MLD address and ``links``
     lists every set-up link with its frequency and whether it is active
     (from ``iw dev <iface> info``; null when that query fails or the
-    association changes during the request). Each link
+    association, a link's channel or the active link changes during the
+    request). Each link
     also carries this station's own address on it (``local_addr``, the
     address on air), and active links carry their channel ``width_mhz``
     and ``center1_mhz``.
@@ -381,7 +382,7 @@ async def show_interface_wlan_link(iface: str) -> Any:
     for a single link. With several MLO links it is the driver's beacon
     average for the active link instead, because the kernel's MLD-level
     signal is the maximum over all links, including idle ones. It is null
-    when the kernel has no reading.
+    when the kernel has no reading or the links change during the request.
     """
     try:
         return await asyncio.to_thread(_read_interface_wlan_link, iface=iface)

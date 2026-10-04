@@ -183,16 +183,24 @@ _STATION = (
 )
 
 
-def _iw_by_command(outputs):
-    """Return an ns_exec side effect keyed on the iw subcommand."""
+def _iw_by_command(outputs, calls=None):
+    """Return an ns_exec side effect keyed on the iw subcommand.
+
+    A list value is consumed one item per call; ``calls`` records the order.
+    """
 
     def run(cmd, namespace=None):
         key = cmd[3]
+        if calls is not None:
+            calls.append(key)
         if key == "station":
             assert cmd[4:] == ["get", "68:51:34:7c:32:05"]
-        if isinstance(outputs[key], Exception):
-            raise outputs[key]
-        return MagicMock(stdout=outputs[key])
+        out = outputs[key]
+        if isinstance(out, list):
+            out = out.pop(0)
+        if isinstance(out, BaseException):
+            raise out
+        return MagicMock(stdout=out)
 
     return run
 
@@ -1012,30 +1020,101 @@ _MLO_IW_LINK_5G_ONLY = (
 )
 
 
-@pytest.mark.parametrize("second", [_MLO_IW_LINK_5G_ONLY, "Not connected.\n"])
-def test_get_wlan_link_mlo_association_change_mid_request_is_unknown(second):
-    # iw info already shows the new association (only link 1, active), while
-    # the first iw link still lists the old links.
-    reads = iter([_MLO_IW_LINK, second])
+_LINK0_IDLE = "\t - link ID  0 link addr 46:4e:e4:c6:8a:7e\n"
+_LINK1_IDLE = "\t - link ID  1 link addr 4e:66:24:b6:db:12\n"
+_LINK2_IDLE = "\t - link ID  2 link addr 0e:30:c8:74:31:ee\n"
+
+
+@pytest.mark.parametrize(
+    "second",
+    [
+        _MLO_IW_LINK_5G_ONLY,
+        "Not connected.\n",
+        RunCommandError("iw failed", 1),
+        subprocess.TimeoutExpired(cmd="iw", timeout=10),
+        _MLO_IW_LINK.replace("freq: 6295.0", "freq: 6375.0"),
+    ],
+    ids=["reassociated", "disconnected", "reread-fails", "reread-times-out", "csa"],
+)
+def test_get_wlan_link_mlo_links_change_mid_request_is_unknown(second):
+    # iw info and iw station come from a later state than the first iw link
+    # (or can't be checked against it), so none of their data is used.
+    calls = []
     outputs = {
+        "link": [_MLO_IW_LINK, second],
         "info": _MLO_INFO_HEAD + _LINK1_ACTIVE,
         "station": _STATION,
     }
-
-    def run(cmd, namespace=None):
-        if cmd[3] == "link":
-            return MagicMock(stdout=next(reads))
-        return _iw_by_command(outputs)(cmd, namespace)
-
-    with patch("wlanpi_core.network.wlan_link.ns_exec", side_effect=run):
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs, calls),
+    ):
         result = wlan_link.get_wlan_link("wlan0")
 
+    # The last iw link read comes after the station query, so it covers it.
+    assert calls == ["link", "info", "station", "info", "link"]
     assert result["connected"] is True
     assert result["freq_mhz"] is None
+    assert result["signal_dbm"] is None
     assert [x["active"] for x in result["links"]] == [None, None, None]
     assert all(
         set(x) == {"link_id", "bssid", "freq_mhz", "active"} for x in result["links"]
     )
+
+
+def test_get_wlan_link_mlo_active_link_switch_mid_request_is_unknown():
+    # The station signal follows the active link, which moved from link 0 to
+    # link 1 between the two iw info reads.
+    calls = []
+    outputs = {
+        "link": _MLO_IW_LINK,
+        "info": [
+            _MLO_INFO_HEAD + _LINK0_ACTIVE + _LINK1_IDLE + _LINK2_IDLE,
+            _MLO_INFO_HEAD + _LINK0_IDLE + _LINK1_ACTIVE + _LINK2_IDLE,
+        ],
+        "station": _STATION,
+    }
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs, calls),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert calls == ["link", "info", "station", "info"]
+    assert result["freq_mhz"] is None
+    assert result["signal_dbm"] is None
+    assert [x["active"] for x in result["links"]] == [None, None, None]
+
+
+def test_get_wlan_link_mlo_reread_in_another_order_is_the_same_association():
+    reordered = (
+        "Connected to 68:51:34:7c:32:05 (on wlan0)\n"
+        "\tSSID: wlanpi\n"
+        "\tLink 1 BSSID 68:51:34:7c:32:15\n"
+        "\t\tfreq: 5220.0\n"
+        "\tLink 0 BSSID 68:51:34:7c:32:05\n"
+        "\t\tfreq: 6295.0\n"
+        "\tLink 2 BSSID 68:51:34:7c:31:f5\n"
+        "\t\tfreq: 2462.0\n"
+    )
+    outputs = {
+        "link": [_MLO_IW_LINK, reordered],
+        "info": _MLO_INFO_HEAD + _LINK0_ACTIVE + _LINK1_IDLE + _LINK2_IDLE,
+        "station": _STATION,
+    }
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert [(x["link_id"], x["active"]) for x in result["links"]] == [
+        (0, True),
+        (2, False),
+        (1, False),
+    ]
+    assert result["freq_mhz"] == 6295.0
+    assert result["signal_dbm"] == -42.0
 
 
 def test_get_wlan_link_mlo_link_missing_from_info_is_unknown():
