@@ -2769,6 +2769,31 @@ def handle_in_use_foreign_monitor_with_wlanpi_prefix(
     assert "wlanpi-prof" in outcomes[0].detail
 
 
+def handle_in_use_ignores_drifted_core_monitor_capturing(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Ignore a capture on a Core monitor whose index is not its phy's."""
+    layout = {
+        **JOSH_THREE_RADIO,
+        "wlanpi7": {
+            "phy": "phy1",
+            "mac": "00:11:22:33:44:02",
+            "type": "monitor",
+            "up": "1",
+            "bound": "1",
+        },
+    }
+    _write_netconfig(
+        netcfg_env,
+        "root_cfg",
+        roots=[_root(interface="wlan2", phy="phy1").model_dump(mode="json")],
+    )
+    with live_adapter_inventory_mocks(layout):
+        ok, outcomes = nc.activate_config_report("root_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["connected"]
+
+
 def handle_deactivate_never_core_entry_untouched(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -2890,6 +2915,7 @@ HANDLERS = {
     "deactivate_in_use_root_still_stops_processes": handle_deactivate_in_use_root_still_stops_processes,
     "deactivate_missing_iface_still_stops_processes": handle_deactivate_missing_iface_still_stops_processes,
     "in_use_foreign_monitor_with_wlanpi_prefix": handle_in_use_foreign_monitor_with_wlanpi_prefix,
+    "in_use_ignores_drifted_core_monitor_capturing": handle_in_use_ignores_drifted_core_monitor_capturing,
     "deactivate_never_core_entry_untouched": handle_deactivate_never_core_entry_untouched,
     "core_netdev_moved_home_by_hand_still_reverted": handle_core_netdev_moved_home_by_hand_still_reverted,
     "concurrent_activate_rejected": handle_concurrent_activate_rejected,

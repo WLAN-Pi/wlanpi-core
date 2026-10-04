@@ -719,7 +719,11 @@ class NetworkNamespaceService:
             and other.netns == live.netns
             and other.name != live.name
             and other.type == "monitor"
-            and other.name != f"{MONITOR_IFACE_PREFIX}{live.phy_index}"
+            # Any wlanpi<digits> is Core's: its index can lag the phy's (#365).
+            and not (
+                other.name.startswith(MONITOR_IFACE_PREFIX)
+                and other.name.removeprefix(MONITOR_IFACE_PREFIX).isdigit()
+            )
             and not self._is_owned(other)
         ]
         if siblings:
