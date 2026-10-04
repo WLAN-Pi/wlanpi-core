@@ -75,9 +75,17 @@ class IPInterface(BaseModel, extra="allow"):
     operstate: str = Field(examples=["UP", "DOWN"])
     group: str = Field(examples=["default"])
     txqlen: int = Field(examples=[1000])
-    link_type: str = Field(examples=["ether", "loopback"])
-    address: str = Field(examples=["00:50:56:83:4f:7d"])
-    broadcast: str = Field(examples=["ff:ff:ff:ff:ff:ff"])
+    link_type: str = Field(examples=["ether", "loopback", "none"])
+    address: str | None = Field(
+        default=None,
+        examples=["00:50:56:83:4f:7d"],
+        description="Link-layer address; null when the link has none (tun, WireGuard)",
+    )
+    broadcast: str | None = Field(
+        default=None,
+        examples=["ff:ff:ff:ff:ff:ff"],
+        description="Link-layer broadcast address; null when the link has none",
+    )
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
 
 

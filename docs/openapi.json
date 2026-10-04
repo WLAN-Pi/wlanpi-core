@@ -5010,19 +5010,36 @@
             "title": "Link Type",
             "examples": [
               "ether",
-              "loopback"
+              "loopback",
+              "none"
             ]
           },
           "address": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Address",
+            "description": "Link-layer address; null when the link has none (tun, WireGuard)",
             "examples": [
               "00:50:56:83:4f:7d"
             ]
           },
           "broadcast": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Broadcast",
+            "description": "Link-layer broadcast address; null when the link has none",
             "examples": [
               "ff:ff:ff:ff:ff:ff"
             ]
@@ -5048,8 +5065,6 @@
           "group",
           "txqlen",
           "link_type",
-          "address",
-          "broadcast",
           "addr_info"
         ],
         "title": "IPInterface",
