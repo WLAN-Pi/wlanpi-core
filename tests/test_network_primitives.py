@@ -933,18 +933,27 @@ def test_wlan_link_response_model_serializes_links():
             "bssid": "68:51:34:7c:32:05",
             "freq_mhz": 6295.0,
             "active": True,
+            "local_addr": "46:4e:e4:c6:8a:7e",
+            "width_mhz": 80,
+            "center1_mhz": 6305,
         },
         {
             "link_id": 2,
             "bssid": "68:51:34:7c:31:f5",
             "freq_mhz": 2462.0,
             "active": False,
+            "local_addr": None,
+            "width_mhz": None,
+            "center1_mhz": None,
         },
         {
             "link_id": 1,
             "bssid": "68:51:34:7c:32:15",
             "freq_mhz": 5220.0,
             "active": False,
+            "local_addr": None,
+            "width_mhz": None,
+            "center1_mhz": None,
         },
     ]
     assert body["freq_mhz"] == 6295.0
@@ -952,3 +961,61 @@ def test_wlan_link_response_model_serializes_links():
 
     non_mlo = WlanLink.model_validate({"interface": "wlan0", "connected": False})
     assert non_mlo.model_dump(mode="json")["links"] == []
+
+
+def test_get_wlan_link_mlo_reports_link_addresses_and_active_width():
+    # Every set-up link carries this station's own address; only active links
+    # have a channel, so only they get a width and center frequency.
+    info = (
+        _MLO_INFO_HEAD
+        + _LINK0_ACTIVE
+        + "\t - link ID  1 link addr 4E:66:24:B6:DB:12\n"
+        + "\t - link ID  2 link addr 0e:30:c8:74:31:ee\n"
+    )
+    outputs = {"link": _MLO_IW_LINK, "info": info, "station": _STATION}
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    by_id = {x["link_id"]: x for x in result["links"]}
+    assert by_id[0]["local_addr"] == "46:4e:e4:c6:8a:7e"
+    assert (by_id[0]["width_mhz"], by_id[0]["center1_mhz"]) == (80, 6305)
+    assert by_id[1]["local_addr"] == "4e:66:24:b6:db:12"
+    assert "width_mhz" not in by_id[1]
+    assert by_id[2]["local_addr"] == "0e:30:c8:74:31:ee"
+    assert "width_mhz" not in by_id[2]
+
+
+def test_get_wlan_link_mlo_info_failure_has_no_link_details():
+    outputs = {
+        "link": _MLO_IW_LINK,
+        "info": RunCommandError("iw failed", 1),
+        "station": _STATION,
+    }
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert all("local_addr" not in x for x in result["links"])
+
+
+def test_parse_link_details_keys_channel_to_its_own_link():
+    # A link line without "link addr" must still start a new link, so the
+    # channel below it is not credited to the previous one.
+    info = (
+        _MLO_INFO_HEAD
+        + "\t - link ID  1 link addr 4e:66:24:b6:db:12\n"
+        + "\t - link ID  2\n"
+        + "\t   channel 11 (2462 MHz), width: 20 MHz (no HT), center1: 2462 MHz\n"
+    )
+
+    details = wlan_link._parse_link_details(info)
+
+    assert details == {
+        1: {"local_addr": "4e:66:24:b6:db:12"},
+        2: {"width_mhz": 20, "center1_mhz": 2462},
+    }

@@ -15,8 +15,10 @@ from wlanpi_core.utils.validation import validate_interface_name
 log = logging.getLogger(__name__)
 
 _MLO_LINK = re.compile(r"Link (\d+) BSSID ([0-9a-fA-F:]{17})")
-_INFO_LINK = re.compile(r"- link ID\s+(\d+)")
+_INFO_LINK = re.compile(r"- link ID\s+(\d+)(?: link addr ([0-9a-fA-F:]{17}))?")
 _INFO_CHANNEL = re.compile(r"channel \d+ \((\d+(?:\.\d+)?) MHz\)")
+# iw names some widths with a suffix, e.g. "20 MHz (no HT)".
+_INFO_WIDTH = re.compile(r"width: (\d+) MHz[^,]*(?:, center1: (\d+) MHz)?")
 _DBM = re.compile(r"(-?\d+(?:\.\d+)?)")
 
 
@@ -101,6 +103,30 @@ def _parse_active_links(stdout: str) -> dict[int, float]:
     return active
 
 
+def _parse_link_details(stdout: str) -> dict[int, dict[str, Any]]:
+    """Map link ID to this station's link address and, if active, its width.
+
+    ``iw dev <iface> info`` lists every set-up link with the address mac80211
+    gave this station on it (random per link; the frames on air use it), and
+    a channel line with width and center frequency for active links only.
+    """
+    details: dict[int, dict[str, Any]] = {}
+    current: dict[str, Any] | None = None
+    for line in stdout.splitlines():
+        match = _INFO_LINK.search(line)
+        if match:
+            current = details.setdefault(int(match.group(1)), {})
+            if match.group(2):
+                current["local_addr"] = match.group(2).lower()
+            continue
+        match = _INFO_WIDTH.search(line)
+        if match and current is not None and _INFO_CHANNEL.search(line):
+            current["width_mhz"] = int(match.group(1))
+            if match.group(2):
+                current["center1_mhz"] = int(match.group(2))
+    return details
+
+
 def _station_signal(stdout: str, keys: tuple[str, ...]) -> float | None:
     """Return the first non-zero MLD-level value among ``keys``.
 
@@ -147,9 +173,11 @@ def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
     if links:
         info = _iw(iface, namespace, "info")
         active = _parse_active_links(info) if info is not None else {}
+        details = _parse_link_details(info) if info is not None else {}
         for link in links:
             # None: activity unknown because iw dev info failed.
             link["active"] = link["link_id"] in active if info is not None else None
+            link.update(details.get(link["link_id"], {}))
         # Several active links (EMLSR, STR): iw cannot tell which carries
         # the traffic, so report no single frequency; see ``links``.
         freq = next(iter(active.values())) if len(active) == 1 else None

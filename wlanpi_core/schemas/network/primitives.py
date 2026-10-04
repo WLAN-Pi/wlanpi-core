@@ -135,6 +135,24 @@ class WlanMloLink(BaseModel):
         default=None,
         description="Link holds a channel now (mac80211 active link); null if unknown",
     )
+    local_addr: str | None = Field(
+        default=None,
+        description=(
+            "This station's own MAC on the link (mac80211 gives each link its "
+            "own address; it is the address on air, not the interface MAC)"
+        ),
+        json_schema_extra={"example": "46:4e:e4:c6:8a:7e"},
+    )
+    width_mhz: int | None = Field(
+        default=None,
+        description="Channel width of an active link; null when inactive",
+        json_schema_extra={"example": 80},
+    )
+    center1_mhz: int | None = Field(
+        default=None,
+        description="Center frequency of an active link's channel; null when inactive",
+        json_schema_extra={"example": 6305},
+    )
 
 
 class WlanLink(BaseModel):
