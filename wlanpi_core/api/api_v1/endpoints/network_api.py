@@ -371,7 +371,8 @@ async def show_interface_wlan_link(iface: str) -> Any:
 
     For an MLO association, ``bssid`` is the AP MLD address and ``links``
     lists every set-up link with its frequency and whether it is active
-    (from ``iw dev <iface> info``; null when that query fails). Each link
+    (from ``iw dev <iface> info``; null when that query fails or the
+    association changes during the request). Each link
     also carries this station's own address on it (``local_addr``, the
     address on air), and active links carry their channel ``width_mhz``
     and ``center1_mhz``.

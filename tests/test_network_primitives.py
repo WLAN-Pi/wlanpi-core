@@ -866,7 +866,7 @@ def test_get_wlan_link_single_link_mld_keeps_iw_link_signal():
 
     assert result["freq_mhz"] == 5220.0
     assert result["signal_dbm"] == -47.0
-    assert calls == ["link", "info"]
+    assert calls == ["link", "info", "link"]
 
 
 @pytest.mark.parametrize(
@@ -918,7 +918,7 @@ def test_get_wlan_link_mlo_without_beacon_avg_uses_signal_avg():
 
 
 def test_wlan_link_response_model_serializes_links():
-    info = _MLO_INFO_HEAD + _LINK0_ACTIVE
+    info = _MLO_INFO_HEAD + _LINK0_ACTIVE + "\t - link ID  1\n\t - link ID  2\n"
     outputs = {"link": _MLO_IW_LINK, "info": info, "station": _STATION}
     with patch(
         "wlanpi_core.network.wlan_link.ns_exec",
@@ -1001,6 +1001,59 @@ def test_get_wlan_link_mlo_info_failure_has_no_link_details():
         result = wlan_link.get_wlan_link("wlan0")
 
     assert all("local_addr" not in x for x in result["links"])
+
+
+# The same client after a reassociation to the 5 GHz link alone.
+_MLO_IW_LINK_5G_ONLY = (
+    "Connected to 68:51:34:7c:32:05 (on wlan0)\n"
+    "\tSSID: wlanpi\n"
+    "\tLink 1 BSSID 68:51:34:7c:32:15\n"
+    "\t\tfreq: 5220.0\n"
+)
+
+
+@pytest.mark.parametrize("second", [_MLO_IW_LINK_5G_ONLY, "Not connected.\n"])
+def test_get_wlan_link_mlo_association_change_mid_request_is_unknown(second):
+    # iw info already shows the new association (only link 1, active), while
+    # the first iw link still lists the old links.
+    reads = iter([_MLO_IW_LINK, second])
+    outputs = {
+        "info": _MLO_INFO_HEAD + _LINK1_ACTIVE,
+        "station": _STATION,
+    }
+
+    def run(cmd, namespace=None):
+        if cmd[3] == "link":
+            return MagicMock(stdout=next(reads))
+        return _iw_by_command(outputs)(cmd, namespace)
+
+    with patch("wlanpi_core.network.wlan_link.ns_exec", side_effect=run):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert result["connected"] is True
+    assert result["freq_mhz"] is None
+    assert [x["active"] for x in result["links"]] == [None, None, None]
+    assert all(
+        set(x) == {"link_id", "bssid", "freq_mhz", "active"} for x in result["links"]
+    )
+
+
+def test_get_wlan_link_mlo_link_missing_from_info_is_unknown():
+    info = (
+        _MLO_INFO_HEAD + _LINK0_ACTIVE + "\t - link ID  1 link addr 4e:66:24:b6:db:12\n"
+    )
+    outputs = {"link": _MLO_IW_LINK, "info": info, "station": _STATION}
+    with patch(
+        "wlanpi_core.network.wlan_link.ns_exec",
+        side_effect=_iw_by_command(outputs),
+    ):
+        result = wlan_link.get_wlan_link("wlan0")
+
+    assert _links(result) == {
+        (0, 6295.0, True),
+        (1, 5220.0, False),
+        (2, 2462.0, None),
+    }
 
 
 def test_parse_link_details_keys_channel_to_its_own_link():

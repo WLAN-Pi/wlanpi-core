@@ -140,6 +140,51 @@ def test_api_wlan_link(client):
     assert response.json()["connected"] is True
 
 
+def test_api_wlan_link_mlo_fields(client):
+    payload = {
+        "interface": "wlan0",
+        "namespace": None,
+        "connected": True,
+        "ssid": "wlanpi",
+        "bssid": "68:51:34:7c:32:05",
+        "freq_mhz": 6295.0,
+        "signal_dbm": -42.0,
+        "links": [
+            {
+                "link_id": 0,
+                "bssid": "68:51:34:7c:32:05",
+                "freq_mhz": 6295.0,
+                "active": True,
+                "local_addr": "46:4e:e4:c6:8a:7e",
+                "width_mhz": 80,
+                "center1_mhz": 6305,
+            },
+            {
+                "link_id": 1,
+                "bssid": "68:51:34:7c:32:15",
+                "freq_mhz": 5220.0,
+                "active": False,
+                "local_addr": "4e:66:24:b6:db:12",
+            },
+        ],
+        "raw": "",
+    }
+    with patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.resolve_interface_namespace",
+        return_value=None,
+    ):
+        with patch("wlanpi_core.network.get_wlan_link", return_value=payload):
+            response = client.get("/api/v1/network/interfaces/wlan0/wlan-link")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["freq_mhz"], body["signal_dbm"]) == (6295.0, -42.0)
+    assert body["links"] == [
+        payload["links"][0],
+        {**payload["links"][1], "width_mhz": None, "center1_mhz": None},
+    ]
+
+
 def test_api_post_network_dhcp_renew(client):
     with patch(
         "wlanpi_core.network.renew_interface_dhcp",

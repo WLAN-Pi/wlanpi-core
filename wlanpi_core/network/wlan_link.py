@@ -148,6 +148,12 @@ def _station_signal(stdout: str, keys: tuple[str, ...]) -> float | None:
     return None
 
 
+def _link_set(parsed: dict[str, Any]) -> tuple[Any, ...]:
+    """Identify an MLO association by its AP MLD address and links."""
+    links = parsed.get("links", [])
+    return (parsed.get("bssid"), sorted((x["link_id"], x["bssid"]) for x in links))
+
+
 def _iw(iface: str, namespace: str | None, *args: str) -> str | None:
     """Run a supplementary ``iw dev <iface> ...`` query; None on failure."""
     try:
@@ -172,11 +178,20 @@ def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
     freq = parsed.get("freq_mhz")
     if links:
         info = _iw(iface, namespace, "info")
+        # iw info has no AP address, so re-read iw link to check that info is
+        # from the same association: a roam, reassociation or link removal
+        # between the two reads would otherwise mix two associations.
+        again = _iw(iface, namespace, "link")
+        if again is None or _link_set(_parse_iw_link(again)) != _link_set(parsed):
+            info = None
         active = _parse_active_links(info) if info is not None else {}
         details = _parse_link_details(info) if info is not None else {}
         for link in links:
-            # None: activity unknown because iw dev info failed.
-            link["active"] = link["link_id"] in active if info is not None else None
+            # None: activity unknown because iw dev info failed, changed
+            # association, or doesn't list this link.
+            link["active"] = (
+                link["link_id"] in active if link["link_id"] in details else None
+            )
             link.update(details.get(link["link_id"], {}))
         # Several active links (EMLSR, STR): iw cannot tell which carries
         # the traffic, so report no single frequency; see ``links``.
