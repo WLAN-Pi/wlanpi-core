@@ -1153,7 +1153,7 @@
           "network"
         ],
         "summary": "Show Interface Wlan Link",
-        "description": "Wireless association for an interface, from ``iw dev <iface> link``.\n\nCompanion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the\nSSID, BSSID, frequency, signal, and rx/tx bitrate when connected.",
+        "description": "Wireless association for an interface, from ``iw dev <iface> link``.\n\nCompanion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the\nSSID, BSSID, frequency, signal, and rx/tx bitrate when connected.\n\nFor an MLO association, ``bssid`` is the AP MLD address and ``links``\nlists every set-up link with its frequency and whether it is active\n(from ``iw dev <iface> info``; null when that query fails).\n``freq_mhz`` is present only when exactly one active link can be\ndetermined, otherwise null. ``signal_dbm`` is the ``iw link`` signal\nfor a single link. With several MLO links it is the driver's beacon\naverage for the active link instead, because the kernel's MLD-level\nsignal is the maximum over all links, including idle ones. It is null\nwhen the kernel has no reading.",
         "operationId": "show_interface_wlan_link_api_v1_network_interfaces__iface__wlan_link_get",
         "security": [
           {
@@ -8161,6 +8161,7 @@
               }
             ],
             "title": "Freq Mhz",
+            "description": "Operating frequency. For MLO, present only when exactly one active link can be determined; otherwise null (see links)",
             "example": 5200.0
           },
           "signal_dbm": {
@@ -8173,7 +8174,16 @@
               }
             ],
             "title": "Signal Dbm",
+            "description": "Signal in dBm; null when the kernel has no reading",
             "example": -48.0
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/WlanMloLink"
+            },
+            "type": "array",
+            "title": "Links",
+            "description": "MLO links set up in this association; empty when not MLO"
           },
           "rx_bitrate": {
             "anyOf": [
@@ -8243,6 +8253,57 @@
         ],
         "title": "WlanLink",
         "description": "Wireless association state for one interface (from ``iw link``)."
+      },
+      "WlanMloLink": {
+        "properties": {
+          "link_id": {
+            "type": "integer",
+            "title": "Link Id",
+            "example": 0
+          },
+          "bssid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bssid",
+            "example": "68:51:34:7c:32:05"
+          },
+          "freq_mhz": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freq Mhz",
+            "example": 6295.0
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active",
+            "description": "Link holds a channel now (mac80211 active link); null if unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "link_id"
+        ],
+        "title": "WlanMloLink",
+        "description": "One set-up link of an MLO (Wi-Fi 7 multi-link) association."
       },
       "WlanNetwork": {
         "properties": {
