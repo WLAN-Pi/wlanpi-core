@@ -1,3 +1,32 @@
+wlanpi-core (2.4.7-1) unstable; urgency=medium
+
+  * GET /api/v1/network/interfaces/{iface}/wlan-link reports Wi-Fi 7
+    multi-link (MLO) connections per link. A new links list gives each
+    set-up link's link_id, bssid, freq_mhz and whether it is active, the
+    station's own address on that link (local_addr), and width_mhz and
+    center1_mhz for active links. It is empty for a non-MLO connection
+    (#359).
+  * With more than one active MLO link, wlan-link's freq_mhz is null; it
+    used to be whichever link iw printed last, often an idle one. With
+    several links set up, signal_dbm no longer uses the MLD-level
+    signal, which is often 0 or another link's. It is null when the
+    driver reports no averaged signal: always on ath12k (WCN7850), and
+    on MT7925 with three links set up. For any connection, a signal of
+    0 dBm (no frame received yet) now falls back to the station's signal
+    averages, or null, instead of being reported as 0.
+  * GET /api/v1/network/interfaces and /network/interfaces/{interface}
+    no longer return 500 when a tun or WireGuard interface (such as
+    tailscale0) exists. Those interfaces have no link-layer address;
+    their address and broadcast fields are null (#363).
+  * At startup Core creates one monitor per radio, even when a radio's
+    Core monitor is named for another phy index. It added a second
+    monitor and scanned, which crashed Intel BE200 firmware (#365). It
+    also skips the startup scan when the radio already has another
+    monitor. Profile activation no longer marks a radio in use because
+    of a capture on such a misnamed Core monitor.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 04 Oct 2026 12:21:39 -0400
+
 wlanpi-core (2.4.6-1) unstable; urgency=medium
 
   * POST /api/v1/bluetooth/pair works when the adapter is already on.
