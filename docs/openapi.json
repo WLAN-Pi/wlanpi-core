@@ -3791,6 +3791,115 @@
         ]
       }
     },
+    "/api/v1/profiler/files": {
+      "get": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Profiler Files",
+        "description": "List the profiled clients' files and the daily session reports.\n\nThe profiler writes them under `/var/www/html/profiler`. Each client has,\nper band, a JSON capability profile, a text report and a `.pcap` of its\nassociation request. `reports` holds one CSV per day, with one row per\nprofiled client. With `mac`, `clients` holds only that client; `reports`\nis always complete.\n\nFetch a file with `GET /profiler/files/{path}`. Symlinks, other\nnon-regular files and names that are not valid UTF-8 are not listed.",
+        "operationId": "profiler_files_api_v1_profiler_files_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this client, as `aa:bb:cc:dd:ee:ff` or `aa-bb-cc-dd-ee-ff`",
+              "title": "Mac"
+            },
+            "description": "Only this client, as `aa:bb:cc:dd:ee:ff` or `aa-bb-cc-dd-ee-ff`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Files"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profiler/files/{path}": {
+      "get": {
+        "tags": [
+          "profiler"
+        ],
+        "summary": "Profiler File",
+        "description": "Return one profiler file, as listed by `GET /profiler/files`.\n\n`path` is `clients/<mac>/<file>` or `reports/<file>`, as listed. The\nmedia type follows the extension: `application/json` for `.json`,\n`text/plain` for `.txt`, `application/vnd.tcpdump.pcap` for `.pcap`,\n`text/csv` for `.csv`, and `application/octet-stream` for anything else.\n\nReturns `404` when `path` has any other shape, when anything below\n`/var/www/html/profiler` on the way to it is a symlink, or when it is not\na regular file.",
+        "operationId": "profiler_file_api_v1_profiler_files__path__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file's bytes",
+            "content": {
+              "application/json": {},
+              "text/plain; charset=utf-8": {},
+              "application/vnd.tcpdump.pcap": {},
+              "text/csv; charset=utf-8": {},
+              "application/octet-stream": {}
+            }
+          },
+          "404": {
+            "description": "No such profiler file"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profiler/purge": {
       "post": {
         "tags": [
@@ -4149,6 +4258,31 @@
         "type": "object",
         "title": "BssLoad",
         "description": "Channel utilisation reported by the BSS Load element."
+      },
+      "Client": {
+        "properties": {
+          "mac": {
+            "type": "string",
+            "title": "Mac",
+            "examples": [
+              "a8:93:4a:e2:02:3b"
+            ]
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mac",
+          "files"
+        ],
+        "title": "Client",
+        "description": "A profiled client and its files, one set per band."
       },
       "ConnectedNetwork": {
         "properties": {
@@ -4534,6 +4668,66 @@
         "type": "object",
         "title": "FailedServices",
         "description": "Failed systemd units."
+      },
+      "File": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Path relative to the profiler data directory; pass it to `GET /profiler/files/{path}`",
+            "examples": [
+              "clients/a8-93-4a-e2-02-3b/a8-93-4a-e2-02-3b_5GHz.json"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Size in bytes",
+            "examples": [
+              1967
+            ]
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified",
+            "description": "Last modification time, UTC"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "modified"
+        ],
+        "title": "File",
+        "description": "One profiler output file."
+      },
+      "Files": {
+        "properties": {
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/Client"
+            },
+            "type": "array",
+            "title": "Clients"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "type": "array",
+            "title": "Reports",
+            "description": "Daily CSV reports, one row per client"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clients",
+          "reports"
+        ],
+        "title": "Files",
+        "description": "Profiled clients and daily session reports."
       },
       "HTTPValidationError": {
         "properties": {
@@ -8746,7 +8940,7 @@
     },
     {
       "name": "profiler",
-      "description": "WLAN Pi profiler start/stop/status."
+      "description": "WLAN Pi profiler start/stop/status, client profiles and reports."
     },
     {
       "name": "streaming",
