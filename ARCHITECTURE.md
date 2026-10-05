@@ -67,6 +67,7 @@ The primary goals include:
     - Always DEBUG and above
     - Never changes
     - tmpfs (not persistent on reboot)
+    - Rotated at 4 MiB, keeping `debug.log.1` to `debug.log.4`
 
 ## Server Stack
 
