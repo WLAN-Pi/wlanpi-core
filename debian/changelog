@@ -1,3 +1,19 @@
+wlanpi-core (2.4.8-1) unstable; urgency=medium
+
+  * /var/log/wlanpi_core/debug/debug.log rotates at 4 MiB and keeps four
+    old files (debug.log.1 to debug.log.4), so it stays under 20 MiB on its
+    25 MiB tmpfs. Under steady API polling it used to fill the tmpfs within
+    hours, after which every log call failed and printed a traceback to the
+    journal until a reboot (#376).
+  * New GET /api/v1/profiler/files lists each profiled client's files (JSON
+    profile, text report and .pcap per band) and the daily CSV reports,
+    with path, size and modification time; ?mac= limits it to one client.
+    GET /api/v1/profiler/files/{path} returns one of them. Only files in
+    /var/www/html/profiler/clients and /reports can be read; symlinks and
+    other non-regular files are refused (#378).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 05 Oct 2026 15:41:09 -0400
+
 wlanpi-core (2.4.7-1) unstable; urgency=medium
 
   * GET /api/v1/network/interfaces/{iface}/wlan-link reports Wi-Fi 7
