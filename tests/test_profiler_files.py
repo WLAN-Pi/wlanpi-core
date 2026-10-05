@@ -1,6 +1,7 @@
 """Tests for reading profiler output (GET /profiler/files and /profiler/files/{path})."""
 
 import os
+import types
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,6 +28,14 @@ def root(tmp_path, monkeypatch):
     (data / "reports" / "profiler-2026-09-30.csv").write_text("Client_Mac\n")
     monkeypatch.setattr(service, "DATA_ROOT", str(data))
     return data
+
+
+def _patch_service_os(monkeypatch, **overrides):
+    """Swap the os module the profiler service sees; the real one stays intact."""
+    fake = types.ModuleType("os")
+    fake.__dict__.update(vars(os))
+    fake.__dict__.update(overrides)
+    monkeypatch.setattr(service, "os", fake)
 
 
 @pytest.fixture
@@ -243,9 +252,8 @@ def test_read_file_opens_without_blocking_or_following(root, monkeypatch):
         calls.append((path, flags))
         return real_open(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(os, "open", recording_open)
+    _patch_service_os(monkeypatch, open=recording_open)
     service.read_file("reports/profiler-2026-09-30.csv")
-    monkeypatch.undo()
 
     assert [p for p, _ in calls] == [
         str(root),
@@ -290,10 +298,9 @@ def test_read_file_refuses_dir_swapped_for_symlink_mid_open(
             os.symlink(outside, root / swapped)
         return fd
 
-    monkeypatch.setattr(os, "open", swapping_open)
+    _patch_service_os(monkeypatch, open=swapping_open)
     with pytest.raises(ValidationError) as excinfo:
         service.read_file(path)
-    monkeypatch.undo()
 
     assert excinfo.value.status_code == 404
 
@@ -321,9 +328,8 @@ def test_list_files_skips_entry_removed_while_listing(root, monkeypatch):
         def __exit__(self, *exc):
             return self.it.__exit__(*exc)
 
-    monkeypatch.setattr(os, "scandir", lambda fd: WithVanished(real_scandir(fd)))
+    _patch_service_os(monkeypatch, scandir=lambda fd: WithVanished(real_scandir(fd)))
     body = service.list_files()
-    monkeypatch.undo()
 
     assert [f["path"] for f in body["reports"]] == ["reports/profiler-2026-09-30.csv"]
 
