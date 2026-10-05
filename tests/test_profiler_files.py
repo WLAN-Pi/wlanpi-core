@@ -235,7 +235,7 @@ def test_read_file_follows_symlinked_data_root(client, root, tmp_path, monkeypat
 
 
 def test_read_file_opens_without_blocking_or_following(root, monkeypatch):
-    # Fails fast where the FIFO test above would hang if O_NONBLOCK went away.
+    # Fails fast where the FIFO test below would hang if O_NONBLOCK went away.
     real_open = os.open
     calls = []
 
