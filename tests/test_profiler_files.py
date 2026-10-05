@@ -185,6 +185,7 @@ def test_read_file_rejects_paths_outside_layout(client, root, tmp_path, path):
         "/etc/passwd",
         "reports/./profiler-2026-09-30.csv",
         "./reports/profiler-2026-09-30.csv",
+        "reports/profiler-2026-09-30.csv\0",
     ],
 )
 def test_read_file_rejects_dot_segments(root, tmp_path, path):
@@ -233,10 +234,119 @@ def test_read_file_follows_symlinked_data_root(client, root, tmp_path, monkeypat
     assert response.status_code == 200
 
 
+def test_read_file_opens_without_blocking_or_following(root, monkeypatch):
+    # Fails fast where the FIFO test above would hang if O_NONBLOCK went away.
+    real_open = os.open
+    calls = []
+
+    def recording_open(path, flags, *args, **kwargs):
+        calls.append((path, flags))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", recording_open)
+    service.read_file("reports/profiler-2026-09-30.csv")
+    monkeypatch.undo()
+
+    assert [p for p, _ in calls] == [
+        str(root),
+        "reports",
+        "profiler-2026-09-30.csv",
+    ]
+    assert calls[1][1] & os.O_NOFOLLOW
+    assert calls[2][1] & os.O_NOFOLLOW
+    assert calls[2][1] & os.O_NONBLOCK
+
+
 def test_read_file_fifo_is_404_without_blocking(client, root):
     os.mkfifo(root / "reports" / "fifo.csv")
 
     assert client.get("/api/v1/profiler/files/reports/fifo.csv").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "swapped"),
+    [
+        ("reports/profiler-2026-09-30.csv", "reports"),
+        (f"clients/{MAC}/{MAC}_5GHz.json", f"clients/{MAC}"),
+    ],
+)
+def test_read_file_refuses_dir_swapped_for_symlink_mid_open(
+    root, tmp_path, monkeypatch, path, swapped
+):
+    # A directory replaced by a symlink after the path is validated, before
+    # the file is opened, must not lead outside the data root.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for name in (f"{MAC}_5GHz.json", "profiler-2026-09-30.csv"):
+        (outside / name).write_text("secret")
+    real_open = os.open
+    swapped_already = []
+
+    def swapping_open(p, flags, *args, **kwargs):
+        fd = real_open(p, flags, *args, **kwargs)
+        if not swapped_already:
+            swapped_already.append(True)
+            os.rename(root / swapped, tmp_path / "moved")
+            os.symlink(outside, root / swapped)
+        return fd
+
+    monkeypatch.setattr(os, "open", swapping_open)
+    with pytest.raises(ValidationError) as excinfo:
+        service.read_file(path)
+    monkeypatch.undo()
+
+    assert excinfo.value.status_code == 404
+
+
+def test_read_file_nul_byte_is_404(client, root):
+    assert client.get("/api/v1/profiler/files/reports/a%00.csv").status_code == 404
+
+
+def test_list_files_skips_entry_removed_while_listing(root, monkeypatch):
+    real_scandir = os.scandir
+
+    class Vanished:
+        name = "zz-gone.csv"
+
+        def stat(self, follow_symlinks=True):
+            raise FileNotFoundError
+
+    class WithVanished:
+        def __init__(self, it):
+            self.it = it
+
+        def __enter__(self):
+            return [*self.it.__enter__(), Vanished()]
+
+        def __exit__(self, *exc):
+            return self.it.__exit__(*exc)
+
+    monkeypatch.setattr(os, "scandir", lambda fd: WithVanished(real_scandir(fd)))
+    body = service.list_files()
+    monkeypatch.undo()
+
+    assert [f["path"] for f in body["reports"]] == ["reports/profiler-2026-09-30.csv"]
+
+
+def test_list_files_skips_names_that_are_not_utf8(client, root):
+    with open(os.path.join(os.fsencode(root / "reports"), b"bad-\xff.csv"), "w") as f:
+        f.write("x")
+
+    response = client.get("/api/v1/profiler/files")
+
+    assert response.status_code == 200
+    assert [f["path"] for f in response.json()["reports"]] == [
+        "reports/profiler-2026-09-30.csv"
+    ]
+
+
+def test_list_files_500_on_unexpected_error(client, root, monkeypatch):
+    def fail(mac=None):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(service, "list_files", fail)
+
+    assert client.get("/api/v1/profiler/files").status_code == 500
 
 
 def test_read_file_500_on_unexpected_error(client, root, monkeypatch):

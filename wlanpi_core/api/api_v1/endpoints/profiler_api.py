@@ -113,7 +113,8 @@ async def profiler_files(
     profiled client. With `mac`, `clients` holds only that client; `reports`
     is always complete.
 
-    Fetch a file with `GET /profiler/files/{path}`. Symlinks are not listed.
+    Fetch a file with `GET /profiler/files/{path}`. Symlinks, other
+    non-regular files and names that are not valid UTF-8 are not listed.
     """
 
     try:
@@ -130,7 +131,13 @@ async def profiler_files(
     response_class=Response,
     responses={
         200: {
-            "content": {media_type: {} for media_type in service.MEDIA_TYPES.values()},
+            "content": {
+                media_type: {}
+                for media_type in [
+                    *service.MEDIA_TYPES.values(),
+                    service.OTHER_MEDIA_TYPE,
+                ]
+            },
             "description": "The file's bytes",
         },
         404: {"description": "No such profiler file"},
@@ -140,10 +147,14 @@ async def profiler_files(
 async def profiler_file(path: str) -> Any:
     """Return one profiler file, as listed by `GET /profiler/files`.
 
-    `path` is `clients/<mac>/<file>` or `reports/<file>`. The media type
-    follows the extension: `.json`, `.txt`, `.pcap` or `.csv`. Returns `404`
-    for any other path, and for a symlink or anything that is not a regular
-    file.
+    `path` is `clients/<mac>/<file>` or `reports/<file>`, as listed. The
+    media type follows the extension: `application/json` for `.json`,
+    `text/plain` for `.txt`, `application/vnd.tcpdump.pcap` for `.pcap`,
+    `text/csv` for `.csv`, and `application/octet-stream` for anything else.
+
+    Returns `404` when `path` has any other shape, when anything below
+    `/var/www/html/profiler` on the way to it is a symlink, or when it is not
+    a regular file.
     """
 
     try:

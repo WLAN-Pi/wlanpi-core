@@ -167,35 +167,74 @@ MEDIA_TYPES = {
     ".pcap": "application/vnd.tcpdump.pcap",
     ".csv": "text/csv; charset=utf-8",
 }
+OTHER_MEDIA_TYPE = "application/octet-stream"
+_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY
 
 
-def _entries(path: str) -> list[os.DirEntry[str]]:
-    """Return the entries of directory path by name; none if it is missing or a symlink."""
-    if os.path.islink(path):
-        return []
+def _open_below_root(parts: list[str], flags: int) -> int:
+    """Open DATA_ROOT/parts one component at a time, never following a symlink.
+
+    DATA_ROOT itself may be a symlink; nothing below it may. Opening each
+    directory relative to its parent's descriptor leaves no window to swap a
+    component for a symlink between a check and the open.
+    """
+    fd = os.open(DATA_ROOT, _DIR_FLAGS)
     try:
-        return sorted(os.scandir(path), key=lambda e: e.name)
-    except (FileNotFoundError, NotADirectoryError):
+        for name in parts[:-1]:
+            child = os.open(name, _DIR_FLAGS | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return os.open(parts[-1], flags | os.O_NOFOLLOW, dir_fd=fd)
+    finally:
+        os.close(fd)
+
+
+def _utf8(name: str) -> bool:
+    """Return True if name is valid UTF-8 and so can go into a JSON response."""
+    try:
+        name.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _entries(parts: list[str]) -> list[tuple[str, os.stat_result]]:
+    """Return (name, lstat) for each entry of directory DATA_ROOT/parts, by name.
+
+    None if it is missing, not a directory, or reached through a symlink.
+    Skips names that are not valid UTF-8 and entries removed while listing.
+    """
+    try:
+        fd = _open_below_root(parts, _DIR_FLAGS)
+    except OSError:
         return []
+    entries = []
+    try:
+        # DirEntry.stat() on an fd-based scandir uses fd, so stat before closing it.
+        with os.scandir(fd) as it:
+            for entry in it:
+                if not _utf8(entry.name):
+                    continue
+                try:
+                    entries.append((entry.name, entry.stat(follow_symlinks=False)))
+                except FileNotFoundError:
+                    continue
+    finally:
+        os.close(fd)
+    return sorted(entries)
 
 
-def _regular_files(path: str, rel: str) -> list[dict[str, Any]]:
-    """Describe the regular files directly in path, skipping symlinks."""
-    files = []
-    for entry in _entries(path):
-        try:
-            st = entry.stat(follow_symlinks=False)
-        except FileNotFoundError:
-            continue
-        if stat.S_ISREG(st.st_mode):
-            files.append(
-                {
-                    "path": f"{rel}/{entry.name}",
-                    "size": st.st_size,
-                    "modified": datetime.fromtimestamp(st.st_mtime, UTC),
-                }
-            )
-    return files
+def _regular_files(parts: list[str]) -> list[dict[str, Any]]:
+    """Describe the regular files directly in DATA_ROOT/parts, skipping symlinks."""
+    return [
+        {
+            "path": "/".join([*parts, name]),
+            "size": st.st_size,
+            "modified": datetime.fromtimestamp(st.st_mtime, UTC),
+        }
+        for name, st in _entries(parts)
+        if stat.S_ISREG(st.st_mode)
+    ]
 
 
 def list_files(mac: str | None = None) -> dict[str, Any]:
@@ -205,14 +244,14 @@ def list_files(mac: str | None = None) -> dict[str, Any]:
     limits clients to that one. Symlinks are skipped, never followed.
     """
     clients = []
-    for entry in _entries(os.path.join(DATA_ROOT, "clients")):
-        if mac is not None and entry.name != mac:
+    # A non-directory or symlinked entry yields no files, so it is not listed.
+    for name, _ in _entries(["clients"]):
+        if mac is not None and name != mac:
             continue
-        files = _regular_files(entry.path, f"clients/{entry.name}")
+        files = _regular_files(["clients", name])
         if files:
-            clients.append({"mac": entry.name.replace("-", ":"), "files": files})
-    reports = _regular_files(os.path.join(DATA_ROOT, "reports"), "reports")
-    return {"clients": clients, "reports": reports}
+            clients.append({"mac": name.replace("-", ":"), "files": files})
+    return {"clients": clients, "reports": _regular_files(["reports"])}
 
 
 def read_file(path: str) -> tuple[bytes, str]:
@@ -225,16 +264,11 @@ def read_file(path: str) -> tuple[bytes, str]:
     not_found = ValidationError("Profiler file not found", status_code=404)
     parts = path.split("/")
     depth = {"clients": 3, "reports": 2}.get(parts[0])
-    if len(parts) != depth or any(p in ("", ".", "..") for p in parts):
+    if len(parts) != depth or any(p in ("", ".", "..") or "\0" in p for p in parts):
         raise not_found
-    root = os.path.realpath(DATA_ROOT)
-    full = os.path.join(root, *parts)
-    if os.path.realpath(full) != full:
-        raise not_found
-    # O_NOFOLLOW closes the swap-to-symlink race on the file itself;
-    # O_NONBLOCK keeps a FIFO from blocking the open.
+    # O_NONBLOCK keeps a FIFO from blocking the open; fstat then rejects it.
     try:
-        fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        fd = _open_below_root(parts, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
     except OSError:
         raise not_found from None
     # shortcut: reads the whole file; profiler files are a few KB, and a day's
@@ -243,9 +277,7 @@ def read_file(path: str) -> tuple[bytes, str]:
         if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise not_found
         content = f.read()
-    media_type = MEDIA_TYPES.get(
-        os.path.splitext(full)[1].lower(), "application/octet-stream"
-    )
+    media_type = MEDIA_TYPES.get(os.path.splitext(path)[1].lower(), OTHER_MEDIA_TYPE)
     return content, media_type
 
 
