@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import stat
+from datetime import UTC, datetime
 from typing import Any
 
 import psutil
@@ -158,6 +159,94 @@ def _delete_contents() -> dict[str, int]:
             size += used
     log.info("Purged %d profiler files (%d bytes)", files, size)
     return {"files": files, "bytes": size}
+
+
+MEDIA_TYPES = {
+    ".json": "application/json",
+    ".txt": "text/plain; charset=utf-8",
+    ".pcap": "application/vnd.tcpdump.pcap",
+    ".csv": "text/csv; charset=utf-8",
+}
+
+
+def _entries(path: str) -> list[os.DirEntry[str]]:
+    """Return the entries of directory path by name; none if it is missing or a symlink."""
+    if os.path.islink(path):
+        return []
+    try:
+        return sorted(os.scandir(path), key=lambda e: e.name)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _regular_files(path: str, rel: str) -> list[dict[str, Any]]:
+    """Describe the regular files directly in path, skipping symlinks."""
+    files = []
+    for entry in _entries(path):
+        try:
+            st = entry.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            files.append(
+                {
+                    "path": f"{rel}/{entry.name}",
+                    "size": st.st_size,
+                    "modified": datetime.fromtimestamp(st.st_mtime, UTC),
+                }
+            )
+    return files
+
+
+def list_files(mac: str | None = None) -> dict[str, Any]:
+    """List the client profile files and session reports.
+
+    mac, as dash-separated lowercase hex like the profiler's directory names,
+    limits clients to that one. Symlinks are skipped, never followed.
+    """
+    clients = []
+    for entry in _entries(os.path.join(DATA_ROOT, "clients")):
+        if mac is not None and entry.name != mac:
+            continue
+        files = _regular_files(entry.path, f"clients/{entry.name}")
+        if files:
+            clients.append({"mac": entry.name.replace("-", ":"), "files": files})
+    reports = _regular_files(os.path.join(DATA_ROOT, "reports"), "reports")
+    return {"clients": clients, "reports": reports}
+
+
+def read_file(path: str) -> tuple[bytes, str]:
+    """Return the bytes and media type of one profiler file.
+
+    path is relative to DATA_ROOT and must be `clients/<dir>/<file>` or
+    `reports/<file>`. Raises ValidationError (404) for anything else, a
+    symlink anywhere below DATA_ROOT, or a file that is not regular.
+    """
+    not_found = ValidationError("Profiler file not found", status_code=404)
+    parts = path.split("/")
+    depth = {"clients": 3, "reports": 2}.get(parts[0])
+    if len(parts) != depth or any(p in ("", ".", "..") for p in parts):
+        raise not_found
+    root = os.path.realpath(DATA_ROOT)
+    full = os.path.join(root, *parts)
+    if os.path.realpath(full) != full:
+        raise not_found
+    # O_NOFOLLOW closes the swap-to-symlink race on the file itself;
+    # O_NONBLOCK keeps a FIFO from blocking the open.
+    try:
+        fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise not_found from None
+    # shortcut: reads the whole file; profiler files are a few KB, and a day's
+    # CSV report tens of KB. Stream it if they ever grow to many MB.
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise not_found
+        content = f.read()
+    media_type = MEDIA_TYPES.get(
+        os.path.splitext(full)[1].lower(), "application/octet-stream"
+    )
+    return content, media_type
 
 
 async def purge_data() -> dict[str, int]:

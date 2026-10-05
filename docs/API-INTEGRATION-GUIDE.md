@@ -528,9 +528,13 @@ scans), `SUBSCRIBED`, `SESSIONS`, `UNSUBSCRIBED`, `CAPTURE_STOPPED`,
 GET /api/v1/profiler/status
 POST /api/v1/profiler/start
 POST /api/v1/profiler/stop
+GET /api/v1/profiler/files
+GET /api/v1/profiler/files/{path}
 ```
 
-Check status before start; stop before starting again.
+Check status before start; stop before starting again. After clients
+associate, `GET /profiler/files` lists each client's JSON profile, text report
+and `.pcap`, plus the daily CSV reports; fetch one by its `path`.
 
 ---
 
