@@ -135,7 +135,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "profiler",
-        "description": "WLAN Pi profiler start/stop/status.",
+        "description": "WLAN Pi profiler start/stop/status, client profiles and reports.",
     },
     {
         "name": "streaming",

@@ -1,5 +1,7 @@
 """Response schemas for the profiler endpoints."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -42,3 +44,28 @@ class Purge(BaseModel):
 
     files: int = Field(examples=[12], description="Files and symlinks removed")
     bytes: int = Field(examples=[48213], description="Total size of those files")
+
+
+class File(BaseModel):
+    """One profiler output file."""
+
+    path: str = Field(
+        examples=["clients/a8-93-4a-e2-02-3b/a8-93-4a-e2-02-3b_5GHz.json"],
+        description="Path relative to the profiler data directory; pass it to `GET /profiler/files/{path}`",
+    )
+    size: int = Field(examples=[1967], description="Size in bytes")
+    modified: datetime = Field(description="Last modification time, UTC")
+
+
+class Client(BaseModel):
+    """A profiled client and its files, one set per band."""
+
+    mac: str = Field(examples=["a8:93:4a:e2:02:3b"])
+    files: list[File]
+
+
+class Files(BaseModel):
+    """Profiled clients and daily session reports."""
+
+    clients: list[Client]
+    reports: list[File] = Field(description="Daily CSV reports, one row per client")

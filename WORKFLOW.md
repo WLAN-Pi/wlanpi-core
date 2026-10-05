@@ -195,7 +195,8 @@ journalctl -f -n 10 -u wlanpi-core
 ```bash
 # Last 20 lines with follow
 tail -n 20 -f /var/log/wlanpi_core/app.log
-tail -n 20 -f /var/log/wlanpi_core/debug/debug.log
+# -F keeps following debug.log after it rotates to debug.log.1
+tail -n 20 -F /var/log/wlanpi_core/debug/debug.log
 ```
 
 ### tmpfs debugging
