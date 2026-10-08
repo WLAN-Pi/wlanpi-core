@@ -101,7 +101,9 @@ X-Request-Signature: <hmac-sha256-hex>   # root-only bootstrap, localhost
 }
 ```
 
-Store `access_token`. Default lifetime: **7 days**.
+Store `access_token`. Tokens last **7 days** unless the operator changes the
+lifetime ([1.5](#15-change-the-token-lifetime)). To keep working past expiry,
+rotate the token ([1.4](#14-keep-a-session-alive)).
 
 ### 1.2 Use the token
 
@@ -154,6 +156,98 @@ Content-Type: application/json
   "message": "Token revoked",
   "device_id": "my-app-install-id"
 }
+```
+
+### 1.4 Keep a session alive
+
+Core never extends a token. To keep working past expiry, trade the current
+token for a new one while the current token is still valid.
+
+1. Request a new token, sending the current token as the bearer and the same
+   `device_id`:
+
+   ```bash
+   curl --cacert /etc/nginx/ssl/self-signed-wlanpi.cert \
+     -X POST "https://<wlanpi-host>:31415/api/v1/auth/token" \
+     -H "Authorization: Bearer $WLANPI_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"device_id": "my-app-install-id"}'
+   ```
+
+   The response has the same shape as in [1.1](#11-issue-a-token): a new
+   `access_token` with a full lifetime counted from now.
+
+2. Send the new token on all later requests. The old token is unchanged and
+   stays valid until its own expiry.
+3. Optional: after a request with the new token succeeds, revoke the old token
+   ([1.3](#13-revoke)). Revoke only after the new token works, so a lost
+   response never leaves you without a valid token.
+
+Rotate well before expiry, for example halfway through the lifetime. The
+token's `exp` claim holds its expiry in Unix seconds.
+
+Rotation needs a valid token. Once a token has expired or been revoked,
+`POST /auth/token` returns `401`, and you need a new token from the device
+(`sudo getjwt` or the pairing flow in [1.1](#11-issue-a-token)).
+
+### 1.5 Change the token lifetime
+
+Operators can change how long new tokens last. You need `sudo` on the WLAN Pi.
+The setting applies to every token Core issues afterward, for all clients.
+
+A longer lifetime keeps a leaked or forgotten token valid for longer. Prefer
+rotation ([1.4](#14-keep-a-session-alive)) for clients that can run code.
+
+1. Set the lifetime in whole days. This example sets 30:
+
+   ```bash
+   printf '[Service]\nEnvironment=ACCESS_TOKEN_EXPIRE_DAYS=30\n' | sudo systemctl edit --stdin wlanpi-core
+   ```
+
+   ```text
+   Successfully installed edited file '/etc/systemd/system/wlanpi-core.service.d/override.conf'.
+   ```
+
+   The override lives under `/etc`, so package upgrades keep it.
+
+2. Restart Core. The API is unavailable for a few seconds.
+
+   ```bash
+   sudo systemctl restart wlanpi-core
+   ```
+
+3. Verify that Core is running and that new tokens use the new lifetime. The
+   second command issues a real token; revoke it ([1.3](#13-revoke)) if you do
+   not use it.
+
+   ```bash
+   systemctl is-active wlanpi-core
+   sudo getjwt lifetime-check --export | sed -n 's/^export WLANPI_TOKEN=//p' | python3 -c 'import sys,json,base64; p=sys.stdin.read().split(".")[1]; c=json.loads(base64.urlsafe_b64decode(p+"="*(-len(p)%4))); print((c["exp"]-c["iat"])/86400)'
+   ```
+
+   ```text
+   active
+   30.0
+   ```
+
+Tokens issued before the change keep their original expiry.
+
+Core does not validate this value yet
+([#388](https://github.com/WLAN-Pi/wlanpi-core/issues/388)):
+
+- A value that is not a whole number, such as `abc`, stops Core from starting.
+  `/var/log/wlanpi_core/gunicorn_error.log` shows a `ValidationError` for
+  `ACCESS_TOKEN_EXPIRE_DAYS`.
+- `0` or a negative value lets Core start, but every new token fails with `401`
+  on first use.
+
+To return to the default of 7 days, remove the override and restart Core.
+`reset-failed` clears the failed state if a bad value stopped Core.
+
+```bash
+sudo systemctl revert wlanpi-core
+sudo systemctl reset-failed wlanpi-core
+sudo systemctl restart wlanpi-core
 ```
 
 ---
