@@ -63,7 +63,15 @@ hostname verification uses the SAN, so the common name does not need to match.
 Never use `verify=False`, `curl -k`, or an automatic HTTP fallback in
 production.
 
-**Remote clients** must import the certificate once before connecting. A
+**Remote clients** must import the certificate once before connecting. Copy it
+over SSH, which authenticates the device, rather than downloading it over the
+TLS connection it is meant to verify:
+
+```bash
+scp wlanpi@<wlanpi-host>:/etc/nginx/ssl/self-signed-wlanpi.cert wlanpi.cert
+```
+
+Then pass `wlanpi.cert` wherever the table above shows the device path. A
 hostname or IP outside the SANs listed above produces a hostname mismatch
 error. A client that has not imported the certificate receives an untrusted
 error and cannot proceed without bypassing verification, which authenticates
@@ -161,14 +169,16 @@ Content-Type: application/json
 ### 1.4 Keep a session alive
 
 Core never extends a token. To keep working past expiry, trade the current
-token for a new one while the current token is still valid.
+token for a new one while the current token is still valid. The examples run
+on a remote client and use the certificate copied in
+[TLS and certificate trust](#tls-and-certificate-trust).
 
 1. Keep a copy of the current token, then request a new one, sending the
    current token as the bearer and the same `device_id`:
 
    ```bash
    OLD_WLANPI_TOKEN=$WLANPI_TOKEN
-   curl --cacert /etc/nginx/ssl/self-signed-wlanpi.cert \
+   curl --cacert wlanpi.cert \
      -X POST "https://<wlanpi-host>:31415/api/v1/auth/token" \
      -H "Authorization: Bearer $WLANPI_TOKEN" \
      -H "Content-Type: application/json" \
@@ -187,7 +197,7 @@ token for a new one while the current token is still valid.
    Keep the old token until then, and send it, not the new one, as the bearer:
 
    ```bash
-   curl --cacert /etc/nginx/ssl/self-signed-wlanpi.cert \
+   curl --cacert wlanpi.cert \
      -X DELETE "https://<wlanpi-host>:31415/api/v1/auth/token" \
      -H "Authorization: Bearer $OLD_WLANPI_TOKEN" \
      -H "Content-Type: application/json" \
