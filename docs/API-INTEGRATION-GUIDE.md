@@ -163,10 +163,11 @@ Content-Type: application/json
 Core never extends a token. To keep working past expiry, trade the current
 token for a new one while the current token is still valid.
 
-1. Request a new token, sending the current token as the bearer and the same
-   `device_id`:
+1. Keep a copy of the current token, then request a new one, sending the
+   current token as the bearer and the same `device_id`:
 
    ```bash
+   OLD_WLANPI_TOKEN=$WLANPI_TOKEN
    curl --cacert /etc/nginx/ssl/self-signed-wlanpi.cert \
      -X POST "https://<wlanpi-host>:31415/api/v1/auth/token" \
      -H "Authorization: Bearer $WLANPI_TOKEN" \
@@ -180,8 +181,8 @@ token for a new one while the current token is still valid.
 
    The new `access_token` has a full lifetime counted from now.
 
-2. Send the new token on all later requests. The old token is unchanged and
-   stays valid until its own expiry.
+2. Store the new `access_token` in `WLANPI_TOKEN` and send it on all later
+   requests. The old token is unchanged and stays valid until its own expiry.
 3. Optional: after a request with the new token succeeds, revoke the old token.
    Keep the old token until then, and send it, not the new one, as the bearer:
 
