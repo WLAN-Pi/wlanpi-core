@@ -71,6 +71,10 @@ def _mock_root_adapters(mocker, *ifaces):
         "wlanpi_core.streaming.connection_manager.network_config.status",
         return_value=_root_status(*ifaces),
     )
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.allow_other_unicast",
+        return_value=None,
+    )
 
 
 @pytest.mark.asyncio
