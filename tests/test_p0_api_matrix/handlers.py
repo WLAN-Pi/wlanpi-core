@@ -1044,6 +1044,12 @@ def handle_system_health(client, auth_headers, scenario):
     assert "rfkill" in body
 
 
+def handle_system_services(client, auth_headers, scenario):
+    response = client.get("/api/v1/system/services")
+    _expect_status(response, scenario.expected_http)
+    assert "iperf3" in response.json()["services"]
+
+
 def handle_system_services_failed(client, auth_headers, scenario):
     payload = {
         "units": [
@@ -1141,6 +1147,7 @@ HANDLERS.update(
         "system_ntp_get": handle_system_ntp_get,
         "system_ntp_set": handle_system_ntp_set,
         "system_health": handle_system_health,
+        "system_services": handle_system_services,
         "system_services_failed": handle_system_services_failed,
         "wlan_link": handle_wlan_link,
     }

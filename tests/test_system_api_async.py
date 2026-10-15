@@ -124,6 +124,28 @@ def test_api_health_serializes():
     assert response.json()["temperatures"][0]["celsius"] == 60.0
 
 
+def test_api_allowed_services_lists_allowlist():
+    async def _allow():
+        return True
+
+    app.dependency_overrides[verify_auth_wrapper] = _allow
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/system/services")
+    finally:
+        app.dependency_overrides.pop(verify_auth_wrapper, None)
+
+    assert response.status_code == 200
+    assert response.json() == system_api.system_service.get_allowed_services()
+
+
+def test_api_allowed_services_requires_auth():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/system/services")
+
+    assert response.status_code == 401
+
+
 def test_api_failed_services_serializes():
     async def _allow():
         return True

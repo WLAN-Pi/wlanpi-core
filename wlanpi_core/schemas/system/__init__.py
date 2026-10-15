@@ -1,6 +1,7 @@
 """System schemas."""
 
 from .system import (
+    AllowedServices,
     BatteryInfo,
     DateTimeInfo,
     DeviceInfo,

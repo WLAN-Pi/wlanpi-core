@@ -502,6 +502,17 @@ def test_get_health_aggregates(monkeypatch):
     assert health["swap"] == {"used_mb": 1, "total_mb": 2}
 
 
+def test_get_allowed_services_matches_allowlist():
+    services = system_service.get_allowed_services()["services"]
+
+    assert len(services) == len(set(services))
+    assert set(services) == set(system_service.allowed_services)
+    assert all(system_service.is_allowed_service(name) for name in services)
+    # #349: the iperf units are iperf2/iperf2-udp/iperf3; plain "iperf" is not one
+    assert "iperf" not in services
+    assert {"iperf2", "iperf2-udp", "iperf3"} <= set(services)
+
+
 def test_get_failed_services_parses_json(monkeypatch):
     payload = json.dumps(
         [

@@ -303,6 +303,15 @@ class Health(BaseModel):
     rfkill: list[RfkillState] = Field(default_factory=list)
 
 
+class AllowedServices(BaseModel):
+    """Services the /service/status, start, stop and restart routes accept."""
+
+    services: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"example": ["wlanpi-profiler", "iperf3"]},
+    )
+
+
 class FailedService(BaseModel):
     """A systemd unit currently in the failed state."""
 

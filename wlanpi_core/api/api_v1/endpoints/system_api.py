@@ -134,6 +134,26 @@ async def show_health() -> Any:
 
 
 @router.get(
+    "/services",
+    response_model=system.AllowedServices,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_allowed_services() -> Any:
+    """
+    Return the services the /service/* status, start, stop and restart routes accept.
+
+    This is core's allowlist, so clients can offer exactly these names
+    instead of keeping their own copy. A listed service may still be
+    absent on a given image; /service/status reports that per service.
+    """
+    try:
+        return system_service.get_allowed_services()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
     "/services/failed",
     response_model=system.FailedServices,
     dependencies=[Depends(verify_auth_wrapper)],

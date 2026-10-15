@@ -2336,6 +2336,33 @@
         ]
       }
     },
+    "/api/v1/system/services": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Allowed Services",
+        "description": "Return the services the /service/* status, start, stop and restart routes accept.\n\nThis is core's allowlist, so clients can offer exactly these names\ninstead of keeping their own copy. A listed service may still be\nabsent on a given image; /service/status reports that per service.",
+        "operationId": "show_allowed_services_api_v1_system_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedServices"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/services/failed": {
       "get": {
         "tags": [
@@ -4013,6 +4040,24 @@
         ],
         "title": "AdapterOutcome",
         "description": "What happened to one configuration entry during activation."
+      },
+      "AllowedServices": {
+        "properties": {
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Services",
+            "example": [
+              "wlanpi-profiler",
+              "iperf3"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AllowedServices",
+        "description": "Services the /service/status, start, stop and restart routes accept."
       },
       "ApiErrorResponse": {
         "properties": {
