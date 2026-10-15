@@ -61,7 +61,6 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-5",
     "wlanpi-grafana-wipry-lp-6",
     "wlanpi-grafana-wipry-lp-stop",
-    "wpa_supplicant",
     "wpa_supplicant@wlan0",
 ]
 
@@ -398,6 +397,11 @@ def get_stats() -> dict[str, str]:
     }
 
     return results
+
+
+def get_allowed_services() -> dict[str, Any]:
+    """Return the services the /service/* routes will act on, in list order."""
+    return {"services": list(allowed_services)}
 
 
 def is_allowed_service(service: str) -> bool:
