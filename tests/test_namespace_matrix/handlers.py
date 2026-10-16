@@ -440,6 +440,42 @@ def handle_default_legacy_file_migrated(
     assert inventory.live() == JOSH_LIVE
 
 
+def _assert_malformed_default_repaired(netcfg_env, content: str) -> None:
+    """Startup moves a broken default.json aside and rebuilds it from live."""
+    cfg_dir = netcfg_env["cfg_dir"]
+    (cfg_dir / "default.json").write_text(content)
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        loaded = nc.get_config("default")
+        ok = nc.activate_config("default", override_active=True)
+    assert {root.interface: root.phy for root in loaded.roots or []} == {
+        "wlan0": "phy0",
+        "wlan1": "phy2",
+        "wlan2": "phy1",
+    }
+    on_disk = json.loads((cfg_dir / "default.json").read_text())
+    assert loaded.model_dump(mode="json") == on_disk
+    quarantined = list(cfg_dir.glob("default.json.bad-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text() == content
+    # The kept copy is not a profile, so list_configs never shows it.
+    assert set(nc.list_configs()) == {"default"}
+    assert ok is True
+    assert inventory.live() == JOSH_LIVE
+    assert netcfg_env["ccf"].read_text().strip() == "default"
+
+
+def handle_default_startup_empty_file(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    _assert_malformed_default_repaired(netcfg_env, "")
+
+
+def handle_default_startup_malformed_json(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    _assert_malformed_default_repaired(netcfg_env, '{"id": "default", "roots": [')
+
+
 def handle_default_skips_system_monitors(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -2836,6 +2872,8 @@ HANDLERS = {
     "default_created_when_missing": handle_default_created_when_missing,
     "default_legacy_file_migrated": handle_default_legacy_file_migrated,
     "default_skips_system_monitors": handle_default_skips_system_monitors,
+    "default_startup_empty_file": handle_default_startup_empty_file,
+    "default_startup_malformed_json": handle_default_startup_malformed_json,
     "default_file_override": handle_default_file_override,
     "saved_profile_with_mlo_activates": handle_saved_profile_with_mlo_activates,
     "dual_ns_split_adapters": handle_dual_ns_split_adapters,
