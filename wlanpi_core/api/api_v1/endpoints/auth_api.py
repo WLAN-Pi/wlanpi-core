@@ -7,9 +7,11 @@ signing key rotation, and authentication-related debug operations.
 
 import asyncio
 import grp
+import hashlib
 import os
 import pwd
 import random
+import time
 from datetime import timedelta
 from typing import Annotated, Any
 
@@ -27,6 +29,8 @@ from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.schemas.auth import (
     KeyResponse,
+    PAMAccountRequest,
+    PAMAccountResponse,
     PAMAuthRequest,
     PAMAuthResponse,
     PAMChangePasswordRequest,
@@ -122,6 +126,37 @@ def _is_administrator(username: str) -> bool:
     except (KeyError, ValueError):  # ValueError: embedded NUL
         return False
     return sudo_gid in os.getgrouplist(username, gid)
+
+
+def _account_status(username: str) -> PAMAccountResponse:
+    """Check sudo membership and the /etc/shadow entry; fails closed.
+
+    spwd left the stdlib in Python 3.13, so the file is parsed here. A missing,
+    unreadable or malformed entry is inactive with no fingerprint: glibc skips
+    malformed lines, so PAM refuses that account too.
+    """
+    password: str | None = None
+    expire = -1
+    try:
+        with open("/etc/shadow", encoding="utf-8") as shadow:
+            for line in shadow:
+                # name:passwd:lastchg:min:max:warn:inactive:expire:reserved
+                fields = line.rstrip("\n").split(":")
+                if fields[0] == username and len(fields) == 9:
+                    expire = int(fields[7] or -1)
+                    password = fields[1]
+                    break
+    except (OSError, ValueError):  # ValueError: undecodable or malformed entry
+        log.warning("Cannot read the account's /etc/shadow entry")
+    if password is None:
+        return PAMAccountResponse(active=False, password_fingerprint=None)
+    # pam_unix's test: whole days since the epoch (UTC); -1 never expires.
+    expired = expire != -1 and expire <= int(time.time() // 86400)
+    locked = password.startswith(("!", "*"))
+    return PAMAccountResponse(
+        active=not locked and not expired and _is_administrator(username),
+        password_fingerprint=hashlib.sha256(password.encode()).hexdigest()[:16],
+    )
 
 
 def _fail_delay() -> float:
@@ -225,6 +260,24 @@ async def pam_change_password(body: PAMChangePasswordRequest) -> PAMAuthResponse
             status_code=503, detail="Authentication service unavailable"
         )
     return PAMAuthResponse(status="success")
+
+
+@router.post(
+    "/pam/account",
+    response_model=PAMAccountResponse,
+    include_in_schema=False,
+    dependencies=[Depends(verify_local_auth)],
+)
+async def pam_account(body: PAMAccountRequest) -> PAMAccountResponse:
+    """Report whether a local account may still sign in (localhost only).
+
+    Accepts the `wlanpi-webui` bearer token or the legacy localhost HMAC.
+
+    `active` is false when the account is missing, not in `sudo`, locked or
+    expired. `password_fingerprint` changes with every password change and is
+    null when the account has no `/etc/shadow` entry.
+    """
+    return await asyncio.to_thread(_account_status, body.username)
 
 
 @router.post(
