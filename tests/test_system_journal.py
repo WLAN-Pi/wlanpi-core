@@ -71,6 +71,19 @@ def test_parse_storage_defaults_to_auto():
     assert system_service._parse_journal_storage(MAIN) == ("auto", None)
 
 
+def test_parse_storage_ignores_comments_that_start_with_a_path():
+    # Debian's stock journald.conf has this comment line.
+    main = (
+        "# /etc/systemd/journald.conf\n"
+        '# /etc/ if the original file is shipped in /usr/), or by creating "drop-ins" in\n'
+        "[Journal]\nStorage=volatile\n"
+    )
+    assert system_service._parse_journal_storage(main) == (
+        "volatile",
+        "/etc/systemd/journald.conf",
+    )
+
+
 @pytest.mark.parametrize(
     ("output", "expected"),
     [

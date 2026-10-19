@@ -1010,8 +1010,10 @@ def _parse_journal_storage(cat_config: str) -> tuple[str, str | None]:
     storage, source, current = "auto", None, None
     for raw in cat_config.splitlines():
         line = raw.strip()
-        if line.startswith("# /"):
-            current = line[2:]
+        # A header is exactly `# /path`; comments can start with a path too.
+        header = re.fullmatch(r"# (/\S+)", line)
+        if header:
+            current = header.group(1)
             continue
         if line.startswith(("#", ";")) or "=" not in line:
             continue
