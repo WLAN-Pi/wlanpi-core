@@ -8,7 +8,6 @@ signing key rotation, and authentication-related debug operations.
 import asyncio
 import grp
 import hashlib
-import hmac
 import os
 import pwd
 import random
@@ -136,7 +135,7 @@ def _account_status(username: str) -> PAMAccountResponse:
     unreadable or malformed entry is inactive with no fingerprint: glibc skips
     malformed lines, so PAM refuses that account too.
     """
-    password: str | None = None
+    password_hash: str | None = None
     expire = -1
     try:
         with open("/etc/shadow", encoding="utf-8") as shadow:
@@ -145,22 +144,18 @@ def _account_status(username: str) -> PAMAccountResponse:
                 fields = line.rstrip("\n").split(":")
                 if fields[0] == username and len(fields) == 9:
                     expire = int(fields[7] or -1)
-                    password = fields[1]
+                    password_hash = fields[1]
                     break
     except (OSError, ValueError):  # ValueError: undecodable or malformed entry
         log.warning("Cannot read the account's /etc/shadow entry")
-    if password is None:
+    if password_hash is None:
         return PAMAccountResponse(active=False, password_fingerprint=None)
     # pam_unix's test: whole days since the epoch (UTC); -1 never expires.
     expired = expire != -1 and expire <= int(time.time() // 86400)
-    locked = password.startswith(("!", "*"))
+    locked = password_hash.startswith(("!", "*"))
     return PAMAccountResponse(
         active=not locked and not expired and _is_administrator(username),
-        password_fingerprint=hmac.new(
-            settings.JWT_SECRET_KEY.encode("utf-8"),
-            password.encode(),
-            hashlib.sha256,
-        ).hexdigest()[:16],
+        password_fingerprint=hashlib.sha256(password_hash.encode()).hexdigest()[:16],
     )
 
 
