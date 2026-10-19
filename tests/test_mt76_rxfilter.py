@@ -52,6 +52,15 @@ def test_leaves_a_clear_register_alone(regs):
     assert clear_drop_other_uc("phy0", debugfs=root) == (0x0000000A, 0x0000000A)
 
 
+def test_failed_read_is_never_written_back(regs):
+    root, values = regs
+    values[MT7921_RFCR_BAND0] = 0xFFFFFFFF
+
+    with pytest.raises(OSError, match="RFCR read failed on phy0"):
+        clear_drop_other_uc("phy0", debugfs=root)
+    assert values[MT7921_RFCR_BAND0] == 0xFFFFFFFF
+
+
 def test_no_mt76_debugfs_returns_none(tmp_path):
     assert clear_drop_other_uc("phy9", debugfs=tmp_path) is None
 

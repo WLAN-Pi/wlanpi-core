@@ -49,12 +49,15 @@ def clear_drop_other_uc(
     """Clear DROP_OTHER_UC in ``phy``'s RX filter register.
 
     Returns the register value before and after, or None when the phy has no
-    mt76 debugfs register interface.
+    mt76 debugfs register interface. Raises OSError when the read fails.
     """
     regs = debugfs / phy / "mt76"
     if not (regs / "regidx").exists():
         return None
     before = _read_reg(regs, MT7921_RFCR_BAND0)
+    # mt76 returns ~0 for a failed bus read; writing that back sets every drop bit.
+    if before == 0xFFFFFFFF:
+        raise OSError(f"RFCR read failed on {phy}")
     if not before & DROP_OTHER_UC:
         return before, before
     _write_reg(regs, MT7921_RFCR_BAND0, before & ~DROP_OTHER_UC)
