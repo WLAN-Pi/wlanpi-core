@@ -76,6 +76,31 @@ class SystemManager:
                     return "".join(filter(str.isdigit, line))
         return None
 
+    def _supports_monitor(self, index: str) -> bool:
+        """Whether phy<index> lists monitor among its interface modes.
+
+        Returns True when ``iw phy`` output is missing or has no interface
+        mode list, so an unknown phy keeps the old behaviour of trying.
+        """
+        output = self._run([IW_FILE, "phy", f"phy{index}", "info"], capture_output=True)
+        if not output:
+            return True
+        found_modes = False
+        in_modes = False
+        for line in output.splitlines():
+            text = line.strip()
+            if text.lower().startswith(
+                ("supported interface modes", "software interface modes")
+            ):
+                found_modes = True
+                in_modes = True
+            elif in_modes and text.startswith("*"):
+                if text.lstrip("* ") == "monitor":
+                    return True
+            else:
+                in_modes = False
+        return not found_modes
+
     def _get_interfaces_by_type(self) -> dict[str, str]:
         output = self._run([IW_FILE, "dev"], capture_output=True)
         interfaces: dict[str, str] = {}
@@ -150,6 +175,11 @@ class SystemManager:
         for iface, index in managed.items():
             expected_mon = f"{self.iface_name}{index}"
             if index not in core_monitor_phys:
+                if not self._supports_monitor(index):
+                    log.info(
+                        f"Not creating {expected_mon}: phy{index} ({iface}) has no monitor mode"
+                    )
+                    continue
                 core_monitor_phys.add(index)
                 log.info(f"Creating monitor interface for {iface} → {expected_mon}")
                 self._iface_up(iface)

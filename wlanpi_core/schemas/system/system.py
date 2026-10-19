@@ -1,5 +1,7 @@
 """System information and control schemas."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -211,6 +213,33 @@ class NtpSetRequest(BaseModel):
     enabled: bool = Field(description="True to enable NTP, false to disable it")
 
 
+class JournalInfo(BaseModel):
+    """Effective systemd-journald storage mode."""
+
+    storage: str = Field(
+        description="Effective Storage= value: persistent | volatile | auto | none",
+        examples=["persistent"],
+    )
+    source: str | None = Field(
+        default=None,
+        description="File that set the effective value; null for the systemd default",
+        examples=["/etc/systemd/journald.conf.d/90-wlanpi-journal.conf"],
+    )
+    disk_usage_bytes: int | None = Field(
+        default=None,
+        description="Space used by journal files per `journalctl --disk-usage`",
+        examples=[12345678],
+    )
+
+
+class JournalSetRequest(BaseModel):
+    """Request to switch journal storage."""
+
+    storage: Literal["persistent", "volatile"] = Field(
+        description="persistent keeps the journal on disk, volatile in memory"
+    )
+
+
 class PowerActionResponse(BaseModel):
     """Result of a device power action."""
 
@@ -301,6 +330,15 @@ class Health(BaseModel):
     load: LoadAverage
     swap: SwapUsage
     rfkill: list[RfkillState] = Field(default_factory=list)
+
+
+class AllowedServices(BaseModel):
+    """Services the /service/status, start, stop and restart routes accept."""
+
+    services: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"example": ["wlanpi-profiler", "iperf3"]},
+    )
 
 
 class FailedService(BaseModel):

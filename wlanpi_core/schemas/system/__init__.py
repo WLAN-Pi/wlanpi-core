@@ -1,6 +1,7 @@
 """System schemas."""
 
 from .system import (
+    AllowedServices,
     BatteryInfo,
     DateTimeInfo,
     DeviceInfo,
@@ -11,6 +12,8 @@ from .system import (
     Health,
     HotspotClients,
     HotspotCredentials,
+    JournalInfo,
+    JournalSetRequest,
     LoadAverage,
     NtpAutoInfo,
     NtpInfo,

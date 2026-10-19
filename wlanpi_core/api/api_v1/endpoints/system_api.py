@@ -134,6 +134,26 @@ async def show_health() -> Any:
 
 
 @router.get(
+    "/services",
+    response_model=system.AllowedServices,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_allowed_services() -> Any:
+    """
+    Return the services the /service/* status, start, stop and restart routes accept.
+
+    This is core's allowlist, so clients can offer exactly these names
+    instead of keeping their own copy. A listed service may still be
+    absent on a given image; /service/status reports that per service.
+    """
+    try:
+        return system_service.get_allowed_services()
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.get(
     "/services/failed",
     response_model=system.FailedServices,
     dependencies=[Depends(verify_auth_wrapper)],
@@ -322,6 +342,52 @@ async def set_ntp(body: system.NtpSetRequest) -> Any:
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to set NTP", status_code=503)
+
+
+@router.get(
+    "/journal",
+    response_model=system.JournalInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def show_journal() -> Any:
+    """
+    Return the effective systemd-journald storage mode.
+
+    `storage` is the last `Storage=` in `systemd-analyze cat-config
+    systemd/journald.conf` (`auto` when none is set), `source` is the file that
+    set it, and `disk_usage_bytes` is what `journalctl --disk-usage` reports.
+    """
+    try:
+        return await asyncio.to_thread(system_service.get_journal)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/journal",
+    response_model=system.JournalInfo,
+    dependencies=[Depends(verify_auth_wrapper)],
+)
+async def set_journal(body: system.JournalSetRequest) -> Any:
+    """
+    Switch the journal between persistent (disk) and volatile (memory) storage.
+
+    Writes `/etc/systemd/journald.conf.d/90-wlanpi-journal.conf`, restarts
+    systemd-journald, and for `persistent` flushes the in-memory journal to
+    disk. No reboot is needed. Switching to `volatile` keeps the logs already on
+    disk. Returns 409 naming the file when a later drop-in still overrides the
+    requested value.
+    """
+    try:
+        return await asyncio.to_thread(system_service.set_journal_storage, body.storage)
+    except ValidationError as ve:
+        return Response(content=ve.error_msg, status_code=ve.status_code)
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to set journal storage", status_code=503)
 
 
 @router.get(

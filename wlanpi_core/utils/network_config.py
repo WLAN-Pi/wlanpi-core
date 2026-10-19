@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -358,6 +359,23 @@ def get_config(cfg_id: str) -> NetConfig:
             return _write_live_default()
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
 
+    try:
+        return _read_config(cfg_id, path)
+    except ConfigMalformedError as e:
+        if cfg_id != "default":
+            raise
+        # Core activates default.json on every boot, so a broken one would
+        # fail each start until someone fixed it by hand. Keep the bad file
+        # for inspection (outside the *.json glob) and rebuild from live.
+        bad = path.with_name(f"default.json.bad-{time.strftime('%Y%m%dT%H%M%S')}")
+        path.replace(bad)
+        log.error(
+            f"Default configuration is unusable ({e.message}); moved it to {bad.name} and regenerating it."
+        )
+        return _write_live_default()
+
+
+def _read_config(cfg_id: str, path: Path) -> NetConfig:
     try:
         file_content = path.read_text().strip()
         if not file_content:

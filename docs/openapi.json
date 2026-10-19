@@ -2336,6 +2336,33 @@
         ]
       }
     },
+    "/api/v1/system/services": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Allowed Services",
+        "description": "Return the services the /service/* status, start, stop and restart routes accept.\n\nThis is core's allowlist, so clients can offer exactly these names\ninstead of keeping their own copy. A listed service may still be\nabsent on a given image; /service/status reports that per service.",
+        "operationId": "show_allowed_services_api_v1_system_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedServices"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/services/failed": {
       "get": {
         "tags": [
@@ -2733,6 +2760,78 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NtpInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/journal": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Show Journal",
+        "description": "Return the effective systemd-journald storage mode.\n\n`storage` is the last `Storage=` in `systemd-analyze cat-config\nsystemd/journald.conf` (`auto` when none is set), `source` is the file that\nset it, and `disk_usage_bytes` is what `journalctl --disk-usage` reports.",
+        "operationId": "show_journal_api_v1_system_journal_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Set Journal",
+        "description": "Switch the journal between persistent (disk) and volatile (memory) storage.\n\nWrites `/etc/systemd/journald.conf.d/90-wlanpi-journal.conf`, restarts\nsystemd-journald, and for `persistent` flushes the in-memory journal to\ndisk. No reboot is needed. Switching to `volatile` keeps the logs already on\ndisk. Returns 409 naming the file when a later drop-in still overrides the\nrequested value.",
+        "operationId": "set_journal_api_v1_system_journal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JournalSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalInfo"
                 }
               }
             }
@@ -4013,6 +4112,24 @@
         ],
         "title": "AdapterOutcome",
         "description": "What happened to one configuration entry during activation."
+      },
+      "AllowedServices": {
+        "properties": {
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Services",
+            "example": [
+              "wlanpi-profiler",
+              "iperf3"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AllowedServices",
+        "description": "Services the /service/status, start, stop and restart routes accept."
       },
       "ApiErrorResponse": {
         "properties": {
@@ -5575,6 +5692,73 @@
         "type": "object",
         "title": "IwInterfaceStatus",
         "description": "Parsed `iw dev` fields for one interface (extra keys allowed)."
+      },
+      "JournalInfo": {
+        "properties": {
+          "storage": {
+            "type": "string",
+            "title": "Storage",
+            "description": "Effective Storage= value: persistent | volatile | auto | none",
+            "examples": [
+              "persistent"
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "File that set the effective value; null for the systemd default",
+            "examples": [
+              "/etc/systemd/journald.conf.d/90-wlanpi-journal.conf"
+            ]
+          },
+          "disk_usage_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Usage Bytes",
+            "description": "Space used by journal files per `journalctl --disk-usage`",
+            "examples": [
+              12345678
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "storage"
+        ],
+        "title": "JournalInfo",
+        "description": "Effective systemd-journald storage mode."
+      },
+      "JournalSetRequest": {
+        "properties": {
+          "storage": {
+            "type": "string",
+            "enum": [
+              "persistent",
+              "volatile"
+            ],
+            "title": "Storage",
+            "description": "persistent keeps the journal on disk, volatile in memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storage"
+        ],
+        "title": "JournalSetRequest",
+        "description": "Request to switch journal storage."
       },
       "LeftAlone": {
         "properties": {
