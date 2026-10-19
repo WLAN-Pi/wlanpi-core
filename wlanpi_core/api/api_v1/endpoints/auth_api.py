@@ -8,6 +8,7 @@ signing key rotation, and authentication-related debug operations.
 import asyncio
 import grp
 import hashlib
+import hmac
 import os
 import pwd
 import random
@@ -155,7 +156,11 @@ def _account_status(username: str) -> PAMAccountResponse:
     locked = password.startswith(("!", "*"))
     return PAMAccountResponse(
         active=not locked and not expired and _is_administrator(username),
-        password_fingerprint=hashlib.sha256(password.encode()).hexdigest()[:16],
+        password_fingerprint=hmac.new(
+            settings.JWT_SECRET_KEY.encode("utf-8"),
+            password.encode(),
+            hashlib.sha256,
+        ).hexdigest()[:16],
     )
 
 
