@@ -347,16 +347,19 @@ def test_non_iwlwifi_scan_leaves_monitors_alone():
     allow.assert_not_called()
 
 
-@pytest.mark.parametrize("scan", [[], RuntimeError("scan failed")])
-def test_mt7921_scan_lets_up_monitors_see_unicast_again(mocker, scan):
+@pytest.mark.parametrize(
+    ("scan", "outcome"),
+    [
+        ([], contextlib.nullcontext()),
+        (RuntimeError("scan failed"), pytest.raises(RuntimeError, match="scan failed")),
+    ],
+)
+def test_mt7921_scan_lets_monitors_see_unicast_again(mocker, scan, outcome):
     # The scan sets DROP_OTHER_UC; a capture on wlanpi0 must get it cleared
     # after wlan1 is back down, whether the scan worked or not.
     order = Mock()
     mocker.patch(
         "wlanpi_core.adapters.discovery.interface_driver", return_value="mt7921u"
-    )
-    sibs = mocker.patch(
-        "wlanpi_core.adapters.phy.up_sibling_monitors", return_value=["wlanpi0"]
     )
     mocker.patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False)
     mocker.patch("wlanpi_core.wpa.scan._set_interface_state", order.set_state)
@@ -364,14 +367,13 @@ def test_mt7921_scan_lets_up_monitors_see_unicast_again(mocker, scan):
     mocker.patch("wlanpi_core.wpa.scan.wpa_cli_available", return_value=False)
     mocker.patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=[scan])
 
-    with contextlib.suppress(RuntimeError):
-        run_interface_scan("wlan1", "lab", mode="managed")
+    with outcome:
+        assert run_interface_scan("wlan1", "lab", mode="managed") == []
 
-    sibs.assert_called_once_with("wlan1", "lab")
     assert order.mock_calls == [
         call.set_state("wlan1", True, "lab"),
         call.set_state("wlan1", False, "lab"),
-        call.allow("wlanpi0", "lab"),
+        call.allow("wlan1", "lab"),
     ]
 
 

@@ -616,7 +616,7 @@ def run_interface_scan(
                     except Exception as e:
                         # Keep going: every paused monitor gets its restore.
                         log.error("Could not bring %s back up after a scan: %s", mon, e)
-                # The scan sets DROP_OTHER_UC again, blinding a running capture.
+                # The scan sets DROP_OTHER_UC radio-wide, blinding a capture on
+                # this radio's monitor.
                 if driver in MT7921_DRIVERS:
-                    for mon in adapter_phy.up_sibling_monitors(iface, namespace):
-                        allow_other_unicast(mon, namespace)
+                    allow_other_unicast(iface, namespace)

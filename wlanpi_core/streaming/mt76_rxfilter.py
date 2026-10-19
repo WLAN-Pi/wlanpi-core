@@ -10,9 +10,9 @@ and up or retuning it does not clear the bit, and the driver has no code path
 that does (``mt7921_configure_filter`` only maps FCSFAIL, CONTROL and OTHER_BSS).
 
 Until the driver handles it, a capture clears the bit through mt76's debugfs
-register interface just before it starts, and a scan clears it again for the
-radio's up monitors when it ends. This is best effort: other drivers, a missing
-debugfs, or any error leave the capture untouched.
+register interface just before it starts, and a scan on the radio clears it
+again when it ends. This is best effort: other drivers, a missing debugfs, or
+any error leave the capture untouched.
 """
 
 from __future__ import annotations

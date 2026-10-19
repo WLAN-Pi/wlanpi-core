@@ -265,8 +265,9 @@ interface (`/sys/kernel/debug/ieee80211/<phy>/mt76/regidx` and `regval`,
 
 - `start_streaming`, on every mt7921 capture interface just before dumpcap
   starts;
-- `run_interface_scan`, for every up monitor on the scanned mt7921 radio once
-  the scan ends, so a scan during a capture does not blind it.
+- `run_interface_scan`, on the scanned mt7921 radio once the scan ends and the
+  scanned interface is back in its original state, so a scan during a capture
+  does not blind it.
 
 Each clear logs the change at INFO. Core does nothing for other drivers, and
 nothing when debugfs is missing. A scan that does not go through
