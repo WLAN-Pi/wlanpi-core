@@ -1,18 +1,18 @@
 """Let mt7921 monitor interfaces receive other stations' unicast frames.
 
-MediaTek MT7921 radios (mt7921u/e/s) filter received frames in firmware. Once a
-managed interface on the radio has been up - wlanpi-core's own scans bring the
-``wlanN`` sibling of a ``wlanpiN`` monitor up and down - the firmware leaves
-``DROP_OTHER_UC`` (bit 18 of the band-0 RX filter register RFCR, 0x820e5000)
-set. The monitor then drops every unicast frame not addressed to itself:
-authentication, association, EAPOL, ACK, RTS/CTS and Block Ack never reach the
-capture, while beacons and broadcast still do. Taking the monitor down and up
-or retuning it does not clear the bit, and the driver has no code path that
-does (``mt7921_configure_filter`` only maps FCSFAIL, CONTROL and OTHER_BSS).
+MediaTek MT7921 radios (mt7921u/e/s) filter received frames in firmware. A scan
+on the radio - wlanpi-core scans for a ``wlanpiN`` monitor through its ``wlanN``
+sibling - leaves ``DROP_OTHER_UC`` (bit 18 of the band-0 RX filter register
+RFCR, 0x820e5000) set. The monitor then drops every unicast frame not addressed
+to itself: authentication, association, EAPOL, ACK, RTS/CTS and Block Ack never
+reach the capture, while beacons and broadcast still do. Taking the monitor down
+and up or retuning it does not clear the bit, and the driver has no code path
+that does (``mt7921_configure_filter`` only maps FCSFAIL, CONTROL and OTHER_BSS).
 
 Until the driver handles it, a capture clears the bit through mt76's debugfs
-register interface just before it starts. This is best effort: other drivers,
-a missing debugfs, or any error leave the capture untouched.
+register interface just before it starts, and a scan clears it again for the
+radio's up monitors when it ends. This is best effort: other drivers, a missing
+debugfs, or any error leave the capture untouched.
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def clear_drop_other_uc(
 def allow_other_unicast(iface: str, namespace: str | None = None) -> None:
     """Make ``iface``'s mt7921 radio pass other stations' unicast frames.
 
-    Does nothing for other drivers. Never raises: a capture must not fail
-    because of this workaround.
+    Does nothing for other drivers. Never raises: a capture or scan must not
+    fail because of this workaround.
     """
     try:
         driver = discovery.interface_driver(iface, namespace)

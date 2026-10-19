@@ -14,6 +14,7 @@ from typing import Any
 from wlanpi_core.adapters import discovery
 from wlanpi_core.adapters import phy as adapter_phy
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.streaming.mt76_rxfilter import MT7921_DRIVERS, allow_other_unicast
 from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.wpa.supplicant import wpa_cli_command
 
@@ -560,7 +561,8 @@ def run_interface_scan(
     )
     mode = (mode or "").lower()
 
-    iwlwifi = discovery.interface_driver(iface, namespace) == "iwlwifi"
+    driver = discovery.interface_driver(iface, namespace)
+    iwlwifi = driver == "iwlwifi"
     paused = _monitors_to_pause(iface, namespace) if iwlwifi else []
     # ponytail: one claim for all iwlwifi scans, so no scan can restore a
     # monitor while another scans on its radio. Two Intel radios scanning at
@@ -614,3 +616,7 @@ def run_interface_scan(
                     except Exception as e:
                         # Keep going: every paused monitor gets its restore.
                         log.error("Could not bring %s back up after a scan: %s", mon, e)
+                # The scan sets DROP_OTHER_UC again, blinding a running capture.
+                if driver in MT7921_DRIVERS:
+                    for mon in adapter_phy.up_sibling_monitors(iface, namespace):
+                        allow_other_unicast(mon, namespace)

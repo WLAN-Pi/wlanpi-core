@@ -747,8 +747,8 @@ class ConnectionManager:
                             f"Could not set initial channel for {iface}: {error}",
                         )
 
-        # mt7921 firmware drops other stations' unicast once a managed vif on
-        # the radio has been up; clear that before capturing (see mt76_rxfilter).
+        # mt7921 firmware drops other stations' unicast after a scan on the
+        # radio; clear that before capturing (see mt76_rxfilter).
         for iface in interfaces:
             await asyncio.to_thread(allow_other_unicast, iface, namespace)
 

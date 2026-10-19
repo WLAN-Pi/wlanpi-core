@@ -1,9 +1,10 @@
 """Unit tests for wpa.scan primitives."""
 
+import contextlib
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -333,15 +334,45 @@ def test_iwlwifi_scan_takes_same_radio_monitor_down_and_back_up():
 
 def test_non_iwlwifi_scan_leaves_monitors_alone():
     with patch(
-        "wlanpi_core.adapters.discovery.interface_driver", return_value="mt7921u"
+        "wlanpi_core.adapters.discovery.interface_driver", return_value="mt76x2u"
     ):
         with patch("wlanpi_core.adapters.phy.up_sibling_monitors") as sibs:
             with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
                 with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
                     with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
-                        run_interface_scan("wlan1", mode="monitor")
+                        with patch("wlanpi_core.wpa.scan.allow_other_unicast") as allow:
+                            run_interface_scan("wlan1", mode="monitor")
     sibs.assert_not_called()
     set_state.assert_not_called()
+    allow.assert_not_called()
+
+
+@pytest.mark.parametrize("scan", [[], RuntimeError("scan failed")])
+def test_mt7921_scan_lets_up_monitors_see_unicast_again(mocker, scan):
+    # The scan sets DROP_OTHER_UC; a capture on wlanpi0 must get it cleared
+    # after wlan1 is back down, whether the scan worked or not.
+    order = Mock()
+    mocker.patch(
+        "wlanpi_core.adapters.discovery.interface_driver", return_value="mt7921u"
+    )
+    sibs = mocker.patch(
+        "wlanpi_core.adapters.phy.up_sibling_monitors", return_value=["wlanpi0"]
+    )
+    mocker.patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False)
+    mocker.patch("wlanpi_core.wpa.scan._set_interface_state", order.set_state)
+    mocker.patch("wlanpi_core.wpa.scan.allow_other_unicast", order.allow)
+    mocker.patch("wlanpi_core.wpa.scan.wpa_cli_available", return_value=False)
+    mocker.patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=[scan])
+
+    with contextlib.suppress(RuntimeError):
+        run_interface_scan("wlan1", "lab", mode="managed")
+
+    sibs.assert_called_once_with("wlan1", "lab")
+    assert order.mock_calls == [
+        call.set_state("wlan1", True, "lab"),
+        call.set_state("wlan1", False, "lab"),
+        call.allow("wlanpi0", "lab"),
+    ]
 
 
 def test_iwlwifi_scan_refuses_while_a_capture_holds_the_monitor():
