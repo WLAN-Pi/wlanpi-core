@@ -12,6 +12,8 @@ from .system import (
     Health,
     HotspotClients,
     HotspotCredentials,
+    JournalInfo,
+    JournalSetRequest,
     LoadAverage,
     NtpAutoInfo,
     NtpInfo,
