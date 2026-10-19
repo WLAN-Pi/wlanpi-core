@@ -1,21 +1,28 @@
 """Tests for the internal PAM authentication endpoints."""
 
+import hashlib
+import logging
 import sys
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from wlanpi_core.api.api_v1.endpoints import auth_api
 from wlanpi_core.api.api_v1.endpoints.auth_api import (
+    _account_status,
     _is_administrator,
     _pam_change_password,
     pam_authenticate,
     pam_change_password,
 )
+from wlanpi_core.asgi import app
+from wlanpi_core.core.auth import verify_local_auth
 from wlanpi_core.schemas.auth import (
+    PAMAccountResponse,
     PAMAuthRequest,
     PAMAuthResponse,
     PAMChangePasswordRequest,
@@ -260,3 +267,129 @@ def test_passwords_are_secret():
 
 def test_response_model_status_examples():
     assert PAMAuthResponse(status="success").status == "success"
+
+
+AUTH_API = "wlanpi_core.api.api_v1.endpoints.auth_api"
+SUDO_GID = 27
+HASH = "$y$j9T$salt$hash"
+
+
+def _shadow(password=HASH, expire=""):
+    return f"root:*:20000:0:99999:7:::\nwlanpi:{password}:20000:0:99999:7::{expire}:\n"
+
+
+def _account(shadow=None, groups=(1000, SUDO_GID), exists=True, read_error=None):
+    opener = mock_open(read_data=_shadow() if shadow is None else shadow)
+    if read_error:
+        opener.side_effect = read_error
+    with (
+        patch(f"{AUTH_API}.open", opener, create=True),
+        patch(
+            f"{AUTH_API}.pwd.getpwnam",
+            return_value=MagicMock(pw_gid=1000),
+            side_effect=None if exists else KeyError("wlanpi"),
+        ),
+        patch(f"{AUTH_API}.grp.getgrnam", return_value=MagicMock(gr_gid=SUDO_GID)),
+        patch(f"{AUTH_API}.os.getgrouplist", return_value=list(groups)),
+    ):
+        return _account_status("wlanpi")
+
+
+def test_account_active_administrator():
+    resp = _account()
+    assert resp.active is True
+    assert resp.password_fingerprint == hashlib.sha256(HASH.encode()).hexdigest()[:16]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"groups": (1000,)},
+        {"shadow": _shadow(password="!" + HASH)},
+        {"shadow": _shadow(password="*")},
+        {"shadow": _shadow(expire="1")},
+        {"shadow": _shadow(expire="0")},
+        {"exists": False},
+    ],
+    ids=["not-sudo", "locked-bang", "locked-star", "expired", "expiry-zero", "no-user"],
+)
+def test_account_inactive_keeps_fingerprint(kwargs):
+    resp = _account(**kwargs)
+    assert resp.active is False
+    assert resp.password_fingerprint is not None
+
+
+def test_account_expiring_today_is_inactive():
+    # The clock only moves forward between here and the check, so no race.
+    today = int(time.time() // 86400)
+    assert _account(shadow=_shadow(expire=str(today))).active is False
+
+
+@pytest.mark.parametrize("expire", ["", "-1", "99999"])
+def test_account_unset_or_future_expiry_is_active(expire):
+    assert _account(shadow=_shadow(expire=expire)).active is True
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"shadow": "root:*:20000:0:99999:7:::\n"},
+        {"shadow": "wlanpix:" + HASH + ":20000:0:99999:7:::\n"},
+        {"shadow": _shadow(expire="never")},
+        {"shadow": "wlanpi:" + HASH + "\n"},
+        {"read_error": PermissionError(13, "denied")},
+    ],
+    ids=["missing", "prefix-only", "bad-expiry", "short-line", "unreadable"],
+)
+def test_account_without_usable_shadow_entry_is_inactive(kwargs):
+    resp = _account(**kwargs)
+    assert resp == PAMAccountResponse(active=False, password_fingerprint=None)
+
+
+def test_fingerprint_tracks_only_the_password_field():
+    first = _account().password_fingerprint
+    other_aging = _shadow().replace(":20000:", ":20001:")
+    assert _account(shadow=other_aging).password_fingerprint == first
+    changed = _account(shadow=_shadow(password=HASH + "x")).password_fingerprint
+    assert changed != first
+    assert len(changed) == 16
+
+
+def test_account_check_never_logs_the_username_or_password_field(caplog):
+    with caplog.at_level(logging.DEBUG):
+        _account(read_error=OSError("boom"))
+        fingerprint = _account().password_fingerprint
+    messages = " ".join(record.getMessage() for record in caplog.records)
+    assert "/etc/shadow" in messages
+    for secret in ("wlanpi", HASH, fingerprint):
+        assert secret not in messages
+
+
+def test_account_route_requires_local_auth():
+    off_device = TestClient(app, client=("203.0.113.5", 50000))
+    resp = off_device.post("/api/v1/auth/pam/account", json={"username": "wlanpi"})
+    assert resp.status_code == 403
+
+
+def test_account_route_returns_the_response_model():
+    async def _allow():
+        return True
+
+    app.dependency_overrides[verify_local_auth] = _allow
+    try:
+        with patch(
+            f"{AUTH_API}._account_status",
+            return_value=PAMAccountResponse(active=True, password_fingerprint="ab"),
+        ) as status:
+            resp = TestClient(app).post(
+                "/api/v1/auth/pam/account", json={"username": "wlanpi"}
+            )
+            bad = TestClient(app).post(
+                "/api/v1/auth/pam/account", json={"username": "a\x00b"}
+            )
+    finally:
+        app.dependency_overrides.pop(verify_local_auth, None)
+    assert resp.status_code == 200
+    assert resp.json() == {"active": True, "password_fingerprint": "ab"}
+    status.assert_called_once_with("wlanpi")
+    assert bad.status_code == 422

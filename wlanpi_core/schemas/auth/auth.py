@@ -57,6 +57,24 @@ class PAMChangePasswordRequest(BaseModel):
     new_password: SecretStr = Field(min_length=1, max_length=512)
 
 
+class PAMAccountRequest(BaseModel):
+    """Local account to check for a signed-in WebUI session."""
+
+    username: str = Field(min_length=1, max_length=128, pattern=PAM_USERNAME_PATTERN)
+
+
+class PAMAccountResponse(BaseModel):
+    """Whether an account may still sign in, and a fingerprint of its password."""
+
+    active: bool = Field(
+        description="false when missing, not in sudo, locked or expired"
+    )
+    password_fingerprint: str | None = Field(
+        examples=["3f9c0a1b2c4d5e6f"],
+        description="Changes with every password change; null without a shadow entry",
+    )
+
+
 class PAMAuthResponse(BaseModel):
     """Outcome of a PAM verification or password-change attempt."""
 
