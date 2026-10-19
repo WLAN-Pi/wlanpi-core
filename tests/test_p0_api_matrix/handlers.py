@@ -16,6 +16,8 @@ from tests.conftest import (
     write_json_config,
 )
 from tests.scenarios.p0_loader import ApiScenario
+from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.models.validation_error import ValidationError
 
 # scenario name → handler(client, auth_headers, scenario)
 HANDLERS: dict[str, Callable] = {}
@@ -1071,6 +1073,58 @@ def handle_system_services_failed(client, auth_headers, scenario):
     assert response.json()["units"][0]["unit"] == "bt-agent.service"
 
 
+_SYSTEM_SERVICE = "wlanpi_core.api.api_v1.endpoints.system_api.system_service"
+_JOURNAL = {
+    "storage": "volatile",
+    "source": "/etc/systemd/journald.conf.d/90-wlanpi-journal.conf",
+    "disk_usage_bytes": 25165824,
+}
+
+
+def handle_system_journal_get(client, auth_headers, scenario):
+    with patch(f"{_SYSTEM_SERVICE}.get_journal", return_value=_JOURNAL):
+        response = client.get("/api/v1/system/journal")
+    _expect_status(response, scenario.expected_http)
+    assert response.json() == _JOURNAL
+
+
+def handle_system_journal_set(client, auth_headers, scenario):
+    with patch(
+        f"{_SYSTEM_SERVICE}.set_journal_storage", return_value=_JOURNAL
+    ) as set_storage:
+        response = client.post("/api/v1/system/journal", json={"storage": "volatile"})
+    _expect_status(response, scenario.expected_http)
+    set_storage.assert_called_once_with("volatile")
+    assert response.json() == _JOURNAL
+
+
+def handle_system_journal_set_invalid_422(client, auth_headers, scenario):
+    with patch(f"{_SYSTEM_SERVICE}.set_journal_storage") as set_storage:
+        response = client.post("/api/v1/system/journal", json={"storage": "auto"})
+    _expect_status(response, scenario.expected_http)
+    set_storage.assert_not_called()
+
+
+def handle_system_journal_set_override_409(client, auth_headers, scenario):
+    error = ValidationError(
+        "Storage=volatile set in /etc/systemd/journald.conf.d/99-local.conf"
+        " overrides /etc/systemd/journald.conf.d/90-wlanpi-journal.conf",
+        status_code=409,
+    )
+    with patch(f"{_SYSTEM_SERVICE}.set_journal_storage", side_effect=error):
+        response = client.post("/api/v1/system/journal", json={"storage": "persistent"})
+    _expect_status(response, scenario.expected_http)
+    assert "99-local.conf" in response.text
+
+
+def handle_system_journal_set_failure_503(client, auth_headers, scenario):
+    error = RunCommandError("Job for systemd-journald.service failed", 1)
+    with patch(f"{_SYSTEM_SERVICE}.set_journal_storage", side_effect=error):
+        response = client.post("/api/v1/system/journal", json={"storage": "persistent"})
+    _expect_status(response, scenario.expected_http)
+    assert response.text == "Unable to set journal storage"
+
+
 def handle_wlan_link(client, auth_headers, scenario):
     payload = {
         "interface": "wlan0",
@@ -1149,6 +1203,11 @@ HANDLERS.update(
         "system_health": handle_system_health,
         "system_services": handle_system_services,
         "system_services_failed": handle_system_services_failed,
+        "system_journal_get": handle_system_journal_get,
+        "system_journal_set": handle_system_journal_set,
+        "system_journal_set_invalid_422": handle_system_journal_set_invalid_422,
+        "system_journal_set_override_409": handle_system_journal_set_override_409,
+        "system_journal_set_failure_503": handle_system_journal_set_failure_503,
         "wlan_link": handle_wlan_link,
     }
 )
