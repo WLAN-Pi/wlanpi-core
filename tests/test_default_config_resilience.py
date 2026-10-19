@@ -4,8 +4,10 @@ A default that cannot be built, or that would repeat an interface name,
 must never stop Core starting.
 """
 
-from unittest.mock import patch
+import grp
+from unittest.mock import MagicMock, patch
 
+from wlanpi_core import app as app_module
 from wlanpi_core.adapters.discovery import LiveInterface
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils import network_config as nc
@@ -47,3 +49,30 @@ def test_unbuildable_default_is_empty_and_not_written(netcfg_env):
 def test_config_path_stays_inside_the_config_dir(netcfg_env):
     path = nc._config_path("lab_cfg")
     assert path == netcfg_env["cfg_dir"] / "lab_cfg.json"
+
+
+async def test_readiness_passes_and_repairs_an_empty_default(netcfg_env, monkeypatch):
+    # Old Cortado images shipped a zero-byte default.json.
+    cfg_dir = netcfg_env["cfg_dir"]
+    (cfg_dir / "default.json").write_text("")
+    root = netcfg_env["root"]
+    monkeypatch.setattr(app_module, "HOME_DIR", str(root / "home"))
+    monkeypatch.setattr(app_module, "SECRETS_DIR", str(root / "data" / "secrets"))
+    monkeypatch.setattr(app_module, "CONFIG_DIR", str(cfg_dir))
+    monkeypatch.setattr(app_module, "CURRENT_CONFIG_FILE", str(netcfg_env["ccf"]))
+    monkeypatch.setattr(app_module, "ensure_wlanpi_home_data_dirs", lambda home: None)
+    monkeypatch.setattr(
+        app_module.grp,
+        "getgrnam",
+        lambda name: grp.struct_group(("wlanpi", "x", 1000, [])),
+    )
+    inventory = [LiveInterface("wlan0", 0, None, "managed")]
+    manager = app_module.InitializationManager(MagicMock())
+    with patch.object(
+        nc.discovery, "list_interfaces_all_namespaces", return_value=inventory
+    ):
+        assert await manager.check_system_readiness() is True
+    assert [(r.interface, r.phy) for r in nc.get_config("default").roots] == [
+        ("wlan0", "phy0")
+    ]
+    assert len(list(cfg_dir.glob("default.json.bad-*"))) == 1
