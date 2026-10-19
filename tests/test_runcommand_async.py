@@ -294,3 +294,26 @@ async def test_run_command_async_cancellation_terminates_process():
 
     assert process.terminated is True
     assert process.returncode == -15
+
+
+@pytest.mark.asyncio
+async def test_run_command_async_replaces_invalid_utf8():
+    # Google's homepage served ISO-8859-1 bytes such as "Fran\xe7ais" (#390)
+    with patch(
+        "asyncio.subprocess.create_subprocess_exec",
+        new=AsyncMock(return_value=MockProcess(stdout=b"Fran\xe7ais", stderr=b"\xff")),
+    ):
+        result = await run_command_async(["curl", "www.google.com"])
+    assert result.stdout == "Fran\ufffdais"
+    assert result.stderr == "\ufffd"
+
+
+@pytest.mark.asyncio
+async def test_run_command_async_failure_replaces_invalid_utf8():
+    with patch(
+        "asyncio.subprocess.create_subprocess_exec",
+        new=AsyncMock(return_value=MockProcess(returncode=1, stderr=b"bad \xe7")),
+    ):
+        with pytest.raises(RunCommandError) as context:
+            await run_command_async(["false"])
+    assert context.value.error_msg == "bad \ufffd"
