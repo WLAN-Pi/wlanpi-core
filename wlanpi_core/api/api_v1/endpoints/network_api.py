@@ -40,6 +40,31 @@ legacy_wlan_router = APIRouter()
 log = get_logger(__name__)
 
 
+def _net_devtype(ifname: str) -> str | None:
+    try:
+        with open(f"/sys/class/net/{ifname}/uevent") as uevent:
+            for line in uevent:
+                if line.startswith("DEVTYPE="):
+                    return line.removeprefix("DEVTYPE=").strip()
+    except OSError:
+        pass
+    return None
+
+
+def _is_wired_ethernet(i: IPInterface) -> bool:
+    """Whether an `ip --details` entry is a physical Ethernet port.
+
+    Wi-Fi, USB gadget and Bluetooth links also report link_type ether; the
+    kernel tags those with a DEVTYPE (wlan, gadget, bluetooth), plain NICs
+    have none. Virtual links (VLAN, bridge, veth) carry linkinfo.
+    """
+    return (
+        i.link_type == "ether"
+        and "linkinfo" not in i.model_dump()
+        and _net_devtype(i.ifname) is None
+    )
+
+
 def _read_interface_link_stats(iface: str) -> dict[str, Any]:
     """Resolve interface ownership and read link stats in one worker thread."""
     namespace = resolve_interface_namespace(iface)
@@ -106,17 +131,8 @@ async def show_all_ethernet_interfaces(
         interface = None
 
     try:
-
-        def filterfunc(i: IPInterface) -> bool:
-            iface_obj = i.model_dump()
-            return (
-                "linkinfo" not in iface_obj
-                and iface_obj["link_type"] != "loopback"
-                and iface_obj["ifname"].startswith("eth")
-            )
-
         return await network_ethernet_service.get_interfaces(
-            interface=interface, custom_filter=filterfunc
+            interface=interface, custom_filter=_is_wired_ethernet
         )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
