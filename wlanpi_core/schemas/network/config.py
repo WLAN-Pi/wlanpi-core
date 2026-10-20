@@ -119,20 +119,6 @@ class InetDhcpNetworkAddress(InetNetworkAddress):
         return v
 
 
-class Vlan(BaseModel):
-    """A VLAN definition on an interface."""
-
-    interface: str = Field(examples=["eth0"])
-    vlan_tag: int = Field(examples=[20])
-    if_control: str = Field(examples=["auto"])
-    addresses: list[
-        InetStaticNetworkAddress
-        | InetDhcpNetworkAddress
-        | InetManualNetworkAddress
-        | InetLoopbackNetworkAddress
-    ] = Field()
-
-
 class NetworkConfigResponse(BaseModel):
     """Result of a network configuration operation."""
 
