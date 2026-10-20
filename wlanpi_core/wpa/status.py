@@ -42,12 +42,14 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
         wpa = ns_exec(
             wpa_cli_command(iface, namespace, "status"),
             namespace=namespace,
-        ).stdout.strip()
+        ).stdout
 
-        for line in wpa.split("\n"):
+        for line in wpa.splitlines():
             if "=" in line:
                 key, value = line.split("=", 1)
-                wpa_status[key.strip()] = value.strip()
+                key = key.strip()
+                # wpa_cli prints SSID edge spaces unescaped; they are SSID bytes.
+                wpa_status[key] = value if key == "ssid" else value.strip()
 
         connected_ssid = ssid_text(wpa_status["ssid"]) if "ssid" in wpa_status else None
         connected_bssid = wpa_status.get("bssid")

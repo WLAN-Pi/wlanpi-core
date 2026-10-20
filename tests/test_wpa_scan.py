@@ -13,6 +13,7 @@ from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.wpa.scan import (
     MonitorInUseError,
     ScanInProgressError,
+    fetch_scan_results,
     find_bss,
     normalize_scan_detail,
     parse_iw_scan_output,
@@ -222,6 +223,18 @@ def test_parse_wpa_scan_results_decodes_ssid(printed, expected):
 def test_parse_iw_scan_output_decodes_ssid(printed, expected):
     block = f"BSS aa:bb:cc:dd:ee:02(on wlan0)\n\tSSID: {printed}\n\tfreq: 2412\n"
     assert parse_iw_scan_output(block)[0]["ssid"] == expected
+
+
+def test_fetch_scan_results_keeps_trailing_space_of_last_ssid():
+    result = CommandResult(
+        "bssid / frequency / signal level / flags / ssid\n"
+        "aa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\tedge \n",
+        "",
+        0,
+    )
+    with patch("wlanpi_core.wpa.scan.ns_exec", return_value=result):
+        text = fetch_scan_results("wlan0")
+    assert parse_wpa_scan_results(text)[0]["ssid"] == "edge "
 
 
 def test_nul_ssid_counts_as_hidden():
