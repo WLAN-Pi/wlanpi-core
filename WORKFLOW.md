@@ -257,12 +257,9 @@ Python package versioning should follow [PEP 440](https://www.python.org/dev/pep
 
 ### Tagging
 
-Create annotated tags for releases:
-
-```bash
-git tag -a v1.2.3 -m "Release 1.2.3"
-git push origin v1.2.3
-```
+After the package deploys, the deploy workflow tags the commit as
+`v<version>` without the Debian revision (for example, `v2.4.9` for
+`2.4.9-1`). Do not create release tags by hand.
 
 For complete release procedures, see [Release Process](https://github.com/WLAN-Pi/developers/blob/main/RELEASE_PROCESS.md).
 
