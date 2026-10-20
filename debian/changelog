@@ -1,3 +1,13 @@
+wlanpi-core (2.1.10-2+bookworm1) bookworm; urgency=high
+
+  * WLAN Pi Go: an empty or malformed default.json no longer stops Core
+    from starting (which broke the app and getjwt). Core moves it to
+    default.json.bad-<timestamp> and writes a new one atomically.
+  * The regenerated default config manages wlan0 only, with no
+    placeholder security block.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 03:12:58 -0400
+
 wlanpi-core (2.1.10-2) unstable; urgency=medium
 
   * Hardening namespaces functionality for robustness and reliability

@@ -19,6 +19,7 @@ jobs:
     uses: WLAN-Pi/gh-workflows/.github/workflows/sbuild-pkg.yml@main
     with:
       pkg: wlanpi-core
+      distros: '["bookworm"]'
       version: ${{ needs.format.outputs.version }} 
   slack-workflow-status:
     if: ${{ always() && (github.repository_owner == 'WLAN-Pi') && (! github.event.pull_request.head.repo.fork) }}

@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import time
 from pathlib import Path
 
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE
@@ -9,8 +11,6 @@ from wlanpi_core.schemas.network.network import (
     NetConfigUpdate,
     NamespaceConfig,
     RootConfig,
-    NetSecurity,
-    SecurityTypes,
     NetworkModeEnum,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -36,23 +36,22 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
                 iface_display_name="wlan0",
                 phy="phy0",
                 interface="wlan0",
-                security = NetSecurity(
-                    ssid="wlan0",
-                    security=SecurityTypes.wpa2,
-                ),
                 default_route=True,
                 autostart_app=None,
             ),
-            RootConfig(
-                mode=NetworkModeEnum.managed,
-                iface_display_name="wlan1",
-                phy="phy1",
-                interface="wlan1",
-                default_route=True,
-                autostart_app=None,
-            )
         ],
     )
+
+
+def _write_default_atomically(path: Path) -> NetConfig:
+    default_config = get_default_config("default")
+    tmp = path.with_name(f".{path.name}.tmp")
+    with open(tmp, "w") as f:
+        f.write(default_config.model_dump_json(indent=4))
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    return default_config
 
 
 def parse_iw_dev_output(output: str) -> dict:
@@ -183,11 +182,21 @@ def get_config(cfg_id: str) -> NetConfig:
         # Only create default config if requesting the "default" config
         if cfg_id == "default":
             log.info(f"Default configuration file not found. Creating default config.")
-            default_config = get_default_config("default")
-            path.write_text(default_config.model_dump_json(indent=4))
-            return default_config
+            return _write_default_atomically(path)
         raise FileNotFoundError(f"Configuration {cfg_id} not found.")
-    
+
+    try:
+        return _read_config(cfg_id, path)
+    except ConfigMalformedError as e:
+        if cfg_id != "default":
+            raise
+        quarantined = path.with_name(f"default.json.bad-{time.strftime('%Y%m%dT%H%M%S')}")
+        path.replace(quarantined)
+        log.error(f"Default configuration is unusable ({e.message}); moved it to {quarantined.name} and regenerating it.")
+        return _write_default_atomically(path)
+
+
+def _read_config(cfg_id: str, path: Path) -> NetConfig:
     try:
         file_content = path.read_text().strip()
         if not file_content:

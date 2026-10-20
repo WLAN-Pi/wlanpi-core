@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - dev
+      - debian/bookworm
     paths:
       - 'debian/changelog'
 jobs:
@@ -25,6 +24,7 @@ jobs:
     uses: WLAN-Pi/gh-workflows/.github/workflows/sbuild-deploy-pkg.yml@main
     with:
       pkg: wlanpi-core
+      distros: '["bookworm"]'
       version: ${{ needs.format.outputs.version }} 
     secrets: inherit
   slack-workflow-status:
