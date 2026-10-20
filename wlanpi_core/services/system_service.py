@@ -268,30 +268,7 @@ def get_platform() -> str:
 
 def get_model() -> str:
     """Return the model from `wlanpi-model -b`, or "Unknown"."""
-    platform = PLATFORM_UNKNOWN
-
-    model_cmd = ["wlanpi-model", "-b"]
-    try:
-        platform = run_command(model_cmd).stdout.strip()
-
-    except (
-        RunCommandError,
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        OSError,
-    ) as exc:
-        if isinstance(exc, RunCommandError):
-            log.warning(
-                "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
-            )
-        else:
-            log.debug("wlanpi-model unavailable (%r); returning Unknown", exc)
-        return PLATFORM_UNKNOWN
-
-    if platform.endswith("?"):
-        platform = PLATFORM_UNKNOWN
-
-    return platform
+    return get_platform()
 
 
 def _read_cpu_temperature() -> str:
@@ -455,7 +432,7 @@ def _start_lock(name: str) -> contextlib.AbstractAsyncContextManager[None]:
     purge's is-it-running check cannot race a start through Core.
     """
     if name.removesuffix(".service") == profiler_cli.PROFILER_UNIT:
-        return profiler_cli._profiler_lock
+        return profiler_cli.profiler_lock
     return contextlib.nullcontext()
 
 

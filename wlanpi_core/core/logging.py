@@ -3,12 +3,8 @@
 import json
 import logging
 import logging.handlers
-import os
 import pathlib
-import sys
 import tempfile
-import traceback
-from typing import Any
 
 LOG_DIR = pathlib.Path("/var/log/wlanpi_core")
 # debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount); 5 x 4 MiB leaves rollover headroom.
@@ -22,62 +18,6 @@ LOG_LEVELS = {
     "ERROR": 40,
     "CRITICAL": 50,
 }
-
-
-def create_contextual_log_record() -> type:
-    """Return a LogRecord subclass that records the calling file, line, and function."""
-
-    class ContextualLogRecord(logging.LogRecord):
-        """Custom LogRecord that captures additional context information."""
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-
-            if not self.exc_info and sys.exc_info()[0] is not None:
-                self.exc_info = sys.exc_info()
-
-            if self.levelno >= logging.ERROR and self.exc_info:
-                try:
-                    _, _, exc_traceback = self.exc_info
-                    tb = traceback.extract_tb(exc_traceback)
-                    if tb:
-                        last_frame = tb[-1]
-                        self.source_file = os.path.basename(last_frame.filename)
-                        self.line_number = last_frame.lineno
-                        self.source_function = last_frame.name
-                    else:
-                        self.source_file = "Unknown"
-                        self.line_number = 0
-                        self.source_function = "Unknown"
-                except Exception:
-                    self.source_file = "Unknown"
-                    self.line_number = 0
-                    self.source_function = "Unknown"
-            else:
-                try:
-                    stack = traceback.extract_stack()
-                    for frame in reversed(stack[:-2]):
-                        filename = os.path.basename(frame.filename)
-                        lineno = frame.lineno
-                        function = frame.name
-                        if all(
-                            module not in filename
-                            for module in ["logging", __file__, "contextlib"]
-                        ):
-                            self.source_file = os.path.basename(filename)
-                            self.line_number = lineno
-                            self.source_function = function
-                            break
-                    else:
-                        self.source_file = "Unknown"
-                        self.line_number = 0
-                        self.source_function = "Unknown"
-                except Exception:
-                    self.source_file = "Unknown"
-                    self.line_number = 0
-                    self.source_function = "Unknown"
-
-    return ContextualLogRecord
 
 
 class ContextFilter(logging.Filter):
@@ -182,8 +122,6 @@ def _file_handlers(
 
 def configure_logging(debug_mode: bool = False) -> None:
     """Configure console, app.log, and debug.log handlers; debug_mode lowers the console to DEBUG."""
-    create_contextual_log_record()
-
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     root_logger = logging.getLogger()

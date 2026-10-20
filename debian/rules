@@ -34,7 +34,7 @@ override_dh_dwz:
 	@echo "Skipping dwz"
 
 override_dh_shlibdeps:
-	dh_shlibdeps -a -O--buildsystem=pybuild -Xpillow.libs
+	dh_shlibdeps -a -O--buildsystem=pybuild
 
 override_dh_lintian:
 	@echo "Skipping lintian checks"

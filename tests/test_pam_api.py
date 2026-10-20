@@ -39,6 +39,9 @@ NEW_AUTHTOK_REQD = 12
 AUTHTOK_ERR = 20
 MODULE_UNKNOWN = 28
 
+TEST_FAIL_DELAY = 0.05
+MIN_FAIL_DELAY_FACTOR = 0.5
+
 
 async def _verify(username, password, code, admin=True):
     with (
@@ -116,12 +119,12 @@ async def test_verify_expired_non_administrator_is_failure():
 async def test_non_administrator_refusal_waits_like_a_wrong_password(monkeypatch, code):
     """A fast refusal would confirm a non-admin's password was right."""
     monkeypatch.setattr(
-        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", 0.05
+        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", TEST_FAIL_DELAY
     )
     started = time.monotonic()
     resp = await _verify("alice", "secret", code, admin=False)
     assert resp.status == "failure"
-    assert time.monotonic() - started >= 0.025
+    assert time.monotonic() - started >= TEST_FAIL_DELAY * MIN_FAIL_DELAY_FACTOR
 
 
 @pytest.mark.parametrize("draw,factor", [(0.0, 0.5), (0.5, 1.0), (1.0, 1.5)])
@@ -190,12 +193,12 @@ async def test_change_password_non_expired_refusal_waits_like_a_wrong_password(
 ):
     """A fast "failure" would confirm the current password was right."""
     monkeypatch.setattr(
-        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", 0.05
+        "wlanpi_core.api.api_v1.endpoints.auth_api._PAM_FAIL_DELAY", TEST_FAIL_DELAY
     )
     started = time.monotonic()
     resp = await _change("alice", "current", "new", SUCCESS, SUCCESS, admin=False)
     assert resp.status == "failure"
-    assert time.monotonic() - started >= 0.025
+    assert time.monotonic() - started >= TEST_FAIL_DELAY * MIN_FAIL_DELAY_FACTOR
 
 
 @pytest.mark.asyncio

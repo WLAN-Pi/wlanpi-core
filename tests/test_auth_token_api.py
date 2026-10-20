@@ -60,9 +60,17 @@ async def test_generate_token_maps_unexpected_error_to_500():
 @pytest.mark.parametrize(
     ("caller", "allowed"),
     [
-        (True, True),
-        (SimpleNamespace(device_id="wlanpi-webui"), False),
-        (SimpleNamespace(device_id="mcp-client"), False),
+        pytest.param(True, True, id="localhost-hmac-allowed"),
+        pytest.param(
+            SimpleNamespace(device_id="wlanpi-webui"),
+            False,
+            id="bearer-same-device-forbidden",
+        ),
+        pytest.param(
+            SimpleNamespace(device_id="mcp-client"),
+            False,
+            id="bearer-other-device-forbidden",
+        ),
     ],
 )
 async def test_generate_token_reserves_the_pam_client_device_id(caller, allowed):

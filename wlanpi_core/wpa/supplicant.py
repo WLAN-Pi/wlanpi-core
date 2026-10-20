@@ -231,44 +231,6 @@ def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
     log.info(f"wpa_supplicant started for {iface} in namespace {namespace_display}")
 
 
-def parse_wpa_log(iface: str, namespace: str | None = None, timeout: int = 30) -> None:
-    """Follow the supplicant log until the connection completes.
-
-    Raises:
-        TimeoutError: If it does not complete within `timeout` seconds.
-    """
-    start_time = time.time()
-    log_file = log_path(iface, namespace)
-
-    if not log_file.exists():
-        log.warning(f"WPA log file {log_file} does not exist")
-        return
-
-    with log_file.open("r") as f:
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.1)
-                if time.time() - start_time > timeout:
-                    raise TimeoutError("Timeout waiting for connection to complete")
-                continue
-
-            line = line.strip()
-
-            parts = line.split(":", 1)
-            if len(parts) == 2 and parts[0].replace(".", "", 1).isdigit():
-                float(parts[0])
-                log_msg = parts[1].strip()
-            else:
-                log_msg = line
-
-            log.debug(f"WPA log: {log_msg}")
-
-            if "CTRL-EVENT-CONNECTED" in line and "completed" in line:
-                log.info(f"Connection completed for {iface}")
-                break
-
-
 def kill_all_supplicants() -> None:
     """Stop every wpa_supplicant Core started, in every namespace.
 

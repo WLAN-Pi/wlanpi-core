@@ -35,12 +35,9 @@ from wlanpi_core.schemas.network.network import (
     NetworkSetupLog,
     NetworkSetupStatus,
     RootConfig,
-    ScanItem,
     SecurityTypes,
 )
-from wlanpi_core.utils.namespace_execution import ns_exec
 from wlanpi_core.utils.network_management import (
-    set_default_route,
     stop_dhcp,
     stop_namespace_dhcp,
 )
@@ -309,20 +306,8 @@ class NetworkNamespaceService:
         # The radio is moved now: on any failure below, revert it.
         try:
             iface = cfg.iface_display_name or iface
-            connected_state = False
 
             if cfg.security:
-                if not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
-                    error_msg = "security.ssid is required when security is provided"
-                    self.log.error(error_msg)
-                    log = NetworkSetupLog(selectErr=error_msg, eventLog=self.event_log)
-                    return NetworkSetupStatus(
-                        status="error",
-                        response=log,
-                        connectedNet=None,
-                        input=cfg.__str__(),
-                    )
-
                 wpa_config.write_wpa_config(
                     cfg,
                     wpa_supplicant.config_path(iface, namespace),
@@ -337,13 +322,6 @@ class NetworkNamespaceService:
                 )
                 self._monitor_connection_async(cfg, iface, namespace, timeout=15)
 
-                connected_state = False
-            else:
-                connected_state = False
-
-            if cfg.default_route and connected_state:
-                set_default_route(iface, namespace)
-
             if cfg.autostart_app and not cfg.security:
                 apps.start_app_in_namespace(
                     namespace, cfg.autostart_app, pid_dir=self.pid_dir
@@ -357,7 +335,6 @@ class NetworkNamespaceService:
                 self.log.error(f"Could not revert {iface}: {revert_error}")
             raise
 
-        connected = None
         if cfg.security:
             status_value = "provisioned"
         else:
@@ -370,34 +347,6 @@ class NetworkNamespaceService:
         if mode_value != "monitor" and not cfg.security:
             status = self.get_status(iface, namespace)
             wpa: dict[str, Any] = status.get("wpa_status", {})
-            scan: dict[str, Any] = status.get("connected_scan", {})
-
-            if (
-                hasattr(cfg, "security")
-                and cfg.security
-                and hasattr(cfg.security, "ssid")
-                and cfg.security.ssid
-            ):
-                signal_val = scan.get("signal", 0)
-                if signal_val is None:
-                    signal_val = 0
-                try:
-                    signal_val = int(signal_val)
-                except (TypeError, ValueError):
-                    signal_val = 0
-                freq_val = wpa.get("freq", 0)
-                try:
-                    freq_val = int(freq_val)
-                except (TypeError, ValueError):
-                    freq_val = 0
-                connected = ScanItem(
-                    ssid=cfg.security.ssid,
-                    bssid=wpa.get("bssid", "unknown"),
-                    key_mgmt=wpa.get("key_mgmt", "unknown"),
-                    signal=signal_val,
-                    freq=freq_val,
-                    minrate=1000000,
-                )
 
             wpa_state = (wpa.get("wpa_state") or "").upper()
             if wpa_state != "COMPLETED":
@@ -407,7 +356,7 @@ class NetworkNamespaceService:
         return NetworkSetupStatus(
             status=status_value,
             response=log,
-            connectedNet=connected,
+            connectedNet=None,
             input=cfg.__str__(),
         )
 
@@ -1036,36 +985,9 @@ class NetworkNamespaceService:
         self._claim(iface_name, namespace)
         return True
 
-    def _ns_exec(
-        self, cmd: list[str], namespace: str | None, no_output: bool = False
-    ) -> Any:
-        """Execute a command in a namespace or root namespace, logging the outcome."""
-        try:
-            result = ns_exec(
-                cmd, namespace=namespace, no_output=no_output, raise_on_fail=True
-            )
-            if not no_output:
-                self.log.info(
-                    f"Command succeeded in namespace '{namespace or 'root'}': {' '.join(cmd)}"
-                )
-            return result
-        except RunCommandError as e:
-            self.log.error(
-                f"Command failed in namespace '{namespace or 'root'}': {' '.join(cmd)} - {e}"
-            )
-            raise
-
     def _safe_unlink(self, path: Path) -> None:
         if path.exists():
             path.unlink()
-
-    def _log_event(self, event: str, timestamp: str | None = None) -> None:
-        """Append an event to the event log, timestamped now unless given."""
-        from datetime import datetime
-
-        if timestamp is None:
-            timestamp = datetime.now().isoformat()
-        self.event_log.append(NetworkEvent(event=event, time=timestamp))
 
     def kill_all_supplicants(self) -> None:
         """Stop every wpa_supplicant Core started, across namespaces."""

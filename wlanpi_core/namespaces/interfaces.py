@@ -54,28 +54,11 @@ def move_interface_to_namespace(
 
     log.info(f"Moving interface {interface} to namespace {namespace}")
 
-    if not interface_type:
-        if interface.startswith("wlan"):
-            interface_type = "wlan"
-        elif interface.startswith("eth"):
-            interface_type = "eth"
-        else:
-            interface_type = "generic"
-
     try:
-        if interface_type == "wlan":
-            log.debug(f"Moving wireless interface {interface} as link")
-            ns_exec(
-                ["ip", "link", "set", interface, "netns", namespace],
-                namespace=None,
-            )
-        else:
-            log.debug(f"Moving interface {interface} as link")
-            ns_exec(
-                ["ip", "link", "set", interface, "netns", namespace],
-                namespace=None,
-            )
-
+        ns_exec(
+            ["ip", "link", "set", interface, "netns", namespace],
+            namespace=None,
+        )
         log.info(f"Successfully moved interface {interface} to namespace {namespace}")
         return True
     except RunCommandError as e:

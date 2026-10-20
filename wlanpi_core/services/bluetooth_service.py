@@ -208,7 +208,8 @@ def bluetooth_paired_devices(adapter: str) -> dict[str, str] | None:
             if path in _bluez_device_paths(now, adapter):
                 raise
             continue
-        if device := _parse_paired_device(result.stdout):
+        device = _parse_paired_device(result.stdout)
+        if device:
             paired[device[0]] = device[1]
     return paired or None
 
@@ -334,7 +335,8 @@ async def _bluetooth_paired_devices_async(
             if path in _bluez_device_paths(now.stdout, adapter):
                 raise
             continue
-        if device := _parse_paired_device(result.stdout):
+        device = _parse_paired_device(result.stdout)
+        if device:
             paired[device[0]] = device[1]
     return paired
 

@@ -210,12 +210,6 @@ def getBss(bss: str) -> dict[str, Any] | None:
         ssid = byte_array_to_string(val)
 
         val = net_obj.Get(
-            WPAS_DBUS_BSS_INTERFACE, "WPA", dbus_interface=dbus.PROPERTIES_IFACE
-        )
-        if len(val["KeyMgmt"]) > 0:
-            pass
-
-        val = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "RSN", dbus_interface=dbus.PROPERTIES_IFACE
         )
         key_mgmt = "/".join([str(r) for r in val["KeyMgmt"]])
@@ -323,7 +317,6 @@ def fetch_currentBSS(interface: str) -> Any:
     )
     debug_print("Checking BSS", 2)
     if currentBssPath != "/":
-        currentBssPath.split("/")[-1]
         bssid = getBss(currentBssPath)
     debug_print(currentBssPath, 2)
     return bssid
@@ -585,7 +578,6 @@ async def set_systemd_network_addNetwork(
 
         if netw != "/":
             debug_print("Valid network entry received", 2)
-            netw.split("/")[-1]
 
             selectErr = iface.SelectNetwork(netw)
             debug_print(f"Network selected with result: {selectErr}", 2)
@@ -696,8 +688,8 @@ async def get_systemd_network_currentNetwork_details(
             return {"connectedStatus": True, "connectedNet": res}
         else:
             return {"connectedStatus": False, "connectedNet": None}
-    except DBusException:
-        debug_print("DBUS Error State: {de}", 0)
+    except DBusException as de:
+        debug_print(f"DBUS Error State: {de}", 0)
         return None
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400) from None

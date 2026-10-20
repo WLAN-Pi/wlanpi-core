@@ -100,11 +100,6 @@ class TokenValidationResult:
         except (TypeError, ValueError):
             return None
 
-    @property
-    def is_expired(self) -> bool:
-        """Always False; TokenManager._validate_lifetime enforces expiry."""
-        return False
-
     def __str__(self) -> str:
         """Human readable representation."""
         if self.is_valid:
@@ -489,7 +484,7 @@ class TokenManager:
                 )
                 raise
 
-    async def get_active_keys(self) -> list[dict[str, Any]]:
+    async def get_all_keys(self) -> list[dict[str, Any]]:
         """Return every signing key, newest first, with its unrevoked token count."""
         async with self.app_state.db_manager.session() as session:
             try:

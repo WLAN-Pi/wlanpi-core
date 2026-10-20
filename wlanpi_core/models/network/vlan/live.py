@@ -1,7 +1,6 @@
 """Live VLAN management via ip commands."""
 
 from collections import defaultdict
-from pprint import pp
 from typing import Any
 
 from wlanpi_core.models.network import common
@@ -108,7 +107,6 @@ class LiveVLANs:
         for address in addresses:
             try:
                 extras: list[Any] = []
-                pp(address)
                 if address.dynamic:
                     if address.scope:
                         extras.extend(["scope", str(address.scope)])
@@ -195,8 +193,3 @@ class LiveVLANs:
             raise VLANDeletionError(
                 f"Failed to delete interface {if_name}.{vlan_id}: {e!s}"
             ) from e
-
-
-if __name__ == "__main__":
-    live_vlans = LiveVLANs()
-    print(live_vlans.get_vlan_interfaces())

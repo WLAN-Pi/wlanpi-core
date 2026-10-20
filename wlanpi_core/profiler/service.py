@@ -289,7 +289,7 @@ async def purge_data() -> dict[str, int]:
     # ponytail: only starts from outside Core (direct systemctl, FPMS) take no
     # lock, so they can still begin between the check and the delete and lose
     # a file being written. Upgrade path: a lock the profiler itself honours.
-    async with cli._profiler_lock:
+    async with cli.profiler_lock:
         if await asyncio.to_thread(profiler_active):
             raise ValidationError(
                 "The profiler is running; stop it before purging its data.",

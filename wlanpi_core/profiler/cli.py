@@ -22,7 +22,7 @@ LAST_SESSION_FILE = "/var/lib/wlanpi-profiler/last-session.json"
 
 log = get_logger(__name__)
 profiler_process: Process | None = None
-_profiler_lock = asyncio.Lock()
+profiler_lock = asyncio.Lock()
 
 
 def _stamp(path: str) -> tuple[int, int] | None:
@@ -124,7 +124,7 @@ async def start_profiler(args: models.Start) -> dict[str, Any]:
     ]
     cmd += [flag for flag, enabled in bool_flags if enabled]
 
-    async with _profiler_lock:
+    async with profiler_lock:
         if profiler_process and profiler_process.returncode is None:
             return {
                 "success": False,
@@ -159,7 +159,7 @@ async def stop_profiler() -> Any:
     """Stop the running profiler process."""
     global profiler_process
 
-    async with _profiler_lock:
+    async with profiler_lock:
         if not profiler_process:
             return False
 

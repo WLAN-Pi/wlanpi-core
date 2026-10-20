@@ -128,13 +128,13 @@ _RT_FIELDS = {
 }
 
 
-def parse_radiotap(buf: bytes) -> Tuple[dict, int]:
+def parse_radiotap(buf: bytes) -> Optional[Tuple[dict, int]]:
     info = {"freq": None, "signal": None, "txpower": None}
     if len(buf) < 8:
-        return info, 0
+        return None
     _ver, _pad, length = struct.unpack_from("<BBH", buf, 0)
     if length < 8 or length > len(buf):
-        return info, 0
+        return None
     present_words = []
     off = 4
     while off + 4 <= len(buf):
@@ -213,9 +213,10 @@ class ApInfo:
 
 
 def parse_beacon(pkt: bytes, radio: dict) -> Optional[ApInfo]:
-    rt_info, rtlen = parse_radiotap(pkt)
-    if rtlen == 0:
+    radiotap = parse_radiotap(pkt)
+    if radiotap is None:
         return None
+    rt_info, rtlen = radiotap
     if len(pkt) < rtlen + 24:
         return None
     fc = struct.unpack_from("<H", pkt, rtlen)[0]

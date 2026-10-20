@@ -54,38 +54,6 @@ def ns_exec(
         raise
 
 
-def run_in_namespace(
-    namespace: str,
-    cmd: list[str],
-    no_output: bool = False,
-    raise_on_fail: bool = True,
-) -> CommandResult:
-    """Run `cmd` in `namespace`; see ns_exec.
-
-    Raises:
-        ValueError: If namespace is None.
-    """
-    if namespace is None:
-        raise ValueError(
-            "namespace cannot be None for run_in_namespace. Use run_in_root() instead."
-        )
-
-    return ns_exec(
-        cmd, namespace=namespace, no_output=no_output, raise_on_fail=raise_on_fail
-    )
-
-
-def run_in_root(
-    cmd: list[str],
-    no_output: bool = False,
-    raise_on_fail: bool = True,
-) -> CommandResult:
-    """Run `cmd` in the root namespace; see ns_exec."""
-    return ns_exec(
-        cmd, namespace=None, no_output=no_output, raise_on_fail=raise_on_fail
-    )
-
-
 def netns_prefix(namespace: str | None) -> list[str]:
     """Command prefix that runs a command in ``namespace``; empty for root."""
     if namespace is None:

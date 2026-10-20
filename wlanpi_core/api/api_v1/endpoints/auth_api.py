@@ -391,7 +391,7 @@ async def new_signing_key(request: Request) -> Any:
 async def list_all_signing_keys(request: Request) -> Any:
     """List all signing keys."""
     try:
-        keys = await request.app.state.token_manager.get_active_keys()
+        keys = await request.app.state.token_manager.get_all_keys()
         return keys
     except Exception:
         log.exception("Unexpected error getting keys")

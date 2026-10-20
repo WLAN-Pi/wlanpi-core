@@ -70,7 +70,6 @@ class DatabaseManager:
         self,
         database_url: str | None = None,
         echo: bool = False,
-        pool_recycle: int = 1800,
     ):
         """Create the engine and session factory; database_url defaults to DATABASE_PATH."""
         if database_url is None:

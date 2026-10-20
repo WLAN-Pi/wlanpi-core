@@ -180,9 +180,6 @@ def start_app_in_namespace(
     log.info(f"App log file will be written to: /tmp/{app_id}.log")
 
     log_file_path = Path(f"/tmp/{app_id}.log")
-    with log_file_path.open("w"):
-        pass
-
     with log_file_path.open("w") as log_file:
         proc = subprocess.Popen(
             cmd,

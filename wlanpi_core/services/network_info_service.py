@@ -232,42 +232,39 @@ def _ifconfig_summaries(ifconfig_info: str, namespace: str | None) -> dict[str, 
     interface_re = re.findall(
         r"^(\w+?)\: flags(.*?)RX packets", ifconfig_info, re.DOTALL | re.MULTILINE
     )
-    if interface_re is None:
-        interfaces["error"] = "match error"
-    else:
-        for result in interface_re:
-            interface_name = result[0]
-            interfaces[interface_name] = {}
+    for result in interface_re:
+        interface_name = result[0]
+        interfaces[interface_name] = {}
 
-            interface_info = result[1]
+        interface_info = result[1]
 
-            status = (
-                "UP"
-                if re.search("UP", interface_info, re.MULTILINE) is not None
-                else "DOWN"
-            )
+        status = (
+            "UP"
+            if re.search("UP", interface_info, re.MULTILINE) is not None
+            else "DOWN"
+        )
 
-            inet_search = re.search("inet (.+?) ", interface_info, re.MULTILINE)
-            if inet_search is None:
-                ip_address = "-"
+        inet_search = re.search("inet (.+?) ", interface_info, re.MULTILINE)
+        if inet_search is None:
+            ip_address = "-"
 
-                if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
-                    try:
-                        iw_info = _run_in(
-                            [IW_FILE, interface_name, "info"], namespace
-                        ).stdout
+            if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
+                try:
+                    iw_info = _run_in(
+                        [IW_FILE, interface_name, "info"], namespace
+                    ).stdout
 
-                        if re.search("type monitor", iw_info, re.MULTILINE):
-                            ip_address = "Monitor"
-                    except (RunCommandError, OSError, subprocess.TimeoutExpired):
-                        ip_address = "-"
-            else:
-                ip_address = inet_search.group(1)
+                    if re.search("type monitor", iw_info, re.MULTILINE):
+                        ip_address = "Monitor"
+                except (RunCommandError, OSError, subprocess.TimeoutExpired):
+                    ip_address = "-"
+        else:
+            ip_address = inet_search.group(1)
 
-            interfaces[interface_name]["status"] = status
-            interfaces[interface_name]["ip"] = ip_address
-            if namespace is not None:
-                interfaces[interface_name]["namespace"] = namespace
+        interfaces[interface_name]["status"] = status
+        interfaces[interface_name]["ip"] = ip_address
+        if namespace is not None:
+            interfaces[interface_name]["namespace"] = namespace
 
     return interfaces
 
