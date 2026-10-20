@@ -1,12 +1,24 @@
+import hashlib
+import hmac
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.api.api_v1.endpoints.auth_api import generate_token, revoke_token
+from wlanpi_core.asgi import app
+from wlanpi_core.core.auth import CallerKind
+from wlanpi_core.core.token import TokenValidationResult
 from wlanpi_core.schemas.auth import TokenRequest
+
+HMAC = CallerKind.LOCALHOST_HMAC
+TOKEN_PATH = "/api/v1/auth/token"
+SECRET = b"test_secret"
+RESERVED_BODY = json.dumps({"device_id": "wlanpi-webui"})
 
 
 def _request_with_token_manager(token_manager):
@@ -22,7 +34,7 @@ async def test_generate_token_returns_412_for_missing_or_blank_device_id(device_
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id=device_id), True)
+        await generate_token(request, TokenRequest(device_id=device_id), HMAC)
 
     assert exc.value.status_code == 412
     token_manager.create_token.assert_not_awaited()
@@ -34,7 +46,7 @@ async def test_generate_token_normalizes_device_id():
     request = _request_with_token_manager(token_manager)
 
     response = await generate_token(
-        request, TokenRequest(device_id="  mcp-client  "), True
+        request, TokenRequest(device_id="  mcp-client  "), HMAC
     )
 
     assert response.access_token == "jwt"
@@ -50,7 +62,7 @@ async def test_generate_token_maps_unexpected_error_to_500():
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id="mcp-client"), True)
+        await generate_token(request, TokenRequest(device_id="mcp-client"), HMAC)
 
     assert exc.value.status_code == 500
     assert "database unavailable" not in exc.value.detail
@@ -60,7 +72,8 @@ async def test_generate_token_maps_unexpected_error_to_500():
 @pytest.mark.parametrize(
     ("caller", "allowed"),
     [
-        pytest.param(True, True, id="localhost-hmac-allowed"),
+        pytest.param(HMAC, True, id="localhost-hmac-allowed"),
+        pytest.param(True, False, id="bare-true-forbidden"),
         pytest.param(
             SimpleNamespace(device_id="wlanpi-webui"),
             False,
@@ -124,3 +137,51 @@ async def test_revoke_token_rejects_mismatched_device_id():
 
     assert exc.value.status_code == 403
     token_manager.revoke_token.assert_not_awaited()
+
+
+@pytest.fixture
+def endpoint_state(monkeypatch):
+    token_manager = SimpleNamespace(
+        create_token=AsyncMock(return_value="jwt"), verify_token=AsyncMock()
+    )
+    monkeypatch.setattr(app.state, "token_manager", token_manager, raising=False)
+    monkeypatch.setattr(
+        app.state,
+        "security_manager",
+        SimpleNamespace(shared_secret=SECRET),
+        raising=False,
+    )
+    return token_manager
+
+
+def _post_token(headers):
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    return client.post(
+        TOKEN_PATH,
+        content=RESERVED_BODY,
+        headers={"Content-Type": "application/json", **headers},
+    )
+
+
+def test_reserved_device_id_accepts_real_localhost_hmac_request(endpoint_state):
+    canonical = f"POST\n{TOKEN_PATH}\n\n{RESERVED_BODY}"
+    signature = hmac.new(SECRET, canonical.encode(), hashlib.sha256).hexdigest()
+
+    resp = _post_token({"X-Request-Signature": signature})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"access_token": "jwt", "token_type": "bearer"}
+    endpoint_state.create_token.assert_awaited_once()
+    assert endpoint_state.create_token.await_args.kwargs["device_id"] == "wlanpi-webui"
+
+
+def test_reserved_device_id_rejects_valid_bearer_request(endpoint_state):
+    endpoint_state.verify_token.return_value = TokenValidationResult(
+        is_valid=True, token="jwt", payload={"did": "mcp-client"}
+    )
+
+    resp = _post_token({"Authorization": "Bearer jwt"})
+
+    assert resp.status_code == 403
+    endpoint_state.verify_token.assert_awaited_once_with("jwt")
+    endpoint_state.create_token.assert_not_awaited()

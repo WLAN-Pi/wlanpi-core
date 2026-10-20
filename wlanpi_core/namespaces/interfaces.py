@@ -41,31 +41,6 @@ def get_interfaces_in_namespace(
         raise
 
 
-def move_interface_to_namespace(
-    interface: str,
-    namespace: str,
-    interface_type: str | None = None,
-) -> bool:
-    """Move the interface link from root into namespace; return True or raise RunCommandError."""
-    if not interface or not interface.strip():
-        raise ValueError("interface cannot be empty")
-    if not namespace or not namespace.strip():
-        raise ValueError("namespace cannot be empty")
-
-    log.info(f"Moving interface {interface} to namespace {namespace}")
-
-    try:
-        ns_exec(
-            ["ip", "link", "set", interface, "netns", namespace],
-            namespace=None,
-        )
-        log.info(f"Successfully moved interface {interface} to namespace {namespace}")
-        return True
-    except RunCommandError as e:
-        log.error(f"Failed to move interface {interface} to namespace {namespace}: {e}")
-        raise
-
-
 def move_interface_to_root(interface: str, namespace: str) -> bool:
     """Move the interface from namespace back to root; return True or raise RunCommandError."""
     if not interface or not interface.strip():

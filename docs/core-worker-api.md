@@ -201,7 +201,7 @@ API endpoint
   → namespaces/*, connection/monitor.py               (namespace ops, async connect)
 ```
 
-**`network_service.py`:** Wi-Fi DBus code becomes dead after migration. Remove later once consumers are off legacy paths. **Do not** build new features on `AsyncDBusManager` or `setup_DBus_Supplicant_Access`.
+**`network_service.py`:** Removed once no route called it (#415).
 
 **Consumer migration:** wlanpi-ui capability bindings and mobile app must target new paths only. Legacy paths exist solely for transitional compatibility.
 

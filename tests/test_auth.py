@@ -15,6 +15,7 @@ from wlanpi_core.app import auth_clock_not_set_handler
 from wlanpi_core.cli import network_config
 from wlanpi_core.core.auth import (
     AuthClockNotSetError,
+    CallerKind,
     is_localhost_request,
     verify_auth_wrapper,
     verify_hmac,
@@ -72,7 +73,7 @@ async def test_verify_hmac_success(mock_request, mock_app_state):
     mock_request.headers["X-Request-Signature"] = expected_signature
 
     result = await verify_hmac(mock_request)
-    assert result is True
+    assert result is CallerKind.LOCALHOST_HMAC
 
 
 @pytest.mark.asyncio
@@ -91,7 +92,7 @@ async def test_verify_hmac_with_params(mock_request_with_query, mock_app_state):
     mock_request_with_query.headers["X-Request-Signature"] = expected_signature
 
     result = await verify_hmac(mock_request_with_query)
-    assert result is True
+    assert result is CallerKind.LOCALHOST_HMAC
 
 
 @pytest.mark.asyncio

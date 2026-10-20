@@ -31,7 +31,6 @@ def fail_if_called(*args, **kwargs):
 
 dbus.SystemBus = fail_if_called
 import wlanpi_core.asgi
-import wlanpi_core.services.network_service
 """
 
     result = subprocess.run(
@@ -44,20 +43,6 @@ import wlanpi_core.services.network_service
     )
 
     assert result.returncode == 0, result.stderr
-
-
-def test_legacy_network_dbus_manager_is_lazy(mocker):
-    from wlanpi_core.services.network_service import AsyncDBusManager
-
-    bus = MagicMock()
-    connect = mocker.patch("dbus.SystemBus", return_value=bus)
-
-    manager = AsyncDBusManager()
-
-    connect.assert_not_called()
-    assert manager.bus is bus
-    assert manager.bus is bus
-    connect.assert_called_once_with()
 
 
 def test_system_bus_connection_failure_is_a_scoped_503(mocker):

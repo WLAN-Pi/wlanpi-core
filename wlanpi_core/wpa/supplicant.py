@@ -7,14 +7,11 @@ import signal
 import time
 from pathlib import Path
 
-from wlanpi_core.constants import RUN_DIR
+from wlanpi_core.constants import ROOT_NS_DIR_NAME, RUN_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
-
-# Directory name for the root namespace; `@` cannot appear in a netns name.
-_ROOT_DIR_NAME = "@root"
 
 
 # Root keeps the conventional control directory so plain `wpa_cli` works.
@@ -27,7 +24,7 @@ _RUNTIME_SUBDIR = "wpa"
 
 def runtime_dir(namespace: str | None) -> Path:
     """Return Core's runtime directory for supplicants in `namespace`."""
-    return Path(RUN_DIR) / _RUNTIME_SUBDIR / (namespace or _ROOT_DIR_NAME)
+    return Path(RUN_DIR) / _RUNTIME_SUBDIR / (namespace or ROOT_NS_DIR_NAME)
 
 
 def pidfile_path(iface: str, namespace: str | None) -> Path:
