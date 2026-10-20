@@ -4,6 +4,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELPER = REPO_ROOT / "install/etc/wlanpi-core/scripts/wlanpi-generate-certs.sh"
 
@@ -45,6 +47,8 @@ def test_generates_cert_with_renamed_local_hostname(tmp_path):
     assert "DNS:localhost" in san
     assert "DNS:wlanpi.local" in san
     assert "IP Address:127.0.0.1" in san
+    assert "IP Address:198.18.42.1" in san
+    assert "IP Address:198.18.43.1" in san
     assert (nginx_dir / "self-signed-grafana.cert").exists()
     assert (tmp_path / "cockpit" / "0-self-signed-wlanpi.cert").exists()
 
@@ -58,8 +62,16 @@ def test_second_run_is_noop(tmp_path):
     assert cert.stat().st_mtime_ns == mtime_before
 
 
-def test_regenerates_when_renamed_local_san_missing(tmp_path):
-    # Simulate a certificate from before #175: no wlanpi-###.local SAN.
+@pytest.mark.parametrize(
+    "old_san",
+    [
+        # Before #175: no wlanpi-###.local SAN.
+        "DNS:localhost,DNS:wlanpi.local,IP:127.0.0.1,IP:198.18.42.1",
+        # Before #399: no Bluetooth PAN address.
+        "DNS:localhost,DNS:wlanpi.local,DNS:wlanpi-e12.local,IP:127.0.0.1,IP:198.18.42.1",
+    ],
+)
+def test_regenerates_when_a_san_is_missing(tmp_path, old_san):
     nginx_dir = tmp_path / "nginx"
     nginx_dir.mkdir()
     key = nginx_dir / "self-signed-wlanpi.key"
@@ -82,12 +94,14 @@ def test_regenerates_when_renamed_local_san_missing(tmp_path):
             "-subj",
             "/CN=wlanpi.local",
             "-addext",
-            "subjectAltName=DNS:localhost,DNS:wlanpi.local,IP:127.0.0.1,IP:198.18.42.1",
+            f"subjectAltName={old_san}",
         ],
         check=True,
     )
     mtime_before = cert.stat().st_mtime_ns
     proc, _ = _run(tmp_path)
     assert proc.returncode == 0, proc.stderr
-    assert "DNS:wlanpi-e12.local" in _san(cert)
+    san = _san(cert)
+    assert "DNS:wlanpi-e12.local" in san
+    assert "IP Address:198.18.43.1" in san
     assert cert.stat().st_mtime_ns != mtime_before

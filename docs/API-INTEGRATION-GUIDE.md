@@ -46,7 +46,7 @@ this file; it is both the leaf certificate and the trust anchor.
 On each connection the client checks three things: (1) the presented certificate
 matches the pinned file, (2) the connection target appears in the SANs
 (`localhost`, `wlanpi.local`, the device's current `<hostname>.local` name, its
-eth0-MAC-derived `wlanpi-<last3>.local` name, `127.0.0.1`, and `198.18.42.1`),
+eth0-MAC-derived `wlanpi-<last3>.local` name, `127.0.0.1`, `198.18.42.1` (USB OTG), and `198.18.43.1` (Bluetooth PAN)),
 and (3) the current date is inside the validity window. Any failure kills the
 connection before API data flows. The common name is always `wlanpi.local`;
 hostname verification uses the SAN, so the common name does not need to match.
@@ -75,6 +75,9 @@ If you change the hostname by any other means, the certificate is not
 regenerated for the new name, and connecting by that name produces a hostname
 mismatch. Pinning still succeeds because the certificate file is unchanged. If
 you rely on the pinned certificate, do not change the hostname.
+
+Installing a Core package regenerates an existing certificate that lacks
+`198.18.43.1`. After that upgrade, re-pin the new certificate on every client.
 
 ---
 
