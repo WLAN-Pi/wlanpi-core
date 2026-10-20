@@ -29,7 +29,7 @@ def _started_argv(ns_exec) -> list[str]:
     return ns_exec.call_args_list[-1].args[0]
 
 
-def test_dhcpcd_runs_isolated_without_link_local(run_dir):
+def test_dhcpcd_runs_isolated_without_link_local_or_arp_probe(run_dir):
     with patch.object(nm, "ns_exec") as ns_exec:
         nm.restart_dhcp_with_timeout("sta0", "ns_a", timeout=20)
     argv = _started_argv(ns_exec)
@@ -39,7 +39,7 @@ def test_dhcpcd_runs_isolated_without_link_local(run_dir):
         str(state / "run"),
         str(state / "lib"),
     ]
-    assert "-L" in argv and argv[argv.index("-t") + 1] == "20"
+    assert "-L" in argv and "-A" in argv and argv[argv.index("-t") + 1] == "20"
     assert argv[-1] == "sta0"
     assert ns_exec.call_args_list[-1].kwargs["namespace"] == "ns_a"
     assert (state / "run").is_dir() and (state / "lib").is_dir()
