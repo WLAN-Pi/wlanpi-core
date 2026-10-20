@@ -3,6 +3,7 @@
 # stdlib imports
 import asyncio
 import grp
+import ipaddress
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -69,6 +70,23 @@ async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONRe
         status_code=503,
         content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
     )
+
+
+def rate_limit_key(request: Request) -> str:
+    """Return the client address a request's rate limit counts against.
+
+    gunicorn listens on a unix socket behind nginx, so requests carry no peer
+    address and every caller would share one budget. nginx sets X-Real-IP from
+    the connection, replacing any value the client sent.
+    """
+    peer = get_remote_address(request)
+    try:
+        behind_nginx = ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        behind_nginx = False
+    if not behind_nginx:
+        return peer
+    return request.headers.get("X-Real-IP") or peer
 
 
 class ApplicationHealthManager:
@@ -753,7 +771,7 @@ def create_app(debug: bool = False) -> FastAPI:
         )
 
     # setup slowapi
-    limiter = Limiter(key_func=get_remote_address, default_limits=["90/minute"])
+    limiter = Limiter(key_func=rate_limit_key, default_limits=["90/minute"])
     app.state.limiter = limiter
     app.add_exception_handler(
         RateLimitExceeded,
