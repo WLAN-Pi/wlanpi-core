@@ -1,5 +1,3 @@
-"""Tests for regulatory.db-backed country discovery."""
-
 from wlanpi_core.data import reg_domain_countries
 
 

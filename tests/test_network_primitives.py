@@ -1,5 +1,3 @@
-"""Tests for P0 network primitive modules."""
-
 import json
 import subprocess
 from pathlib import Path
@@ -222,8 +220,6 @@ def test_get_wlan_link_mlo_reports_active_link_not_last_listed():
         (2, 2462.0, False),
         (1, 5220.0, False),
     }
-    # MLD-level signal is ignored with several set-up links; the beacon
-    # average follows the active link.
     assert result["signal_dbm"] == -42.0
 
 
@@ -879,7 +875,6 @@ def test_get_wlan_link_single_link_mld_keeps_iw_link_signal():
     ],
 )
 def test_get_wlan_link_single_link_zero_signal_falls_back(station_lines, expected):
-    # iw link signal 0 = no reading yet: signal avg, then beacon avg, else null.
     iw_out = (
         "Connected to 68:51:34:7c:32:05 (on wlan0)\n"
         "\tSSID: wlanpi-wifi6\n"
@@ -964,8 +959,6 @@ def test_wlan_link_response_model_serializes_links():
 
 
 def test_get_wlan_link_mlo_reports_link_addresses_and_active_width():
-    # Every set-up link carries this station's own address; only active links
-    # have a channel, so only they get a width and center frequency.
     info = (
         _MLO_INFO_HEAD
         + _LINK0_ACTIVE
@@ -1004,8 +997,6 @@ def test_get_wlan_link_mlo_info_failure_has_no_link_details():
 
 
 def test_parse_link_details_keys_channel_to_its_own_link():
-    # A link line without "link addr" must still start a new link, so the
-    # channel below it is not credited to the previous one.
     info = (
         _MLO_INFO_HEAD
         + "\t - link ID  1 link addr 4e:66:24:b6:db:12\n"

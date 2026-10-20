@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""Stalled capture subscriber probe.
-
-Authenticates, subscribes to a running capture session, reads normally for a
-warmup, then stops reading for --stall seconds to provoke server-side
-backpressure, then resumes. Reports whether the server evicted the subscriber
-with close code 1013 and how many bytes and messages it received.
-
-A small --rcvbuf and a low --max-queue make the server block quickly; without
-them, kernel socket buffers absorb short stalls and mask the eviction.
-
-Run it directly, or through run_on_device.py which starts the owner capture and
-parses the session id for you.
-"""
+"""Stalled capture subscriber probe."""
 
 import argparse
 import asyncio

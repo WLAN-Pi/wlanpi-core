@@ -81,7 +81,7 @@ def test_stop_supplicant_kills_only_its_pid(run_dir, procs):
     mine = supplicant.pidfile_path("wlan1", "lab_ns")
     _write_pid(mine, 100)
     procs.procs[100] = _core_argv("wlan1", mine)
-    procs.procs[200] = _core_argv("wlan1")  # same iface, other netns, no pidfile
+    procs.procs[200] = _core_argv("wlan1")
     procs.procs[300] = [
         "/usr/sbin/wpa_supplicant",
         "-u",
@@ -143,7 +143,7 @@ def test_kill_all_stops_core_supplicants_only(run_dir, procs):
     path = supplicant.pidfile_path("wlan0", None)
     _write_pid(path, 10)
     procs.procs[10] = _core_argv("wlan0", path)
-    procs.procs[11] = _core_argv("wlan2")  # legacy Core supplicant: no pidfile
+    procs.procs[11] = _core_argv("wlan2")
     procs.procs[12] = [
         "/usr/sbin/wpa_supplicant",
         "-u",
@@ -178,9 +178,6 @@ def test_start_records_pidfile_and_stops_previous(run_dir, procs):
     assert start.kwargs["namespace"] == "lab_ns"
 
 
-# --- runtime state keyed by (namespace, iface) (#273) ---
-
-
 def test_runtime_paths_do_not_collide_across_namespaces(run_dir):
     paths = {
         ns: (
@@ -204,7 +201,6 @@ def test_wpa_cli_uses_core_ctrl_dir_only_when_core_started_the_supplicant(run_di
         "wlan1",
         "status",
     ]
-    # Core's pidfile decides, even before the control socket exists.
     pidfile = supplicant.pidfile_path("wlan1", "ns_a")
     pidfile.parent.mkdir(parents=True)
     pidfile.write_text("100\n")

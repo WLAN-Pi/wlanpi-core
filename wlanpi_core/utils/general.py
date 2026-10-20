@@ -83,42 +83,22 @@ def run_command(
     raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output."""
-    """
-    This function executes a single CLI command using the the built-in subprocess module.
+    """Run a CLI command and return its CommandResult.
 
-    Args:
-        cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
-             If it's a string, the command will be executed with its arguments as separate words,
-             unless `shell=True` is specified.
-        input: Optional input string that will be fed to the process's stdin.
-              If provided and stdin=None, then this string will be used for stdin.
-        stdin: Optional TextIO object that will be fed to the process's stdin.
-              If None, then `input` or `stdin` will be used instead (if any).
-        shell: Whether to execute the command using a shell or not. Default is False.
-               If True, then the entire command string will be executed in a shell.
-               Otherwise, the command and its arguments are executed separately.
-        raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-        timeout: Maximum seconds to wait before terminating the entire process group.
-
-    Returns:
-        A CommandResult object containing the output of the command, along with a boolean indicating
-        whether the command was successful or not.
+    A string is shlex-split, or a list shlex-joined when `shell`. `input` excludes
+    a `stdin` other than a PIPE/DEVNULL constant. The process group is killed
+    after `timeout` seconds or on any interruption.
 
     Raises:
-        RunCommandError: If `raise_on_fail=True` and the command failed.
+        RunCommandError: If `raise_on_fail` and the command exits non-zero.
     """
-
-    # cannot have both input and STDIN, unless stdin is the constant for PIPE or /dev/null
     if input and stdin and not isinstance(stdin, int):
         raise RunCommandError(
             error_msg="You cannot use both 'input' and 'stdin' on the same call.",
             return_code=-1,
         )
 
-    # Todo: explore using shlex to always split to protect against injections
     if shell:
-        # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
             cmd = shlex.join(cmd)
         logging.getLogger(__name__).warning(
@@ -126,7 +106,6 @@ def run_command(
             "user-controlled input reaches the shell"
         )
     else:
-        # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
     with subprocess.Popen(
@@ -169,40 +148,21 @@ async def run_command_async(
     raise_on_fail: bool = True,
     timeout: float = COMMAND_TIMEOUT_SEC,
 ) -> CommandResult:
-    """Run a single CLI command with subprocess and returns the output."""
-    """
-    This function executes a single CLI command using the the built-in subprocess module.
+    """Run a CLI command and return its CommandResult.
 
-    Args:
-        cmd: The command to be executed. It can be a string or a list, it will be converted to the appropriate form by shlex.
-             If it's a string, the command will be executed with its arguments as separate words,
-             unless `shell=True` is specified.
-        input: Optional input string that will be fed to the process's stdin.
-              If provided and stdin=None, then this string will be used for stdin.
-        stdin: Optional TextIO object that will be fed to the process's stdin.
-              If None, then `input` or `stdin` will be used instead (if any).
-        shell: Whether to execute the command using a shell or not. Default is False.
-               If True, then the entire command string will be executed in a shell.
-               Otherwise, the command and its arguments are executed separately.
-        raise_on_fail: Whether to raise an error if the command fails or not. Default is True.
-        timeout: Maximum seconds to wait before terminating the entire process group.
-
-    Returns:
-        A CommandResult object containing the output of the command, along with a boolean indicating
-        whether the command was successful or not.
+    A string is shlex-split, or a list shlex-joined when `shell`. `input` excludes
+    a `stdin` other than a PIPE/DEVNULL constant. The process group is killed
+    after `timeout` seconds or on any interruption.
 
     Raises:
-        RunCommandError: If `raise_on_fail=True` and the command failed.
+        RunCommandError: If `raise_on_fail` and the command exits non-zero.
     """
-
-    # cannot have both input and STDIN, unless stdin is the constant for PIPE or /dev/null
     if input and stdin and not isinstance(stdin, int):
         raise RunCommandError(
             error_msg="You cannot use both 'input' and 'stdin' on the same call.",
             return_code=-1,
         )
 
-    # Prepare input data for communicate
     if input:
         input_data = input.encode()
     elif isinstance(stdin, StringIO):
@@ -210,12 +170,7 @@ async def run_command_async(
     else:
         input_data = None
 
-    # Todo: explore using shlex to always split to protect against injections
-
-    # asyncio.subprocess has different commands for shell and no shell.
-    # Switch between them to keep a standard interface.
     if shell:
-        # If a list was passed in shell mode, safely join using shlex to protect against injection.
         if isinstance(cmd, list):
             cmd = shlex.join(cmd)
         logging.getLogger(__name__).warning(
@@ -231,7 +186,6 @@ async def run_command_async(
             start_new_session=True,
         )
     else:
-        # If a string was passed in non-shell mode, safely split it using shlex to protect against injection.
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
         proc = await asyncio.subprocess.create_subprocess_exec(
@@ -304,25 +258,13 @@ def get_hostname() -> str:
 
 
 def get_current_unix_timestamp() -> float:
-    """Get the current unix timestamp in milliseconds.
-
-    Returns:
-        The current unix timestamp in milliseconds
-    """
+    """Return the current unix timestamp in milliseconds."""
     ms = datetime.now()
     return time.mktime(ms.timetuple()) * 1000
 
 
 def to_timestamp(dt: datetime | str | int | float | None) -> int | None:
-    """
-    Convert various datetime formats to Unix timestamp.
-
-    Args:
-        dt: Input datetime (can be datetime object, ISO string, or timestamp)
-
-    Returns:
-        int: Unix timestamp in seconds
-    """
+    """Convert a datetime (naive is UTC), ISO string or number to Unix seconds, or None on failure."""
     if dt is None:
         return None
 
@@ -344,15 +286,7 @@ def to_timestamp(dt: datetime | str | int | float | None) -> int | None:
 
 
 def from_timestamp(ts: int | float | str | None) -> datetime | None:
-    """
-    Convert Unix timestamp to UTC datetime.
-
-    Args:
-        ts: Unix timestamp (seconds since epoch)
-
-    Returns:
-        datetime: UTC datetime object
-    """
+    """Convert Unix seconds (number or string) to a UTC datetime, or None on failure."""
     if ts is None:
         return None
 

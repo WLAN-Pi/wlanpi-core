@@ -1,9 +1,4 @@
-"""
-Namespace lifecycle operations.
-
-This module provides functions for creating, listing, checking existence,
-and deleting network namespaces.
-"""
+"""Create, list, check, and delete network namespaces."""
 
 import logging
 from typing import Any
@@ -19,24 +14,7 @@ log = logging.getLogger(__name__)
 
 
 def create_namespace(namespace_name: str, use_sudo: bool = True) -> CommandResult:
-    """
-    Create a network namespace.
-
-    Args:
-        namespace_name: Name of the namespace to create
-        use_sudo: If True, use sudo for namespace creation
-
-    Returns:
-        CommandResult from the namespace creation command
-
-    Raises:
-        NetworkNamespaceError: If namespace creation fails
-
-    Examples:
-        >>> result = create_namespace("test_ns")
-        >>> if result.return_code == 0:
-        ...     print("Namespace created successfully")
-    """
+    """Create a network namespace; raise NetworkNamespaceError on failure."""
     if not namespace_name or not namespace_name.strip():
         raise ValueError("namespace_name cannot be empty")
 
@@ -59,26 +37,11 @@ def create_namespace(namespace_name: str, use_sudo: bool = True) -> CommandResul
 def delete_namespace(
     namespace_name: str, use_sudo: bool = True, raise_on_fail: bool = True
 ) -> CommandResult:
-    """
-    Delete a network namespace.
-
-    Args:
-        namespace_name: Name of the namespace to delete
-        use_sudo: If True, use sudo for namespace deletion
-        raise_on_fail: If True, raise exception on failure
-
-    Returns:
-        CommandResult from the namespace deletion command
+    """Delete a network namespace.
 
     Raises:
-        NetworkNamespaceNotFoundError: If namespace doesn't exist and raise_on_fail=True
-        NetworkNamespaceError: If deletion fails and raise_on_fail=True
-
-    Examples:
-        >>> try:
-        ...     result = delete_namespace("test_ns")
-        ... except NetworkNamespaceNotFoundError:
-        ...     print("Namespace doesn't exist")
+        NetworkNamespaceNotFoundError: If it does not exist and raise_on_fail.
+        NetworkNamespaceError: If deletion fails and raise_on_fail.
     """
     if not namespace_name or not namespace_name.strip():
         raise ValueError("namespace_name cannot be empty")
@@ -111,22 +74,7 @@ def delete_namespace(
 
 
 def list_namespaces(use_json: bool = False) -> list[Any]:
-    """
-    List all network namespaces.
-
-    Args:
-        use_json: If True, return JSON-formatted list (requires jc)
-
-    Returns:
-        List of namespace names, or list of dicts if use_json=True
-
-    Raises:
-        NetworkNamespaceError: If listing fails
-
-    Examples:
-        >>> namespaces = list_namespaces()
-        >>> print(f"Found {len(namespaces)} namespaces")
-    """
+    """Return namespace names, or `ip -j` dicts with use_json; raise NetworkNamespaceError on failure."""
     cmd = ["ip", "netns", "list"]
     if use_json:
         cmd = ["ip", "-j", "netns", "list"]
@@ -138,7 +86,6 @@ def list_namespaces(use_json: bool = False) -> list[Any]:
             raise NetworkNamespaceError(f"Error listing namespaces: {result.stderr}")
 
         if use_json:
-            # Parse JSON output
             try:
                 parsed = result.output_from_json()
                 return parsed if isinstance(parsed, list) else []
@@ -153,7 +100,6 @@ def list_namespaces(use_json: bool = False) -> list[Any]:
             namespaces = []
             for line in result.stdout.strip().splitlines():
                 if line.strip():
-                    # Extract namespace name (first word)
                     namespace_name = line.split()[0]
                     namespaces.append(namespace_name)
             return namespaces
@@ -165,19 +111,7 @@ def list_namespaces(use_json: bool = False) -> list[Any]:
 
 
 def namespace_exists(namespace_name: str) -> bool:
-    """
-    Check if a network namespace exists.
-
-    Args:
-        namespace_name: Name of the namespace to check
-
-    Returns:
-        True if namespace exists, False otherwise
-
-    Examples:
-        >>> if namespace_exists("test_ns"):
-        ...     print("Namespace exists")
-    """
+    """Return whether the namespace exists; False when listing fails."""
     if not namespace_name or not namespace_name.strip():
         return False
 
@@ -185,5 +119,4 @@ def namespace_exists(namespace_name: str) -> bool:
         namespaces = list_namespaces()
         return namespace_name in namespaces
     except NetworkNamespaceError:
-        # If listing fails, assume namespace doesn't exist
         return False

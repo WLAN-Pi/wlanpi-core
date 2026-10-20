@@ -40,9 +40,8 @@ def _has_carrier(iface: str) -> bool:
 def _lldpctl_neighbours() -> list[dict[str, Any]]:
     """Query lldpd for the current neighbour table, one entry per interface.
 
-    Entries whose interface has no carrier are dropped. lldpd keeps a neighbour
-    until its TTL expires, so an unplugged link would otherwise report stale
-    data for up to three minutes.
+    Entries without carrier are dropped: lldpd keeps an unplugged link's
+    neighbour until its TTL expires, up to three minutes.
     """
     result = run_command([LLDPCTL_FILE, "-f", "json0"], raise_on_fail=True)
     data = result.output_from_json()
@@ -131,7 +130,7 @@ def _show_neighbour(protocol: str) -> dict[str, Any]:
 
 
 def _section_debug_label(section: str, value: Any) -> dict[str, Any]:
-    """Compact shape summary for debug logs (helps UI parsing issues)."""
+    """Compact shape summary of a section for debug logs."""
     if not isinstance(value, dict):
         return {"type": type(value).__name__, "value": repr(value)[:200]}
     label: dict[str, Any] = {"keys": list(value.keys())}
@@ -230,54 +229,42 @@ def show_interfaces() -> dict[str, Any]:
 
 def _ifconfig_summaries(ifconfig_info: str, namespace: str | None) -> dict[str, Any]:
     interfaces: dict[str, Any] = {}
-    # Extract interface info with a bit of regex magic
     interface_re = re.findall(
         r"^(\w+?)\: flags(.*?)RX packets", ifconfig_info, re.DOTALL | re.MULTILINE
     )
-    if interface_re is None:
-        # Something broke is our regex - report an issue
-        interfaces["error"] = "match error"
-    else:
-        for result in interface_re:
-            # save the interface name
-            interface_name = result[0]
-            interfaces[interface_name] = {}
+    for result in interface_re:
+        interface_name = result[0]
+        interfaces[interface_name] = {}
 
-            # look at the rest of the interface info & extract IP if available
-            interface_info = result[1]
+        interface_info = result[1]
 
-            # determine interface status
-            status = (
-                "UP"
-                if re.search("UP", interface_info, re.MULTILINE) is not None
-                else "DOWN"
-            )
+        status = (
+            "UP"
+            if re.search("UP", interface_info, re.MULTILINE) is not None
+            else "DOWN"
+        )
 
-            # determine IP address
-            inet_search = re.search("inet (.+?) ", interface_info, re.MULTILINE)
-            if inet_search is None:
-                ip_address = "-"
+        inet_search = re.search("inet (.+?) ", interface_info, re.MULTILINE)
+        if inet_search is None:
+            ip_address = "-"
 
-                # do check if this is an interface in monitor mode
-                if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
-                    # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
-                    try:
-                        iw_info = _run_in(
-                            [IW_FILE, interface_name, "info"], namespace
-                        ).stdout
+            if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
+                try:
+                    iw_info = _run_in(
+                        [IW_FILE, interface_name, "info"], namespace
+                    ).stdout
 
-                        if re.search("type monitor", iw_info, re.MULTILINE):
-                            ip_address = "Monitor"
-                    except (RunCommandError, OSError, subprocess.TimeoutExpired):
-                        ip_address = "-"
-            else:
-                ip_address = inet_search.group(1)
+                    if re.search("type monitor", iw_info, re.MULTILINE):
+                        ip_address = "Monitor"
+                except (RunCommandError, OSError, subprocess.TimeoutExpired):
+                    ip_address = "-"
+        else:
+            ip_address = inet_search.group(1)
 
-            # format interface info
-            interfaces[interface_name]["status"] = status
-            interfaces[interface_name]["ip"] = ip_address
-            if namespace is not None:
-                interfaces[interface_name]["namespace"] = namespace
+        interfaces[interface_name]["status"] = status
+        interfaces[interface_name]["ip"] = ip_address
+        if namespace is not None:
+            interfaces[interface_name]["namespace"] = namespace
 
     return interfaces
 
@@ -297,7 +284,7 @@ def channel_lookup(freq_mhz: int) -> int | None:
 
 
 def show_wlan_interfaces() -> dict[str, Any]:
-    """Create pages to summarise WLAN interface info."""
+    """Return driver, address, mode, SSID and channel for each WLAN interface."""
 
     interfaces: list[tuple[str, str | None]] = []
     output: dict[str, Any] = {}
@@ -321,7 +308,6 @@ def show_wlan_interfaces() -> dict[str, Any]:
         if namespace is not None:
             output[interface]["namespace"] = namespace
 
-        # Driver
         try:
             ethtool_output = _run_in(
                 [ETHTOOL_FILE, "-i", interface], namespace
@@ -331,10 +317,8 @@ def show_wlan_interfaces() -> dict[str, Any]:
         except (RunCommandError, OSError, subprocess.TimeoutExpired):
             pass
 
-        # Addr, SSID, Mode, Channel
         try:
             iw_output = _run_in([IW_FILE, interface, "info"], namespace).stdout.strip()
-            # Addr
             try:
                 addr = (
                     _first_group(r".*addr\s+(.*)", iw_output).replace(":", "").upper()
@@ -343,7 +327,6 @@ def show_wlan_interfaces() -> dict[str, Any]:
             except Exception:
                 pass
 
-            # Mode
             try:
                 mode = _first_group(r".*type\s+(.*)", iw_output)
                 output[interface]["mode"] = (
@@ -352,14 +335,12 @@ def show_wlan_interfaces() -> dict[str, Any]:
             except Exception:
                 pass
 
-            # SSID
             try:
                 ssid = _first_group(r".*ssid\s+(.*)", iw_output)
                 output[interface]["ssid"] = ssid_text(ssid)
             except Exception:
                 pass
 
-            # Frequency
             try:
                 freq = int(_first_group(r".*\(([0-9]+)\s+MHz\).*", iw_output))
                 channel = channel_lookup(freq)
@@ -394,7 +375,6 @@ def show_eth0_ipconfig() -> dict[str, Any]:
 
     eth0_ipconfig_info["info"] = []
     for n in ipconfig_info:
-        # do some cleanup
         n = n.replace("DHCP server name", "DHCP")
         n = n.replace("DHCP server address", "DHCP IP")
         eth0_ipconfig_info["info"].append(n)
@@ -407,11 +387,7 @@ def show_eth0_ipconfig() -> dict[str, Any]:
 
 
 def show_vlan() -> dict[str, Any]:
-    """
-    Display the untagged VLAN number reported by the LLDP/CDP neighbour.
-
-    Todo: Add tagged VLAN info
-    """
+    """Display the untagged VLAN number reported by the LLDP/CDP neighbour."""
     vlan_info: dict[str, Any] = {"info": []}
 
     try:
@@ -446,10 +422,7 @@ def show_cdp_neighbour() -> dict[str, Any]:
 
 
 def show_publicip(ip_version: int = 4) -> dict[str, Any]:
-    """Show the public IP address and related details.
-
-    Works with any interface that has internet connectivity.
-    """
+    """Show the public IP address and related details."""
 
     publicip_info: dict[str, Any] = {"info": []}
     cmd = PUBLICIP6_CMD if ip_version == 6 else PUBLICIP_CMD

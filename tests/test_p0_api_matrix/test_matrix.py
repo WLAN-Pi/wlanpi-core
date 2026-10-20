@@ -37,7 +37,6 @@ def _params() -> list:
 
 @pytest.mark.parametrize("scenario", _params())
 def test_p0_api_matrix_scenario(scenario, client, auth_headers, netcfg_env):
-    """Execute one matrix row when a handler is registered."""
     if scenario.name not in HANDLERS:
         pytest.skip(f"Handler not yet implemented for {scenario.name}")
     run_api_scenario(scenario, client, auth_headers, netcfg_env)
@@ -49,8 +48,6 @@ def test_p0_matrix_has_unique_scenarios():
     identifiers = [(scenario.scope, scenario.name) for scenario in scenarios]
     assert len(identifiers) == len(set(identifiers)), "Duplicate P0 API matrix rows"
 
-    # HANDLERS is keyed by name, so names must also remain globally unique even
-    # when the matrix grows to cover additional scopes.
     names = [scenario.name for scenario in scenarios]
     assert len(names) == len(set(names)), "Duplicate P0 API scenario names"
 

@@ -1,5 +1,3 @@
-"""Tests for SecurityManager secret and directory permissions."""
-
 import stat
 
 from wlanpi_core.core import security as security_module

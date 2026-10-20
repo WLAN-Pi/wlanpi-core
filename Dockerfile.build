@@ -1,18 +1,10 @@
-# Dockerfile for building wlanpi-core Debian package
-#
-# Build for a specific Debian release (bullseye, bookworm, trixie) via SUITE:
-#   podman build -f Dockerfile.build --build-arg SUITE=trixie -t wlanpi-core-builder .
-#   podman run --rm -v $(pwd):/work -w /work wlanpi-core-builder
-#
-# Works with docker too (swap podman -> docker). The build-package-native.sh
-# helper auto-detects podman or docker and passes SUITE through for you.
+# Dockerfile.build [--build-arg SUITE=bullseye|bookworm|trixie]: builder image that runs dpkg-buildpackage on /work (default trixie)
 
 ARG SUITE=trixie
 
 FROM debian:${SUITE}
 
-# Note: cryptography 44.0.0+ typically requires Rust toolchain (cargo/rustc),
-# but we rely on pre-built wheels from piwheels.org (see requirements.txt)
+# No Rust toolchain: cryptography installs from prebuilt wheels (requirements.txt).
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

@@ -1,5 +1,3 @@
-"""Tests for the profiler status service."""
-
 import pytest
 
 from wlanpi_core.profiler import service

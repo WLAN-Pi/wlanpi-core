@@ -24,16 +24,13 @@ def get_interfaces(
     if show_type:
         cmd += ["type", show_type.lower()]
     parsed = run_command(cmd).output_from_json()
-    # iproute2 emits empty objects ({}) for non-matching entries when filtered
-    # by type (e.g. `type vlan` on a device with no VLANs), so drop entries
-    # without an ifname before touching them.
+    # iproute2 emits {} for non-matching entries when filtered by type.
     cmd_output: list[dict[str, Any]] = (
         [i for i in parsed if isinstance(i, dict) and i.get("ifname")]
         if isinstance(parsed, list)
         else []
     )
 
-    # Attach extra data, like link speed
     for interface in cmd_output:
         if interface["ifname"].startswith("eth"):
             interface["link_speed"] = int(

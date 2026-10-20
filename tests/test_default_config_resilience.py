@@ -42,7 +42,6 @@ def test_unbuildable_default_is_empty_and_not_written(netcfg_env):
     ):
         cfg = nc.get_config("default")
     assert cfg.roots == [] and cfg.namespaces == []
-    # Nothing persisted, so the next start builds it again.
     assert not (netcfg_env["cfg_dir"] / "default.json").exists()
 
 

@@ -19,7 +19,6 @@ from tests.scenarios.p0_loader import ApiScenario
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 
-# scenario name → handler(client, auth_headers, scenario)
 HANDLERS: dict[str, Callable] = {}
 
 
@@ -501,7 +500,6 @@ def handle_network_config_activate_default_single_radio(
     _expect_status(response, scenario.expected_http)
     body = response.json()
     assert body["message"] == "Configuration activated successfully"
-    # The driver created wlan0, so the default leaves it alone (P14).
     assert [(o["interface"], o["status"]) for o in body["outcomes"]] == [
         ("wlan0", "skipped")
     ]
@@ -647,7 +645,6 @@ def handle_network_config_secrets_not_returned(
         assert stored["mode"] == "monitor"
         assert stored["security"]["psk"] == "first-passphrase"
 
-        # A new psk in the PATCH replaces the stored one.
         returned["security"]["psk"] = "second-passphrase"
         _expect_status(
             client.patch("/api/v1/network/config/sec_cfg", json={"roots": [returned]}),
@@ -798,7 +795,6 @@ def handle_wlan_revert_reverts_all(client, auth_headers, scenario, netcfg_env):
             "/api/v1/network/config/activate/two_ns", params={"override_active": True}
         )
         _expect_status(activated, "200")
-        # iface/namespace name only one of them; revert is documented as revert-all.
         response = client.post(
             "/api/v1/network/wlan/revert",
             json={"iface": "wlan1", "namespace": "ns_a", "delete_namespace": False},
@@ -821,8 +817,6 @@ def handle_wlan_revert_reverts_all(client, auth_headers, scenario, netcfg_env):
 def handle_network_config_leftovers_and_reset(
     client, auth_headers, scenario, netcfg_env
 ):
-    # Another tool leaves phy1 in its own namespace; the caller lists it,
-    # then chooses to reset it.
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
         for cmd in (
             ["sudo", "ip", "netns", "add", "profiler_ns"],

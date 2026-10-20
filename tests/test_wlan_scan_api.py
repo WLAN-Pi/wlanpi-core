@@ -1,5 +1,3 @@
-"""API-level tests for GET /api/v1/utils/wlan/scan."""
-
 from unittest.mock import patch
 
 import pytest

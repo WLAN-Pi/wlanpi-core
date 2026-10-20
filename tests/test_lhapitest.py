@@ -64,7 +64,6 @@ def test_post_signature_uses_raw_secret_bytes_and_canonical_query(tmp_path):
 
     assert rc == 0
     req = seen["req"]
-    # Server side: urlencode(request.query_params), last value per key wins.
     canonical = f"POST\n/api/v1/auth/token\na=x+y&b=\n{body}".encode()
     expected = hmac.new(SECRET, canonical, hashlib.sha256).hexdigest()
     assert req.get_header("X-request-signature") == expected

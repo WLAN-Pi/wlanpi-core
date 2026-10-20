@@ -49,12 +49,7 @@ class NetworkNamespace:
         )
 
     def destroy(self) -> None:
-        """
-        Destroy this network namespace.
-
-        Kills all processes inside and moves interfaces back to the root
-        namespace as necessary.
-        """
+        """Kill this namespace's processes, move its interfaces to root, and delete it."""
         return NetworkNamespace.destroy_namespace(self.name)
 
     def __enter__(self) -> "NetworkNamespace":
@@ -66,10 +61,7 @@ class NetworkNamespace:
         try:
             self.destroy()
         except NetworkNamespaceNotFoundError:
-            # User may have already called destroy here.
             pass
-
-    # Static methods
 
     @staticmethod
     def create(namespace_name: str) -> CommandResult:
@@ -113,12 +105,7 @@ class NetworkNamespace:
 
     @staticmethod
     def destroy_namespace(namespace_name: str) -> None:
-        """
-        Destroy a network namespace.
-
-        Kills all processes inside and moves interfaces back to the root
-        namespace as necessary.
-        """
+        """Kill the namespace's processes, move its interfaces to root, and delete it."""
         if not NetworkNamespace.namespace_exists(namespace_name):
             raise NetworkNamespaceNotFoundError()
         NetworkNamespace._static_logger.info(
@@ -153,7 +140,6 @@ class NetworkNamespace:
             )
 
             if interface["name"].startswith("wlan"):
-                # Get phy num of interface
                 res = run_command(
                     f"ip netns exec {namespace_name} iw dev {interface['name']} info".split()
                 )

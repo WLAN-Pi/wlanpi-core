@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Run owner capture plus stalled-subscriber cases against a device.
-
-Starts capture_harness.py as the owner, reads the session id from its output,
-then runs slow_subscriber.py once per stall value, sequentially, and prints
-each probe result. Use it to compare the capture subscriber queue budget
-between two builds (deploy one, run, deploy the other, run).
-
-Example:
-
-    python run_on_device.py \
-        --url wss://wlanpi.local:31415/api/v1/streaming/capture \
-        --ca-cert /etc/nginx/ssl/self-signed-wlanpi.cert \
-        --token-file /tmp/token --config /tmp/ch6.json \
-        --build OLD --stalls 0 3 5 10
-"""
+"""Run owner capture plus stalled-subscriber cases against a device."""
 
 import argparse
 import os

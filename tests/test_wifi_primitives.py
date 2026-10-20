@@ -1,5 +1,3 @@
-"""Unit tests for Wi-Fi capability and regulatory primitives."""
-
 from unittest.mock import MagicMock, patch
 
 import pytest

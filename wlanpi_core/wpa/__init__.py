@@ -1,9 +1,4 @@
-"""
-WPA supplicant management.
-
-This package provides functions for managing wpa_supplicant configuration,
-process lifecycle, and status checking.
-"""
+"""wpa_supplicant configuration, process lifecycle and status."""
 
 from wlanpi_core.wpa.config import (
     generate_global_header,
@@ -22,7 +17,6 @@ from wlanpi_core.wpa.scan import (
 from wlanpi_core.wpa.status import get_wpa_status
 from wlanpi_core.wpa.supplicant import (
     kill_all_supplicants,
-    parse_wpa_log,
     start_or_restart_supplicant,
 )
 
@@ -35,7 +29,6 @@ __all__ = [
     "kill_all_supplicants",
     "parse_iw_scan_output",
     "parse_key_mgmt",
-    "parse_wpa_log",
     "parse_wpa_scan_results",
     "run_interface_scan",
     "run_iw_scan",

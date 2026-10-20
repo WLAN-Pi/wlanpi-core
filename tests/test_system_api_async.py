@@ -1,5 +1,3 @@
-"""Concurrency checks for system API handlers."""
-
 from __future__ import annotations
 
 import asyncio

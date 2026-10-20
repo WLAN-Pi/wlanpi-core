@@ -1,5 +1,3 @@
-"""Unit tests for wpa.scan primitives."""
-
 import contextlib
 import json
 import threading
@@ -374,7 +372,6 @@ def test_iwlwifi_scan_takes_same_radio_monitor_down_and_back_up():
                     run_interface_scan("wlan0", "lab_ns", mode="managed", detail="full")
 
     sibs.assert_called_once_with("wlan0", "lab_ns")
-    # Monitor down before the scan radio comes up; back up after it goes down.
     assert set_state.call_args_list == [
         call("wlanpi1", False, "lab_ns"),
         call("wlan0", True, "lab_ns"),
@@ -406,8 +403,6 @@ def test_non_iwlwifi_scan_leaves_monitors_alone():
     ],
 )
 def test_mt7921_scan_lets_monitors_see_unicast_again(mocker, scan, outcome):
-    # The scan sets DROP_OTHER_UC; a capture on wlanpi0 must get it cleared
-    # after wlan1 is back down, whether the scan worked or not.
     order = Mock()
     mocker.patch(
         "wlanpi_core.adapters.discovery.interface_driver", return_value="mt7921u"
@@ -435,7 +430,6 @@ def test_iwlwifi_scan_refuses_while_a_capture_holds_the_monitor():
             with patch("wlanpi_core.wpa.scan.run_iw_scan") as iw:
                 with pytest.raises(MonitorInUseError) as exc:
                     run_interface_scan("wlan0", mode="managed")
-                # The claim is released: a later scan is not "in progress".
                 with pytest.raises(MonitorInUseError):
                     run_interface_scan("wlan0", mode="managed")
 

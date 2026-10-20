@@ -132,8 +132,7 @@ def test_supplicant_start_failure_returns_its_log_reason(client, netcfg_env):
 def test_invalid_entry_is_rejected_before_any_radio_is_touched(
     client, netcfg_env, mocker
 ):
-    # #261: a valid wlan2 entry listed before an invalid wlan0 entry used to be
-    # deleted and recreated, then rolled back. Now nothing runs.
+    # #261: one invalid entry means no entry is touched.
     write_json_config(
         netcfg_env["cfg_dir"],
         "bad_261",
@@ -179,7 +178,6 @@ def test_invalid_entry_is_rejected_before_any_radio_is_touched(
     teardown.assert_not_called()
     assert netcfg_env["ccf"].read_text() == "default"
 
-    # Another profile is active: it keeps running and stays current.
     write_json_config(
         netcfg_env["cfg_dir"],
         "other",
@@ -206,8 +204,6 @@ def test_invalid_entry_is_rejected_before_any_radio_is_touched(
 
 
 def test_default_preflight_skips_entries_core_does_not_own(client, netcfg_env, mocker):
-    # An unowned default entry is reported skipped even if it would not
-    # validate; preflight must not turn it into a 422.
     write_json_config(
         netcfg_env["cfg_dir"],
         "default",

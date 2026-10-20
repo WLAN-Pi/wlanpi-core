@@ -1,5 +1,3 @@
-"""Ownership of netdevs Core created (P14)."""
-
 from unittest.mock import patch
 
 import pytest

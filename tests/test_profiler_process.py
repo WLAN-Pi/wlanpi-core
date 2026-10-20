@@ -35,7 +35,7 @@ class ProfilerProcess:
 @pytest.fixture(autouse=True)
 def reset_profiler_state(tmp_path, monkeypatch):
     cli.profiler_process = None
-    cli._profiler_lock = asyncio.Lock()
+    cli.profiler_lock = asyncio.Lock()
     monkeypatch.setattr(cli, "STATUS_FILE", str(tmp_path / "status.json"))
     monkeypatch.setattr(cli, "LAST_SESSION_FILE", str(tmp_path / "last.json"))
     monkeypatch.setattr(cli, "_PROFILER_START_POLL_SEC", 0.01)

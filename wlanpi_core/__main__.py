@@ -7,23 +7,19 @@
 
 """Backend services for the WLAN Pi."""
 
-# stdlib imports
 import argparse
 import os
 import sys
 from typing import Any
 
-# third party imports
 import uvicorn
 
-# app imports
 from .__version__ import __version__
 
 
 def port(port: Any) -> int:
     """Check if the provided port is valid."""
     try:
-        # make sure port is an int
         port = int(port)
     except ValueError:
         raise ValueError("%s is not a number") from None
@@ -96,7 +92,6 @@ def main() -> None:
 
 def init() -> None:
     """Handle main init."""
-    # hard set no support for non linux platforms
     if "linux" not in sys.platform:
         sys.exit(f"{os.path.basename(__file__)} only works on Linux... exiting...")
 

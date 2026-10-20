@@ -1,9 +1,4 @@
-"""
-Interface management within network namespaces.
-
-This module provides functions for listing, moving, and managing network interfaces
-within network namespaces.
-"""
+"""List, move, and bring up or down interfaces in network namespaces."""
 
 import logging
 
@@ -16,23 +11,7 @@ log = logging.getLogger(__name__)
 def get_interfaces_in_namespace(
     namespace: str, include_loopback: bool = False
 ) -> list[str]:
-    """
-    Get list of interface names in a network namespace.
-
-    Args:
-        namespace: Network namespace name
-        include_loopback: If True, include loopback interfaces
-
-    Returns:
-        List of interface names
-
-    Raises:
-        RunCommandError: If command execution fails
-
-    Examples:
-        >>> interfaces = get_interfaces_in_namespace("test_ns")
-        >>> print(f"Found {len(interfaces)} interfaces")
-    """
+    """Return interface names in namespace, without loopback unless include_loopback."""
     if not namespace or not namespace.strip():
         raise ValueError("namespace cannot be empty")
 
@@ -67,27 +46,7 @@ def move_interface_to_namespace(
     namespace: str,
     interface_type: str | None = None,
 ) -> bool:
-    """
-    Move a network interface to a namespace.
-
-    For wireless interfaces, this typically involves moving the PHY.
-    For wired interfaces, this moves the link directly.
-
-    Args:
-        interface: Interface name (e.g., "wlan0", "eth0")
-        namespace: Target namespace name
-        interface_type: Optional interface type hint ("wlan", "eth", etc.)
-
-    Returns:
-        True if successful
-
-    Raises:
-        RunCommandError: If move operation fails
-        ValueError: If interface or namespace is invalid
-
-    Examples:
-        >>> move_interface_to_namespace("wlan0", "test_ns")
-    """
+    """Move the interface link from root into namespace; return True or raise RunCommandError."""
     if not interface or not interface.strip():
         raise ValueError("interface cannot be empty")
     if not namespace or not namespace.strip():
@@ -95,33 +54,11 @@ def move_interface_to_namespace(
 
     log.info(f"Moving interface {interface} to namespace {namespace}")
 
-    # Determine interface type if not provided
-    if not interface_type:
-        if interface.startswith("wlan"):
-            interface_type = "wlan"
-        elif interface.startswith("eth"):
-            interface_type = "eth"
-        else:
-            interface_type = "generic"
-
     try:
-        if interface_type == "wlan":
-            # For wireless interfaces, we need to get the PHY and move it
-            # This is typically handled at the PHY level, not interface level
-            # For now, try to move the link directly
-            log.debug(f"Moving wireless interface {interface} as link")
-            ns_exec(
-                ["ip", "link", "set", interface, "netns", namespace],
-                namespace=None,  # Execute in root
-            )
-        else:
-            # For other interfaces, move the link directly
-            log.debug(f"Moving interface {interface} as link")
-            ns_exec(
-                ["ip", "link", "set", interface, "netns", namespace],
-                namespace=None,  # Execute in root
-            )
-
+        ns_exec(
+            ["ip", "link", "set", interface, "netns", namespace],
+            namespace=None,
+        )
         log.info(f"Successfully moved interface {interface} to namespace {namespace}")
         return True
     except RunCommandError as e:
@@ -130,23 +67,7 @@ def move_interface_to_namespace(
 
 
 def move_interface_to_root(interface: str, namespace: str) -> bool:
-    """
-    Move a network interface from a namespace back to root namespace.
-
-    Args:
-        interface: Interface name
-        namespace: Source namespace name
-
-    Returns:
-        True if successful
-
-    Raises:
-        RunCommandError: If move operation fails
-        ValueError: If interface or namespace is invalid
-
-    Examples:
-        >>> move_interface_to_root("wlan0", "test_ns")
-    """
+    """Move the interface from namespace back to root; return True or raise RunCommandError."""
     if not interface or not interface.strip():
         raise ValueError("interface cannot be empty")
     if not namespace or not namespace.strip():
@@ -155,7 +76,7 @@ def move_interface_to_root(interface: str, namespace: str) -> bool:
     log.info(f"Moving interface {interface} from namespace {namespace} to root")
 
     try:
-        # Move interface to root namespace (PID 1)
+        # netns 1 is PID 1's namespace: root.
         ns_exec(
             ["ip", "link", "set", interface, "netns", "1"],
             namespace=namespace,
@@ -171,22 +92,7 @@ def move_interface_to_root(interface: str, namespace: str) -> bool:
 
 
 def bring_interface_up(interface: str, namespace: str | None = None) -> bool:
-    """
-    Bring a network interface up in a namespace or root.
-
-    Args:
-        interface: Interface name
-        namespace: Namespace name, or None for root
-
-    Returns:
-        True if successful
-
-    Raises:
-        RunCommandError: If operation fails
-
-    Examples:
-        >>> bring_interface_up("wlan0", "test_ns")
-    """
+    """Bring the interface up in namespace (None for root); return True or raise RunCommandError."""
     if not interface or not interface.strip():
         raise ValueError("interface cannot be empty")
 
@@ -202,22 +108,7 @@ def bring_interface_up(interface: str, namespace: str | None = None) -> bool:
 
 
 def bring_interface_down(interface: str, namespace: str | None = None) -> bool:
-    """
-    Bring a network interface down in a namespace or root.
-
-    Args:
-        interface: Interface name
-        namespace: Namespace name, or None for root
-
-    Returns:
-        True if successful
-
-    Raises:
-        RunCommandError: If operation fails
-
-    Examples:
-        >>> bring_interface_down("wlan0", "test_ns")
-    """
+    """Bring the interface down in namespace (None for root); return True or raise RunCommandError."""
     if not interface or not interface.strip():
         raise ValueError("interface cannot be empty")
 

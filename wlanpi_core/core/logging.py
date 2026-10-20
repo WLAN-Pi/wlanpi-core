@@ -3,16 +3,11 @@
 import json
 import logging
 import logging.handlers
-import os
 import pathlib
-import sys
 import tempfile
-import traceback
-from typing import Any
 
 LOG_DIR = pathlib.Path("/var/log/wlanpi_core")
-# debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount). Five 4 MiB
-# files leave 5 MiB for the one record that can overshoot a rollover.
+# debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount); 5 x 4 MiB leaves rollover headroom.
 DEBUG_LOG_MAX_BYTES = 4 * 1024 * 1024
 DEBUG_LOG_BACKUP_COUNT = 4
 
@@ -23,62 +18,6 @@ LOG_LEVELS = {
     "ERROR": 40,
     "CRITICAL": 50,
 }
-
-
-def create_contextual_log_record() -> type:
-    """Create ContextualLogRecord class dynamically to avoid circular import."""
-
-    class ContextualLogRecord(logging.LogRecord):
-        """Custom LogRecord that captures additional context information."""
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-
-            if not self.exc_info and sys.exc_info()[0] is not None:
-                self.exc_info = sys.exc_info()
-
-            if self.levelno >= logging.ERROR and self.exc_info:
-                try:
-                    _, _, exc_traceback = self.exc_info
-                    tb = traceback.extract_tb(exc_traceback)
-                    if tb:
-                        last_frame = tb[-1]
-                        self.source_file = os.path.basename(last_frame.filename)
-                        self.line_number = last_frame.lineno
-                        self.source_function = last_frame.name
-                    else:
-                        self.source_file = "Unknown"
-                        self.line_number = 0
-                        self.source_function = "Unknown"
-                except Exception:
-                    self.source_file = "Unknown"
-                    self.line_number = 0
-                    self.source_function = "Unknown"
-            else:
-                try:
-                    stack = traceback.extract_stack()
-                    for frame in reversed(stack[:-2]):  # Exclude the last two frames
-                        filename = os.path.basename(frame.filename)
-                        lineno = frame.lineno
-                        function = frame.name
-                        if all(
-                            module not in filename
-                            for module in ["logging", __file__, "contextlib"]
-                        ):
-                            self.source_file = os.path.basename(filename)
-                            self.line_number = lineno
-                            self.source_function = function
-                            break
-                    else:
-                        self.source_file = "Unknown"
-                        self.line_number = 0
-                        self.source_function = "Unknown"
-                except Exception:
-                    self.source_file = "Unknown"
-                    self.line_number = 0
-                    self.source_function = "Unknown"
-
-    return ContextualLogRecord
 
 
 class ContextFilter(logging.Filter):
@@ -182,14 +121,7 @@ def _file_handlers(
 
 
 def configure_logging(debug_mode: bool = False) -> None:
-    """
-    Configure logging with console and file handlers.
-
-    Args:
-        debug_mode: Whether to force DEBUG level logging
-    """
-    create_contextual_log_record()
-
+    """Configure console, app.log, and debug.log handlers; debug_mode lowers the console to DEBUG."""
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     root_logger = logging.getLogger()
@@ -217,15 +149,12 @@ def configure_logging(debug_mode: bool = False) -> None:
     app_file_handler.addFilter(context_filter)
     debug_file_handler.addFilter(context_filter)
 
-    # console - info by default, debug if --debug
     console_stream_handler.setFormatter(standard_formatter)
     console_stream_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
 
-    # /var/log/wlanpi_core/app.log - gets info or higher
     app_file_handler.setFormatter(json_formatter)
     app_file_handler.setLevel(logging.INFO)
 
-    # /var/log/wlanpi_core/debug/debug.log (tmpfs, rotated) - gets everything
     debug_file_handler.setFormatter(json_formatter)
     debug_file_handler.setLevel(logging.DEBUG)
 

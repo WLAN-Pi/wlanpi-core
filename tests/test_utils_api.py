@@ -1,5 +1,3 @@
-"""API-level tests for utils reachability and speedtest endpoints."""
-
 from unittest.mock import AsyncMock, patch
 
 import pytest

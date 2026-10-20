@@ -1,5 +1,3 @@
-"""Behavioral tests for the packet-capture WebSocket protocol."""
-
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 

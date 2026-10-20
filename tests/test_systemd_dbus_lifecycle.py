@@ -1,5 +1,3 @@
-"""Tests for lazy, bounded systemd D-Bus access."""
-
 from __future__ import annotations
 
 import os
@@ -19,7 +17,6 @@ from wlanpi_core.services import system_service
 
 
 def test_app_import_does_not_connect_to_system_bus():
-    """Constructing the FastAPI app must not require a live system bus."""
     repo_root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH")

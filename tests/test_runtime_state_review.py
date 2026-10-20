@@ -34,10 +34,9 @@ def test_remove_network_never_deletes_system_wpa_config(tmp_path):
     system_conf.write_text("ctrl_interface=/run/wpa_supplicant\n")
     legacy = service.config_dir / "wlan1.conf"
     legacy.write_text("legacy Core config\n")
-    with patch.object(service, "_ns_exec"):
-        with patch.object(supplicant, "stop_supplicant", return_value=True):
-            service.remove_network("wpa_supplicant", None)
-            service.remove_network("wlan1", None)
+    with patch.object(supplicant, "stop_supplicant", return_value=True):
+        service.remove_network("wpa_supplicant", None)
+        service.remove_network("wlan1", None)
     assert system_conf.exists()
     assert not legacy.exists()
 
@@ -48,9 +47,8 @@ def test_remove_network_removes_the_runtime_log(tmp_path, monkeypatch):
     log.parent.mkdir(parents=True)
     log.write_text("wpa log\n")
     service = _service(tmp_path)
-    with patch.object(service, "_ns_exec"):
-        with patch.object(supplicant, "stop_supplicant", return_value=True):
-            service.remove_network("sta0", "ns_a")
+    with patch.object(supplicant, "stop_supplicant", return_value=True):
+        service.remove_network("sta0", "ns_a")
     assert not log.exists()
 
 
@@ -95,7 +93,7 @@ def test_reused_namespace_name_starts_with_empty_dns(netcfg_env):
 
     resolv = Path(nns.NETNS_ETC_DIR) / "ns_a" / "resolv.conf"
     resolv.parent.mkdir(parents=True)
-    resolv.write_text("nameserver 192.0.2.1\n")  # left by an earlier ns_a
+    resolv.write_text("nameserver 192.0.2.1\n")
     cfg = NamespaceConfig(
         namespace="ns_a",
         mode="managed",

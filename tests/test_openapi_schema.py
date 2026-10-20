@@ -1,5 +1,3 @@
-"""OpenAPI schema sanity checks for Swagger / MCP accuracy."""
-
 from __future__ import annotations
 
 import pytest

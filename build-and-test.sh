@@ -1,20 +1,16 @@
 #!/bin/bash
-#
-# Build wlanpi-core Debian package in podman container
-#
+# build-and-test.sh: build the wlanpi-core .deb in a podman container
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Clean up old build manifest
 rm -f .build-manifest.txt
 
 echo "========================================="
 echo "Building wlanpi-core Debian Package"
 echo "========================================="
 
-# Check for podman
 if ! command -v podman &> /dev/null; then
     echo "ERROR: podman not found!"
     echo "Please install podman to use this build script."
@@ -29,7 +25,6 @@ echo "Step 2: Building Debian package in container..."
 echo "(This may take several minutes...)"
 echo ""
 
-# Run the build in container
 podman run --rm \
     -v "$(pwd)":/work:Z \
     -w /work \

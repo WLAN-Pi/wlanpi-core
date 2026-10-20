@@ -1,9 +1,4 @@
-"""
-Authentication API Endpoints.
-
-This module provides API endpoints for token management,
-signing key rotation, and authentication-related debug operations.
-"""
+"""Authentication endpoints: tokens, PAM checks, and signing key rotation."""
 
 import asyncio
 import grp
@@ -45,8 +40,7 @@ log = get_logger(__name__)
 
 PAM_SERVICE = "wlanpi-webui"
 
-# linux-pam return codes (pamela does not export them): ordinary auth/account
-# denials map to "failure"; anything else is a service/configuration error.
+# linux-pam return codes; pamela does not export them.
 _PAM_AUTH_DENIED = frozenset(
     {
         6,  # PAM_PERM_DENIED
@@ -63,15 +57,11 @@ _PAM_AUTH_DENIED = frozenset(
     }
 )
 _PAM_EXPIRED = frozenset({12, 27})  # PAM_NEW_AUTHTOK_REQD / PAM_AUTHTOK_EXPIRED
-_PAM_AUTHTOK_ERR = 20  # the new password failed the PAM password policy
-# pam_unix's base delay after a wrong password (2 s). A refused correct
-# password waits a delay drawn like libpam's, so the response time does not
-# confirm the guess. ponytail: fixed base; measure if pam_unix changes.
+_PAM_AUTHTOK_ERR = 20
+# pam_unix's base delay after a wrong password. ponytail: fixed; re-measure if pam_unix changes.
 _PAM_FAIL_DELAY = 2.0
 _RNG = random.SystemRandom()
-# linux-pam flag (not exported by pamela): change only an expired token. It
-# also makes pam_unix apply its policy (minlen, obscure) and verify the current
-# password, which it skips for root without it.
+# linux-pam flag; pamela does not export it. See _pam_change_password.
 _PAM_CHANGE_EXPIRED_AUTHTOK = 0x0020
 
 
@@ -103,7 +93,7 @@ def _pam_change_password(
     skips the password policy entirely. The conversation answers the current
     password prompt, then the new password twice.
     """
-    import pamela  # lazy
+    import pamela
 
     conv = pamela.new_simple_password_conv(
         (current_password, new_password, new_password), "utf-8"
@@ -202,8 +192,7 @@ async def pam_authenticate(body: PAMAuthRequest) -> PAMAuthResponse:
 
     code = await asyncio.to_thread(_pam_authenticate, body.username, password)
     status = _status_from_code(code)
-    # Non-administrators get the same answer as a wrong password, including
-    # when their password has expired, so the status reveals nothing more.
+    # Non-administrators get a wrong-password answer, even when expired, so status leaks nothing.
     if status != "failure" and not await asyncio.to_thread(
         _is_administrator, body.username
     ):
@@ -235,8 +224,7 @@ async def pam_change_password(body: PAMChangePasswordRequest) -> PAMAuthResponse
     old_code = await asyncio.to_thread(_pam_authenticate, username, current)
     if old_code not in _PAM_EXPIRED:
         if old_code == 0:
-            # Right password, account not expired: refuse on the same timing
-            # as a wrong one, or a fast "failure" confirms the password.
+            # Refuse with wrong-password timing, or a fast "failure" confirms the password.
             return await _refuse_non_administrator()
         if old_code in _PAM_AUTH_DENIED:
             return PAMAuthResponse(status="failure")
@@ -312,8 +300,6 @@ async def generate_token(
     """
     try:
         device_id = _require_device_id(token_request)
-        # Only HMAC callers (root, via getjwt) get True and may mint the PAM
-        # client's id; no bearer may, not even one already issued for it.
         if device_id == PAM_CLIENT_DEVICE_ID and caller is not True:
             raise HTTPException(
                 status_code=403, detail="device_id is reserved for on-device use"
@@ -379,7 +365,6 @@ async def revoke_token(
         ) from None
 
 
-# Internal key management endpoints
 @router.post(
     "/signing_key", dependencies=[Depends(verify_hmac)], include_in_schema=False
 )
@@ -406,7 +391,7 @@ async def new_signing_key(request: Request) -> Any:
 async def list_all_signing_keys(request: Request) -> Any:
     """List all signing keys."""
     try:
-        keys = await request.app.state.token_manager.get_active_keys()
+        keys = await request.app.state.token_manager.get_all_keys()
         return keys
     except Exception:
         log.exception("Unexpected error getting keys")

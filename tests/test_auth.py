@@ -24,7 +24,6 @@ from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenValidationResult
 
 
 def create_mock_request(client_host="127.0.0.1", headers=None, scope_client=None):
-    """Create a consistent mock request."""
     request = Mock(spec=Request)
     request.method = "POST"
     request.url.path = "/api/v1/test"
@@ -33,24 +32,18 @@ def create_mock_request(client_host="127.0.0.1", headers=None, scope_client=None
     request.client = Mock()
     request.client.host = client_host
 
-    # Add scope attribute
-    request.scope = {
-        "client": scope_client
-        or (client_host, 12345)  # Typical scope client tuple (host, port)
-    }
+    request.scope = {"client": scope_client or (client_host, 12345)}
 
     return request
 
 
 @pytest.fixture
 def mock_request():
-    """Create a mock FastAPI request with necessary attributes."""
     return create_mock_request()
 
 
 @pytest.fixture
 def mock_request_with_query():
-    """Create a mock request with query parameters."""
     request = create_mock_request()
     request.method = "GET"
     request.query_params = {"param1": "value1", "param2": "value2"}
@@ -59,7 +52,6 @@ def mock_request_with_query():
 
 @pytest.fixture
 def mock_app_state():
-    """Create mock application state with security manager."""
     app_state = Mock()
     app_state.security_manager.shared_secret = b"test_secret"
     return app_state
@@ -67,9 +59,6 @@ def mock_app_state():
 
 @pytest.mark.asyncio
 async def test_verify_hmac_success(mock_request, mock_app_state):
-    """Test successful HMAC verification."""
-
-    # Set up request body and calculate expected signature
     body = b'{"test": "data"}'
     canonical_string = "POST\n/api/v1/test\n\n" + body.decode()
     expected_signature = hmac.new(
@@ -78,19 +67,16 @@ async def test_verify_hmac_success(mock_request, mock_app_state):
         hashlib.sha256,
     ).hexdigest()
 
-    # Configure mock request
     mock_request.app.state = mock_app_state
     mock_request.body = AsyncMock(return_value=body)
     mock_request.headers["X-Request-Signature"] = expected_signature
 
-    # Test verification
     result = await verify_hmac(mock_request)
     assert result is True
 
 
 @pytest.mark.asyncio
 async def test_verify_hmac_with_params(mock_request_with_query, mock_app_state):
-    """Test HMAC verification with query parameters."""
     body = b""
     query_string = "param1=value1&param2=value2"
     canonical_string = f"GET\n/api/v1/test\n{query_string}\n"
@@ -110,7 +96,6 @@ async def test_verify_hmac_with_params(mock_request_with_query, mock_app_state):
 
 @pytest.mark.asyncio
 async def test_verify_hmac_invalid_signature(mock_request, mock_app_state):
-    """Test HMAC verification with invalid signature."""
     mock_request.app.state = mock_app_state
     mock_request.body = AsyncMock(return_value=b'{"test": "data"}')
     mock_request.headers["X-Request-Signature"] = "invalid_signature"
@@ -123,7 +108,6 @@ async def test_verify_hmac_invalid_signature(mock_request, mock_app_state):
 
 @pytest.mark.asyncio
 async def test_verify_hmac_missing_signature(mock_request, mock_app_state):
-    """Test HMAC verification with missing signature header."""
     mock_request.app.state = mock_app_state
     mock_request.body = Mock(return_value=b'{"test": "data"}')
 
@@ -135,7 +119,6 @@ async def test_verify_hmac_missing_signature(mock_request, mock_app_state):
 
 @pytest.mark.asyncio
 async def test_verify_hmac_non_localhost(mock_request, mock_app_state):
-    """Test HMAC verification from non-localhost IP."""
     mock_request.client.host = "192.168.1.100"
     mock_request.scope["client"] = ("192.168.1.100", 12345)
     mock_request.app.state = mock_app_state
@@ -147,19 +130,16 @@ async def test_verify_hmac_non_localhost(mock_request, mock_app_state):
 
 
 def test_is_localhost_request_valid():
-    """Test localhost detection with valid localhost IP."""
     request = create_mock_request(client_host="127.0.0.1")
     assert is_localhost_request(request) is True
 
 
 def test_is_localhost_request_ipv6():
-    """Test localhost detection with IPv6 localhost."""
     request = create_mock_request(client_host="::1")
     assert is_localhost_request(request) is True
 
 
 def test_is_localhost_request_non_localhost():
-    """Test localhost detection with non-localhost IP."""
     request = create_mock_request(
         client_host="192.168.1.100", scope_client=("192.168.1.100", 12345)
     )
@@ -193,7 +173,6 @@ def test_unix_proxy_uses_x_real_ip():
 
 
 def test_is_localhost_request_with_no_client():
-    """Test localhost detection when client info is missing."""
     request = create_mock_request()
     request.client = None
     request.scope["client"] = None
@@ -201,7 +180,6 @@ def test_is_localhost_request_with_no_client():
 
 
 def test_is_localhost_request_with_empty_headers():
-    """Test localhost detection with empty headers."""
     request = create_mock_request()
     request.headers = {}
     assert is_localhost_request(request) is True

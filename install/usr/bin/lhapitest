@@ -1,8 +1,7 @@
 #!/usr/bin/python3
 """lhapitest: localhost API test client for wlanpi-core (HMAC-signed requests).
 
-Stdlib only. Reads the shared secret as raw bytes, so secrets containing NUL
-or trailing newline bytes sign correctly (the previous bash version did not).
+Stdlib only (system python3). The secret is read as raw bytes so NUL and trailing newline bytes sign correctly.
 """
 
 import argparse
@@ -56,9 +55,7 @@ def main() -> int:
         print(f"secret not found at {a.secrets}", file=sys.stderr)
         return 1
 
-    # Must match verify_hmac in wlanpi_core/core/auth.py.
-    # verify_hmac re-encodes the parsed params (last value wins per key), so
-    # sign and send exactly that form rather than the raw --query text.
+    # verify_hmac in wlanpi_core/core/auth.py signs the re-encoded parsed query, not the raw text.
     query = urllib.parse.urlencode(
         dict(urllib.parse.parse_qsl(a.query, keep_blank_values=True))
     )

@@ -1,5 +1,3 @@
-"""Tests for wlanpi_core.core.logging file handlers."""
-
 import logging
 
 import pytest

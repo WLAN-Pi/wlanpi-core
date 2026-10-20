@@ -48,10 +48,8 @@ class IPInterfaceAddress(BaseModel, extra="allow"):
     @model_validator(mode="after")
     def check_dynamic_condition(self) -> Any:
         """Fill DHCP placeholder values for dynamic addresses."""
-        # print(self)
         if self.dynamic:
-            # Placeholders for DHCP requests; parsed `ip -j addr` output also
-            # sets dynamic=true and must keep its real address (issue #147)
+            # DHCP placeholders; parsed `ip -j addr` dynamic rows keep their real address (#147).
             if self.prefixlen is None:
                 self.prefixlen = 24
             if self.local is None:
@@ -336,7 +334,6 @@ class NetSecurityPublic(BaseModel):
 class RootConfigPublic(RootConfig):
     """A root entry as the API returns it (no secrets)."""
 
-    # Narrower public type for the same field.
     security: NetSecurityPublic | None = None  # type: ignore[assignment]
 
 

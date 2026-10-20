@@ -546,8 +546,7 @@ def run_interface_scan(
     mode: str | None = None,
     detail: str = "short",
 ) -> list[dict[str, Any]]:
-    """
-    Trigger an active scan on ``iface`` and return parsed networks.
+    """Trigger an active scan on ``iface`` and return parsed networks.
 
     Monitor interfaces use ``iw scan``. Managed interfaces prefer ``wpa_cli``
     when a supplicant control socket is available, otherwise ``iw scan``.
@@ -618,7 +617,6 @@ def run_interface_scan(
                     except Exception as e:
                         # Keep going: every paused monitor gets its restore.
                         log.error("Could not bring %s back up after a scan: %s", mon, e)
-                # The scan sets DROP_OTHER_UC radio-wide, blinding a capture on
-                # this radio's monitor.
+                # MT7921 scans set DROP_OTHER_UC radio-wide, blinding the monitor's capture.
                 if driver in MT7921_DRIVERS:
                     allow_other_unicast(iface, namespace)

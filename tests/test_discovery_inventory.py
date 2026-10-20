@@ -1,7 +1,4 @@
-"""Inventory edge cases seen on WLAN Pi hardware (review of #281).
-
-Tests by Josh Schmelzle, from his review of the namespace safety series.
-"""
+"""Inventory edge cases seen on WLAN Pi hardware (review of #281)."""
 
 import subprocess
 from unittest.mock import patch
@@ -62,7 +59,7 @@ def test_inventory_skips_netns_with_name_core_refuses():
     [
         ("/sys/bus/pci/drivers/iwlwifi\n", 0, "iwlwifi"),
         ("/sys/bus/usb/drivers/mt7921u\n", 0, "mt7921u"),
-        ("", 1, None),  # no such netdev in that namespace
+        ("", 1, None),
     ],
 )
 def test_interface_driver_reads_sysfs_in_the_namespace(stdout, rc, driver):
@@ -98,7 +95,6 @@ def test_up_sibling_monitors_only_returns_the_same_radio():
     def ns_exec(cmd, namespace=None, **_kw):
         if cmd[-1] == "dev":
             return CommandResult(IW_DEV_TWO_RADIOS, "", 0)
-        # `ip -o link show up`: both monitors are up.
         return CommandResult(
             "7: wlanpi1: <UP> mtu 1500\n6: wlanpi0: <UP> mtu 1500\n", "", 0
         )
@@ -106,8 +102,8 @@ def test_up_sibling_monitors_only_returns_the_same_radio():
     with patch("wlanpi_core.adapters.phy.ns_exec", side_effect=ns_exec):
         assert phy.up_sibling_monitors("wlan0", None) == ["wlanpi1"]
         assert phy.up_sibling_monitors("wlan1", None) == ["wlanpi0"]
-        assert phy.up_sibling_monitors("wlanpi1", None) == []  # not itself
-        assert phy.up_sibling_monitors("wlan9", None) == []  # unknown iface
+        assert phy.up_sibling_monitors("wlanpi1", None) == []
+        assert phy.up_sibling_monitors("wlan9", None) == []
 
 
 def test_list_namespaced_interfaces_leaves_out_root():

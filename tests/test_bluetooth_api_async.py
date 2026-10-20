@@ -1,5 +1,3 @@
-"""Concurrency-boundary checks for Bluetooth API handlers."""
-
 from unittest.mock import AsyncMock
 
 import pytest

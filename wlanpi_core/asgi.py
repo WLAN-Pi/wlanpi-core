@@ -1,9 +1,6 @@
 #!/usr/bin/python3
 
-"""ASGI entry point for the WLAN Pi web application.
-
-Run this from gunicorn.
-"""
+"""ASGI entry point; gunicorn serves `app` from here."""
 
 import os
 

@@ -19,9 +19,7 @@ DEFAULT_SECURITY = Security(SECURITY)
 DEFAULT_DEPENDS = Depends(SECURITY)
 AUTH_CLOCK_MESSAGE = "NTP needs set; cannot proceed"
 
-# The only device id whose bearer token may call the PAM endpoints. The WebUI
-# mints it with `getjwt` over root-only HMAC; generate_token refuses to mint it
-# for any other bearer, so a token held by another client cannot reach PAM.
+# Only bearer device id the PAM endpoints accept; only root-only HMAC (getjwt) may mint it.
 PAM_CLIENT_DEVICE_ID = "wlanpi-webui"
 
 
@@ -34,11 +32,6 @@ async def verify_auth_wrapper(
     credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
 ) -> Any:
     """Select authentication from the credential presented."""
-
-    # TODO(#139): HMAC is a transitional compatibility path. Move every client to
-    # Bearer authentication, dispatch on presented credentials instead of source
-    # address, and then remove the shared HMAC secret and this branch.
-
     if credentials:
         return await verify_jwt_token(request, credentials)
     authorization = request.headers.get("Authorization", "")
@@ -57,12 +50,7 @@ async def verify_local_auth(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
 ) -> Any:
-    """Bearer or HMAC, localhost only.
-
-    For the password-handling PAM endpoints: accept the WebUI's device JWT (so
-    it does not need the shared secret) or the legacy localhost HMAC, but never
-    expose them off-device or to another client's token.
-    """
+    """Bearer or HMAC, localhost only; a bearer must belong to PAM_CLIENT_DEVICE_ID."""
     if not is_localhost_request(request):
         raise HTTPException(
             status_code=403,
@@ -115,7 +103,6 @@ async def verify_hmac(request: Request) -> Any:
     query_string = (
         urllib.parse.urlencode(request.query_params) if request.query_params else ""
     )
-    # verify path + query
     canonical_string = (
         f"{request.method}\n{request.url.path}\n{query_string}\n{body.decode()}"
     )

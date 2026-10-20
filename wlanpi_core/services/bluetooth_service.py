@@ -24,18 +24,14 @@ BLUETOOTH_ADAPTER_COMMAND = "/usr/bin/wlanpi-bt-adapter"
 BLUETOOTH_ADAPTER_TIMEOUT_SEC = 2
 
 _pairing_lock = threading.Lock()
-# bluetoothctl lists BlueZ's default controller, which can be another adapter,
-# and bt-device -l lists unpaired devices too, so read the adapter's device
-# objects. Not GetManagedObjects: busctl --json fails on it while BlueZ holds a
-# nearby device's ManufacturerData (a{qv}). BlueZ drops a device it only saw
-# nearby soon after a scan, maybe between listing and reading it, so a device
-# that can't be read is skipped if it is gone. Paired devices are never dropped.
+# Not bluetoothctl (default controller only), bt-device -l (lists unpaired) or
+# GetManagedObjects (busctl --json fails on ManufacturerData a{qv}).
+# BlueZ drops scanned devices at any time, so an unreadable path that vanished is skipped.
 _BLUEZ_TREE_CMD = ["busctl", "--system", "tree", "--list", "org.bluez"]
 
 
 def _bluez_device_paths(tree: str, adapter: str) -> list[str]:
-    # Without the adapter, BlueZ is restarting and the listing can't show
-    # its pairings.
+    # No adapter object means BlueZ is restarting and can't list pairings.
     if f"/org/bluez/{adapter}" not in tree.split():
         raise RunCommandError(f"BlueZ has not registered {adapter}", 1)
     return re.findall(rf"^/org/bluez/{adapter}/dev_[0-9A-F_]+$", tree, re.MULTILINE)
@@ -83,13 +79,10 @@ def _grep_text(result: Any, pattern: str) -> str:
 
 
 def bluetooth_adapter() -> str | None:
-    """
-    Return the adapter wlanpi-bluetooth uses, such as ``hci1``, or None.
+    """Return the adapter wlanpi-bluetooth uses, such as ``hci1``, or None.
 
-    Adapter numbers follow probe order, so hci0 can be a USB dongle rather
-    than the onboard radio. wlanpi-bluetooth releases without
-    ``wlanpi-bt-adapter`` always used hci0, so fall back to it only then: if
-    the selector fails, hci0 may not be the adapter bt-timedpair opens.
+    hci0 can be a USB dongle (probe order), so it is the fallback only when an
+    older wlanpi-bluetooth lacks ``wlanpi-bt-adapter``, never when it fails.
     """
     try:
         result = run_command(
@@ -108,7 +101,7 @@ def bluetooth_adapter() -> str | None:
 
 
 def bluetooth_present(adapter: str) -> bool:
-    """We want to use hciconfig here as it works OK when no devices are present."""
+    """Return whether hciconfig lists `adapter` (it works with no devices present)."""
     cmd = "hciconfig"
     return bool(_grep_text(run_command(cmd=cmd, raise_on_fail=True), adapter))
 
@@ -141,7 +134,7 @@ def bluetooth_address(adapter: str) -> str:
 
 
 def bluetooth_power(adapter: str) -> str:
-    """We want to use hciconfig here as it works OK when no devices are present."""
+    """Return the adapter's hciconfig UP line, or "" when it is down."""
     cmd = f"hciconfig {adapter}"
     filtered = run_command(cmd=cmd, raise_on_fail=True).grep_stdout_for_pattern(
         r"^\s+UP", split=True
@@ -215,7 +208,8 @@ def bluetooth_paired_devices(adapter: str) -> dict[str, str] | None:
             if path in _bluez_device_paths(now, adapter):
                 raise
             continue
-        if device := _parse_paired_device(result.stdout):
+        device = _parse_paired_device(result.stdout)
+        if device:
             paired[device[0]] = device[1]
     return paired or None
 
@@ -341,7 +335,8 @@ async def _bluetooth_paired_devices_async(
             if path in _bluez_device_paths(now.stdout, adapter):
                 raise
             continue
-        if device := _parse_paired_device(result.stdout):
+        device = _parse_paired_device(result.stdout)
+        if device:
             paired[device[0]] = device[1]
     return paired
 
@@ -404,11 +399,7 @@ async def _pairing_mode_active(adapter: str) -> bool:
 
 
 async def bluetooth_pair() -> dict[str, Any]:
-    """
-    Enter discoverable pairing mode via ``bt-timedpair``.
-
-    Unpairs existing devices first (fpms parity) then starts timed pairing.
-    """
+    """Enter discoverable pairing mode via ``bt-timedpair``, unpairing existing devices first as FPMS does."""
     if not _pairing_lock.acquire(blocking=False):
         raise BluetoothPairingInProgressError(
             "Bluetooth pairing is already in progress"

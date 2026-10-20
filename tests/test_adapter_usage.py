@@ -1,5 +1,3 @@
-"""Signs that another tool is using a wireless netdev (wlanpi_core.adapters.usage)."""
-
 import os
 from unittest.mock import patch
 
@@ -47,7 +45,7 @@ def test_in_netns_matches_the_exact_namespace(fake_proc):
     fake_proc(50, ["dhcpcd: wlan1 [ip4]"], netns="ns_a")
     assert usage.in_netns(50, "ns_a") and not usage.in_netns(50, None)
     assert not usage.in_netns(1, "ns_a") and usage.in_netns(1, None)
-    assert not usage.in_netns(99, None)  # gone
+    assert not usage.in_netns(99, None)
     assert not usage.in_netns(50, "ns_missing")
 
 
@@ -82,7 +80,7 @@ def test_same_name_in_another_netns_is_not_this_iface(fake_proc):
 
 
 def test_capturing_links_reads_packet_sockets():
-    # wlan2profiler (8) has sockets; ifindex 0 is "any interface", not a link.
+    # ifindex 0 is a socket bound to any interface, not a link.
     out = (
         "sk       RefCnt Type Proto  Iface R Rmem   User   Inode\n"
         "00000000 3      3    0003   8     1 0      0      1001\n"

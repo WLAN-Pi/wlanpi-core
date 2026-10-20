@@ -1,5 +1,3 @@
-"""Tests for WPA status parsing and failure handling."""
-
 from unittest.mock import MagicMock
 
 import pytest

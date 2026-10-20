@@ -16,7 +16,6 @@ from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.services.system_service import get_service_active_state
 
 INFO_FILE = "/run/wlanpi-profiler.info.json"
-# The profiler writes its output here; purge empties these subdirectories.
 DATA_ROOT = "/var/www/html/profiler"
 PURGE_DIRS = ("clients", "reports")
 
@@ -201,7 +200,7 @@ def _utf8(name: str) -> bool:
 def _entries(parts: list[str]) -> list[tuple[str, os.stat_result]]:
     """Return (name, lstat) for each entry of directory DATA_ROOT/parts, by name.
 
-    None if it is missing, not a directory, or reached through a symlink.
+    [] if it is missing, not a directory, or reached through a symlink.
     Skips names that are not valid UTF-8 and entries removed while listing.
     """
     try:
@@ -244,7 +243,6 @@ def list_files(mac: str | None = None) -> dict[str, Any]:
     limits clients to that one. Symlinks are skipped, never followed.
     """
     clients = []
-    # A non-directory or symlinked entry yields no files, so it is not listed.
     for name, _ in _entries(["clients"]):
         if mac is not None and name != mac:
             continue
@@ -271,8 +269,8 @@ def read_file(path: str) -> tuple[bytes, str]:
         fd = _open_below_root(parts, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
     except OSError:
         raise not_found from None
-    # shortcut: reads the whole file; profiler files are a few KB, and a day's
-    # CSV report tens of KB. Stream it if they ever grow to many MB.
+    # ponytail: reads the whole file; files are KBs, a day's CSV tens of KB.
+    # Stream it if they grow to many MB.
     with os.fdopen(fd, "rb") as f:
         if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise not_found
@@ -286,17 +284,12 @@ async def purge_data() -> dict[str, int]:
 
     The directories themselves stay, with their mode and ownership. Symlinks
     are removed, never followed. Raises ValidationError (409) while the
-    profiler is active.
-
-    Holds the lock Core takes to start or stop the profiler, whether it
-    spawns it directly or starts the systemd unit, so a purge never overlaps
-    another purge or a start through Core. Activity is checked under that
-    lock right before deleting.
+    profiler is active, checked under Core's profiler start/stop lock.
     """
     # ponytail: only starts from outside Core (direct systemctl, FPMS) take no
     # lock, so they can still begin between the check and the delete and lose
     # a file being written. Upgrade path: a lock the profiler itself honours.
-    async with cli._profiler_lock:
+    async with cli.profiler_lock:
         if await asyncio.to_thread(profiler_active):
             raise ValidationError(
                 "The profiler is running; stop it before purging its data.",

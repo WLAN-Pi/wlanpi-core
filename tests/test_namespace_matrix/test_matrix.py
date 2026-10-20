@@ -34,7 +34,6 @@ def _params() -> list:
 
 @pytest.mark.parametrize("scenario", _params())
 def test_namespace_matrix_scenario(scenario, namespace_service, netcfg_env):
-    """Execute one matrix row; handler name must exist in HANDLERS."""
     assert scenario.name in HANDLERS, f"Missing handler for {scenario.name}"
     run_scenario(scenario, namespace_service, netcfg_env)
 

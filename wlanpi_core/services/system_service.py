@@ -180,8 +180,7 @@ def get_mode() -> str:
         with open(MODE_FILE, encoding="utf-8") as mode_file:
             current_mode = mode_file.readline().strip()
     except FileNotFoundError:
-        # Missing state means the device has not selected a non-default mode. A
-        # read-only API guard must not create or mutate system state.
+        # Missing means default mode; a read-only guard must not create state.
         return "classic"
     except OSError as exc:
         log.warning("Unable to read device mode from %s: %s", MODE_FILE, exc)
@@ -205,7 +204,6 @@ def get_image_ver() -> str:
         with open(WLANPI_IMAGE_FILE, encoding="utf-8") as image_file:
             lines = image_file.readlines()
 
-        # pull out the version number for the FPMS home page
         for line in lines:
             name, separator, value = line.partition("=")
             if not separator:
@@ -241,23 +239,9 @@ def get_hostname() -> str:
 
 
 def get_platform() -> str:
-    """
-    Determine which platform we're running on.
-
-    Uses output of "cat /proc/cpuinfo"
-
-    Possible strings seen in the wild:
-
-        Pro:    Raspberry Pi Compute Module 4
-        RPi3b+: Raspberry Pi 3 Model B Plus Rev 1.3
-        RPi4:   Raspberry Pi 4 Model B Rev 1.1
-
-    Errors sent to stdout, but will not exit on error
-    """
-
+    """Return the platform from `wlanpi-model -b`, or "Unknown"."""
     platform = PLATFORM_UNKNOWN
 
-    # get output of wlanpi-model
     model_cmd = ["wlanpi-model", "-b"]
     try:
         platform = run_command(model_cmd).stdout.strip()
@@ -283,45 +267,8 @@ def get_platform() -> str:
 
 
 def get_model() -> str:
-    """
-    Determine which model the device is.
-
-    Uses output of "wlanpi-model -b"
-
-    Possible strings seen in the wild:
-
-        Pro:    Raspberry Pi Compute Module 4
-        RPi3b+: Raspberry Pi 3 Model B Plus Rev 1.3
-        RPi4:   Raspberry Pi 4 Model B Rev 1.1
-
-    Errors sent to stdout, but will not exit on error
-    """
-
-    platform = PLATFORM_UNKNOWN
-
-    # get output of wlanpi-model
-    model_cmd = ["wlanpi-model", "-b"]
-    try:
-        platform = run_command(model_cmd).stdout.strip()
-
-    except (
-        RunCommandError,
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        OSError,
-    ) as exc:
-        if isinstance(exc, RunCommandError):
-            log.warning(
-                "Issue getting WLAN Pi model (%s): %s", exc.return_code, exc.error_msg
-            )
-        else:
-            log.debug("wlanpi-model unavailable (%r); returning Unknown", exc)
-        return PLATFORM_UNKNOWN
-
-    if platform.endswith("?"):
-        platform = PLATFORM_UNKNOWN
-
-    return platform
+    """Return the model from `wlanpi-model -b`, or "Unknown"."""
+    return get_platform()
 
 
 def _read_cpu_temperature() -> str:
@@ -341,11 +288,10 @@ def _read_cpu_temperature() -> str:
 
 def get_stats() -> dict[str, str]:
     """Return device stats such as CPU, RAM, disk, and uptime."""
-    # figure out our IP
     IP = ""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # doesn't even have to be reachable
+        # UDP connect sends nothing; it only picks the outbound source address.
         s.connect(("10.255.255.255", 1))
         IP = s.getsockname()[0]
     except OSError:
@@ -355,7 +301,6 @@ def get_stats() -> dict[str, str]:
 
     ipStr = f"{IP}"
 
-    # determine CPU load
     cmd = "mpstat 1 1 -o JSON"
     try:
         CPU_JSON = run_command(cmd).grep_stdout_for_string("idle")
@@ -370,14 +315,12 @@ def get_stats() -> dict[str, str]:
     except (RunCommandError, OSError, ValueError):
         CPU = "unknown"
 
-    # determine mem useage
     cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
         MemUsage = run_command(cmd, shell=True).stdout.strip()
     except (RunCommandError, OSError):
         MemUsage = "unknown"
 
-    # determine disk util
     cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
         Disk = run_command(cmd, shell=True).stdout.strip()
@@ -386,7 +329,6 @@ def get_stats() -> dict[str, str]:
 
     tempStr = _read_cpu_temperature()
 
-    # determine uptime
     cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
         uptime = run_command(cmd, shell=True).stdout.strip()
@@ -430,11 +372,7 @@ def is_allowed_service(service: str) -> bool:
 
 
 def check_service_status(service: str) -> bool:
-    """
-    Query systemd through dbus to see if the service is running.
-
-    You can list services from the CLI like this: systemctl list-unit-files --type=service
-    """
+    """Return whether systemd reports the service active."""
     return get_service_active_state(service) == "active"
 
 
@@ -494,7 +432,7 @@ def _start_lock(name: str) -> contextlib.AbstractAsyncContextManager[None]:
     purge's is-it-running check cannot race a start through Core.
     """
     if name.removesuffix(".service") == profiler_cli.PROFILER_UNIT:
-        return profiler_cli._profiler_lock
+        return profiler_cli.profiler_lock
     return contextlib.nullcontext()
 
 
@@ -523,7 +461,6 @@ def stop_service(service: str) -> bool:
                 "replace",
                 timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-            # manager.DisableUnitFiles([service], Boolean(False))
         except DBusException as exc:
             _raise_systemd_dbus_error(
                 exc,
@@ -553,7 +490,6 @@ def start_service(service: str) -> bool:
     with _systemd_lock:
         _, manager = _get_systemd_client()
         try:
-            # manager.EnableUnitFiles([service], Boolean(False), Boolean(True))
             manager.StartUnit(
                 service,
                 "replace",
@@ -657,11 +593,9 @@ def _resolve_timezone() -> str:
 
 
 def get_datetime() -> dict[str, str | None]:
-    """
-    Return local date/time as ISO 8601 for API clients.
+    """Return local date/time as ISO 8601 for API clients.
 
-    Uses `date -Iseconds` as the canonical source because systemd's
-    `timedatectl show -p LocalTime` is empty on some images (TimeUSec is used instead).
+    From `date -Iseconds`: `timedatectl show -p LocalTime` is empty on some images.
     """
     log.debug("get_datetime: resolving local time")
     try:
@@ -864,11 +798,10 @@ def set_timezone(timezone: str) -> dict[str, str]:
 
 
 def get_reg_domain() -> dict[str, Any]:
-    """
-    Return current Wi-Fi regulatory domain country code.
+    """Return the Wi-Fi regulatory domain country code.
 
-    Uses `wlanpi-reg-domain get` (not `show` — the script subcommand is `get`).
-    Falls back to `iw reg get` when the script output is not a valid country code.
+    Uses `wlanpi-reg-domain get`, falling back to `iw reg get` when its output is
+    not a valid country code.
     """
     log.debug("get_reg_domain: reading regulatory domain")
     raw: str | None = None

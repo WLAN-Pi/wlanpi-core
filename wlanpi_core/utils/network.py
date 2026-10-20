@@ -7,9 +7,7 @@ from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import netns_prefix
 from wlanpi_core.utils.validation import validate_interface_name
 
-# wpa_supplicant's printf_encode writes \\ \" \e \n \r \t and \xNN; iw's
-# print_ssid_escaped writes only \xNN (a backslash becomes \x5c), so one
-# decoder handles both.
+# wpa_supplicant escapes \\ \" \e \n \r \t and \xNN; iw only \xNN, so one decoder handles both.
 _SSID_ESCAPE = re.compile(rb"\\(x[0-9a-fA-F]{2}|.)", re.DOTALL)
 _SSID_CONTROL = {b"e": b"\x1b", b"n": b"\n", b"r": b"\r", b"t": b"\t"}
 
@@ -48,18 +46,14 @@ def get_default_gateways(namespace: str | None = None) -> dict[str, str]:
     Raises:
         RunCommandError: If the underlying command failed.
     """
-
-    # Execute 'ip route show' command which lists all network routes
     output = run_command(
         [*netns_prefix(namespace), "ip", "route", "show"]
     ).stdout.split("\n")
 
     gateways: dict[str, str] = {}
     for line in output:
-        if "default via" in line:  # This is the default gateway line
+        if "default via" in line:
             res = line.split("via ")[1].split(" dev ")
-            # res[1] is e.g. "eth0 proto dhcp src 192.168.6.63 metric 100";
-            # take just the interface name for callers like arping -I.
             gateways[res[1].split()[0]] = res[0].strip()
     return gateways
 

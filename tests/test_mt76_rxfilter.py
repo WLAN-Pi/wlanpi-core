@@ -1,5 +1,3 @@
-"""Tests for the mt7921 DROP_OTHER_UC capture workaround."""
-
 import pytest
 
 from wlanpi_core.streaming import mt76_rxfilter
@@ -101,7 +99,7 @@ def test_errors_never_escape(mocker):
         mt76_rxfilter, "get_interface_info", side_effect=OSError("boom")
     )
 
-    allow_other_unicast("wlanpi0")  # must not raise
+    allow_other_unicast("wlanpi0")
 
 
 def test_bit_is_drop_other_uc():

@@ -1,5 +1,3 @@
-"""Tests for purging profiler data (service and POST /profiler/purge)."""
-
 import asyncio
 import json
 import os
@@ -24,7 +22,6 @@ class ObservedLock(asyncio.Lock):
         self.contended = asyncio.Event()
 
     async def acquire(self):
-        """Flag contention, then acquire as usual."""
         if self.locked():
             self.contended.set()
         return await super().acquire()
@@ -47,7 +44,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "DATA_ROOT", str(data))
     monkeypatch.setattr(cli, "STATUS_FILE", str(tmp_path / "status.json"))
     monkeypatch.setattr(cli, "profiler_process", None)
-    monkeypatch.setattr(cli, "_profiler_lock", asyncio.Lock())
+    monkeypatch.setattr(cli, "profiler_lock", asyncio.Lock())
     monkeypatch.setattr(service, "get_service_active_state", lambda name: "inactive")
     return data
 
@@ -119,7 +116,7 @@ class VanishingOs:
         return getattr(os, name)
 
     def unlink(self, path):
-        os.unlink(path)  # someone else got there first
+        os.unlink(path)
         os.unlink(path)
 
 
@@ -139,7 +136,7 @@ def test_purge_skips_dir_removed_concurrently(root, monkeypatch):
 
     def usage_then_vanish(path):
         result = real_usage(path)
-        shutil.rmtree(path)  # removed between counting and rmtree
+        shutil.rmtree(path)
         return result
 
     monkeypatch.setattr(service, "_tree_usage", usage_then_vanish)
@@ -166,13 +163,13 @@ async def test_purge_waits_for_start_lock_and_rechecks(root):
     report = root / "reports" / "r.csv"
     report.write_text("x")
 
-    await cli._profiler_lock.acquire()
+    await cli.profiler_lock.acquire()
     task = asyncio.create_task(service.purge_data())
     await asyncio.sleep(0)  # let the purge run up to the lock
     assert not task.done()
     # A Core start spawns its child while holding the lock.
     cli.profiler_process = RunningProcess()
-    cli._profiler_lock.release()
+    cli.profiler_lock.release()
 
     with pytest.raises(ValidationError) as exc:
         await task
@@ -204,7 +201,7 @@ async def test_profiler_unit_start_waits_for_purge(
         return {"files": 0, "bytes": 0}
 
     lock = ObservedLock()
-    monkeypatch.setattr(cli, "_profiler_lock", lock)
+    monkeypatch.setattr(cli, "profiler_lock", lock)
     monkeypatch.setattr(service, "_delete_contents", blocking_delete)
     monkeypatch.setattr(system_service, blocking_call, calls.append)
 
@@ -237,7 +234,7 @@ async def test_other_unit_start_ignores_profiler_lock(
 ):
     calls = []
     lock = ObservedLock()
-    monkeypatch.setattr(cli, "_profiler_lock", lock)
+    monkeypatch.setattr(cli, "profiler_lock", lock)
     monkeypatch.setattr(system_service, blocking_call, calls.append)
 
     await lock.acquire()
@@ -288,14 +285,17 @@ def test_profiler_active_checks_cores_own_process(root, monkeypatch, process, ex
     [
         (json.dumps({"state": "running", "pid": os.getpid()}), True),
         (json.dumps({"state": "starting", "pid": os.getpid()}), True),
-        (json.dumps({"state": "starting"}), False),  # missing pid
+        (json.dumps({"state": "starting"}), False),
         (json.dumps({"state": "running", "pid": str(os.getpid())}), False),
         (json.dumps({"state": "running", "pid": True}), False),
         (json.dumps({"state": "running", "pid": 0}), False),
-        (json.dumps({"state": "running", "pid": 2**22 + 1}), False),  # pid gone
+        (
+            json.dumps({"state": "running", "pid": 2**22 + 1}),
+            False,
+        ),  # above the kernel's pid_max
         (json.dumps({"state": "failed", "pid": os.getpid()}), False),
         (json.dumps(["running"]), False),
-        ('{"state": "running", ', False),  # malformed
+        ('{"state": "running", ', False),
     ],
 )
 def test_profiler_active_checks_status_file(root, content, expected):
@@ -306,7 +306,7 @@ def test_profiler_active_checks_status_file(root, content, expected):
 
 
 def test_profiler_active_ignores_unreadable_status_file(root):
-    os.mkdir(cli.STATUS_FILE)  # open() fails with an OSError
+    os.mkdir(cli.STATUS_FILE)
 
     assert service.profiler_active() is False
 

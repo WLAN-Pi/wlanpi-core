@@ -1,9 +1,4 @@
-"""
-Interface discovery and listing.
-
-This module provides functions for discovering and listing network interfaces
-on the system.
-"""
+"""Wireless interface discovery."""
 
 import logging
 import subprocess
@@ -30,10 +25,6 @@ def list_interfaces() -> list[str]:
 
     Raises:
         RunCommandError: If command execution fails
-
-    Examples:
-        >>> interfaces = list_interfaces()
-        >>> print(f"Found {len(interfaces)} interfaces")
     """
     log.debug("Listing wireless interfaces")
 
@@ -44,7 +35,6 @@ def list_interfaces() -> list[str]:
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.startswith("Interface"):
-                # Format: "Interface wlan0"
                 parts = line.split()
                 if len(parts) >= 2:
                     interface_name = parts[1]
@@ -69,11 +59,6 @@ def get_interface_by_name(interface_name: str) -> dict[str, Any] | None:
 
     Raises:
         RunCommandError: If command execution fails
-
-    Examples:
-        >>> info = get_interface_by_name("wlan0")
-        >>> if info:
-        ...     print(f"Interface type: {info.get('type')}")
     """
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
@@ -81,24 +66,20 @@ def get_interface_by_name(interface_name: str) -> dict[str, Any] | None:
     log.debug(f"Getting information for interface: {interface_name}")
 
     try:
-        # Check if interface exists in the list
         interfaces = list_interfaces()
         if interface_name not in interfaces:
             log.debug(f"Interface {interface_name} not found")
             return None
 
-        # Get detailed info using 'iw dev <interface> info'
         result = run_command(
             [IW_FILE, "dev", interface_name, "info"], raise_on_fail=True
         )
 
-        # Parse basic info from output
         info = {"name": interface_name, "exists": True}
 
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.startswith("wiphy"):
-                # Extract PHY number
                 parts = line.split()
                 if len(parts) >= 2:
                     try:
@@ -107,7 +88,6 @@ def get_interface_by_name(interface_name: str) -> dict[str, Any] | None:
                     except ValueError:
                         pass
             elif line.startswith("type"):
-                # Extract interface type
                 parts = line.split()
                 if len(parts) >= 2:
                     info["type"] = parts[1]

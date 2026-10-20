@@ -77,7 +77,6 @@ def _ns(namespace: str, **kwargs) -> NamespaceConfig:
     return NamespaceConfig(namespace=namespace, **root.model_dump())
 
 
-# JOSH_THREE_RADIO as InventoryRecorder.live() reports it: all in root, managed.
 JOSH_LIVE: dict[str, tuple[str, str | None, str]] = {
     name: (meta["phy"], None, "managed") for name, meta in JOSH_THREE_RADIO.items()
 }
@@ -127,9 +126,6 @@ class _MonitorClock:
 
 def _patch_monitor_clock():
     return patch("wlanpi_core.connection.monitor.time", _MonitorClock())
-
-
-# --- validation ---
 
 
 def handle_validate_empty_interface(namespace_service, netcfg_env, scenario: Scenario):
@@ -353,9 +349,6 @@ def handle_user_edit_active_config_blocked(
         nc.edit_config("ns_cfg", NetConfigUpdate(roots=[]))
 
 
-# --- filesystem / recovery config ---
-
-
 def handle_files_current_points_to_deleted(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -408,8 +401,6 @@ def handle_default_created_when_missing(
         "#202: default must not carry WPA2 without a psk"
     )
     assert ok is True
-    # The drivers created these netdevs, not Core, so applying the default
-    # leaves them alone (P14): nothing deleted, added or moved.
     assert inventory.deleted == []
     assert inventory.adds == []
     assert inventory.phy_moves == []
@@ -457,7 +448,6 @@ def _assert_malformed_default_repaired(netcfg_env, content: str) -> None:
     quarantined = list(cfg_dir.glob("default.json.bad-*"))
     assert len(quarantined) == 1
     assert quarantined[0].read_text() == content
-    # The kept copy is not a profile, so list_configs never shows it.
     assert set(nc.list_configs()) == {"default"}
     assert ok is True
     assert inventory.live() == JOSH_LIVE
@@ -529,9 +519,6 @@ def handle_default_startup_malformed_current(
         nc.recover_current_config()
     assert netcfg_env["ccf"].read_text().strip() == "default"
     assert "reverted" in exc.value.message.lower()
-
-
-# --- activate / service orchestration ---
 
 
 def _write_netconfig(netcfg_env, cfg_id: str, namespaces=None, roots=None):
@@ -929,9 +916,6 @@ def handle_user_manual_phy_move_then_recover(
             revert.assert_any_call(None)
 
 
-# --- connection monitor ---
-
-
 def _wait_for_monitors_idle(timeout_seconds: float = 5.0) -> None:
     """Wait until no ConnectionMonitor registry entries or threads remain.
 
@@ -1114,13 +1098,8 @@ def handle_files_apps_json_missing_orb(
     start_app.assert_called_once_with("orb_ns", "orb")
 
 
-# --- identity: live iface→phy map vs stored cfg.phy ---
-#
-# Expected sequences are the contract for the #236 fix: resolve the live
-# (phy, netns) of the iface first, delete it where it lives, move the live phy
-# if needed, then re-add the iface there with the configured mode. Stale rows
-# configure mode=monitor over a managed live iface so a prepare that does
-# nothing cannot pass.
+# #236 rows configure mode=monitor over a managed live iface, so a prepare
+# that does nothing cannot pass.
 
 
 def handle_stale_phy_iface_on_other_radio(
@@ -1230,7 +1209,6 @@ def handle_default_single_radio_no_500(
     )
     default = json.loads((netcfg_env["cfg_dir"] / "default.json").read_text())
     assert [(r["interface"], r["phy"]) for r in default["roots"]] == [("wlan0", "phy0")]
-    # wlan0 was created by its driver, so the default leaves it alone (P14).
     assert inventory.deleted == []
     assert inventory.adds == []
     assert inventory.live() == {"wlan0": ("phy0", None, "managed")}
@@ -1240,7 +1218,7 @@ def handle_default_single_radio_no_500(
 def handle_create_profile_snapshots_mac(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """Jake pin: first profile using wlan1 snapshots the live MAC."""
+    """First profile using wlan1 snapshots the live MAC."""
     cfg = NetConfig(
         id="pin_wlan1",
         namespaces=[],
@@ -1273,7 +1251,7 @@ def handle_iface_already_in_netns_at_activation(
         roots=[_root(interface="wlan1", phy="phy2").model_dump(mode="json")],
     )
     with live_adapter_inventory_mocks(adapters) as inventory:
-        _mark_core_namespace("old_ns")  # left by an earlier Core activation
+        _mark_core_namespace("old_ns")
         ok = nc.activate_config("home_cfg", override_active=True)
     assert ok is True
     # Tearing down the active default (#271) brings wlan1 home from the
@@ -1298,11 +1276,9 @@ def handle_phy10_vs_phy1_substring(namespace_service, netcfg_env, scenario: Scen
         roots=[_root(interface="wlan1", phy="phy1").model_dump(mode="json")],
     )
     with live_adapter_inventory_mocks(adapters) as inventory:
-        _mark_core_namespace("old_ns")  # left by an earlier Core activation
+        _mark_core_namespace("old_ns")
         ok = nc.activate_config("phy1_cfg", override_active=True)
     assert ok is True
-    # As in iface_already_in_netns_at_activation: default teardown returns
-    # phy1 from the leftover Core namespace, then prepare recreates wlan1.
     assert inventory.deleted == [("wlan1", "old_ns"), ("wlan1", None)]
     assert inventory.phy_moves == [("phy1", None)]
     assert inventory.adds == [("phy1", "wlan1", None), ("phy1", "wlan1", None)]
@@ -1602,7 +1578,6 @@ def handle_concurrent_activate_rejected(
             if worker.is_alive():
                 raise AssertionError("first activation thread did not finish")
         assert results["first"] is True
-        # The lock is released afterwards.
         assert nc.deactivate_config("slow_cfg") is True
 
 
@@ -1808,7 +1783,6 @@ def handle_monitor_restart_keeps_new_generation(
                     release_first.set()
                     first.join(timeout=5)
                     assert not first.is_alive(), "superseded monitor did not exit"
-                    # The first has exited; the second must still be registered.
                     with mon._monitor_lock:
                         assert mon._connection_monitors.get("root:wlan0") is second
                 finally:
@@ -1816,7 +1790,6 @@ def handle_monitor_restart_keeps_new_generation(
                     release_second.set()
                 stop_all_connection_monitors()
                 _wait_for_monitors_idle()
-    # The superseded monitor must never reach DHCP; only the live one may.
     assert first not in dhcp_threads
 
 
@@ -1889,8 +1862,6 @@ def handle_display_name_does_not_capture_other_radio(
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
         with pytest.raises(RunCommandError):
             nc.activate_config("clash_cfg", override_active=True)
-    # wlan2 was picked (by interface), the rename clashed, and the failed
-    # prepare touched only wlan2; the other radio's wlan0 is never deleted.
     assert inventory.deleted == [("wlan2", None)]
     assert ("wlan0", None) not in inventory.deleted
     assert inventory.live() == JOSH_LIVE
@@ -1921,8 +1892,6 @@ def handle_rollback_after_partial_prepare(
     assert not inventory.netns & {"good_ns", "bad_ns"}
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
-
-# --- P14: Core only touches what it created ---
 
 OTHER_TOOLS_LAYOUT: dict[str, dict[str, str]] = {
     # wlanpi-profiler: hostapd holds wlan0 as AP, plus its own monitor
@@ -1974,7 +1943,7 @@ def handle_default_resets_core_created_netdev(
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        nc.get_config("default")  # snapshot the default while all are managed
+        nc.get_config("default")
         assert nc.activate_config("mon_cfg", override_active=True) is True
         # Core's record of the active profile is lost (e.g. current.txt reset).
         netcfg_env["ccf"].write_text("default")
@@ -2005,7 +1974,7 @@ def handle_deactivate_restores_renamed_root_entry(
         assert nc.deactivate_config("lab_root") is True
     assert inventory.live() == JOSH_LIVE
     assert {name for name, _ns in inventory.deleted} == {"wlan1", "lab1"}
-    assert not inventory.ifaces[(None, "wlan1")].up  # as at boot
+    assert not inventory.ifaces[(None, "wlan1")].up
 
 
 def handle_deactivate_root_managed_leaves_radio_capturable(
@@ -2127,8 +2096,6 @@ def handle_revert_failure_is_reported(
         assert nc.activate_config("ns_cfg", override_active=True) is True
         with pytest.raises(RunCommandError):
             nc.deactivate_config("ns_cfg")
-    # The move back failed; wlan1 was recreated where it was, not left missing,
-    # and the namespace holding it is kept.
     assert inventory.live()["wlan1"] == ("phy2", "ns_a", "managed")
     assert "ns_a" in inventory.netns
     assert netcfg_env["ccf"].read_text().strip() == "default"
@@ -2230,7 +2197,6 @@ def handle_leftovers_reports_foreign_namespace(
         assert nc.activate_config("ns_cfg", override_active=True) is True
         _foreign_namespace(inventory, "profiler_ns", 1)
         inventory.run_command(["sudo", "ip", "netns", "add", "empty_ns"])
-        # ns_a is in use by the active profile; empty_ns holds no radio.
         assert [entry.model_dump() for entry in nc.left_alone()] == [
             {
                 "namespace": "profiler_ns",
@@ -2320,8 +2286,6 @@ def handle_reset_refuses_in_use_and_unknown(
         assert inventory.live() == before
     assert "ns_a" in inventory.netns
 
-
-# --- radios another tool is using are never taken (in_use) ---
 
 PROFILER_AP_LAYOUT: dict[str, dict[str, str]] = {
     **JOSH_THREE_RADIO,
@@ -2426,7 +2390,6 @@ def handle_in_use_sibling_monitor_up(namespace_service, netcfg_env, scenario: Sc
         [wlan2] = outcomes
         assert wlan2.status == "in_use"
         assert "wlan2profiler" in wlan2.detail
-    # The phy was not moved, so profiler kept its monitor.
     assert inventory.phy_moves == []
     assert inventory.live() == before
 
@@ -2488,7 +2451,7 @@ def handle_default_skips_core_netdev_now_in_use(
         ],
     )
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
-        nc.get_config("default")  # snapshot the default while all are managed
+        nc.get_config("default")
         assert nc.activate_config("mon_cfg", override_active=True) is True
         # Profiler starts on Core's wlan2 (fakeap) while the profile is active.
         for cmd in (
@@ -2506,14 +2469,12 @@ def handle_default_skips_core_netdev_now_in_use(
             ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
         ):
             inventory.run_command(cmd)
-        inventory.ifaces[(None, "wlan2profiler")].bound = True  # profiler captures
+        inventory.ifaces[(None, "wlan2profiler")].bound = True
         # Core's record of the active profile is lost (e.g. current.txt reset).
         netcfg_env["ccf"].write_text("default")
         deleted_before = list(inventory.deleted)
         ok, outcomes = nc.activate_config_report("default", override_active=True)
         assert ok is True
-        # Tearing down the recorded profile saw profiler on wlan2 and handed
-        # it back, so the default then reports it as not Core's.
         assert _outcome(outcomes, "wlan2").status == "skipped"
     assert inventory.deleted == deleted_before
     assert inventory.live()["wlan2profiler"] == ("phy1", None, "monitor")
@@ -2581,10 +2542,9 @@ def handle_deactivate_leaves_core_netdev_now_in_use(
             ["sudo", "ip", "link", "set", "wlan2profiler", "up"],
         ):
             inventory.run_command(cmd)
-        inventory.ifaces[(None, "wlan2profiler")].bound = True  # profiler captures
+        inventory.ifaces[(None, "wlan2profiler")].bound = True
         deleted_before = list(inventory.deleted)
         assert nc.deactivate_config("mon_cfg") is True
-        # Handed back: a later default does not reset it either.
         ok, outcomes = nc.activate_config_report("default", override_active=True)
         assert ok is True and _outcome(outcomes, "wlan2").status == "skipped"
     assert inventory.deleted == deleted_before
@@ -2624,8 +2584,6 @@ def handle_core_netdev_moved_home_by_hand_still_reverted(
         )
         assert inventory.live()["wlan1"] == ("phy2", None, "monitor")
         assert nc.deactivate_config("ns_cfg") is True
-    # Same wdev (the move changed its ifindex), so still Core's: put back
-    # as managed, ns_a removed.
     assert inventory.live() == JOSH_LIVE
     assert "ns_a" not in inventory.netns
 
@@ -2744,7 +2702,6 @@ def handle_deactivate_in_use_root_still_stops_processes(
         stop_dhcp.assert_called_once_with("wlan2", None)
         stop_app.assert_called_once()
         stop_monitor.assert_called_once_with(None, "wlan2")
-        # The radio itself was handed back, not reverted.
         assert all(call.args[0] is None for call in revert.call_args_list)
     assert inventory.deleted == deleted_before
     assert inventory.live()["wlan2"] == ("phy1", None, "managed")

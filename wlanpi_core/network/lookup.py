@@ -67,10 +67,8 @@ def resolve_interface_namespace(iface: str) -> str | None:
             status_code=503,
         )
 
-    # ``status()`` only reports wireless interfaces (via ``iw dev``), so a real
-    # root interface such as ``eth0`` is never listed. If it is not claimed by
-    # any namespace, fall back to the root interface list before declaring it
-    # missing.
+    # ``status()`` lists only wireless interfaces, so wired ones such as eth0
+    # are looked up in root.
     if _exists_in_root(iface):
         return None
 

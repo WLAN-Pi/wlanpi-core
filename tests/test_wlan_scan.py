@@ -1,5 +1,3 @@
-"""Unit tests for WLAN scan selection and parsing."""
-
 from unittest.mock import patch
 
 import pytest
@@ -153,7 +151,6 @@ def test_resolve_scan_target_monitor_delegates_to_managed():
     target = resolve_scan_target(adapters[0], adapters)
     assert target["iface"] == "wlan0"
 
-    # PHY unknown: the monitor scans itself rather than guessing a radio.
     for adapter in adapters:
         adapter["phy"] = None
     assert resolve_scan_target(adapters[0], adapters)["iface"] == "wlanpi0"

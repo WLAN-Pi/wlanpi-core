@@ -2,39 +2,7 @@
 """
 wlanpi-core capture WebSocket test harness.
 
-Two modes:
-
-  config   Build a reusable capture config (adapter, channels, dwell, filter)
-           and write it to JSON. No device contact.
-
-  run      Connect to the capture WebSocket, authenticate, then EITHER start a
-           capture from a config file (owner) OR subscribe read-only to an
-           existing session. Dissects the live pcapng stream and prints a
-           rolling AP scan (SSID, BSSID, channel, signal, security, PHY
-           amendments, TX power).
-
-  list     Authenticate and print the running capture sessions.
-
-Run several instances at once: one `run --config ...` owns a capture and prints
-its session id; another `run --subscribe <session_id>` listens in read-only.
-
-Dependencies: websockets (`pip install websockets`). The dissector is built in.
-
-Auth: the token is a wlanpi-core JWT. Get one on the device with
-`sudo getjwt <name> -p <port> --no-color` and read the "access_token" field.
-Pass it with --token or the WLANPI_CAP_TOKEN environment variable. Tokens are
-NEVER placed in the URL (the server refuses that; query strings get logged).
-
-Transport note: production uses
-wss://<host>:31415/api/v1/streaming/capture through nginx. Trust the device
-certificate with --ca-cert and connect using a name or address in its SAN.
-For local development you can hit the app server directly at
-ws://127.0.0.1:8000/api/v1/streaming/capture.
-
-Dissector limitations (documented on purpose; this is a test tool, not
-Wireshark): radiotap parsing reads the first present-word only (covers channel,
-signal, TX power); IE parsing covers SSID, DS channel, country, RSN/WPA, HT/VHT/
-HE/EHT presence, and TPC report TX power.
+ponytail: radiotap reads only the first present word and IEs cover a fixed set; extend _RT_FIELDS and parse_beacon to dissect more.
 """
 
 import argparse
@@ -65,17 +33,12 @@ def websocket_connection(url: str, ca_cert: str):
     return websockets.connect(url, max_size=None, ssl=ssl_context)
 
 
-# ---------------------------------------------------------------------------
-# Channel / frequency helpers
-# ---------------------------------------------------------------------------
-
-
 def channel_to_freq(ch: int) -> int:
     if ch == 14:
         return 2484
     if 1 <= ch <= 13:
         return 2412 + (ch - 1) * 5
-    if 32 <= ch <= 196:  # 5 GHz
+    if 32 <= ch <= 196:
         return 5000 + ch * 5
     raise ValueError(f"cannot map channel {ch} to a frequency; use --freqs for 6 GHz")
 
@@ -87,19 +50,12 @@ def freq_to_channel(freq: int) -> Optional[int]:
         return (freq - 2412) // 5 + 1
     if 5000 <= freq <= 5895:
         return (freq - 5000) // 5
-    if 5955 <= freq <= 7115:  # 6 GHz
+    if 5955 <= freq <= 7115:
         return (freq - 5950) // 5
     return None
 
 
-# ---------------------------------------------------------------------------
-# pcapng stream reader (incremental; chunks arrive unaligned)
-# ---------------------------------------------------------------------------
-
-
 class PcapngReader:
-    """Feed arbitrary byte chunks; yields (linktype, packet_bytes) per packet."""
-
     SHB = 0x0A0D0D0A
     IDB = 0x00000001
     EPB = 0x00000006
@@ -152,11 +108,7 @@ class PcapngReader:
             out.append((self.linktypes.get(iface_id, 127), pkt))
 
 
-# ---------------------------------------------------------------------------
-# Radiotap + 802.11 dissection
-# ---------------------------------------------------------------------------
-
-# (align, size) for radiotap present bits 0..14 - enough for our targets.
+# Radiotap (align, size) per present bit 0..14.
 _RT_FIELDS = {
     0: (8, 8),
     1: (1, 1),
@@ -176,14 +128,13 @@ _RT_FIELDS = {
 }
 
 
-def parse_radiotap(buf: bytes) -> Tuple[dict, int]:
-    """Return ({freq, signal, txpower}, header_len). header_len 0 on failure."""
+def parse_radiotap(buf: bytes) -> Optional[Tuple[dict, int]]:
     info = {"freq": None, "signal": None, "txpower": None}
     if len(buf) < 8:
-        return info, 0
+        return None
     _ver, _pad, length = struct.unpack_from("<BBH", buf, 0)
     if length < 8 or length > len(buf):
-        return info, 0
+        return None
     present_words = []
     off = 4
     while off + 4 <= len(buf):
@@ -262,10 +213,10 @@ class ApInfo:
 
 
 def parse_beacon(pkt: bytes, radio: dict) -> Optional[ApInfo]:
-    """Parse a management beacon/probe-response into ApInfo, else None."""
-    rt_info, rtlen = parse_radiotap(pkt)
-    if rtlen == 0:
+    radiotap = parse_radiotap(pkt)
+    if radiotap is None:
         return None
+    rt_info, rtlen = radiotap
     if len(pkt) < rtlen + 24:
         return None
     fc = struct.unpack_from("<H", pkt, rtlen)[0]
@@ -281,7 +232,6 @@ def parse_beacon(pkt: bytes, radio: dict) -> Optional[ApInfo]:
     if rt_info.get("freq"):
         ap.channel = freq_to_channel(rt_info["freq"])
 
-    # capability info (privacy bit) then tagged IEs
     caps_off = rtlen + 24 + 8 + 2  # + timestamp(8) + interval(2)
     privacy = False
     if caps_off + 2 <= len(pkt):
@@ -341,11 +291,6 @@ def phy_label(ap: ApInfo) -> str:
     return "/".join([base] + amend)
 
 
-# ---------------------------------------------------------------------------
-# Scan table
-# ---------------------------------------------------------------------------
-
-
 class ScanTable:
     def __init__(self) -> None:
         self.aps: Dict[str, ApInfo] = {}
@@ -394,11 +339,6 @@ class ScanTable:
             )
         lines.append(f"\n{len(self.aps)} AP(s), {self.other} non-beacon frame(s)")
         return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# WebSocket client
-# ---------------------------------------------------------------------------
 
 
 def resolve_token(args) -> str:
@@ -459,8 +399,6 @@ async def _consume(
                 note = data.get("message") or data
                 print(f"[event] {code}: {note}", file=sys.stderr)
             if code in ("CAPTURE_ENDED", "CAPTURE_STOPPED"):
-                # The capture is over (owner stopped, or dumpcap exited);
-                # stop consuming instead of idling on a dead session.
                 print("[capture ended] stopping.", file=sys.stderr)
                 return
         now = time.monotonic()
@@ -505,8 +443,6 @@ async def run_owner(args) -> None:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
 
-        # Own-vs-subscribe pre-flight: if a capture is already running on an
-        # interface we want, tell the user they could subscribe instead.
         wanted = set(interfaces.keys())
         for sess in await _find_sessions(ws):
             clash = wanted & set(sess.get("interfaces", []))
@@ -529,7 +465,6 @@ async def run_owner(args) -> None:
                 }
             )
         )
-        # Wait for CAPTURE_STARTED to surface the session id.
         session_id = None
         while session_id is None:
             msg = await asyncio.wait_for(ws.recv(), timeout=AUTH_TIMEOUT)
@@ -573,9 +508,7 @@ async def run_subscriber(args) -> None:
         did = await _authenticate(ws, token)
         print(f"[auth] authenticated as did={did}", file=sys.stderr)
 
-        # A real-world subscriber rarely has the owner's session id handed to
-        # it. Discover it: list running captures and pick the one on the
-        # requested interface (only one owner per interface, so unambiguous).
+        # One owner per interface, so the first match is the session.
         session_id = args.subscribe
         if not session_id:
             sessions = await _find_sessions(ws)
@@ -596,7 +529,6 @@ async def run_subscriber(args) -> None:
             )
 
         await ws.send(json.dumps({"command": "subscribe", "session_id": session_id}))
-        # Learn the running config before consuming, so we are not blind.
         while True:
             msg = await asyncio.wait_for(ws.recv(), timeout=AUTH_TIMEOUT)
             if isinstance(msg, bytes):
@@ -653,11 +585,6 @@ async def run_list(args) -> None:
                 return
 
 
-# ---------------------------------------------------------------------------
-# config builder
-# ---------------------------------------------------------------------------
-
-
 def build_config(args) -> None:
     channels = []
     if args.freqs:
@@ -688,11 +615,6 @@ def build_config(args) -> None:
         )
     else:
         print(text)
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:

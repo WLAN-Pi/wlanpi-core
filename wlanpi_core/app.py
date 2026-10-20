@@ -1,6 +1,5 @@
 """FastAPI application factory and lifecycle management."""
 
-# stdlib imports
 import asyncio
 import grp
 import ipaddress
@@ -10,7 +9,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-# third party imports
 from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
@@ -22,7 +20,6 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 from starlette.staticfiles import StaticFiles
 
-# app imports
 from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
 from wlanpi_core.constants import (
@@ -230,10 +227,7 @@ class ApplicationHealthManager:
 class CriticalInitializationError(RuntimeError):
     """Raised when a critical component fails to initialize.
 
-    Critical init failures must abort the ASGI lifespan ("fully initialized or
-    it doesn't start") so gunicorn/uvicorn report a failed startup and systemd
-    can detect it and apply its restart policy, rather than the service coming
-    up half-initialized and serving broken auth-protected routes.
+    It aborts the ASGI lifespan so systemd sees a failed start, not a half-initialized service.
     """
 
 
@@ -243,9 +237,6 @@ class InitializationManager:
     def __init__(self, app: Any) -> None:
         self.app = app
         self.max_retries = 3
-        # Base delay (seconds) for the security-init retry backoff. Without this
-        # attribute the retry path raised AttributeError before it could retry,
-        # defeating the whole retry loop on the very first failure.
         self.initial_retry_delay = 2.0
         self.log = get_logger(__name__)
         self.initialized = False
@@ -262,10 +253,7 @@ class InitializationManager:
             )
             return False
 
-        # ~/.local and ~/.local/share are the wlanpi user's XDG data home,
-        # shared with other wlanpi apps. Reclaim them before touching
-        # anything under wlanpi-core, so a fresh boot never leaves them
-        # root-owned just because this service was first to create them.
+        # ~/.local/share is shared with other wlanpi apps: reclaim it before root creates anything under it.
         ensure_wlanpi_home_data_dirs(HOME_DIR)
 
         try:
@@ -343,8 +331,7 @@ class InitializationManager:
                 get_config("default")
                 self.log.info("Default config ok")
             except Exception as e:
-                # Not fatal: Core must stay up so the API can report and
-                # repair the configuration instead of restart-looping.
+                # Not fatal: Core stays up so the API can repair the config instead of restart-looping.
                 self.log.error(f"Default network configuration is unusable: {e}")
 
             return True
@@ -377,14 +364,12 @@ class InitializationManager:
 
     async def _initialize_network_namespaces(self) -> None:
         """Initialize network namespaces/configs. Non-blocking - failures don't stop core startup."""
-        # Operator/automation override: leave Wi-Fi entirely to the operator.
         if wlan_management_is_manual():
             self.log.info(
                 "WLAN_MANAGEMENT=manual; skipping Wi-Fi initialization and monitor pairs"
             )
             return
 
-        # Only proceed if in classic mode
         if not self._is_classic_mode():
             self.log.info(
                 "Exiting network namespace initialization (not in classic mode)"
@@ -393,7 +378,6 @@ class InitializationManager:
 
         try:
             try:
-                # recover_current_config writes default on malformed current.txt before re-raising
                 current_config = recover_current_config()
             except ConfigMalformedError as cme:
                 self.log.error(
@@ -405,7 +389,7 @@ class InitializationManager:
                 current_config = "default"
             except Exception as e:
                 self.log.error(f"Unexpected error getting current config: {e}")
-                return  # Don't proceed with namespace setup if we can't get config
+                return
 
             if current_config == "default" or not current_config:
                 try:
@@ -518,7 +502,6 @@ class InitializationManager:
             self.log.error("System not ready for initialization")
             raise CriticalInitializationError("System not ready for initialization")
 
-        # Initialize network namespaces (non-blocking - failures don't stop core)
         await self._initialize_network_namespaces()
 
         security_initialized = await self._initialize_security_manager()
@@ -535,8 +518,6 @@ class InitializationManager:
 
         token_initialized = await self._initialize_token_manager()
         if not token_initialized:
-            # Token manager is not critical: the service can start with reduced
-            # functionality. Do not abort the lifespan for this.
             self.log.warning(
                 "Token manager initialization failed - some functionality will be limited"
             )
@@ -591,8 +572,7 @@ class InitializationManager:
         """Initialize the token manager."""
         try:
             self.app.state.token_manager = TokenManager(self.app.state)
-            # ponytail: retain token rows; add cleanup only if table growth is
-            # measurable on deployed devices.
+            # ponytail: token rows are never pruned; add cleanup if table growth shows on devices.
             self.log.debug("Token manager initialized successfully")
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
@@ -603,9 +583,7 @@ class InitializationManager:
     async def _revoke_pam_client_tokens(self) -> None:
         """Revoke the WebUI's PAM tokens so only fresh getjwt (HMAC) ones work.
 
-        Older cores let any bearer mint the reserved `wlanpi-webui` id. The
-        WebUI re-mints through getjwt after a 401, so revoking on every start
-        costs one extra mint. Failure is logged and never blocks startup.
+        Older cores let any bearer mint the reserved `wlanpi-webui` id; the WebUI re-mints after a 401.
         """
         try:
             count = await self.app.state.token_manager.revoke_device_tokens(
@@ -646,11 +624,6 @@ def create_app(debug: bool = False) -> FastAPI:
         app.state.initialization_manager = InitializationManager(app)
         app.state.health_manager = ApplicationHealthManager(app)
 
-        # A critical-init failure raises CriticalInitializationError, which is
-        # allowed to propagate out of the lifespan so the ASGI startup fails.
-        # gunicorn/uvicorn then report a failed startup and systemd's restart
-        # policy takes over, rather than the service coming up half-initialized
-        # and serving broken auth-protected routes.
         await app.state.initialization_manager.initialize_components()
 
         log.info("Application successfully initialized")
@@ -716,8 +689,6 @@ def create_app(debug: bool = False) -> FastAPI:
         token_path = f"{settings.API_V1_STR}/auth/token"
         token_post = schema.get("paths", {}).get(token_path, {}).get("post")
         if token_post is not None:
-            # TODO(#139): HMAC remains for compatibility while on-device clients
-            # migrate to Bearer. Remove HmacSignature when that migration lands.
             token_post["security"] = [
                 {"HmacSignature": []},
                 {"HTTPBearer": []},
@@ -770,7 +741,6 @@ def create_app(debug: bool = False) -> FastAPI:
             status_code=503, content={"detail": "Security system unavailable"}
         )
 
-    # setup slowapi
     limiter = Limiter(key_func=rate_limit_key, default_limits=["90/minute"])
     app.state.limiter = limiter
     app.add_exception_handler(
@@ -780,7 +750,6 @@ def create_app(debug: bool = False) -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ActivityMiddleware)
 
-    # setup router
     app.include_router(api_router, prefix=settings.API_V1_STR)
     for route in app.routes:
         if isinstance(route, APIRoute):

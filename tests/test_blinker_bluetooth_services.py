@@ -1,5 +1,3 @@
-"""Unit tests for blinker and bluetooth pair services."""
-
 import asyncio
 import json
 import signal

@@ -19,7 +19,6 @@ from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
 
-# Modes Core sets itself; anything else was set by another tool.
 CORE_MODES = {"managed", "monitor"}
 
 PROC = Path("/proc")

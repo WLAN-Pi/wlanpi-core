@@ -28,7 +28,7 @@ class _Clock:
 class _Procs:
     def __init__(self, procs, stubborn=()):
         self.procs = dict(procs)
-        self.stubborn = set(stubborn)  # ignore SIGTERM
+        self.stubborn = set(stubborn)
         self.signals: list[tuple[int, int]] = []
 
     def cmdline(self, pid):
@@ -91,7 +91,7 @@ def test_restart_aborts_when_the_old_supplicant_survives(run_dir):
     path.parent.mkdir(parents=True)
     path.write_text("100\n")
     procs = _Procs({100: _argv("wlan1", path)})
-    unkillable = patch.object(supplicant.os, "kill")  # signals have no effect
+    unkillable = patch.object(supplicant.os, "kill")
     with (
         patch.object(supplicant, "_read_cmdline", side_effect=procs.cmdline),
         unkillable,
