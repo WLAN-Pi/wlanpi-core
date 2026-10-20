@@ -71,17 +71,29 @@ def test_unreadable_secret_points_at_sudo(monkeypatch, connected_socket, tmp_pat
         client.validate_setup()
 
 
-def test_unstattable_secret_points_at_sudo(monkeypatch, connected_socket):
-    monkeypatch.setattr(getjwt, "SECRET_PATH", "/nonexistent/shared_secret.bin")
-    monkeypatch.setattr(getjwt, "_running_as_root", lambda: False)
+def test_missing_secret_reported_as_missing(
+    monkeypatch, capsys, connected_socket, tmp_path
+):
+    secret = tmp_path / "shared_secret.bin"
+    monkeypatch.setattr(getjwt, "SECRET_PATH", str(secret))
 
-    with pytest.raises(PermissionError, match="Run getjwt with sudo"):
-        getjwt.DeviceAuthClient("pi")
+    assert _run(monkeypatch, ["pi", "--no-color"]) == 1
+
+    out = capsys.readouterr().out
+    assert out == f"File Error: Secret not found at {secret}\n"
 
 
-def test_missing_secret_reported_when_root(monkeypatch, connected_socket):
-    monkeypatch.setattr(getjwt, "SECRET_PATH", "/nonexistent/shared_secret.bin")
-    monkeypatch.setattr(getjwt, "_running_as_root", lambda: True)
+def test_unreadable_secret_cli_points_at_sudo(
+    monkeypatch, capsys, connected_socket, tmp_path
+):
+    secret = tmp_path / "shared_secret.bin"
+    monkeypatch.setattr(getjwt, "SECRET_PATH", str(secret))
+    monkeypatch.setattr(getjwt.Path, "read_bytes", UnreadableSecret.read_bytes)
 
-    with pytest.raises(FileNotFoundError, match="Secret not found"):
-        getjwt.DeviceAuthClient("pi")
+    assert _run(monkeypatch, ["pi", "--no-color"]) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        out
+        == f"File Error: Secret at {secret} is not readable. Run getjwt with sudo.\n"
+    )

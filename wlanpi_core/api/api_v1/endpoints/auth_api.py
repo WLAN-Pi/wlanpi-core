@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from wlanpi_core.api.openapi_docs import RESPONSES_AUTH
 from wlanpi_core.core.auth import (
     PAM_CLIENT_DEVICE_ID,
+    Caller,
+    CallerKind,
     verify_auth_wrapper,
     verify_hmac,
     verify_jwt_token,
@@ -22,6 +24,7 @@ from wlanpi_core.core.auth import (
 )
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.token import TokenValidationResult
 from wlanpi_core.schemas.auth import (
     KeyResponse,
     PAMAccountRequest,
@@ -282,7 +285,7 @@ async def pam_account(body: PAMAccountRequest) -> PAMAccountResponse:
 async def generate_token(
     request: Request,
     token_request: TokenRequest,
-    caller: Annotated[Any, Depends(verify_auth_wrapper)],
+    caller: Annotated[Caller, Depends(verify_auth_wrapper)],
 ) -> Any:
     """
     Issue a JWT for remote clients.
@@ -300,7 +303,10 @@ async def generate_token(
     """
     try:
         device_id = _require_device_id(token_request)
-        if device_id == PAM_CLIENT_DEVICE_ID and caller is not True:
+        if (
+            device_id == PAM_CLIENT_DEVICE_ID
+            and caller is not CallerKind.LOCALHOST_HMAC
+        ):
             raise HTTPException(
                 status_code=403, detail="device_id is reserved for on-device use"
             )
@@ -333,7 +339,7 @@ async def generate_token(
 async def revoke_token(
     request: Request,
     token_request: TokenRequest,
-    validation: Annotated[Any, Depends(verify_jwt_token)],
+    validation: Annotated[TokenValidationResult, Depends(verify_jwt_token)],
 ) -> Any:
     """
     Revoke the bearer token sent in the `Authorization` header.

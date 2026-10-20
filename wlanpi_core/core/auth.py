@@ -4,13 +4,13 @@ import hashlib
 import hmac
 import ipaddress
 import urllib
-from typing import Any
+from enum import Enum
 
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from wlanpi_core.core.logging import get_logger
-from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET
+from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenValidationResult
 
 log = get_logger(__name__)
 
@@ -23,6 +23,15 @@ AUTH_CLOCK_MESSAGE = "NTP needs set; cannot proceed"
 PAM_CLIENT_DEVICE_ID = "wlanpi-webui"
 
 
+class CallerKind(Enum):
+    """How a caller authenticated when there is no token to return."""
+
+    LOCALHOST_HMAC = "localhost_hmac"
+
+
+Caller = TokenValidationResult | CallerKind
+
+
 class AuthClockNotSetError(Exception):
     """Raised when the auth clock is not set (NTP)."""
 
@@ -30,7 +39,7 @@ class AuthClockNotSetError(Exception):
 async def verify_auth_wrapper(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
-) -> Any:
+) -> Caller:
     """Select authentication from the credential presented."""
     if credentials:
         return await verify_jwt_token(request, credentials)
@@ -49,7 +58,7 @@ async def verify_auth_wrapper(
 async def verify_local_auth(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = DEFAULT_SECURITY,
-) -> Any:
+) -> Caller:
     """Bearer or HMAC, localhost only; a bearer must belong to PAM_CLIENT_DEVICE_ID."""
     if not is_localhost_request(request):
         raise HTTPException(
@@ -67,7 +76,7 @@ async def verify_local_auth(
 async def verify_jwt_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials = DEFAULT_SECURITY,
-) -> Any:
+) -> TokenValidationResult:
     """Verify a JWT bearer token and return the validation result."""
     if not credentials:
         log.error("Authentication failed: No bearer token provided")
@@ -82,7 +91,7 @@ async def verify_jwt_token(
     return validation_result
 
 
-async def verify_hmac(request: Request) -> Any:
+async def verify_hmac(request: Request) -> CallerKind:
     """Verify HMAC signature for internal requests."""
     if not is_localhost_request(request):
         raise HTTPException(
@@ -120,7 +129,7 @@ async def verify_hmac(request: Request) -> Any:
             headers={"X-Requires-Signature": "true"},
         )
 
-    return True
+    return CallerKind.LOCALHOST_HMAC
 
 
 def is_localhost_request(request: Request) -> bool:
