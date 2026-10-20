@@ -24,9 +24,9 @@ async def test_reachability_handles_invalid_ping_json(monkeypatch):
     monkeypatch.setattr(
         utils_service,
         "get_default_gateways",
-        lambda: {"eth0": "192.0.2.1"},
+        lambda *_: {"eth0": "192.0.2.1"},
     )
-    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda: ["1.1.1.1"])
+    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda *_: ["1.1.1.1"])
 
     async def run_command(cmd, **_kwargs):
         if cmd[0] == "curl":
@@ -53,10 +53,10 @@ async def test_reachability_reports_dns_server_address(monkeypatch):
     monkeypatch.setattr(
         utils_service,
         "get_default_gateways",
-        lambda: {"eth0": "192.0.2.1"},
+        lambda *_: {"eth0": "192.0.2.1"},
     )
     monkeypatch.setattr(
-        utils_service, "_read_dns_servers", lambda: ["9.9.9.9", "1.1.1.1"]
+        utils_service, "_read_dns_servers", lambda *_: ["9.9.9.9", "1.1.1.1"]
     )
 
     async def run_command(cmd, **_kwargs):
@@ -79,13 +79,80 @@ async def test_reachability_reports_dns_server_address(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_reachability_runs_every_check_in_namespace(monkeypatch, tmp_path):
+    netns_etc = tmp_path / "netns"
+    (netns_etc / "wlan_ns").mkdir(parents=True)
+    (netns_etc / "wlan_ns" / "resolv.conf").write_text("nameserver 10.9.9.9\n")
+    monkeypatch.setattr(utils_service, "NETNS_ETC_DIR", str(netns_etc))
+    monkeypatch.setattr(utils_service, "namespace_exists", lambda name: True)
+    gateway_namespaces = []
+
+    def gateways(namespace=None):
+        gateway_namespaces.append(namespace)
+        return {"wlan0": "10.0.0.1"}
+
+    monkeypatch.setattr(utils_service, "get_default_gateways", gateways)
+    commands = []
+
+    async def run_command(cmd, **_kwargs):
+        commands.append(cmd)
+        return CommandResult("not JSON", "", 1)
+
+    monkeypatch.setattr(utils_service, "run_command_async", run_command)
+    monkeypatch.setattr(reachability, "run_command_async", run_command)
+
+    result = await utils_service.show_reachability(
+        targets=["8.8.8.8"], namespace="wlan_ns"
+    )
+
+    assert gateway_namespaces == ["wlan_ns"]
+    assert result["results"]["DNS Server 1 Resolution"] == "10.9.9.9: FAIL"
+    assert len(commands) == 6
+    assert all(cmd[:4] == ["ip", "netns", "exec", "wlan_ns"] for cmd in commands)
+    assert ["arping", "-c1", "-w2", "-I", "wlan0", "10.0.0.1"] in [
+        cmd[4:] for cmd in commands
+    ]
+
+
+def test_resolv_conf_path_falls_back_to_root(monkeypatch, tmp_path):
+    monkeypatch.setattr(utils_service, "NETNS_ETC_DIR", str(tmp_path))
+
+    assert utils_service._resolv_conf_path("wlan_ns") == "/etc/resolv.conf"
+    assert utils_service._resolv_conf_path(None) == "/etc/resolv.conf"
+
+
+@pytest.mark.asyncio
+async def test_reachability_root_namespace_alias_runs_in_root(monkeypatch):
+    def namespace_exists(_name):
+        raise AssertionError("root must not be looked up as a namespace")
+
+    monkeypatch.setattr(utils_service, "namespace_exists", namespace_exists)
+    monkeypatch.setattr(
+        utils_service, "get_default_gateways", lambda *_: {"eth0": "192.0.2.1"}
+    )
+    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda *_: [])
+    commands = []
+
+    async def run_command(cmd, **_kwargs):
+        commands.append(cmd)
+        return CommandResult("not JSON", "", 1)
+
+    monkeypatch.setattr(utils_service, "run_command_async", run_command)
+
+    await utils_service.show_reachability(namespace="root")
+
+    assert commands
+    assert all(cmd[0] != "ip" for cmd in commands)
+
+
+@pytest.mark.asyncio
 async def test_reachability_cancels_every_child_task(monkeypatch):
     monkeypatch.setattr(
         utils_service,
         "get_default_gateways",
-        lambda: {"eth0": "192.0.2.1"},
+        lambda *_: {"eth0": "192.0.2.1"},
     )
-    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda: ["1.1.1.1"])
+    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda *_: ["1.1.1.1"])
     started = 0
     cancelled = 0
     all_started = asyncio.Event()

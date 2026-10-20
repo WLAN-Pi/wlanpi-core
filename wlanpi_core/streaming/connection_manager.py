@@ -18,6 +18,7 @@ from wlanpi_core.streaming.models import (
     validate_capture_interface,
     validate_capture_width,
 )
+from wlanpi_core.streaming.mt76_rxfilter import allow_other_unicast
 from wlanpi_core.utils import network_config
 from wlanpi_core.utils.general import run_command_async, terminate_process_async
 from wlanpi_core.utils.validation import validate_namespace_name
@@ -25,7 +26,7 @@ from wlanpi_core.wlan.scan import iter_adapters
 
 log = get_logger(__name__)
 _IW_TIMEOUT_SEC = 5
-# shortcut: fixed subscriber budget. 1024 blocks is ~0.37s at the ~2800
+# ponytail: fixed subscriber budget. 1024 blocks is ~0.37s at the ~2800
 # packets/s measured on a busy 5 GHz channel (ch40, ~2 MB/s) and ~2.3s at
 # ~450 packets/s on a quieter 2.4 GHz one (ch6). Tolerates bursts and
 # transient stalls before evicting; make it adaptive (e.g. per-consumer
@@ -745,6 +746,11 @@ class ConnectionManager:
                             "CHANNEL_SET_FAILED",
                             f"Could not set initial channel for {iface}: {error}",
                         )
+
+        # mt7921 firmware drops other stations' unicast after a scan on the
+        # radio; clear that before capturing (see mt76_rxfilter).
+        for iface in interfaces:
+            await asyncio.to_thread(allow_other_unicast, iface, namespace)
 
         args = [*self._ns_prefix(namespace), DUMPCAP_FILE]
         for iface in interfaces:

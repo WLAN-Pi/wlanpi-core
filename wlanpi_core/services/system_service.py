@@ -1,8 +1,10 @@
 """System service layer querying device and systemd state."""
 
 import asyncio
+import contextlib
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -29,7 +31,9 @@ from wlanpi_core.data.reg_domain_countries import (
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
+from wlanpi_core.profiler import cli as profiler_cli
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.network_config import _atomic_write
 
 log = get_logger(__name__)
 
@@ -39,7 +43,8 @@ allowed_services = [
     "wlanpi-chat-bot",
     "bt-agent",
     "bt-network",
-    "iperf",
+    "iperf2",
+    "iperf2-udp",
     "iperf3",
     "tftpd-hpa",
     "hostapd",
@@ -58,11 +63,16 @@ allowed_services = [
     "wlanpi-grafana-wipry-lp-5",
     "wlanpi-grafana-wipry-lp-6",
     "wlanpi-grafana-wipry-lp-stop",
-    "wpa_supplicant",
     "wpa_supplicant@wlan0",
 ]
 
 PLATFORM_UNKNOWN = "Unknown"
+# Same file the image writes for its build default (WLAN-Pi/pi-gen#112).
+JOURNAL_CONF_FILE = Path("/etc/systemd/journald.conf.d/90-wlanpi-journal.conf")
+_JOURNAL_CONF = {
+    "persistent": "[Journal]\nStorage=persistent\nSystemMaxUse=256M\nRuntimeMaxUse=50M\n",
+    "volatile": "[Journal]\nStorage=volatile\nRuntimeMaxUse=50M\n",
+}
 _POWER_ACTION_TIMEOUT_SEC = 10
 _SYSTEMD_DBUS_TIMEOUT_SEC = 10
 _SYSTEMD_BUS_NAME = "org.freedesktop.systemd1"
@@ -397,6 +407,11 @@ def get_stats() -> dict[str, str]:
     return results
 
 
+def get_allowed_services() -> dict[str, Any]:
+    """Return the services the /service/* routes will act on, in list order."""
+    return {"services": list(allowed_services)}
+
+
 def is_allowed_service(service: str) -> bool:
     """Check if service is in allowed services list."""
     service_name = service.replace(".service", "")
@@ -420,7 +435,15 @@ def check_service_status(service: str) -> bool:
 
     You can list services from the CLI like this: systemctl list-unit-files --type=service
     """
-    service_running = False
+    return get_service_active_state(service) == "active"
+
+
+def get_service_active_state(service: str) -> str:
+    """Return the unit's systemd ActiveState, or "inactive" if it is not loaded.
+
+    Values are systemd's: active, reloading, inactive, failed, activating,
+    deactivating (and on newer systemd, maintenance or refreshing).
+    """
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
@@ -448,11 +471,11 @@ def check_service_status(service: str) -> bool:
                 "ActiveState",
                 timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
             )
-            if service_load_state == "loaded" and service_active_state == "active":
-                service_running = True
+            if service_load_state == "loaded":
+                return str(service_active_state)
         except DBusException as exc:
             if exc.args and "not loaded" in str(exc.args[0]):
-                return service_running
+                return "inactive"
             _raise_systemd_dbus_error(
                 exc,
                 action="checking",
@@ -461,7 +484,18 @@ def check_service_status(service: str) -> bool:
             )
         except ValueError as error:
             raise ValidationError(f"{error}", status_code=400) from None
-    return service_running
+    return "inactive"
+
+
+def _start_lock(name: str) -> contextlib.AbstractAsyncContextManager[None]:
+    """Return the profiler lock for the profiler unit, else a no-op.
+
+    Starting the profiler unit takes the lock a profiler purge holds, so the
+    purge's is-it-running check cannot race a start through Core.
+    """
+    if name.removesuffix(".service") == profiler_cli.PROFILER_UNIT:
+        return profiler_cli._profiler_lock
+    return contextlib.nullcontext()
 
 
 async def get_systemd_service_status(name: str) -> dict[str, Any]:
@@ -539,7 +573,8 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
     status: Any = ""
     name = name.strip().lower()
     if is_allowed_service(name):
-        status = await asyncio.to_thread(start_service, name)
+        async with _start_lock(name):
+            status = await asyncio.to_thread(start_service, name)
         return {"name": name, "active": status}
 
     raise ValidationError(
@@ -572,7 +607,8 @@ async def restart_systemd_service(name: str) -> dict[str, Any]:
     """Restart an allowed systemd service via dbus."""
     name = name.strip().lower()
     if is_allowed_service(name):
-        active = await asyncio.to_thread(restart_service, name)
+        async with _start_lock(name):
+            active = await asyncio.to_thread(restart_service, name)
         return {"name": name, "active": active}
 
     raise ValidationError(
@@ -581,12 +617,30 @@ async def restart_systemd_service(name: str) -> dict[str, Any]:
 
 
 def _resolve_timezone() -> str:
-    """Return best-effort IANA timezone name."""
-    tz_path = Path("/etc/timezone")
-    if tz_path.exists():
-        tz = tz_path.read_text().strip()
-        if tz and "/" in tz:
+    """Return the system IANA timezone name.
+
+    Prefer ``timedatectl`` (the authoritative systemd value): on some images
+    ``timedatectl set-timezone`` updates ``/etc/localtime`` but leaves
+    ``/etc/timezone`` stale, so that file is only a fallback.
+    """
+    try:
+        tz = run_command(
+            ["timedatectl", "show", "-p", "Timezone", "--value"],
+            raise_on_fail=False,
+        ).stdout.strip()
+        if tz:
             return tz
+    except (RunCommandError, FileNotFoundError):
+        pass
+
+    tz_path = Path("/etc/timezone")
+    try:
+        if tz_path.exists():
+            tz = tz_path.read_text().strip()
+            if tz:
+                return tz
+    except OSError:
+        pass
 
     try:
         localtime = Path("/etc/localtime")
@@ -597,19 +651,6 @@ def _resolve_timezone() -> str:
                 idx = parts.index("zoneinfo")
                 return "/".join(parts[idx + 1 :])
     except OSError:
-        pass
-
-    try:
-        tz = run_command(
-            ["timedatectl", "show", "-p", "Timezone", "--value"],
-            raise_on_fail=False,
-        ).stdout.strip()
-        if tz and "/" in tz:
-            return tz
-        if tz:
-            log.debug("timedatectl Timezone is non-IANA (%r); prefer /etc/timezone", tz)
-            return tz
-    except (RunCommandError, FileNotFoundError):
         pass
 
     return "UTC"
@@ -949,6 +990,88 @@ def enable_timezone_auto() -> dict[str, Any]:
     ).stdout.strip()
     timezone = get_timezone()["timezone"]
     return {"ntp": ntp.lower() in ("yes", "1", "true"), "timezone": timezone}
+
+
+def set_ntp_enabled(enabled: bool) -> dict[str, Any]:
+    """Enable or disable NTP time synchronization via timedatectl."""
+    run_command(
+        ["timedatectl", "set-ntp", "true" if enabled else "false"],
+        raise_on_fail=True,
+    )
+    return get_ntp()
+
+
+def _parse_journal_storage(cat_config: str) -> tuple[str, str | None]:
+    """Return the last `Storage=` value and the file that set it.
+
+    `cat_config` is `systemd-analyze cat-config` output, where each file starts
+    with a `# /path` header. With no `Storage=` anywhere journald uses `auto`.
+    """
+    storage, source, current = "auto", None, None
+    for raw in cat_config.splitlines():
+        line = raw.strip()
+        # A header is exactly `# /path`; comments can start with a path too.
+        header = re.fullmatch(r"# (/\S+)", line)
+        if header:
+            current = header.group(1)
+            continue
+        if line.startswith(("#", ";")) or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == "Storage":
+            storage, source = value.strip(), current
+    return storage, source
+
+
+def _parse_journal_disk_usage(output: str) -> int | None:
+    """Convert `journalctl --disk-usage` output (e.g. `take up 24.0M`) to bytes."""
+    match = re.search(r"take up (\d+(?:\.\d+)?)([BKMGTPE])", output)
+    if match is None:
+        return None
+    return round(float(match.group(1)) * 1024 ** "BKMGTPE".index(match.group(2)))
+
+
+def get_journal() -> dict[str, Any]:
+    """Return the effective journald storage mode, its source, and disk usage."""
+    try:
+        cat_config = run_command(
+            ["systemd-analyze", "--no-pager", "cat-config", "systemd/journald.conf"],
+            raise_on_fail=True,
+        ).stdout
+    except (RunCommandError, OSError) as exc:
+        log.error("get_journal: systemd-analyze cat-config failed: %r", exc)
+        raise ValidationError(
+            "Unable to read journald configuration", status_code=503
+        ) from None
+    storage, source = _parse_journal_storage(cat_config)
+    try:
+        usage = run_command(["journalctl", "--disk-usage"], raise_on_fail=False)
+        disk_usage = _parse_journal_disk_usage(usage.stdout)
+    except (RunCommandError, OSError) as exc:
+        log.debug("get_journal: journalctl --disk-usage failed: %r", exc)
+        disk_usage = None
+    return {"storage": storage, "source": source, "disk_usage_bytes": disk_usage}
+
+
+def set_journal_storage(storage: str) -> dict[str, Any]:
+    """Write the journal drop-in, restart journald, and return the new state.
+
+    Raises a 409 ValidationError naming the file when another drop-in still
+    overrides the requested value.
+    """
+    JOURNAL_CONF_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(JOURNAL_CONF_FILE, _JOURNAL_CONF[storage], mode=0o644)
+    run_command(["systemctl", "restart", "systemd-journald"], raise_on_fail=True)
+    if storage == "persistent":
+        run_command(["journalctl", "--flush"], raise_on_fail=True)
+    result = get_journal()
+    if result["storage"] != storage:
+        raise ValidationError(
+            f"Storage={result['storage']} set in {result['source'] or 'systemd defaults'}"
+            f" overrides {JOURNAL_CONF_FILE}",
+            status_code=409,
+        )
+    return result
 
 
 def reboot_system() -> dict[str, str]:

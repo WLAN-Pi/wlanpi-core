@@ -97,7 +97,7 @@ Extended fields (`flags`, `primaryChannel`, `channelWidth`, `secondaryChannelOff
 | `networks[].bssid` | string | Lowercase MAC with colons. |
 | `networks[].signal` | int | dBm (typically negative). |
 | `networks[].freq` | int | Centre frequency in MHz. |
-| `networks[].key_mgmt` | string \| null | `wpa-psk`, `open`, `wep`, or `unknown`. |
+| `networks[].key_mgmt` | string \| null | `wpa-psk`, `sae`, `wpa-eap`, `owe`, `open`, `wep`, or `unknown`. A WPA2/WPA3 transition network (PSK and SAE) is `wpa-psk`; `flags` has the full AKM list. |
 | `networks[].minrate` | int | Bitrate hint (default `1000000`). |
 | `networks[].flags` | string \| null | Raw security/capability flags (`wpa_cli`) or iw capability line. |
 | `networks[].primaryChannel` | int \| null | 802.11 channel number (from iw or derived from `freq`). |

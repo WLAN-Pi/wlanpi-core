@@ -15,6 +15,7 @@ from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.mode_guard import require_wlan_management_enabled
 from wlanpi_core.models.network.vlan.vlan_errors import VLANError
+from wlanpi_core.models.network_config_errors import ConfigBusyError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.network.lookup import resolve_interface_namespace
 from wlanpi_core.schemas import network
@@ -26,8 +27,8 @@ from wlanpi_core.schemas.network.config import NetworkConfigResponse
 from wlanpi_core.schemas.network.network import IPInterface, IPInterfaceAddress
 from wlanpi_core.services import (
     network_ethernet_service,
-    network_namespace_service,
 )
+from wlanpi_core.utils import network_config
 from wlanpi_core.utils.validation import validate_vlan_id
 from wlanpi_core.wlan.scan import NoScanAdapterError, wlan_scan
 from wlanpi_core.wpa.scan import ScanInProgressError
@@ -51,6 +52,17 @@ def _read_interface_wlan_link(iface: str) -> dict[str, Any]:
     return network_primitives.get_wlan_link(iface, namespace=namespace)
 
 
+def _read_interface_wpa_status(iface: str) -> dict[str, Any]:
+    """Resolve interface ownership and read wpa_supplicant status in one thread."""
+    try:
+        namespace = resolve_interface_namespace(iface)
+    except ValidationError:
+        # Unknown interface (404) or unreadable namespace status (503): keep the
+        # root answer this deprecated endpoint always gave.
+        namespace = None
+    return get_wpa_status(iface, namespace)
+
+
 ################################
 # General Network Management   #
 ################################
@@ -72,7 +84,9 @@ async def show_all_interfaces(
         interface = None
 
     try:
-        return await network_ethernet_service.get_interfaces(interface=interface)
+        return await network_ethernet_service.get_interfaces(
+            interface=interface, namespaced=True
+        )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except VLANError as ve:
@@ -330,7 +344,7 @@ async def show_udp_connections(namespace: str | None = None) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_dhcp_leases() -> Any:
-    """Parse dhclient lease files under ``/var/lib/dhcp``."""
+    """Return current DHCP leases from NetworkManager or legacy dhclient files."""
     try:
         return await asyncio.to_thread(network_primitives.get_dhcp_leases)
     except Exception as ex:
@@ -367,6 +381,19 @@ async def show_interface_wlan_link(iface: str) -> Any:
 
     Companion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the
     SSID, BSSID, frequency, signal, and rx/tx bitrate when connected.
+
+    For an MLO association, ``bssid`` is the AP MLD address and ``links``
+    lists every set-up link with its frequency and whether it is active
+    (from ``iw dev <iface> info``; null when that query fails). Each link
+    also carries this station's own address on it (``local_addr``, the
+    address on air), and active links carry their channel ``width_mhz``
+    and ``center1_mhz``.
+    ``freq_mhz`` is present only when exactly one active link can be
+    determined, otherwise null. ``signal_dbm`` is the ``iw link`` signal
+    for a single link. With several MLO links it is the driver's beacon
+    average for the active link instead, because the kernel's MLD-level
+    signal is the maximum over all links, including idle ones. It is null
+    when the kernel has no reading.
     """
     try:
         return await asyncio.to_thread(_read_interface_wlan_link, iface=iface)
@@ -435,6 +462,9 @@ async def show_wlan_usb_drivers() -> Any:
     Returns HTTP 200 with ``adapters: []`` when radios are PCI/on-board only.
     Check ``interfaces_scanned`` — if > 0 and ``adapters`` is empty, use
     ``GET /network/wlan/pci-drivers`` for built-in Wi-Fi.
+
+    Interfaces in network namespaces are included, with ``namespace`` set;
+    it is null for the root namespace. A namespace that can't be read is skipped.
     """
     try:
         return await asyncio.to_thread(network_primitives.get_usb_wlan_drivers)
@@ -454,6 +484,9 @@ async def show_wlan_pci_drivers() -> Any:
 
     ``pci_devices`` comes from lspci; ``adapters`` maps iw dev interfaces to
     drivers. Both lists can be populated independently.
+
+    Interfaces in network namespaces are included, with ``namespace`` set;
+    it is null for the root namespace. A namespace that can't be read is skipped.
     """
     try:
         return await asyncio.to_thread(network_primitives.get_pci_wlan_drivers)
@@ -554,7 +587,7 @@ async def get_a_systemd_network_scan(
     except ScanInProgressError as exc:
         return JSONResponse(
             status_code=409,
-            content={"error": "SCAN_IN_PROGRESS", "message": str(exc)},
+            content={"error": exc.code, "message": str(exc)},
         )
     except ValueError as exc:
         return Response(content=str(exc), status_code=400)
@@ -615,24 +648,38 @@ async def set_a_systemd_network(
     "/wlan/revert",
     response_model=network.RevertNamespace,
     dependencies=[Depends(verify_auth_wrapper)],
+    deprecated=True,
 )
 async def revert_wlan_namespace(
     req: network.WlanRevertRequest, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
-    """Revert the PHY and interface back to the root namespace."""
+    """
+    Return every radio Core manages to the root namespace (deprecated).
+
+    **Replacement:** `POST /api/v1/network/config/deactivate/{id}`.
+
+    This reverts everything, not one interface: it tears down the active
+    configuration, returns every namespace Core created to root (deleting
+    each once it is empty), and makes the default configuration active.
+    `iface`, `namespace` and `delete_namespace` are accepted for
+    compatibility and ignored. `left_alone` lists namespaces still holding
+    radios that Core did not create; clear them with
+    `POST /network/config/reset`. Returns 409 while another network change is
+    running.
+    """
+    del req, timeout
     try:
         require_wlan_management_enabled()
-        namespace_service = network_namespace_service.NetworkNamespaceService()
-        await asyncio.to_thread(
-            namespace_service.revert_to_root,
-            None,
-            req.delete_namespace,
-        )
+        await asyncio.to_thread(network_config.revert_all)
+        left = await asyncio.to_thread(network_config.left_alone)
         return {
             "success": True,
-            "message": f"{req.iface} and phy0 reverted to root from {req.namespace}",
+            "message": "Reverted every Core namespace to root; the default configuration is active.",
+            "left_alone": left,
         }
 
+    except ConfigBusyError as cbe:
+        return Response(content=cbe.message, status_code=409)
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except Exception as ex:
@@ -652,15 +699,16 @@ async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
     """
-    Prefer `GET /api/v1/network/config/status` plus wpa state; this endpoint is deprecated.
+    Prefer `GET /api/v1/network/interfaces/{iface}/wlan-link`; this endpoint is deprecated.
 
-    **Replacement:** `GET /api/v1/network/config/status`
+    **Replacement:** `GET /api/v1/network/interfaces/{iface}/wlan-link`
 
-    **Behaviour today:** delegates to `wpa_cli status` for the given `interface`.
+    **Behaviour today:** delegates to `wpa_cli status` for the given `interface`,
+    in the network namespace that holds it.
     """
     del timeout
     try:
-        status = await asyncio.to_thread(get_wpa_status, interface, None)
+        status = await asyncio.to_thread(_read_interface_wpa_status, interface)
         wpa = status.get("wpa_status") or {}
         connected = wpa.get("wpa_state") == "COMPLETED"
         connected_net = None

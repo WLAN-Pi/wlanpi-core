@@ -48,29 +48,29 @@ def test_system_service_start_and_stop_routes(client, mocker):
     start = mocker.patch.object(
         system_service,
         "start_systemd_service",
-        new=AsyncMock(return_value={"name": "iperf", "active": True}),
+        new=AsyncMock(return_value={"name": "iperf2", "active": True}),
     )
     stop = mocker.patch.object(
         system_service,
         "stop_systemd_service",
-        new=AsyncMock(return_value={"name": "iperf", "active": False}),
+        new=AsyncMock(return_value={"name": "iperf2", "active": False}),
     )
 
     start_response = client.post(
         "/api/v1/system/service/start",
-        params={"name": "iperf"},
+        params={"name": "iperf2"},
     )
     stop_response = client.post(
         "/api/v1/system/service/stop",
-        params={"name": "iperf"},
+        params={"name": "iperf2"},
     )
 
     assert start_response.status_code == 200
-    assert start_response.json() == {"name": "iperf", "active": True}
+    assert start_response.json() == {"name": "iperf2", "active": True}
     assert stop_response.status_code == 200
-    assert stop_response.json() == {"name": "iperf", "active": False}
-    start.assert_awaited_once_with("iperf")
-    stop.assert_awaited_once_with("iperf")
+    assert stop_response.json() == {"name": "iperf2", "active": False}
+    start.assert_awaited_once_with("iperf2")
+    stop.assert_awaited_once_with("iperf2")
 
 
 def test_set_reg_domain_happy_path(client, mocker):
@@ -164,11 +164,17 @@ def test_hotspot_ssid_passphrase(client, mocker, tmp_path):
 def test_wifi_capabilities(client, mocker):
     mocker.patch(
         "wlanpi_core.api.api_v1.endpoints.wifi_api.get_wifi_capabilities",
-        return_value={"adapters": [{"phy": "phy0", "info": "Wiphy phy0"}]},
+        return_value={
+            "adapters": [
+                {"phy": "phy0", "info": "Wiphy phy0"},
+                {"phy": "phy1", "namespace": "nsvis", "info": "Wiphy phy1"},
+            ]
+        },
     )
     response = client.get("/api/v1/wifi/capabilities")
     assert response.status_code == 200
     assert response.json()["adapters"][0]["phy"] == "phy0"
+    assert [a["namespace"] for a in response.json()["adapters"]] == [None, "nsvis"]
 
 
 def test_wifi_regulatory(client, mocker):
@@ -273,10 +279,11 @@ def test_bluetooth_pair(client, mocker):
 
 
 def test_bluetooth_power(client, mocker):
+    mocker.patch.object(bluetooth_service, "bluetooth_adapter", return_value="hci1")
     present = mocker.patch.object(
         bluetooth_service,
         "bluetooth_present",
-        return_value="hci0",
+        return_value=True,
     )
     set_power = mocker.patch.object(
         bluetooth_service,
@@ -288,8 +295,8 @@ def test_bluetooth_power(client, mocker):
 
     assert response.status_code == 200
     assert response.json() == {"status": "success", "action": "on"}
-    present.assert_called_once_with()
-    set_power.assert_called_once_with(True)
+    present.assert_called_once_with("hci1")
+    set_power.assert_called_once_with(True, "hci1")
 
 
 def test_bluetooth_pair_conflict(client, mocker):
@@ -384,6 +391,23 @@ def test_legacy_wlan_scan_reports_concurrent_scan(client, mocker):
 
     assert response.status_code == 409
     assert response.json()["error"] == "SCAN_IN_PROGRESS"
+
+
+def test_legacy_wlan_scan_reports_monitor_in_use(client, mocker):
+    from wlanpi_core.wpa.scan import MonitorInUseError
+
+    mocker.patch(
+        "wlanpi_core.api.api_v1.endpoints.network_api.wlan_scan",
+        side_effect=MonitorInUseError("wlan0", ["wlanpi1"]),
+    )
+    response = client.get(
+        "/api/v1/network/wlan/scan",
+        params={"type": "active", "interface": "wlan0"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "MONITOR_IN_USE"
+    assert "wlanpi1" in response.json()["message"]
 
 
 def test_require_mode_raises_validation_error():

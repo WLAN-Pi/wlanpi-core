@@ -37,19 +37,42 @@ class TokenRevokeResponse(BaseModel):
     )
 
 
+# No control characters: PAM would truncate at an embedded NUL and check a
+# different account than the one named.
+PAM_USERNAME_PATTERN = r"^[^\x00-\x1f\x7f]+$"
+
+
 class PAMAuthRequest(BaseModel):
     """Credentials to verify against the system PAM stack."""
 
-    username: str = Field(min_length=1, max_length=128)
+    username: str = Field(min_length=1, max_length=128, pattern=PAM_USERNAME_PATTERN)
     password: SecretStr = Field(min_length=1, max_length=512)
 
 
 class PAMChangePasswordRequest(BaseModel):
     """Credentials to change an expired password through PAM."""
 
-    username: str = Field(min_length=1, max_length=128)
+    username: str = Field(min_length=1, max_length=128, pattern=PAM_USERNAME_PATTERN)
     current_password: SecretStr = Field(min_length=1, max_length=512)
     new_password: SecretStr = Field(min_length=1, max_length=512)
+
+
+class PAMAccountRequest(BaseModel):
+    """Local account to check for a signed-in WebUI session."""
+
+    username: str = Field(min_length=1, max_length=128, pattern=PAM_USERNAME_PATTERN)
+
+
+class PAMAccountResponse(BaseModel):
+    """Whether an account may still sign in, and a fingerprint of its password."""
+
+    active: bool = Field(
+        description="false when missing, not in sudo, locked or expired"
+    )
+    password_fingerprint: str | None = Field(
+        examples=["3f9c0a1b2c4d5e6f"],
+        description="Changes with every password change; null without a shadow entry",
+    )
 
 
 class PAMAuthResponse(BaseModel):
@@ -57,5 +80,7 @@ class PAMAuthResponse(BaseModel):
 
     status: str = Field(
         examples=["success", "failure", "password_change_required"],
-        description="success | failure | password_change_required",
+        description=(
+            "success | failure | password_change_required | password_rejected"
+        ),
     )

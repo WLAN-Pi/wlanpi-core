@@ -92,3 +92,9 @@ def test_command_result():
     assert result.stdout == "output"
     assert result.stderr == "error"
     assert result.return_code == 0
+
+
+def test_run_command_replaces_invalid_utf8():
+    # Non-UTF-8 output must not raise UnicodeDecodeError (#390)
+    result = run_command(["printf", r"Fran\347ais"])
+    assert result.stdout == "Fran\ufffdais"

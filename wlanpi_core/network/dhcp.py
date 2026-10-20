@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.utils.general import run_command_async
+from wlanpi_core.utils.general import run_command, run_command_async
 from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
 
 DHCP_LEASE_DIR = Path("/var/lib/dhcp")
 _DHCP_LEASE_FILE_GLOB = "dhclient*.leases"
+_NMCLI = "/usr/bin/nmcli"
 _NETWORKCTL = "/usr/bin/networkctl"
 _NETWORKCTL_STATUS_TIMEOUT_SEC = 5
 
@@ -88,8 +89,46 @@ def _parse_lease_blocks(text: str) -> list[dict[str, Any]]:
     return leases
 
 
+def _get_networkmanager_leases() -> list[dict[str, Any]]:
+    """Return current DHCPv4 options exposed by NetworkManager."""
+    try:
+        result = run_command(
+            [_NMCLI, "-t", "-f", "GENERAL.DEVICE,DHCP4", "device", "show"],
+            raise_on_fail=False,
+        )
+    except OSError:
+        return []
+
+    if not result.success:
+        return []
+
+    leases: list[dict[str, Any]] = []
+    lease: dict[str, Any] = {}
+    for line in (*result.stdout.splitlines(), ""):
+        if not line:
+            if "ip_address" in lease:
+                leases.append(lease)
+            lease = {}
+            continue
+
+        key, separator, value = line.partition(":")
+        if not separator:
+            continue
+        if key == "GENERAL.DEVICE":
+            lease["interface"] = value
+        elif key.startswith("DHCP4.OPTION[") and " = " in value:
+            option, option_value = value.split(" = ", 1)
+            lease[option.replace("-", "_")] = option_value
+
+    return leases
+
+
 def get_dhcp_leases(lease_dir: Path = DHCP_LEASE_DIR) -> dict[str, Any]:
-    """Parse dhclient lease files under ``/var/lib/dhcp``."""
+    """Return NetworkManager leases, with dhclient files as a legacy fallback."""
+    networkmanager_leases = _get_networkmanager_leases()
+    if networkmanager_leases:
+        return {"leases": networkmanager_leases, "source": "NetworkManager"}
+
     log.debug("get_dhcp_leases dir=%s", lease_dir)
     if not lease_dir.exists():
         return {

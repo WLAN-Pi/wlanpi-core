@@ -1,14 +1,19 @@
 """Unit tests for wpa.scan primitives."""
 
+import contextlib
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
+from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.wpa.scan import (
+    MonitorInUseError,
     ScanInProgressError,
+    fetch_scan_results,
     find_bss,
     normalize_scan_detail,
     parse_iw_scan_output,
@@ -17,6 +22,14 @@ from wlanpi_core.wpa.scan import (
     run_interface_scan,
     run_iw_scan,
 )
+
+
+@pytest.fixture(autouse=True)
+def _not_iwlwifi():
+    """Default every scan to a non-iwlwifi radio; never read the host sysfs."""
+    with patch("wlanpi_core.adapters.discovery.interface_driver", return_value=None):
+        yield
+
 
 SAMPLE = """\
 bssid / frequency / signal level / flags / ssid
@@ -47,6 +60,70 @@ SAMPLE_IW_FULL_BLOCK = SAMPLE_IW.strip()
 
 def test_parse_key_mgmt_wpa2_psk():
     assert parse_key_mgmt("[WPA2-PSK-CCMP][ESS]") == "wpa-psk"
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        # Captured from wpa_cli scan_results (wpa_supplicant 2.12).
+        ("[WPA2-SAE-CCMP][SAE-H2E][ESS]", "sae"),
+        ("[WPA2-SAE+SAE-EXT-KEY-GCMP-256+CCMP][SAE-H2E][ESS]", "sae"),
+        ("[WPA2-PSK+SAE-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-PSK+SAE-CCMP][SAE-H2E][WPS][ESS][FILS]", "wpa-psk"),
+        ("[WPA2-PSK+PSK-SHA256-CCMP-256+CCMP][ESS]", "wpa-psk"),
+        ("[WEP][ESS]", "wep"),
+        ("[ESS]", "open"),
+        ("[WPA-PSK-TKIP][WPA2-PSK-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-FT/PSK-CCMP][ESS]", "wpa-psk"),
+        ("[WPA2-FT/SAE-CCMP][ESS]", "sae"),
+        ("[WPA2-EAP-CCMP][ESS]", "wpa-eap"),
+        ("[WPA2-EAP-SUITE-B-192-GCMP-256][ESS]", "wpa-eap"),
+        ("[WPA2-OWE-CCMP][ESS]", "owe"),
+        ("", "unknown"),
+    ],
+)
+def test_parse_key_mgmt_forms(flags, expected):
+    assert parse_key_mgmt(flags) == expected
+
+
+def _iw_block(capability: str, rsn: str | None) -> str:
+    lines = [
+        "BSS ae:88:91:5a:a3:40(on wlan2)",
+        "\tfreq: 5220",
+        "\tsignal: -33.00 dBm",
+        "\tSSID: Net",
+        f"\tcapability: {capability}",
+    ]
+    if rsn is not None:
+        lines += [
+            "\tRSN:\t * Version: 1",
+            "\t\t * Group cipher: CCMP",
+            "\t\t * Pairwise ciphers: GCMP-256 CCMP",
+        ]
+        if rsn:
+            lines.append(f"\t\t * Authentication suites: {rsn}")
+    return "\n".join(lines)
+
+
+@pytest.mark.parametrize(
+    ("capability", "rsn", "expected"),
+    [
+        # Suite lists captured from `iw dev wlan2 scan dump`.
+        ("ESS Privacy (0x1511)", "SAE SAE-EXT-KEY", "sae"),
+        ("ESS Privacy (0x1511)", "SAE", "sae"),
+        ("ESS Privacy (0x1511)", "PSK SAE", "wpa-psk"),
+        ("ESS Privacy (0x1511)", "PSK PSK/SHA-256", "wpa-psk"),
+        ("ESS Privacy (0x1511)", "IEEE 802.1X", "wpa-eap"),
+        ("ESS Privacy (0x1511)", "FT/IEEE 802.1X IEEE 802.1X/SHA-256", "wpa-eap"),
+        ("ESS Privacy (0x1511)", "OWE", "owe"),
+        ("ESS Privacy (0x1511)", "", "wpa-psk"),
+        ("ESS Privacy (0x0411)", None, "wep"),
+        ("ESS ShortSlotTime (0x0401)", None, "open"),
+    ],
+)
+def test_parse_iw_scan_key_mgmt(capability, rsn, expected):
+    networks = parse_iw_scan_output(_iw_block(capability, rsn))
+    assert networks[0]["key_mgmt"] == expected
 
 
 def test_find_bss_matches_lowercase():
@@ -115,6 +192,56 @@ def test_parse_wpa_scan_results_includes_flags():
     assert networks[0]["flags"] == "[WPA2-PSK-CCMP][ESS]"
     assert networks[0]["primaryChannel"] == 1
     assert networks[0]["secondaryChannelOffset"] is None
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        (r"Caf\xc3\xa9", "Café"),
+        (r"\xf0\x9f\x93\xb6 Pi", "📶 Pi"),
+        (r"a\\b", "a\\b"),
+        (r"say \"hi\"", 'say "hi"'),
+        (r"tab\there", "tab\there"),
+        (r"\x00\x00\x00", ""),
+        (r"caf\xe9", r"caf\xe9"),
+    ],
+)
+def test_parse_wpa_scan_results_decodes_ssid(printed, expected):
+    text = f"header\naa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\t{printed}\n"
+    assert parse_wpa_scan_results(text)[0]["ssid"] == expected
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        (r"Caf\xc3\xa9", "Café"),
+        (r"a\x5cb", "a\\b"),
+        (r"\x20edge two\x20", " edge two "),
+        (r"\x00\x00\x00", ""),
+    ],
+)
+def test_parse_iw_scan_output_decodes_ssid(printed, expected):
+    block = f"BSS aa:bb:cc:dd:ee:02(on wlan0)\n\tSSID: {printed}\n\tfreq: 2412\n"
+    assert parse_iw_scan_output(block)[0]["ssid"] == expected
+
+
+def test_fetch_scan_results_keeps_trailing_space_of_last_ssid():
+    result = CommandResult(
+        "bssid / frequency / signal level / flags / ssid\n"
+        "aa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\tedge \n",
+        "",
+        0,
+    )
+    with patch("wlanpi_core.wpa.scan.ns_exec", return_value=result):
+        text = fetch_scan_results("wlan0")
+    assert parse_wpa_scan_results(text)[0]["ssid"] == "edge "
+
+
+def test_nul_ssid_counts_as_hidden():
+    text = "header\naa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\t\\x00\\x00\n"
+    assert parse_wpa_scan_results(text, include_hidden=False) == []
+    block = "BSS aa:bb:cc:dd:ee:02(on wlan0)\n\tSSID: \\x00\n"
+    assert parse_iw_scan_output(block, include_hidden=False) == []
 
 
 def test_normalize_scan_detail_accepts_short_and_full():
@@ -213,3 +340,176 @@ def test_run_interface_scan_rejects_concurrent_target_without_leaking_claim():
 
         with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
             assert run_interface_scan("wlan0", mode="monitor") == []
+
+
+SS_WITH_CAPTURE = """\
+p_raw UNCONN 0      0           *:wlan0   *
+p_dgr UNCONN 0      0      [2054]:eth0    *
+p_raw UNCONN 0      0           *:wlanpi1 *
+"""
+
+
+def _iwlwifi(monitors, captured=""):
+    """Patch an iwlwifi radio whose `monitors` are up next to wlan0."""
+    return (
+        patch(
+            "wlanpi_core.adapters.discovery.interface_driver", return_value="iwlwifi"
+        ),
+        patch(
+            "wlanpi_core.adapters.phy.up_sibling_monitors", return_value=list(monitors)
+        ),
+        patch(
+            "wlanpi_core.wpa.scan.ns_exec",
+            return_value=CommandResult(captured, "", 0),
+        ),
+    )
+
+
+def test_iwlwifi_scan_takes_same_radio_monitor_down_and_back_up():
+    driver, siblings, ss = _iwlwifi(["wlanpi1"])
+    with driver, siblings as sibs, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False):
+            with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+                    run_interface_scan("wlan0", "lab_ns", mode="managed", detail="full")
+
+    sibs.assert_called_once_with("wlan0", "lab_ns")
+    # Monitor down before the scan radio comes up; back up after it goes down.
+    assert set_state.call_args_list == [
+        call("wlanpi1", False, "lab_ns"),
+        call("wlan0", True, "lab_ns"),
+        call("wlan0", False, "lab_ns"),
+        call("wlanpi1", True, "lab_ns"),
+    ]
+
+
+def test_non_iwlwifi_scan_leaves_monitors_alone():
+    with patch(
+        "wlanpi_core.adapters.discovery.interface_driver", return_value="mt76x2u"
+    ):
+        with patch("wlanpi_core.adapters.phy.up_sibling_monitors") as sibs:
+            with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+                with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+                    with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+                        with patch("wlanpi_core.wpa.scan.allow_other_unicast") as allow:
+                            run_interface_scan("wlan1", mode="monitor")
+    sibs.assert_not_called()
+    set_state.assert_not_called()
+    allow.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("scan", "outcome"),
+    [
+        ([], contextlib.nullcontext()),
+        (RuntimeError("scan failed"), pytest.raises(RuntimeError, match="scan failed")),
+    ],
+)
+def test_mt7921_scan_lets_monitors_see_unicast_again(mocker, scan, outcome):
+    # The scan sets DROP_OTHER_UC; a capture on wlanpi0 must get it cleared
+    # after wlan1 is back down, whether the scan worked or not.
+    order = Mock()
+    mocker.patch(
+        "wlanpi_core.adapters.discovery.interface_driver", return_value="mt7921u"
+    )
+    mocker.patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False)
+    mocker.patch("wlanpi_core.wpa.scan._set_interface_state", order.set_state)
+    mocker.patch("wlanpi_core.wpa.scan.allow_other_unicast", order.allow)
+    mocker.patch("wlanpi_core.wpa.scan.wpa_cli_available", return_value=False)
+    mocker.patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=[scan])
+
+    with outcome:
+        assert run_interface_scan("wlan1", "lab", mode="managed") == []
+
+    assert order.mock_calls == [
+        call.set_state("wlan1", True, "lab"),
+        call.set_state("wlan1", False, "lab"),
+        call.allow("wlan1", "lab"),
+    ]
+
+
+def test_iwlwifi_scan_refuses_while_a_capture_holds_the_monitor():
+    driver, siblings, ss = _iwlwifi(["wlanpi1"], captured=SS_WITH_CAPTURE)
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._set_interface_state") as set_state:
+            with patch("wlanpi_core.wpa.scan.run_iw_scan") as iw:
+                with pytest.raises(MonitorInUseError) as exc:
+                    run_interface_scan("wlan0", mode="managed")
+                # The claim is released: a later scan is not "in progress".
+                with pytest.raises(MonitorInUseError):
+                    run_interface_scan("wlan0", mode="managed")
+
+    assert exc.value.code == "MONITOR_IN_USE"
+    assert exc.value.monitors == ["wlanpi1"]
+    assert isinstance(exc.value, ScanInProgressError)
+    set_state.assert_not_called()
+    iw.assert_not_called()
+
+
+def test_iwlwifi_scan_restores_monitor_when_scan_and_teardown_fail():
+    driver, siblings, ss = _iwlwifi(["wlanpi1"])
+
+    def set_state(iface, up, _ns):
+        if iface == "wlan0" and not up:
+            raise RunCommandError("down failed", 1)
+
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=False):
+            with patch(
+                "wlanpi_core.wpa.scan._set_interface_state", side_effect=set_state
+            ) as state:
+                with patch(
+                    "wlanpi_core.wpa.scan.run_iw_scan",
+                    side_effect=RuntimeError("scan failed"),
+                ):
+                    with pytest.raises(RunCommandError):
+                        run_interface_scan("wlan0", mode="monitor")
+
+    assert state.call_args_list[-1] == call("wlanpi1", True, None)
+
+
+def test_iwlwifi_scan_restores_every_monitor_when_one_restore_fails():
+    driver, siblings, ss = _iwlwifi(["wlanpi1", "wlanpi2"])
+
+    def set_state(iface, up, _ns):
+        if iface == "wlanpi1" and up:
+            raise OSError("gone")
+
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+            with patch(
+                "wlanpi_core.wpa.scan._set_interface_state", side_effect=set_state
+            ) as state:
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", return_value=[]):
+                    assert run_interface_scan("wlan0", mode="managed") == []
+
+    assert state.call_args_list[-2:] == [
+        call("wlanpi1", True, None),
+        call("wlanpi2", True, None),
+    ]
+
+
+def test_iwlwifi_scan_refuses_a_second_scan_on_the_same_radio():
+    # Scan A on wlan0 pauses wlanpi1; no other scan on that radio (wlanpi1,
+    # or a second managed wlan2) may run and restore it while A runs.
+    driver, siblings, ss = _iwlwifi(["wlanpi1"])
+    refused = []
+    with driver, siblings, ss:
+        with patch("wlanpi_core.wpa.scan._interface_is_up", return_value=True):
+            with patch("wlanpi_core.wpa.scan._set_interface_state"):
+
+                def scan_a(*_a, **_k):
+                    # B sees A's monitor already down, so it pauses nothing.
+                    with patch(
+                        "wlanpi_core.adapters.phy.up_sibling_monitors",
+                        return_value=[],
+                    ):
+                        for other in ("wlanpi1", "wlan2"):
+                            with pytest.raises(ScanInProgressError):
+                                run_interface_scan(other, mode="monitor")
+                    refused.append(True)
+                    return []
+
+                with patch("wlanpi_core.wpa.scan.run_iw_scan", side_effect=scan_a):
+                    assert run_interface_scan("wlan0", mode="managed") == []
+    assert refused == [True]

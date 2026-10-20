@@ -2,6 +2,8 @@
 
 from .auth import (
     KeyResponse,
+    PAMAccountRequest,
+    PAMAccountResponse,
     PAMAuthRequest,
     PAMAuthResponse,
     PAMChangePasswordRequest,

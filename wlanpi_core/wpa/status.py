@@ -10,8 +10,10 @@ from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
 from wlanpi_core.utils.validation import validate_interface_name
 from wlanpi_core.wpa.scan import fetch_scan_results, find_bss, parse_wpa_scan_results
+from wlanpi_core.wpa.supplicant import wpa_cli_command
 
 log = logging.getLogger(__name__)
 
@@ -38,16 +40,18 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
     try:
         wpa_status = {}
         wpa = ns_exec(
-            ["wpa_cli", "-i", iface, "status"],
+            wpa_cli_command(iface, namespace, "status"),
             namespace=namespace,
-        ).stdout.strip()
+        ).stdout
 
-        for line in wpa.split("\n"):
+        for line in wpa.splitlines():
             if "=" in line:
                 key, value = line.split("=", 1)
-                wpa_status[key.strip()] = value.strip()
+                key = key.strip()
+                # wpa_cli prints SSID edge spaces unescaped; they are SSID bytes.
+                wpa_status[key] = value if key == "ssid" else value.strip()
 
-        connected_ssid = wpa_status.get("ssid")
+        connected_ssid = ssid_text(wpa_status["ssid"]) if "ssid" in wpa_status else None
         connected_bssid = wpa_status.get("bssid")
 
         signal = None
@@ -68,6 +72,20 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
                 include_hidden=True,
             )
             matched = find_bss(networks, connected_bssid)
+            if matched is None and wpa_status.get("ap_mld_addr"):
+                # MLO: bssid is the AP MLD address, which no scan entry has.
+                # Scans list each link's BSSID; freq is the association link.
+                # Only trust a unique SSID+freq match: another AP of the same
+                # network on the same channel would report its signal instead.
+                # ponytail: ambiguous matches report signal 0; match
+                # `wpa_cli mlo_status` ap_link_addr for an exact link lookup.
+                candidates = [
+                    n
+                    for n in networks
+                    if n.get("ssid") == connected_ssid and n.get("freq") == freq
+                ]
+                if len(candidates) == 1:
+                    matched = candidates[0]
             if matched:
                 log.info("Found connected network in scan results: %s", matched)
                 signal = matched.get("signal")

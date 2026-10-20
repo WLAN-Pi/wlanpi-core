@@ -16,6 +16,20 @@ from wlanpi_core.services import system_service
 _GET_MODE = system_service.get_mode
 
 
+@pytest.mark.parametrize(
+    ("name", "allowed"),
+    [
+        ("iperf2", True),
+        ("iperf2-udp.service", True),
+        ("iperf3", True),
+        # No unit has this name; the iperf2 units replaced it.
+        ("iperf", False),
+    ],
+)
+def test_iperf_units_allowlist(name, allowed):
+    assert system_service.is_allowed_service(name) is allowed
+
+
 @pytest.mark.asyncio
 async def test_restart_systemd_service_allowed(mocker):
     worker_thread = None
@@ -136,6 +150,16 @@ def test_read_cpu_temperature_converts_millidegrees(mocker):
     assert system_service._read_cpu_temperature() == "52.1C"
 
 
+def test_resolve_timezone_prefers_timedatectl(monkeypatch):
+    monkeypatch.setattr(
+        system_service,
+        "run_command",
+        lambda *a, **k: CommandResult("America/Chicago\n", "", 0),
+    )
+
+    assert system_service._resolve_timezone() == "America/Chicago"
+
+
 def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):
     tz_file = tmp_path / "timezone"
     tz_file.write_text("Europe/London\n")
@@ -147,6 +171,10 @@ def test_resolve_timezone_from_etc_timezone(tmp_path, monkeypatch):
         return real_path(value)
 
     monkeypatch.setattr(system_service, "Path", path_factory)
+    # timedatectl unavailable: fall back to /etc/timezone.
+    monkeypatch.setattr(
+        system_service, "run_command", lambda *a, **k: CommandResult("", "", 1)
+    )
 
     assert system_service._resolve_timezone() == "Europe/London"
 
@@ -474,6 +502,17 @@ def test_get_health_aggregates(monkeypatch):
     assert health["swap"] == {"used_mb": 1, "total_mb": 2}
 
 
+def test_get_allowed_services_matches_allowlist():
+    services = system_service.get_allowed_services()["services"]
+
+    assert len(services) == len(set(services))
+    assert set(services) == set(system_service.allowed_services)
+    assert all(system_service.is_allowed_service(name) for name in services)
+    # #349: the iperf units are iperf2/iperf2-udp/iperf3; plain "iperf" is not one
+    assert "iperf" not in services
+    assert {"iperf2", "iperf2-udp", "iperf3"} <= set(services)
+
+
 def test_get_failed_services_parses_json(monkeypatch):
     payload = json.dumps(
         [
@@ -511,3 +550,21 @@ def test_get_failed_services_handles_garbage(monkeypatch):
     )
 
     assert system_service.get_failed_services() == {"units": []}
+
+
+def test_set_ntp_enabled_runs_timedatectl(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return CommandResult("", "", 0)
+
+    monkeypatch.setattr(system_service, "run_command", fake_run)
+    monkeypatch.setattr(
+        system_service, "get_ntp", lambda: {"ntp_service": True, "synchronized": True}
+    )
+
+    result = system_service.set_ntp_enabled(False)
+
+    assert ["timedatectl", "set-ntp", "false"] in calls
+    assert result == {"ntp_service": True, "synchronized": True}

@@ -28,6 +28,15 @@ def validate_namespace_name(value: str) -> str:
     return _validate_name(value, _NAMESPACE_NAME_RE, "namespace name")
 
 
+def namespace_from_param(namespace: str | None) -> str | None:
+    """Map a ``namespace`` query value to a validated name, or None for root."""
+    if not namespace:
+        return None
+    if namespace.strip().lower() == "root":
+        return None
+    return validate_namespace_name(namespace)
+
+
 def validate_config_id(value: str) -> str:
     """Validate an identifier used as a configuration filename stem."""
     return _validate_name(value, _CONFIG_ID_RE, "configuration ID")

@@ -258,14 +258,30 @@ async def test_verify_local_auth_rejects_non_localhost():
 @pytest.mark.asyncio
 async def test_verify_local_auth_dispatches_on_credentials(monkeypatch):
     request = create_mock_request(headers={"X-Request-Signature": "signature"})
-    jwt_verifier = AsyncMock(return_value="jwt")
+    webui = SimpleNamespace(device_id="wlanpi-webui")
+    jwt_verifier = AsyncMock(return_value=webui)
     hmac_verifier = AsyncMock(return_value="hmac")
     monkeypatch.setattr(auth_module, "verify_jwt_token", jwt_verifier)
     monkeypatch.setattr(auth_module, "verify_hmac", hmac_verifier)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
 
-    assert await verify_local_auth(request, credentials) == "jwt"
+    assert await verify_local_auth(request, credentials) is webui
     assert await verify_local_auth(request, None) == "hmac"
+
+
+@pytest.mark.asyncio
+async def test_verify_local_auth_rejects_other_device_tokens(monkeypatch):
+    request = create_mock_request()
+    monkeypatch.setattr(
+        auth_module,
+        "verify_jwt_token",
+        AsyncMock(return_value=SimpleNamespace(device_id="mcp-client")),
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
+
+    with pytest.raises(HTTPException) as exc:
+        await verify_local_auth(request, credentials)
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio

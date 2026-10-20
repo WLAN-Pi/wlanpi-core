@@ -3,6 +3,7 @@
 # stdlib imports
 import asyncio
 import grp
+import ipaddress
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -29,11 +30,17 @@ from wlanpi_core.constants import (
     CREATE_MONITOR_PAIRS_DEFAULT,
     CREATE_MONITOR_PAIRS_UNINIT,
     CURRENT_CONFIG_FILE,
+    HOME_DIR,
     MODE_FILE,
+    MONITOR_IFACE_PREFIX,
     SECRETS_DIR,
     SUPPORTED_MODELS,
 )
-from wlanpi_core.core.auth import AUTH_CLOCK_MESSAGE, AuthClockNotSetError
+from wlanpi_core.core.auth import (
+    AUTH_CLOCK_MESSAGE,
+    PAM_CLIENT_DEVICE_ID,
+    AuthClockNotSetError,
+)
 from wlanpi_core.core.config import (
     endpoints,
     settings,
@@ -47,6 +54,7 @@ from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
 from wlanpi_core.services.system_service import get_model
+from wlanpi_core.utils.homedir import ensure_wlanpi_home_data_dirs
 from wlanpi_core.utils.network_config import (
     activate_config,
     get_config,
@@ -62,6 +70,23 @@ async def auth_clock_not_set_handler(request: Request, exc: Exception) -> JSONRe
         status_code=503,
         content={"error": AUTH_CLOCK_NOT_SET, "message": AUTH_CLOCK_MESSAGE},
     )
+
+
+def rate_limit_key(request: Request) -> str:
+    """Return the client address a request's rate limit counts against.
+
+    gunicorn listens on a unix socket behind nginx, so requests carry no peer
+    address and every caller would share one budget. nginx sets X-Real-IP from
+    the connection, replacing any value the client sent.
+    """
+    peer = get_remote_address(request)
+    try:
+        behind_nginx = ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        behind_nginx = False
+    if not behind_nginx:
+        return peer
+    return request.headers.get("X-Real-IP") or peer
 
 
 class ApplicationHealthManager:
@@ -237,6 +262,12 @@ class InitializationManager:
             )
             return False
 
+        # ~/.local and ~/.local/share are the wlanpi user's XDG data home,
+        # shared with other wlanpi apps. Reclaim them before touching
+        # anything under wlanpi-core, so a fresh boot never leaves them
+        # root-owned just because this service was first to create them.
+        ensure_wlanpi_home_data_dirs(HOME_DIR)
+
         try:
             secrets_dir = Path(SECRETS_DIR)
             parent_dir = secrets_dir.parent
@@ -312,10 +343,9 @@ class InitializationManager:
                 get_config("default")
                 self.log.info("Default config ok")
             except Exception as e:
-                self.log.error(
-                    f"Failed to ensure default namespaces configuration exists: {e}"
-                )
-                return False
+                # Not fatal: Core must stay up so the API can report and
+                # repair the configuration instead of restart-looping.
+                self.log.error(f"Default network configuration is unusable: {e}")
 
             return True
         except Exception as e:
@@ -394,7 +424,7 @@ class InitializationManager:
                 if CREATE_MONITOR_PAIRS_DEFAULT:
                     try:
                         system_initialized = await self._initialize_system_manager(
-                            "wlanpi", exclusions=[]
+                            MONITOR_IFACE_PREFIX, exclusions=[]
                         )
                         if not system_initialized:
                             self.log.warning(
@@ -426,7 +456,7 @@ class InitializationManager:
                     if CREATE_MONITOR_PAIRS_DEFAULT:
                         try:
                             system_initialized = await self._initialize_system_manager(
-                                "wlanpi", exclusions=[]
+                                MONITOR_IFACE_PREFIX, exclusions=[]
                             )
                             if not system_initialized:
                                 self.log.warning(
@@ -459,7 +489,7 @@ class InitializationManager:
                         try:
                             interfaces_in_root(current_config)
                             system_initialized = await self._initialize_system_manager(
-                                "wlanpi", exclusions=[]
+                                MONITOR_IFACE_PREFIX, exclusions=[]
                             )
                             if not system_initialized:
                                 self.log.warning(
@@ -564,10 +594,26 @@ class InitializationManager:
             # ponytail: retain token rows; add cleanup only if table growth is
             # measurable on deployed devices.
             self.log.debug("Token manager initialized successfully")
-            return True
         except Exception as e:
             self.log.error(f"Token manager initialization failed: {e}")
             return False
+        await self._revoke_pam_client_tokens()
+        return True
+
+    async def _revoke_pam_client_tokens(self) -> None:
+        """Revoke the WebUI's PAM tokens so only fresh getjwt (HMAC) ones work.
+
+        Older cores let any bearer mint the reserved `wlanpi-webui` id. The
+        WebUI re-mints through getjwt after a 401, so revoking on every start
+        costs one extra mint. Failure is logged and never blocks startup.
+        """
+        try:
+            count = await self.app.state.token_manager.revoke_device_tokens(
+                PAM_CLIENT_DEVICE_ID
+            )
+            self.log.info(f"Revoked {count} {PAM_CLIENT_DEVICE_ID} token(s)")
+        except Exception as e:
+            self.log.warning(f"Could not revoke {PAM_CLIENT_DEVICE_ID} tokens: {e}")
 
     async def _initialize_system_manager(
         self, iface_name: str, exclusions: list[str] | None = None
@@ -725,7 +771,7 @@ def create_app(debug: bool = False) -> FastAPI:
         )
 
     # setup slowapi
-    limiter = Limiter(key_func=get_remote_address, default_limits=["90/minute"])
+    limiter = Limiter(key_func=rate_limit_key, default_limits=["90/minute"])
     app.state.limiter = limiter
     app.add_exception_handler(
         RateLimitExceeded,

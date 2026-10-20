@@ -54,9 +54,6 @@ WPAS_DBUS_NETWORK_INTERFACE: str = "fi.w1.wpa_supplicant1.Network"
 DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"
 DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
 
-# Service Constants
-BT_ADAPTER = "hci0"
-
 # Network Namespace/Config Constants
 SUPPORTED_MODELS = ["M4", "M4+", "R4"]
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
@@ -65,8 +62,16 @@ DEFAULT_DHCP_DIR = "/etc/network/interfaces.d"
 CONFIG_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/configs")
 CURRENT_CONFIG_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/current.txt")
 PID_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/pids")
+# Runtime state (pidfiles); tmpfs, so it is cleared on reboot.
+RUN_DIR = "/run/wlanpi-core"
+# Named network namespaces (`ip netns add` bind-mounts them here).
+NETNS_RUN_DIR = "/run/netns"
+# Per-namespace /etc overlays that `ip netns exec` bind-mounts.
+NETNS_ETC_DIR = "/etc/netns"
 APPS_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/apps.json")
 WPA_LOG_FILE = "/tmp/wpa.log"
+# Core's per-radio monitor netdevs are <prefix><phy index> (wlanpi0, wlanpi1).
+MONITOR_IFACE_PREFIX = "wlanpi"
 CREATE_MONITOR_PAIRS_DEFAULT = True
 CREATE_MONITOR_PAIRS_UNINIT = True
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wlanpi_core.adapters import usage
 from wlanpi_core.constants import APPS_FILE, PID_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.namespaces import processes
@@ -83,7 +84,7 @@ def _stop_owned_app(pid: int | None, namespace: str | None, app_id: str) -> bool
     return True
 
 
-def _recorded_app_running(pid_file: Path) -> bool:
+def _recorded_app_running(pid_file: Path, namespace: str | None) -> bool:
     """Fail closed when a PID file still refers to a live process."""
     if not pid_file.exists():
         return False
@@ -98,12 +99,20 @@ def _recorded_app_running(pid_file: Path) -> bool:
 
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         pid_file.unlink(missing_ok=True)
         return False
     except PermissionError:
         return True
+    app_command = pid_data.get("app_command", "") if isinstance(pid_data, dict) else ""
+    if app_command and not (
+        _is_recorded_app(pid, app_command) and usage.in_netns(pid, namespace)
+    ):
+        # The PID was reused (reboot, service restart), possibly by the same
+        # command in another namespace: the app is not running.
+        pid_file.unlink(missing_ok=True)
+        return False
+    return True
 
 
 def get_app_command(app_id: str) -> str | None:
@@ -117,30 +126,30 @@ def get_app_command(app_id: str) -> str | None:
         Command string if found, None otherwise
 
     Raises:
-        FileNotFoundError: If apps file doesn't exist and can't be created
-        json.JSONDecodeError: If apps file is malformed
+        OSError: If the apps file exists but cannot be read
+        ValueError: If the apps file is malformed (json.JSONDecodeError) or
+            is not a JSON object
 
     Examples:
         >>> command = get_app_command("my_app")
         >>> if command:
         ...     print(f"App command: {command}")
     """
-    apps_file = Path(APPS_FILE)
-    if not apps_file.exists():
-        if not apps_file.parent.exists():
-            raise FileNotFoundError(
-                f"Apps file parent directory does not exist: {apps_file.parent}. "
-                "Cannot create apps file (e.g. in CI /home/wlanpi may be missing)."
-            )
-        apps_file.touch()
-
+    # A missing or empty file means no apps (#311). Core never creates it: it
+    # runs as root in a directory the wlanpi user owns (#294).
     try:
-        with apps_file.open("r") as f:
-            apps = json.load(f)
-        return apps.get(app_id)
+        text = Path(APPS_FILE).read_text()
+    except FileNotFoundError:
+        return None
+    try:
+        apps = json.loads(text.strip() or "{}")
     except json.JSONDecodeError as e:
         log.error(f"Failed to parse apps file {APPS_FILE}: {e}")
         raise
+    if not isinstance(apps, dict):
+        raise ValueError(f"Apps file {APPS_FILE} must hold a JSON object")
+    command = apps.get(app_id)
+    return command if isinstance(command, str) else None
 
 
 def start_app_in_namespace(
@@ -160,9 +169,8 @@ def start_app_in_namespace(
         True if app was started successfully, False otherwise
 
     Raises:
-        FileNotFoundError: If apps file doesn't exist
-        json.JSONDecodeError: If apps file is malformed
-        ValueError: If app_id not found in apps file
+        OSError: If the apps file exists but cannot be read
+        ValueError: If the apps file is malformed or app_id is not in it
 
     Examples:
         >>> start_app_in_namespace("test_ns", "my_app")
@@ -197,7 +205,7 @@ def start_app_in_namespace(
         cmd = ["ip", "netns", "exec", namespace, *app_command.split()]
         pid_file = pid_dir / f"{namespace}.pid"
 
-    if _recorded_app_running(pid_file):
+    if _recorded_app_running(pid_file, namespace):
         log.warning("A recorded application process is still running")
         return False
 
@@ -394,25 +402,45 @@ def stop_app_in_namespace(
         return False
 
 
+def _is_recorded_app(pid: int, app_command: str) -> bool:
+    """Return whether `pid` still runs `app_command` as Core started it.
+
+    App pidfiles outlive reboots and service restarts, so a PID may now
+    belong to something else. The argv must end with the recorded command,
+    the program compared by basename, so a script started through PATH and
+    its shebang (python3 /usr/bin/orb --serve) matches.
+    """
+    parts = app_command.split()
+    if not parts:
+        return False
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    argv = [arg.decode(errors="replace") for arg in raw.split(b"\0") if arg]
+    tail = argv[-len(parts) :]
+    return (
+        len(tail) == len(parts)
+        and tail[1:] == parts[1:]
+        and os.path.basename(tail[0]) == os.path.basename(parts[0])
+    )
+
+
 def _stop_app_in_root(
     pid: int | None, app_command: str, namespace_display: str
 ) -> bool:
     """Stop app in root namespace."""
     try:
         if pid:
+            if not _is_recorded_app(pid, app_command):
+                log.info(f"PID {pid} is not the recorded app; dropping its pidfile")
+                return True
             run_command(["kill", str(pid)], raise_on_fail=True)
             log.info(f"Stopped app in {namespace_display} with PID {pid}")
             return True
-        elif app_command:
-            # Extract the base command (first part) for matching
-            cmd_parts = app_command.split()
-            if cmd_parts:
-                base_cmd = cmd_parts[0]
-                run_command(["pkill", "-f", base_cmd], raise_on_fail=True)
-                log.info(
-                    f"Stopped app in {namespace_display} using pkill for {base_cmd}"
-                )
-                return True
+        # No PID means Core cannot tell its app from any other process running
+        # the same command, so it stops nothing (#305).
+        log.warning(f"App pidfile in {namespace_display} has no PID; not stopping")
     except RunCommandError as e:
         log.warning(f"Failed to kill app in {namespace_display}: {e}")
     return False
@@ -443,7 +471,10 @@ def _stop_app_in_namespace_safe(
             identify_result = run_command(
                 ["ip", "netns", "identify", str(pid)], raise_on_fail=False
             )
-            if identify_result.return_code == 0 and namespace in identify_result.stdout:
+            if (
+                identify_result.return_code == 0
+                and namespace in identify_result.stdout.split()
+            ):
                 verified_pid = pid
                 log.info(f"PID {pid} confirmed in namespace {namespace}")
             else:
@@ -460,48 +491,17 @@ def _stop_app_in_namespace_safe(
         ns_pids = processes.get_processes_in_namespace(namespace)
 
         if not ns_pids:
+            # Nothing runs there, so the app is not running: the pidfile is stale.
             log.info(f"No processes found in namespace {namespace}")
-            return False
+            return True
 
         log.debug(f"Found {len(ns_pids)} process(es) in namespace {namespace}")
 
-        # Step 4: Find matching PIDs by checking command lines
-        matching_pids = []
-        if app_command:
-            cmd_parts = app_command.split()
-            base_cmd = cmd_parts[0] if cmd_parts else ""
-
-            # Also check if verified_pid is in the namespace PIDs list
-            if verified_pid and verified_pid in ns_pids:
-                matching_pids.append(verified_pid)
-                log.info(
-                    f"PID {verified_pid} from file is in namespace and matches app"
-                )
-
-            # Check other PIDs in namespace for command match
-            for ns_pid in ns_pids:
-                if ns_pid == verified_pid:
-                    continue  # Already added
-
-                try:
-                    # Check /proc/<pid>/cmdline to see if it matches our app
-                    cmdline_result = run_command(
-                        ["cat", f"/proc/{ns_pid}/cmdline"],
-                        raise_on_fail=False,
-                    )
-                    if cmdline_result.return_code == 0:
-                        cmdline = cmdline_result.stdout.replace("\0", " ")
-                        if base_cmd in cmdline:
-                            matching_pids.append(ns_pid)
-                            log.debug(
-                                f"Found matching PID {ns_pid} in namespace: {cmdline.strip()}"
-                            )
-                except RunCommandError:
-                    # Process may have exited, skip it
-                    continue
-        elif verified_pid and verified_pid in ns_pids:
-            # No app_command but we have a verified PID in namespace
-            matching_pids.append(verified_pid)
+        # Step 4: only processes in the namespace still running the recorded
+        # command (a PID from the file may have been reused, #304).
+        matching_pids = [
+            ns_pid for ns_pid in ns_pids if _is_recorded_app(ns_pid, app_command)
+        ]
 
         # Step 5: Kill only the matching PIDs that are confirmed in namespace
         if matching_pids:
@@ -524,15 +524,18 @@ def _stop_app_in_namespace_safe(
                 )
                 return True
         else:
+            # The app is not running: drop the stale pidfile so a reused PID
+            # never blocks the next start.
             log.info(
                 f"No matching processes found in namespace {namespace} "
                 f"(checked {len(ns_pids)} process(es))"
             )
+            return True
 
     except RunCommandError as e:
         log.error(f"Failed to get PIDs from namespace {namespace}: {e}")
         # Fallback: if we have a verified PID, try to kill it directly
-        if verified_pid:
+        if verified_pid and _is_recorded_app(verified_pid, app_command):
             try:
                 run_command(["kill", str(verified_pid)], raise_on_fail=True)
                 log.info(

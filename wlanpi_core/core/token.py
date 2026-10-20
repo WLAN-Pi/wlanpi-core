@@ -455,6 +455,21 @@ class TokenManager:
                 )
                 raise
 
+    async def revoke_device_tokens(self, device_id: str) -> int:
+        """Revoke every token issued for ``device_id``; returns how many changed.
+
+        Expiry is not consulted: the wall clock may be wrong this early in boot.
+        """
+        async with self.app_state.db_manager.session() as session:
+            tokens = await TokenRepository(session).get_active_tokens_for_device(
+                device_id, include_revoked=True
+            )
+            live = [token_model for token_model in tokens if not token_model.revoked]
+            for token_model in live:
+                token_model.revoked = True
+            await session.commit()
+            return len(live)
+
     async def rotate_key(self) -> tuple[int, str]:
         """
         Rotate the signing keys.

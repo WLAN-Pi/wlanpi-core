@@ -11,6 +11,5 @@
         "**/node_modules/**": true,
         "**/.vscode/**": true
     },
-    "python.formatting.provider": "black",
     "editor.formatOnSave": false,
 }

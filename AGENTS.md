@@ -5,8 +5,12 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 ## Branch and PR rules
 
 - PRs target `dev` (the default branch). `main` is the release line; never PR it.
-- One concern per PR. One domain router, one fix, one refactor. No mixed
-  move-plus-change diffs. Soft cap ~400 changed lines for focused changes.
+- One concern per PR: one domain router, one fix, one refactor. Size is a soft
+  target: above 500 changed lines, add a `Review order` section to the
+  description; above 1,000 is fine when the change is cohesive. Split only at
+  real seams, never to hit a number. Put moves and formatting in separate
+  commits from behavioral changes. Full policy:
+  [developer guide](https://github.com/WLAN-Pi/developers/blob/main/CONTRIBUTING.md#pr-size-and-scope).
 - CI-only or docs-only changes do not bump `debian/changelog`. A version bump
   is a release; only package-content changes get one.
 - Keep `wlanpi_core/__version__.py` in sync with the deb version minus the
@@ -17,13 +21,17 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 
 All checks run through tox and are wired into CI workflows:
 `python-lint-police.yml` (lint), `python-format-police.yml` (formatcheck),
-`test-python-package.yml` (tests).
+`test-python-package.yml` (tests, which includes the OpenAPI freshness
+check -- see `envlist` in `tox.ini`).
 
 Before committing, run the gates that your change touches:
 
 - `tox -e lint` : `ruff check wlanpi_core tests` then `mypy wlanpi_core`
 - `tox -e formatcheck` : `ruff format --check wlanpi_core tests`
-- `tox` : the py313 test suite plus coverage
+- `tox` : `envlist` runs both `py313` (the test suite plus coverage) and
+  `openapicheck` (fails if `docs/openapi.json` is stale; see OpenAPI docs
+  below). It's a normal env in `envlist`, not a conditional step someone has
+  to remember to run -- a gate that's opt-in is a gate that gets skipped.
 
 `tox -e format` rewrites the tree with `ruff format` when the check fails.
 
@@ -102,10 +110,21 @@ deterministic and warning-clean. Hard rules, each one from a real failure:
 `docs/openapi.json` is generated (`scripts/export_openapi.py`) and maintained
 by the sync workflow, which keeps a `chore: update generated OpenAPI
 reference` PR open against `dev`. Never hand-edit it; fix the source
-docstrings or `openapi_docs.py` on `dev`. Release PRs to `main` are gated on
-freshness: if the OpenAPI Reference Check workflow fails, merge the
-automation PR into `dev` first. Placeholders like `<jwt>` in descriptions
-must sit inside backticks or Swagger UI swallows them as HTML tags.
+docstrings or `openapi_docs.py` on `dev`. PRs into both `dev` and `main` are
+gated on freshness (the OpenAPI Reference Check workflow, required on both
+branches): if it fails on a PR into `dev`, regenerate and commit the result
+in that PR; if it fails on a PR into `main`, merge the automation PR into
+`dev` first. Placeholders like `<jwt>` in descriptions must sit inside
+backticks or Swagger UI swallows them as HTML tags.
+
+Regenerate with `tox -e openapi` (writes the file) or `tox -e openapicheck`
+(fails on any diff, writes nothing) rather than running
+`scripts/export_openapi.py` directly against whatever's in your venv.
+`pyproject.toml`'s own dependencies are unpinned, so an ordinary install
+pulls the newest fastapi/pydantic on PyPI; pydantic's JSON-schema output is
+version-sensitive, so that can produce a `docs/openapi.json` that looks
+right locally but still fails CI's diff against `requirements.txt`'s pinned
+versions. Both tox envs install from `requirements.txt` to match CI exactly.
 
 ## Before you write
 
@@ -127,7 +146,7 @@ Reuse first, write second:
 - No walrus operator (`:=`). Rewrite the assignment into a plain statement;
   readability beats the one-liner.
 - Mark deliberate simplifications that cut a real corner (a global lock, an
-  O(n²) scan, a naive heuristic) with a `# shortcut:` comment naming the
+  O(n²) scan, a naive heuristic) with a `# ponytail:` comment naming the
   ceiling and the upgrade path.
 - Be terse in replies and in what you read. Prefer `grep`/`glob` and targeted
   reads over dumping whole files. Run the real gates once, not ad-hoc
@@ -136,7 +155,7 @@ Reuse first, write second:
   file, or when scope is ambiguous. Don't spend 20 tool calls on a decision a
   human answers in one message.
 - Verify before committing: run the gates in "Tooling and gates"
-  (`tox -e lint && tox -e formatcheck && tox -e py313`).
+  (`tox -e lint && tox -e formatcheck && tox`).
 
 ## Documentation
 

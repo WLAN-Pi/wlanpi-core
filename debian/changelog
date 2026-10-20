@@ -1,3 +1,541 @@
+wlanpi-core (2.4.9-1) unstable; urgency=medium
+
+  * Open ports 3443 and 8443 in the wlanpi-webui ufw profile, where the
+    WebUI now serves Grafana and LibreSpeed. Upgrades rewrite existing
+    wlanpi-webui rules to the new port list.
+  * New POST /api/v1/auth/pam/account reports whether a user may still
+    sign in and a fingerprint of their password, so the WebUI can end
+    sessions after a password change, lock, expiry or removal from sudo
+    (#395).
+  * New GET and POST /api/v1/system/journal read and switch journald
+    between persistent and volatile storage, and name the file that sets
+    it. Core never changes the default on its own (#339).
+  * New GET /api/v1/system/services returns the service allowlist
+    (#391).
+  * The API rate limit applies to each client separately, so one busy
+    client no longer leaves the WebUI and other local callers with 429s.
+  * GET /api/v1/network/interfaces and /network/info list wireless
+    interfaces inside profile namespaces, with a new namespace field
+    (null in the root namespace).
+  * getConnected reads wpa_supplicant in the interface's namespace, so
+    an interface in a profile namespace no longer reports
+    connectedStatus false while connected.
+  * Scan results and connection status return SSIDs as UTF-8 text
+    instead of iw or wpa_cli escapes (Caf\xc3\xa9 is now Café).
+  * Start dhcpcd without ARP probing, so IPv4 no longer drops for about
+    5 seconds after every reassociation or roam. Duplicate-address
+    detection is off.
+  * mt7921 monitors receive other stations' unicast frames (auth,
+    association, EAPOL, ACK, RTS/CTS, Block Ack) after a scan on the
+    same radio (#364).
+  * Bluetooth endpoints use the adapter wlanpi-bluetooth chose instead
+    of hci0, so turning Bluetooth off no longer leaves the radio in use
+    on.
+  * Add the Bluetooth PAN address 198.18.43.1 to the certificate. An
+    existing certificate without it is regenerated on install, so
+    clients that pin it must re-pin.
+  * Startup treats only wlanpi<digits> monitors as its own, and skips
+    monitor creation on radios without monitor mode, such as brcmfmac.
+  * A malformed default network config (default.json) is moved
+    aside and regenerated instead of leaving the default config inactive
+    on every boot.
+  * GET /api/v1/utils/reachability no longer fails when a page returns
+    text that isn't UTF-8.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 05:26:14 -0400
+
+wlanpi-core (2.4.8-1) unstable; urgency=medium
+
+  * /var/log/wlanpi_core/debug/debug.log rotates at 4 MiB and keeps four
+    old files (debug.log.1 to debug.log.4), about 20 MiB on its 25 MiB
+    tmpfs. Under steady API polling it used to fill the tmpfs within hours;
+    after that every debug.log write failed and printed a logging traceback
+    to the journal until a reboot (#376).
+  * New GET /api/v1/profiler/files lists each profiled client's files (JSON
+    profile, text report and .pcap per band) and the daily CSV reports,
+    with path, size and modification time; ?mac= limits it to one client.
+    GET /api/v1/profiler/files/{path} returns one of them. Only files in
+    /var/www/html/profiler/clients and /reports can be read; symlinks and
+    other non-regular files are refused (#378).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Mon, 05 Oct 2026 15:41:09 -0400
+
+wlanpi-core (2.4.7-1) unstable; urgency=medium
+
+  * GET /api/v1/network/interfaces/{iface}/wlan-link reports Wi-Fi 7
+    multi-link (MLO) connections per link. A new links list gives each
+    set-up link's link_id, bssid, freq_mhz and whether it is active, the
+    station's own address on that link (local_addr), and width_mhz and
+    center1_mhz for active links. It is empty for a non-MLO connection
+    (#359).
+  * With more than one active MLO link, wlan-link's freq_mhz is null; it
+    used to be whichever link iw printed last, often an idle one. With
+    several links set up, signal_dbm no longer uses the MLD-level
+    signal, which is often 0 or another link's. It is null when the
+    driver reports no averaged signal: always on ath12k (WCN7850), and
+    on MT7925 with three links set up. For any connection, a signal of
+    0 dBm (no frame received yet) now falls back to the station's signal
+    averages, or null, instead of being reported as 0.
+  * GET /api/v1/network/interfaces and /network/interfaces/{interface}
+    no longer return 500 when a tun or WireGuard interface (such as
+    tailscale0) exists. Those interfaces have no link-layer address;
+    their address and broadcast fields are null (#363).
+  * At startup Core creates one monitor per radio, even when a radio's
+    Core monitor is named for another phy index. It added a second
+    monitor and scanned, which crashed Intel BE200 firmware (#365). It
+    also skips the startup scan when the radio already has another
+    monitor. Profile activation no longer marks a radio in use because
+    of a capture on such a misnamed Core monitor.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Sun, 04 Oct 2026 12:21:39 -0400
+
+wlanpi-core (2.4.6-1) unstable; urgency=medium
+
+  * POST /api/v1/bluetooth/pair works when the adapter is already on.
+    The power check never matched hciconfig's UP line, so pairing failed
+    after 10 s with "Bluetooth did not power on" on every device since
+    2.3.4-1.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 29 Sep 2026 01:55:05 -0400
+
+wlanpi-core (2.4.5-1) unstable; urgency=medium
+
+  * GET /api/v1/utils/reachability takes an optional namespace query
+    parameter, so the check can test a Wi-Fi link that a network
+    configuration moved into a network namespace. The gateway and every
+    ping, curl, arping and dig use that namespace. DNS servers come from
+    /etc/netns/<namespace>/resolv.conf, or /etc/resolv.conf when it does
+    not exist. An invalid or unknown namespace returns 400. Omitting the
+    parameter or passing root keeps the old behaviour (#352).
+  * /api/v1/system/service/* can control iperf2 and iperf2-udp. The
+    allowlist named iperf, a unit that does not exist, so iperf2 was
+    refused. name=iperf now returns 400.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 29 Sep 2026 00:53:57 -0400
+
+wlanpi-core (2.4.4-1) unstable; urgency=medium
+
+  * GET /api/v1/wifi/capabilities, /network/wlan/usb-drivers and
+    /network/wlan/pci-drivers list radios that a network configuration
+    moved into a network namespace, with a new namespace field (null for
+    the root namespace). They were missing from all three while the
+    configuration was active (#333).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 25 Sep 2026 03:25:00 -0400
+
+wlanpi-core (2.4.3-1) unstable; urgency=medium
+
+  * WPA3-PSK offers SAE-EXT-KEY (AKM 24) beside SAE, with GCMP-256
+    beside CCMP, so Wi-Fi 7 APs that offer AKM 24 use it. Checked on
+    ath12k (WCN7850) against a Cisco MLO AP (SAE + SAE-EXT-KEY, 2 links)
+    and a 2.4/5/6 GHz MLO AP (SAE only, 3 links) (#337).
+  * Connection status on an MLO link reports the signal again: wpa_cli
+    gives the AP MLD address as the BSSID, which no scan entry has, so
+    the association link is now matched by SSID and frequency when
+    exactly one scan entry has both (#337, #338).
+  * Scan results and connection status report key_mgmt for WPA3 and
+    enterprise networks. wpa_cli scans returned "unknown" for SAE, OWE
+    and EAP, and iw scans called every RSN network "wpa-psk". Both now
+    read the AKMs: "sae" (SAE, SAE-EXT-KEY), "wpa-eap", "owe", "wpa-psk"
+    (including WPA2/WPA3 transition), and iw scans report "open" and
+    "wep" as wpa_cli scans do (#338).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Fri, 25 Sep 2026 02:51:59 -0400
+
+wlanpi-core (2.4.2-1) unstable; urgency=medium
+
+  * POST /api/v1/profiler/start waits for the profiler to report running
+    and returns success false with a reason and message when it exits
+    instead, rather than reporting a start that never happened (#326).
+    Profiler output now goes to wlanpi-core's journal.
+  * Add POST /api/v1/profiler/purge, which deletes the profiler's
+    reports and captures in /var/www/html/profiler/clients and /reports
+    without following symlinks and returns the number of files and bytes
+    removed. It returns 409 while the profiler is starting, running or
+    stopping, and is serialised with profiler starts made through
+    wlanpi-core.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 24 Sep 2026 17:03:46 -0400
+
+wlanpi-core (2.4.1-1) unstable; urgency=medium
+
+  * Stop writing mlo=1 to wpa_supplicant network blocks. mlo is not a
+    wpa_supplicant option (2.11 or 2.12): the supplicant rejected the
+    config and exited, so activating a profile with mlo set returned
+    500. MLO needs no option; wpa_supplicant uses it when the driver and
+    AP support it. The mlo field is removed from the network config
+    schema and CLI; saved configs that still contain it load and ignore
+    it.
+  * When wpa_supplicant fails to start, the activation error now
+    includes the tail of its log (the reason is written there, not to
+    stderr), with quoted values redacted because wpa_supplicant echoes
+    rejected PSKs.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Thu, 24 Sep 2026 12:26:21 -0400
+
+wlanpi-core (2.4.0-1) unstable; urgency=medium
+
+  * WebUI login (PAM) hardening (#320). Changing an expired password now
+    applies the same password policy as over SSH; weak passwords are
+    rejected with the new status password_rejected. The PAM endpoints
+    accept only the WebUI's token (device id wlanpi-webui) or the HMAC,
+    only HMAC callers can mint that token, and existing WebUI tokens are
+    revoked on every start. Usernames with control characters are
+    rejected. A right password refused because the account isn't an
+    administrator, or on a change because the account isn't expired,
+    gets the same status as a wrong one after a delay drawn the way PAM
+    draws its own. WebUI 1.22.0 depends on this release (#321).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 23:42:00 -0400
+
+wlanpi-core (2.3.29-1) unstable; urgency=medium
+
+  * On Intel BE200/iwlwifi, a Wi-Fi scan no longer crashes the firmware:
+    Core takes the same-radio monitor down for the scan and brings it
+    back up on its channel afterwards. A scan is refused with 409
+    MONITOR_IN_USE while a capture is running on that monitor (#314).
+  * Stopping the profiler through the API now gives it 10 s to stop
+    hostapd and remove its monitor before SIGKILL, so later captures on
+    that radio work.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 22:36:57 -0400
+
+wlanpi-core (2.3.28-1) unstable; urgency=medium
+
+  * A profile with autostart_app no longer fails with 500 on a device
+    whose apps.json is empty (#311). A missing or empty file now means
+    no apps, Core no longer creates the file, and an autostart_app that
+    apps.json does not define is rejected with 422 before any radio
+    moves.
+  * Stopping an app whose pidfile has no PID no longer runs a host-wide
+    pkill -f on its command; the unused kill_processes_in_namespace is
+    removed (#305).
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 19:06:34 -0400
+
+wlanpi-core (2.3.27-1) unstable; urgency=medium
+
+  * Packet capture works on a radio that a network configuration moved
+    into a namespace, and again after it is deactivated. A namespace
+    move took the radio's wlanpiN monitor down, so a capture on it ended
+    at once with no data. Deactivating a configuration left the radio's
+    managed interface up without a supplicant, and the kernel then
+    refused channel changes on the monitor. The monitor now stays up
+    across the move, and the managed interface is handed back down, as
+    at boot.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 18:24:03 -0400
+
+wlanpi-core (2.3.26-1) unstable; urgency=medium
+
+  * WLAN scan on a monitor (GET /utils/wlan/scan?iface=wlanpiN) runs on
+    the managed interface of the same radio. It could previously run on
+    a different adapter. GET /network/config/status now reports each
+    interface's wiphy.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 17:37:27 -0400
+
+wlanpi-core (2.3.25-1) unstable; urgency=medium
+
+  * Network configuration activation validates every entry before
+    touching any radio. An invalid entry now returns 422 with nothing
+    changed; previously valid siblings listed before it were deleted and
+    recreated, then rolled back. A stored current profile that fails
+    validation is torn down and current.txt reset to default.
+  * Declare dhcpcd-base as a dependency; the activation path has run
+    dhcpcd since 2.3.23.
+  * Network configuration: a radio is no longer refused as in_use
+    because lldpd holds a packet socket on a second managed netdev of
+    the same radio, or because Core's own streaming capture runs on its
+    wlanpiN monitor. Only a capture on another tool's monitor netdev
+    counts.
+  * Deactivate stops Core's wpa_supplicant, dhcpcd, connection monitor
+    and autostart app for every entry Core set up, even when the radio
+    itself is left to another tool that started using it, or the adapter
+    is gone. Entries Core never set up are not touched.
+  * A stale app or dhcpcd pidfile (after a reboot or service restart) no
+    longer signals whatever process now holds that PID: Core checks the
+    command line first. Stopping a namespaced app no longer kills other
+    processes whose command line merely contains the app's name.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 15:10:49 -0400
+
+wlanpi-core (2.3.24-1) unstable; urgency=medium
+
+  * lhapitest: rewrite in Python so localhost HMAC requests sign
+    correctly on every device; the bash version dropped NUL bytes from
+    the shared secret. Adds --http for the dev server and -v to show the
+    canonical string.
+  * DELETE /auth/token now rejects a device_id that does not match the
+    token being revoked (403) instead of ignoring it.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Wed, 23 Sep 2026 14:19:09 -0400
+
+wlanpi-core (2.3.23-1) unstable; urgency=medium
+
+  * Report namespaces Core has left alone: GET /network/config/leftovers,
+    and a left_alone list on deactivate and /wlan/revert. That is a
+    namespace Core created that is still present, or another tool's
+    namespace holding wireless radios.
+  * Add POST /network/config/reset: the caller names namespaces and Core
+    returns their radios to root, deleting each once empty. The active
+    configuration's namespaces are refused. "leftovers" and "reset" are now
+    reserved configuration IDs.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:21:07 -0500
+
+wlanpi-core (2.3.22-1) unstable; urgency=medium
+
+  * Track the interfaces Core creates (by name and cfg80211 wdev id, which
+    survives netns moves, on tmpfs) and make the default configuration touch
+    only those and radios in namespaces Core created. Interfaces from
+    drivers or other tools, such as wlanpi-profiler's hostapd, are left
+    alone and reported as skipped; after a reboot the default is a no-op
+    (#202).
+  * Deactivate restores its own root entries (the interface name, managed)
+    instead of applying the default afterwards, and a failed activation only
+    records default (#288, #271).
+  * Never take a radio another tool is using: one in a mode Core never sets
+    (e.g. AP), with a wpa_supplicant or hostapd Core did not start, or with
+    a program capturing on another interface of the same radio
+    (wlanpi-profiler's monitor, kismet, tcpdump). Its entry is reported
+    in_use with the reason and the rest of
+    the configuration still runs; teardown leaves it alone too.
+  * Interfaces a deactivate restores are handed back: Core only owns what
+    the active profile uses, so a later default never resets them.
+  * A revert step that fails is reported instead of leaving a radio without
+    an interface, and a failure after prepare (e.g. wpa_supplicant not
+    starting) puts that entry back.
+  * Namespace markers record the namespace's identity, so a same-named
+    namespace created by another tool is not taken for Core's, and a marker
+    is only removed once its namespace is gone (#275).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Wed, 23 Sep 2026 04:11:19 -0500
+
+wlanpi-core (2.3.21-1) unstable; urgency=medium
+
+  * Make the deprecated POST /network/wlan/revert do what it says and say
+    what it does (#274): it reverts everything Core manages (tears down the
+    active configuration, returns every Core namespace to root, and makes
+    the default configuration active, updating current.txt). iface,
+    namespace and delete_namespace are ignored, as now documented; the
+    response no longer claims a single interface was reverted.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:27:18 -0500
+
+wlanpi-core (2.3.20-1) unstable; urgency=medium
+
+  * Report one outcome per configuration entry (connected, provisioned or
+    error, with a detail) in the activate response (#276).
+  * Return 422 instead of 500 when an entry fails configuration
+    validation, and include the per-entry outcomes in the error detail of
+    both the 422 and the 500 an adapter fault still returns.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 23:13:52 -0500
+
+wlanpi-core (2.3.19-1) unstable; urgency=medium
+
+  * Stop returning Wi-Fi secrets from the network config API (#272).
+    GET /network/config/{id} and the PATCH response omit psk and password
+    and report psk_set / password_set instead.
+  * PATCH keeps an entry's stored psk and password when the request omits
+    them, so a configuration read with GET can be edited and sent back.
+  * On upgrade, set existing network profiles and the legacy
+    /etc/wpa_supplicant/wlanN.conf files that earlier versions wrote to 0600.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:58:36 -0500
+
+wlanpi-core (2.3.18-1) unstable; urgency=medium
+
+  * Find a config's radio by its interface name first, and by its display
+    name only if no interface has that name, so a display name that another
+    radio already carries no longer selects that radio (#236).
+  * When a prepare fails, only remove a half-created interface if it is on
+    the radio being prepared. Previously a rename that failed because
+    another radio owned the name deleted that other radio's interface.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:39:28 -0500
+
+wlanpi-core (2.3.17-1) unstable; urgency=medium
+
+  * Write wpa_supplicant values so they round-trip exactly (#278).
+    wpa_supplicant reads a "quoted" value literally up to the last quote,
+    so the backslash escaping Core used changed any SSID or passphrase
+    containing a quote or backslash. SSIDs are now written as hex,
+    passphrases unescaped in quotes (or a 64-hex PSK bare), and EAP
+    identity, password and certificate paths as printf-escaped P"...".
+  * Reject a WPA2 PSK that is not 8-63 printable ASCII characters or 64 hex
+    digits, and a WPA3 PSK that is not a passphrase, with 422 instead of
+    failing when wpa_supplicant starts.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 22:32:46 -0500
+
+wlanpi-core (2.3.16-1) unstable; urgency=medium
+
+  * Replace dhclient, which Trixie does not ship, with dhcpcd (#261). Each
+    dhcpcd runs in a private mount namespace with its own state under
+    /run/wlanpi-core/dhcpcd/<netns>/<iface>, so the same interface name in
+    two namespaces gets two leases, and is released and stopped by PID.
+    No IPv4 link-local fallback; the hostname and timesyncd hooks are off,
+    and in root so is the resolv.conf hook.
+  * Never install a gatewayless default route: default_route uses the DHCP
+    router, and adds nothing when there is none (#279).
+  * Starting a connection monitor stops the previous one for the same
+    interface, a superseded monitor no longer deregisters its successor,
+    and a stop request is honoured before DHCP, route and app start.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:58:51 -0500
+
+wlanpi-core (2.3.15-1) unstable; urgency=medium
+
+  * Write network profiles and current.txt atomically (temp file, fsync,
+    rename), so a crash or full disk never leaves a truncated profile. New
+    profile files are created 0600 (#277).
+  * Deleting the active profile with force now deactivates it first, so
+    current.txt never names a deleted profile; without force it is still
+    refused with 409.
+  * Reject the configuration IDs default, root and status in any letter
+    case with 400.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:42:09 -0500
+
+wlanpi-core (2.3.14-1) unstable; urgency=medium
+
+  * Tear down the active profile before activating another, so its
+    namespaces, supplicants and apps no longer linger beside the new one
+    (#271).
+  * When an activation fails (including at boot), record and apply the
+    default configuration instead of leaving current.txt on a profile that
+    is no longer in effect. Apply the default after deactivate as well.
+  * Leave radios in namespaces Core did not create out of the default
+    configuration.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 21:12:44 -0500
+
+wlanpi-core (2.3.13-1) unstable; urgency=medium
+
+  * Serialise activate, deactivate, /wlan/revert and boot activation with an
+    flock on /run/wlanpi-core/netcfg.lock. A request that arrives while
+    another change is running gets HTTP 409 instead of interleaving phy
+    moves with it (#270).
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:59:28 -0500
+
+wlanpi-core (2.3.12-1) unstable; urgency=medium
+
+  * Key wpa_supplicant runtime state by (namespace, interface): the config,
+    log and pidfile live under /run/wlanpi-core/wpa/<netns>/ (short enough
+    for the control socket path at the longest names), and
+    supplicants in a namespace get their own control socket directory, so
+    the same interface name in two namespaces no longer shares one (#273).
+  * Write each supplicant config with only that entry's network, mode 0600,
+    instead of merging networks from earlier profiles into
+    /etc/wpa_supplicant/<iface>.conf.
+  * Stop writing /etc/network/interfaces.d/<iface>.cfg.
+  * Give each Core namespace /etc/netns/<ns>/resolv.conf so DHCP inside it
+    cannot rewrite the root /etc/resolv.conf.
+  * Reject a profile whose entries share an interface, use another entry's
+    interface as a display name, or reuse a name within one namespace.
+    A stored profile that breaks these rules is still listed, but GET and
+    activate now return 422 for it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:35:43 -0500
+
+wlanpi-core (2.3.11-1) unstable; urgency=medium
+
+  * Only return and delete network namespaces Core created, recorded by a
+    marker under /run/wlanpi-core/netns. Deactivate no longer moves radios
+    out of, or deletes, namespaces created by users or other tools (#275).
+  * Return namespaces to root by walking their phys rather than their
+    interfaces, so a phy with no netdev, or several netdevs, comes back, and
+    delete a namespace only once no phys or links remain in it.
+  * A namespace created by an earlier Core version has no marker, so it is
+    not deleted until reboot. A phy returned without a netdev stays in root
+    with no interface until a profile or a tool creates one.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:20:05 -0500
+
+wlanpi-core (2.3.10-1) unstable; urgency=medium
+
+  * Stop only the wpa_supplicant processes Core started. Each supplicant
+    writes a pidfile under /run/wlanpi-core/wpa_supplicant/<netns>/<iface>.pid
+    and teardown signals that PID after checking it is still a supplicant
+    for that interface. Removes the host-wide `pkill -f wpa_supplicant`
+    that also killed NetworkManager's and other namespaces' supplicants,
+    and the targeted kill whose pattern never matched (#269).
+  * On override activation, also stop supplicants started by older Core
+    versions, recognised by Core's /tmp/wpa-<iface>.log argument.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 20:08:39 -0500
+
+wlanpi-core (2.3.9-1) unstable; urgency=medium
+
+  * Build the default network config from the radios present, across every
+    namespace and on the phy each interface is really on, instead of a
+    hardcoded wlan0/phy0 + wlan1/phy1 pair. The default has no security, so
+    activating it no longer fails on a fake WPA2 entry without a psk, and
+    single-radio devices no longer return 500 (#202).
+  * Replace an untouched pre-#202 default.json with the live default on
+    first read. Leave SystemManager's wlanpiN monitor interfaces out of it.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:34:31 -0500
+
+wlanpi-core (2.3.8-1) unstable; urgency=medium
+
+  * Resolve each config's interface from the live inventory across every
+    network namespace before any change, and use the phy it is really on
+    (addressed as phy#N) instead of the stored phy. A stale phy in a config
+    no longer recreates the interface on a different radio, deletes it and
+    gives up, or moves the wrong radio into a namespace (#236).
+  * Find interfaces by iface_display_name as well as interface, and find
+    interfaces left in another namespace, so activate, deactivate and
+    rollback of namespaced configs are no longer silent no-ops.
+  * Restore the original interface when prepare fails part way through.
+
+ -- Ben Toner <ben@numerousnetworks.co.uk>  Tue, 22 Sep 2026 19:22:14 -0500
+
+wlanpi-core (2.3.7-1) unstable; urgency=medium
+
+  * Restrict systemd service notifications to the Gunicorn main process so
+    workers and request-spawned children cannot change the unit state.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 16:15:00 -0400
+
+wlanpi-core (2.3.6-1) unstable; urgency=medium
+
+  * Fix wlanpi-core auto-vivifying ~/.local and ~/.local/share as root:root
+    on a fresh boot, locking the wlanpi user out of their own XDG data home.
+    Both the preflight probe and app startup now reclaim wlanpi:wlanpi
+    ownership of those two directories before touching anything under
+    .local/share/wlanpi-core, which remains root-owned; postinst applies the
+    same fix to existing installs on upgrade.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 14:00:00 -0500
+
+wlanpi-core (2.3.5-1) unstable; urgency=medium
+
+  * Populate GET /network/dhcp/leases from NetworkManager's public nmcli
+    interface on Trixie, while retaining dhclient lease files as a fallback for
+    older images.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 13:15:00 -0500
+
+wlanpi-core (2.3.4-1) unstable; urgency=medium
+
+  * Fix GET /system/datetime reporting a stale timezone. _resolve_timezone()
+    preferred /etc/timezone, which timedatectl set-timezone leaves unchanged on
+    some images; prefer timedatectl (the authoritative value, as wlanpi-timezone
+    does) and fall back to /etc/timezone, then /etc/localtime.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 02:30:00 -0400
+
+wlanpi-core (2.3.3-1) unstable; urgency=medium
+
+  * Add POST /system/ntp to enable or disable NTP synchronization, the
+    counterpart to GET /system/ntp.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 22 Sep 2026 01:15:00 -0400
+
 wlanpi-core (2.3.2-1) unstable; urgency=medium
 
   * Report the Bluetooth adapter's rfkill blocked state as blocked in GET

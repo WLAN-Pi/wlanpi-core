@@ -7,10 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from wlanpi_core.utils import network_config
-from wlanpi_core.utils.validation import (
-    validate_interface_name,
-    validate_namespace_name,
-)
+from wlanpi_core.utils.validation import namespace_from_param, validate_interface_name
 from wlanpi_core.wpa import scan as wpa_scan
 
 log = logging.getLogger(__name__)
@@ -26,14 +23,6 @@ class NoScanAdapterError(Exception):
 
 def _ns_display(namespace: str | None) -> str:
     return "root" if namespace is None else namespace
-
-
-def _ns_from_param(namespace: str | None) -> str | None:
-    if not namespace:
-        return None
-    if namespace.strip().lower() == "root":
-        return None
-    return validate_namespace_name(namespace)
 
 
 def _iface_mode(iface_info: dict[str, Any]) -> str:
@@ -65,6 +54,7 @@ def iter_adapters(status: dict[str, Any]) -> list[dict[str, Any]]:
                     "namespace": namespace,
                     "namespace_display": _ns_display(namespace),
                     "mode": mode,
+                    "phy": iface_info.get("wiphy"),
                     "label": _adapter_label(iface, mode, namespace),
                 }
             )
@@ -83,10 +73,18 @@ def _adapter_response(adapter: dict[str, Any]) -> dict[str, Any]:
 def find_managed_sibling(
     adapter: dict[str, Any], adapters: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
-    """Return a managed interface in the same namespace (e.g. wlan0 for wlanpi0)."""
-    namespace = adapter["namespace"]
+    """Return the managed interface on the same PHY and namespace (wlan0 for wlanpi0).
+
+    None when the monitor's PHY is unknown: never guess another radio.
+    """
+    if adapter.get("phy") is None:
+        return None
     for candidate in adapters:
-        if candidate["namespace"] == namespace and candidate["mode"] == "managed":
+        if (
+            candidate["namespace"] == adapter["namespace"]
+            and candidate.get("phy") == adapter.get("phy")
+            and candidate["mode"] == "managed"
+        ):
             return candidate
     return None
 
@@ -124,7 +122,7 @@ def select_scan_adapter(
     - ``{"action": "needs_selection", "candidates": [...]}``
     """
     adapters = iter_adapters(status)
-    ns = _ns_from_param(namespace)
+    ns = namespace_from_param(namespace)
 
     if iface:
         iface = validate_interface_name(iface)

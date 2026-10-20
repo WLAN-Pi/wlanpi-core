@@ -160,9 +160,9 @@ curl -X 'POST' \
   -d '{"device_id": "testing"}'
 ```
 
-### Using lhapitest.sh
+### Using lhapitest
 
-The `./install/usr/bin/lhapitest.sh` script demonstrates localhost API interaction using HMAC signatures:
+`./install/usr/bin/lhapitest` (installed as `/usr/bin/lhapitest`) signs localhost requests with the shared secret. Run it with `sudo` so it can read the secret file; add `-v` to print the canonical string and signature.
 
 ```bash
 # Default port (31415)
@@ -170,8 +170,8 @@ The `./install/usr/bin/lhapitest.sh` script demonstrates localhost API interacti
 ./install/usr/bin/lhapitest -e /system/device/model
 
 # Dev server (loopback HTTP, no TLS — not for production)
-./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}' -p 8000
-./install/usr/bin/lhapitest -e /system/device/model -p 8000
+./install/usr/bin/lhapitest -X POST -e /auth/token -P '{"device_id": "testing"}' -p 8000 --http
+./install/usr/bin/lhapitest -e /system/device/model -p 8000 --http
 ```
 
 **Note:** Localhost applications use HMAC signatures. External applications **must** authenticate using JWT tokens.
@@ -195,7 +195,8 @@ journalctl -f -n 10 -u wlanpi-core
 ```bash
 # Last 20 lines with follow
 tail -n 20 -f /var/log/wlanpi_core/app.log
-tail -n 20 -f /var/log/wlanpi_core/debug/debug.log
+# -F keeps following debug.log after it rotates to debug.log.1
+tail -n 20 -F /var/log/wlanpi_core/debug/debug.log
 ```
 
 ### tmpfs debugging
@@ -293,7 +294,7 @@ tox -e format
 # Lint code
 tox -e lint
 
-# Run tests
+# Run tests (also checks docs/openapi.json is current -- see tox.ini's envlist)
 tox
 ```
 

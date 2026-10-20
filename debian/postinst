@@ -79,7 +79,7 @@ fi
 # On first real boot the block runs as normal and generates a unique key per device.
 if ! ischroot; then
     # Generate per-device TLS certs (nginx, webui, cockpit, grafana), covering
-    # the renamed .local hostname. Regenerates when an existing cert predates it.
+    # the renamed .local hostname. Regenerates when an existing cert lacks a SAN.
     CERT_MTIME_BEFORE=$(stat -c %Y /etc/nginx/ssl/self-signed-wlanpi.cert 2>/dev/null || echo 0)
     /etc/wlanpi-core/scripts/wlanpi-generate-certs.sh
     CERT_MTIME_AFTER=$(stat -c %Y /etc/nginx/ssl/self-signed-wlanpi.cert 2>/dev/null || echo 0)
@@ -102,6 +102,19 @@ else
     echo "Warning: source nginx site configuration at $SOURCE_CONF not found"
 fi
 
+# ~/.local and ~/.local/share are the wlanpi user's XDG data home, shared
+# with other wlanpi apps. A pre-fix wlanpi-core (preflight or its own
+# startup mkdir -p) could auto-vivify these as root before the wlanpi user
+# ever touched them, locking wlanpi out of its own data home. Only
+# .local/share/wlanpi-core itself is meant to be root-owned; reclaim the
+# rest for wlanpi on upgrade.
+WLANPI_HOME=/home/wlanpi
+for d in "$WLANPI_HOME/.local" "$WLANPI_HOME/.local/share"; do
+    if [ -d "$d" ] && [ "$(stat -c %U:%G "$d" 2>/dev/null)" != "wlanpi:wlanpi" ]; then
+        chown wlanpi:wlanpi "$d" 2>/dev/null || true
+    fi
+done
+
 # The shared HMAC secret used to be 0640 root:wlanpi, so any process running as
 # wlanpi could read it. Enforce 0600 root:root and 0700 on the secrets
 # directory on upgrade; clients authenticate with a JWT instead. Core enforces
@@ -115,6 +128,15 @@ if [ -d "$SECRETS_DIR" ]; then
         chmod 0600 "$SECRETS_DIR/shared_secret.bin" 2>/dev/null || true
     fi
 fi
+
+# Network profiles hold PSKs. Core now writes them 0600; tighten files
+# written by earlier versions. Earlier versions also wrote
+# /etc/wpa_supplicant/wlanN.conf (with the PSK) using the default umask.
+NETCFG_DIR=/home/wlanpi/.local/share/wlanpi-core/netcfg/configs
+if [ -d "$NETCFG_DIR" ]; then
+    find "$NETCFG_DIR" -maxdepth 1 -type f -name '*.json' -exec chmod 0600 {} + 2>/dev/null || true
+fi
+find /etc/wpa_supplicant -maxdepth 1 -type f -name 'wlan[0-9]*.conf' -exec chmod 0600 {} + 2>/dev/null || true
 
 if ! ischroot; then
     if [ $CONF_CHANGED -eq 1 ]; then

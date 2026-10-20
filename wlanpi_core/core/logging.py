@@ -2,12 +2,19 @@
 
 import json
 import logging
+import logging.handlers
 import os
 import pathlib
 import sys
 import tempfile
 import traceback
 from typing import Any
+
+LOG_DIR = pathlib.Path("/var/log/wlanpi_core")
+# debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount). Five 4 MiB
+# files leave 5 MiB for the one record that can overshoot a rollover.
+DEBUG_LOG_MAX_BYTES = 4 * 1024 * 1024
+DEBUG_LOG_BACKUP_COUNT = 4
 
 LOG_LEVELS = {
     "DEBUG": 10,
@@ -159,6 +166,21 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{name}")
 
 
+def _file_handlers(
+    log_dir: pathlib.Path,
+) -> tuple[logging.FileHandler, logging.FileHandler]:
+    """Open app.log and the size-capped debug/debug.log under log_dir."""
+    debug_log_dir = log_dir / "debug"
+    debug_log_dir.mkdir(parents=True, exist_ok=True)
+    app_file_handler = logging.FileHandler(log_dir / "app.log")
+    debug_file_handler = logging.handlers.RotatingFileHandler(
+        debug_log_dir / "debug.log",
+        maxBytes=DEBUG_LOG_MAX_BYTES,
+        backupCount=DEBUG_LOG_BACKUP_COUNT,
+    )
+    return app_file_handler, debug_file_handler
+
+
 def configure_logging(debug_mode: bool = False) -> None:
     """
     Configure logging with console and file handlers.
@@ -180,20 +202,11 @@ def configure_logging(debug_mode: bool = False) -> None:
     console_stream_handler = logging.StreamHandler()
 
     try:
-        debug_log_dir = pathlib.Path("/var/log/wlanpi_core/debug")
-        debug_log_dir.mkdir(parents=True, exist_ok=True)
-        app_log_path: Any = "/var/log/wlanpi_core/app.log"
-        debug_log_path: Any = "/var/log/wlanpi_core/debug/debug.log"
-        app_file_handler = logging.FileHandler(app_log_path)
-        debug_file_handler = logging.FileHandler(debug_log_path)
+        app_file_handler, debug_file_handler = _file_handlers(LOG_DIR)
     except PermissionError:
-        fallback_dir = pathlib.Path(tempfile.gettempdir()) / "wlanpi_core"
-        debug_log_dir = fallback_dir / "debug"
-        debug_log_dir.mkdir(parents=True, exist_ok=True)
-        app_log_path = fallback_dir / "app.log"
-        debug_log_path = debug_log_dir / "debug.log"
-        app_file_handler = logging.FileHandler(app_log_path)
-        debug_file_handler = logging.FileHandler(debug_log_path)
+        app_file_handler, debug_file_handler = _file_handlers(
+            pathlib.Path(tempfile.gettempdir()) / "wlanpi_core"
+        )
 
     json_formatter = JsonFormatter()
     standard_formatter = logging.Formatter(
@@ -212,7 +225,7 @@ def configure_logging(debug_mode: bool = False) -> None:
     app_file_handler.setFormatter(json_formatter)
     app_file_handler.setLevel(logging.INFO)
 
-    # /var/log/wlanpi_core/debug.log (tmpfs) - gets everything
+    # /var/log/wlanpi_core/debug/debug.log (tmpfs, rotated) - gets everything
     debug_file_handler.setFormatter(json_formatter)
     debug_file_handler.setLevel(logging.DEBUG)
 

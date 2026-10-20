@@ -20,9 +20,10 @@ log = get_logger(__name__)
 
 def _set_power_if_present(state: bool) -> Any:
     """Run the complete synchronous Bluetooth power transaction in one worker."""
-    if not bluetooth_service.bluetooth_present():
+    adapter = bluetooth_service.bluetooth_adapter()
+    if adapter is None or not bluetooth_service.bluetooth_present(adapter):
         return None
-    return bluetooth_service.bluetooth_set_power(state)
+    return bluetooth_service.bluetooth_set_power(state, adapter)
 
 
 @router.get(

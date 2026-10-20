@@ -58,8 +58,8 @@ def terminate_process(proc: subprocess.Popen[Any]) -> None:
         proc.communicate()
 
 
-async def terminate_process_async(proc: Process) -> None:
-    """Terminate, force-kill when needed, and reap an asyncio child group."""
+async def terminate_process_async(proc: Process, grace: float | None = None) -> None:
+    """Terminate, force-kill after ``grace`` seconds, and reap an asyncio child group."""
     if proc.returncode is not None:
         return
 
@@ -67,7 +67,7 @@ async def terminate_process_async(proc: Process) -> None:
     try:
         await asyncio.wait_for(
             proc.wait(),
-            timeout=_PROCESS_TERMINATE_GRACE_SEC,
+            timeout=_PROCESS_TERMINATE_GRACE_SEC if grace is None else grace,
         )
     except TimeoutError:
         if proc.returncode is None:
@@ -153,8 +153,12 @@ def run_command(
             raise
 
         if raise_on_fail and proc.returncode != 0:
-            raise RunCommandError(stderr.decode(), proc.returncode)
-        return CommandResult(stdout.decode(), stderr.decode(), proc.returncode)
+            raise RunCommandError(stderr.decode(errors="replace"), proc.returncode)
+        return CommandResult(
+            stdout.decode(errors="replace"),
+            stderr.decode(errors="replace"),
+            proc.returncode,
+        )
 
 
 async def run_command_async(
@@ -250,9 +254,13 @@ async def run_command_async(
 
     if raise_on_fail and proc.returncode != 0:
         raise RunCommandError(
-            error_msg=stderr.decode(), return_code=proc.returncode or 0
+            error_msg=stderr.decode(errors="replace"), return_code=proc.returncode or 0
         )
-    return CommandResult(stdout.decode(), stderr.decode(), proc.returncode or 0)
+    return CommandResult(
+        stdout.decode(errors="replace"),
+        stderr.decode(errors="replace"),
+        proc.returncode or 0,
+    )
 
 
 def get_model_info() -> dict[str, str]:

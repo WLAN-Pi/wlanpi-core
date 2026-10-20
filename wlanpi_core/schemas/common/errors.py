@@ -50,9 +50,11 @@ class ScanNeedsSelectionResponse(BaseModel):
 class ScanInProgressResponse(BaseModel):
     """A scan is already running on the selected adapter."""
 
-    error: str = Field(default="SCAN_IN_PROGRESS", examples=["SCAN_IN_PROGRESS"])
+    error: str = Field(
+        default="SCAN_IN_PROGRESS", examples=["SCAN_IN_PROGRESS", "MONITOR_IN_USE"]
+    )
     message: str = Field(
-        description="Which adapter is already scanning",
+        description="Which adapter is already scanning, or which capture blocks it",
         examples=["A scan is already in progress on wlan0 in root"],
     )
 

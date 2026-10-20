@@ -137,3 +137,10 @@ def run_in_root(
     return ns_exec(
         cmd, namespace=None, no_output=no_output, raise_on_fail=raise_on_fail
     )
+
+
+def netns_prefix(namespace: str | None) -> list[str]:
+    """Command prefix that runs a command in ``namespace``; empty for root."""
+    if namespace is None:
+        return []
+    return ["ip", "netns", "exec", validate_namespace_name(namespace)]

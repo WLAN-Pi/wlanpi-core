@@ -11,8 +11,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+from wlanpi_core.adapters import discovery
+from wlanpi_core.adapters import phy as adapter_phy
 from wlanpi_core.models.runcommand_error import RunCommandError
+from wlanpi_core.streaming.mt76_rxfilter import MT7921_DRIVERS, allow_other_unicast
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
+from wlanpi_core.wpa.supplicant import wpa_cli_command
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +35,8 @@ class ScanNotSupportedError(Exception):
 class ScanInProgressError(Exception):
     """Raised when the target interface is already running an active scan."""
 
+    code = "SCAN_IN_PROGRESS"
+
     def __init__(self, iface: str, namespace: str | None = None):
         self.iface = iface
         self.namespace = namespace
@@ -38,19 +45,42 @@ class ScanInProgressError(Exception):
         )
 
 
+class MonitorInUseError(ScanInProgressError):
+    """A capture holds a monitor that must go down for this scan (#314)."""
+
+    code = "MONITOR_IN_USE"
+
+    def __init__(self, iface: str, monitors: list[str], namespace: str | None = None):
+        self.iface = iface
+        self.namespace = namespace
+        self.monitors = monitors
+        Exception.__init__(
+            self,
+            f"Cannot scan on {iface}: a capture is running on "
+            f"{', '.join(monitors)} on the same Intel radio. Stop the capture "
+            "first; scanning with that monitor up crashes the radio's firmware.",
+        )
+
+
 @contextmanager
-def _claim_scan(iface: str, namespace: str | None = None) -> Iterator[None]:
-    """Claim a scan target without retaining an unbounded lock cache."""
-    key = (namespace, iface)
+def _claim_scan(
+    iface: str, namespace: str | None = None, also: list[str] | None = None
+) -> Iterator[None]:
+    """Claim a scan target, plus the monitors it pauses, all or nothing.
+
+    Claiming the paused monitors too means a second scan on the same radio
+    gets ScanInProgressError instead of restoring a monitor mid-scan.
+    """
+    keys = {(namespace, name) for name in [iface, *(also or [])]}
     with _active_scans_lock:
-        if key in _active_scans:
+        if keys & _active_scans:
             raise ScanInProgressError(iface, namespace)
-        _active_scans.add(key)
+        _active_scans.update(keys)
     try:
         yield
     finally:
         with _active_scans_lock:
-            _active_scans.discard(key)
+            _active_scans.difference_update(keys)
 
 
 def normalize_scan_detail(detail: str) -> str:
@@ -74,15 +104,38 @@ def freq_to_channel(freq_mhz: int) -> int | None:
     return None
 
 
+def _classify_akms(akms: list[str]) -> str:
+    """Collapse a BSS's AKM names to one key_mgmt value.
+
+    PSK wins, so a WPA2/WPA3 transition network stays ``wpa-psk``: a WPA2
+    client can join it. SAE and SAE-EXT-KEY (WPA3-Personal) are ``sae``.
+    The raw flags carry the full AKM list.
+    """
+    names = [a.upper() for a in akms]
+    if any(n.endswith("PSK") or "PSK/" in n or "PSK-" in n for n in names):
+        return "wpa-psk"
+    if any("SAE" in n for n in names):
+        return "sae"
+    if any("EAP" in n or "802.1X" in n for n in names):
+        return "wpa-eap"
+    if any("OWE" in n for n in names):
+        return "owe"
+    return "unknown"
+
+
 def parse_key_mgmt(flags: str) -> str:
-    """Parse key management type from WPA scan-result flags."""
-    if "WPA2-PSK" in flags:
-        return "wpa-psk"
-    if "WPA-PSK" in flags:
-        return "wpa-psk"
+    """Parse key management type from WPA scan-result flags.
+
+    wpa_cli writes one group per WPA/RSN element, e.g.
+    ``[WPA2-SAE+SAE-EXT-KEY-GCMP-256+CCMP]``: AKMs joined by ``+``, then
+    the ciphers.
+    """
+    groups = re.findall(r"\[(?:WPA2?|RSN)-([^\]]*)\]", flags)
+    if groups:
+        return _classify_akms([a for g in groups for a in g.split("+")])
     if "WEP" in flags:
         return "wep"
-    if "[ESS]" in flags and "WPA" not in flags:
+    if "[ESS]" in flags:
         return "open"
     return "unknown"
 
@@ -102,7 +155,8 @@ def parse_wpa_scan_results(
             parts.append("")
         if len(parts) < 5:
             continue
-        bssid, freq_str, signal_str, flags, ssid = parts[:5]
+        bssid, freq_str, signal_str, flags, escaped_ssid = parts[:5]
+        ssid = ssid_text(escaped_ssid)
         if not include_hidden and not ssid:
             continue
         try:
@@ -254,11 +308,14 @@ def parse_iw_bss_block(
     signal = 0
     freq = 0
     key_mgmt = "unknown"
+    akms: list[str] = []
+    has_wpa = False
+    privacy: bool | None = None
 
     for line in block.splitlines():
         stripped = line.strip()
         if stripped.startswith("SSID:"):
-            ssid = stripped.split(":", 1)[1].strip()
+            ssid = ssid_text(stripped.split(":", 1)[1].strip())
         elif stripped.startswith("signal:"):
             try:
                 signal = int(float(stripped.split()[1]))
@@ -271,7 +328,20 @@ def parse_iw_bss_block(
             except (IndexError, ValueError):
                 pass
         elif stripped.startswith("RSN:") or stripped.startswith("WPA:"):
-            key_mgmt = "wpa-psk"
+            has_wpa = True
+        elif stripped.startswith("* Authentication suites:"):
+            # iw separates suites with spaces but writes "IEEE 802.1X".
+            suites = stripped.split(":", 1)[1].replace("IEEE 802.1X", "802.1X")
+            akms.extend(suites.split())
+        elif stripped.startswith("capability:"):
+            privacy = "Privacy" in stripped
+
+    if akms:
+        key_mgmt = _classify_akms(akms)
+    elif has_wpa:
+        key_mgmt = "wpa-psk"  # RSN/WPA element without a readable suite list
+    elif privacy is not None:
+        key_mgmt = "wep" if privacy else "open"
 
     if not include_hidden and not ssid:
         return None
@@ -329,9 +399,9 @@ def parse_iw_scan_output(
 def fetch_scan_results(iface: str, namespace: str | None = None) -> str:
     """Read cached ``wpa_cli scan_results`` without triggering a new scan."""
     return ns_exec(
-        ["wpa_cli", "-i", iface, "scan_results"],
+        wpa_cli_command(iface, namespace, "scan_results"),
         namespace=namespace,
-    ).stdout.strip()
+    ).stdout
 
 
 def find_bss(networks: list[dict[str, Any]], bssid: str) -> dict[str, Any] | None:
@@ -370,7 +440,7 @@ def _set_interface_state(iface: str, up: bool, namespace: str | None = None) -> 
 def wpa_cli_available(iface: str, namespace: str | None = None) -> bool:
     """Return True when ``wpa_cli`` can talk to a running supplicant."""
     result = ns_exec(
-        ["wpa_cli", "-i", iface, "status"],
+        wpa_cli_command(iface, namespace, "status"),
         namespace=namespace,
         raise_on_fail=False,
     )
@@ -385,7 +455,7 @@ def run_wpa_cli_scan(
 ) -> list[dict[str, Any]]:
     """Trigger ``wpa_cli scan`` and return parsed networks."""
     normalize_scan_detail(detail)
-    ns_exec(["wpa_cli", "-i", iface, "scan"], namespace=namespace)
+    ns_exec(wpa_cli_command(iface, namespace, "scan"), namespace=namespace)
 
     last_error: Exception | None = None
     for _ in range(_SCAN_POLL_ATTEMPTS):
@@ -436,6 +506,39 @@ def run_iw_scan(
     )
 
 
+def _captured_interfaces(namespace: str | None) -> set[str]:
+    """Return the interfaces a packet socket (dumpcap, Kismet, ...) is bound to."""
+    result = ns_exec(["ss", "-0", "-a", "-n", "-H"], namespace=namespace)
+    return {
+        fields[4].rpartition(":")[2]
+        for fields in (line.split() for line in result.stdout.splitlines())
+        if len(fields) >= 5
+    }
+
+
+def _monitors_to_pause(iface: str, namespace: str | None) -> list[str]:
+    """Return the up monitors on ``iface``'s radio that must go down for a scan.
+
+    Intel iwlwifi firmware (BE200) crashes when an interface scans while a
+    monitor on the same radio is up (#314, wlanpi-misc-firmware#23). mac80211
+    keeps the monitor's channel across down/up. Other drivers scan with the
+    monitor up, so the caller only asks for iwlwifi.
+
+    Raises:
+        MonitorInUseError: A capture holds one of those monitors; taking it
+            down would end the capture.
+    """
+    monitors = adapter_phy.up_sibling_monitors(iface, namespace)
+    if not monitors:
+        return []
+    # ponytail: a capture that starts between this check and the scan still
+    # ends when its monitor goes down; add a shared radio lock if that bites.
+    busy = sorted(set(monitors) & _captured_interfaces(namespace))
+    if busy:
+        raise MonitorInUseError(iface, busy, namespace)
+    return monitors
+
+
 def run_interface_scan(
     iface: str,
     namespace: str | None = None,
@@ -460,9 +563,19 @@ def run_interface_scan(
     )
     mode = (mode or "").lower()
 
-    with _claim_scan(iface, namespace):
+    driver = discovery.interface_driver(iface, namespace)
+    iwlwifi = driver == "iwlwifi"
+    paused = _monitors_to_pause(iface, namespace) if iwlwifi else []
+    # ponytail: one claim for all iwlwifi scans, so no scan can restore a
+    # monitor while another scans on its radio. Two Intel radios scanning at
+    # once also get 409; key the claim by phy if that bites.
+    also = [*paused, "iwlwifi"] if iwlwifi else []
+    with _claim_scan(iface, namespace, also=also):
         originally_up = _interface_is_up(iface, namespace)
         try:
+            for mon in paused:
+                log.info("Taking %s down while %s scans (iwlwifi, #314)", mon, iface)
+                _set_interface_state(mon, False, namespace)
             if not originally_up:
                 _set_interface_state(iface, True, namespace)
 
@@ -495,5 +608,17 @@ def run_interface_scan(
                 detail=detail,
             )
         finally:
-            if not originally_up:
-                _set_interface_state(iface, False, namespace)
+            try:
+                if not originally_up:
+                    _set_interface_state(iface, False, namespace)
+            finally:
+                for mon in paused:
+                    try:
+                        _set_interface_state(mon, True, namespace)
+                    except Exception as e:
+                        # Keep going: every paused monitor gets its restore.
+                        log.error("Could not bring %s back up after a scan: %s", mon, e)
+                # The scan sets DROP_OTHER_UC radio-wide, blinding a capture on
+                # this radio's monitor.
+                if driver in MT7921_DRIVERS:
+                    allow_other_unicast(iface, namespace)

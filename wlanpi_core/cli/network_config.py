@@ -900,15 +900,6 @@ class NetworkConfigCLI:
         print("Advanced Configuration Options")
         print("-" * 40)
 
-        # MLO (Wi-Fi 7 Multi-Link Operation)
-        if (
-            input("Configure MLO (Multi-Link Operation) for Wi-Fi 7? (y/n): ").lower()
-            == "y"
-        ):
-            config["mlo"] = input("Enable MLO? (y/n): ").lower() == "y"
-        else:
-            config["mlo"] = existing_data.get("mlo", False)
-
         # Default route
         config["default_route"] = input("Set as default route? (y/n): ").lower() == "y"
 

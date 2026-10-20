@@ -8,6 +8,7 @@ separate from namespace concerns.
 import logging
 from typing import Any
 
+from wlanpi_core.adapters.phy import phy_args
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
@@ -26,7 +27,7 @@ def create_interface(
     Create a wireless interface from a PHY device.
 
     Args:
-        phy: PHY name (e.g., "phy0")
+        phy: PHY name (e.g., "phy0") or index selector (e.g., "phy#0")
         interface_name: Name for the new interface (e.g., "wlan0")
         interface_type: Interface type (default: "managed", can be "monitor", "ap", etc.)
         namespace: Network namespace name, or None for root
@@ -55,8 +56,7 @@ def create_interface(
     try:
         cmd = [
             IW_FILE,
-            "phy",
-            phy,
+            *phy_args(phy),
             "interface",
             "add",
             interface_name,

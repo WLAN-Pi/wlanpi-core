@@ -8,16 +8,10 @@
 
 annotated-types==0.7.0
     # via pydantic
-autoflake==2.3.1
-    # via -r testing.in
-black==26.5.1
-    # via -r testing.in
 cachetools==5.5.1
     # via tox
 chardet==5.2.0
     # via tox
-click==8.1.8
-    # via black
 colorama==0.4.6
     # via tox
 coverage[toml]==7.6.10
@@ -33,49 +27,31 @@ filelock==3.32.7
     #   python-discovery
     #   tox
     #   virtualenv
-flake8==7.1.1
-    # via -r testing.in
 iniconfig==2.0.0
     # via pytest
-isort==6.0.0
-    # via -r testing.in
-mccabe==0.7.0
-    # via flake8
 mypy==1.14.1
     # via -r testing.in
 mypy-extensions==1.0.0
-    # via
-    #   black
-    #   mypy
+    # via mypy
 packaging==24.2
     # via
-    #   black
     #   pyproject-api
     #   pytest
     #   tox
-pathspec==1.1.1
-    # via black
 platformdirs==4.3.6
     # via
-    #   black
     #   tox
     #   virtualenv
 pluggy==1.5.0
     # via
     #   pytest
     #   tox
-pycodestyle==2.12.1
-    # via flake8
 pydantic==2.10.5
     # via pydantic-settings
 pydantic-core==2.27.2
     # via pydantic
 pydantic-settings==2.7.1
     # via -r testing.in
-pyflakes==3.2.0
-    # via
-    #   autoflake
-    #   flake8
 pygments==2.21.0
     # via pytest
 pyproject-api==1.9.0
@@ -96,8 +72,8 @@ python-discovery==1.6.0
     # via virtualenv
 python-dotenv==1.0.1
     # via pydantic-settings
-pytokens==0.4.1
-    # via black
+ruff==0.16.8
+    # via -r testing.in
 tox==4.24.1
     # via -r testing.in
 typing-extensions==4.12.2
