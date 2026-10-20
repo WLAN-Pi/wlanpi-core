@@ -1,10 +1,40 @@
 """Helpers for querying the network configuration."""
 
+import re
 from typing import Any
 
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import netns_prefix
 from wlanpi_core.utils.validation import validate_interface_name
+
+# wpa_supplicant's printf_encode writes \\ \" \e \n \r \t and \xNN; iw's
+# print_ssid_escaped writes only \xNN (a backslash becomes \x5c), so one
+# decoder handles both.
+_SSID_ESCAPE = re.compile(rb"\\(x[0-9a-fA-F]{2}|.)", re.DOTALL)
+_SSID_CONTROL = {b"e": b"\x1b", b"n": b"\n", b"r": b"\r", b"t": b"\t"}
+
+
+def _unescape_ssid_byte(match: re.Match[bytes]) -> bytes:
+    token = match.group(1)
+    if len(token) == 3:
+        return bytes([int(token[1:], 16)])
+    return _SSID_CONTROL.get(token, token)
+
+
+def ssid_text(escaped: str) -> str:
+    """Decode an SSID as printed by wpa_cli or iw into text.
+
+    An SSID of only NUL bytes (a hidden network) becomes "". Bytes that are
+    not valid UTF-8 come back as ``\\xNN``.
+    """
+    raw = _SSID_ESCAPE.sub(
+        _unescape_ssid_byte, escaped.encode("utf-8", "surrogateescape")
+    )
+    if not raw.strip(b"\0"):
+        return ""
+    # ponytail: non-UTF-8 SSIDs are ambiguous with a literal "\xNN"; add a hex
+    # field to ScanItem when a client needs the exact bytes.
+    return raw.decode("utf-8", "backslashreplace")
 
 
 def get_default_gateways(namespace: str | None = None) -> dict[str, str]:

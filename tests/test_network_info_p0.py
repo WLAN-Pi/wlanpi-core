@@ -39,7 +39,7 @@ def test_show_wlan_interfaces_emits_mode_as_string():
             CommandResult("phy#0\n\tInterface wlan0\n", "", 0),
             CommandResult("driver: iwlwifi\n", "", 0),
             CommandResult(
-                "Interface wlan0\n\taddr aa:bb:cc:dd:ee:ff\n"
+                "Interface wlan0\n\taddr aa:bb:cc:dd:ee:ff\n\tssid Caf\\xc3\\xa9\n"
                 "\ttype managed\n\tchannel 36 (5180 MHz)\n",
                 "",
                 0,
@@ -49,6 +49,7 @@ def test_show_wlan_interfaces_emits_mode_as_string():
         result = network_info_service.show_wlan_interfaces()
 
     assert result["wlan0"]["mode"] == "Managed"
+    assert result["wlan0"]["ssid"] == "Café"
     assert WlanInterfaceSummary.model_validate(result["wlan0"]).mode == "Managed"
 
 

@@ -29,7 +29,12 @@ class BssLoad(BaseModel):
 class WlanNetwork(BaseModel):
     """One detected WLAN network (BSS)."""
 
-    ssid: str
+    ssid: str = Field(
+        description=(
+            "SSID as UTF-8 text; empty for a hidden network. A byte that is not"
+            " valid UTF-8 appears as `\\xNN`."
+        )
+    )
     bssid: str
     signal: int
     freq: int

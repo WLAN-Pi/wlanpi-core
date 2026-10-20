@@ -10,6 +10,7 @@ from typing import Any
 
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
 from wlanpi_core.utils.validation import validate_interface_name
 from wlanpi_core.wpa.scan import fetch_scan_results, find_bss, parse_wpa_scan_results
 from wlanpi_core.wpa.supplicant import wpa_cli_command
@@ -41,14 +42,16 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
         wpa = ns_exec(
             wpa_cli_command(iface, namespace, "status"),
             namespace=namespace,
-        ).stdout.strip()
+        ).stdout
 
-        for line in wpa.split("\n"):
+        for line in wpa.splitlines():
             if "=" in line:
                 key, value = line.split("=", 1)
-                wpa_status[key.strip()] = value.strip()
+                key = key.strip()
+                # wpa_cli prints SSID edge spaces unescaped; they are SSID bytes.
+                wpa_status[key] = value if key == "ssid" else value.strip()
 
-        connected_ssid = wpa_status.get("ssid")
+        connected_ssid = ssid_text(wpa_status["ssid"]) if "ssid" in wpa_status else None
         connected_bssid = wpa_status.get("bssid")
 
         signal = None

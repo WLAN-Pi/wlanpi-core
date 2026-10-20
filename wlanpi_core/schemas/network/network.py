@@ -381,7 +381,13 @@ class NetConfigUpdate(BaseModel):
 class ScanItem(BaseModel):
     """One scanned network."""
 
-    ssid: str = Field(json_schema_extra={"example": "A Network"})
+    ssid: str = Field(
+        description=(
+            "SSID as UTF-8 text; empty for a hidden network. A byte that is not"
+            " valid UTF-8 appears as `\\xNN`."
+        ),
+        json_schema_extra={"example": "A Network"},
+    )
     bssid: str = Field(json_schema_extra={"example": "11:22:33:44:55"})
     key_mgmt: str = Field(json_schema_extra={"example": "wpa-psk"})
     signal: int = Field(json_schema_extra={"example": -65})
