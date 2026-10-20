@@ -57,7 +57,9 @@ def _read_interface_wpa_status(iface: str) -> dict[str, Any]:
     try:
         namespace = resolve_interface_namespace(iface)
     except ValidationError:
-        namespace = None  # an unknown interface keeps the root "not connected" answer
+        # Unknown interface (404) or unreadable namespace status (503): keep the
+        # root answer this deprecated endpoint always gave.
+        namespace = None
     return get_wpa_status(iface, namespace)
 
 

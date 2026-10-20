@@ -347,7 +347,9 @@ def test_api_revert_wlan_namespace_delegates_to_revert_all(client, mocker):
     ("resolved", "namespace"),
     [
         ("rcmlo", "rcmlo"),
+        (None, None),
         (ValidationError("Interface wlan1 was not found", status_code=404), None),
+        (ValidationError("Unable to determine the namespace", status_code=503), None),
     ],
 )
 def test_api_get_connected_reads_wpa_in_the_interface_namespace(
