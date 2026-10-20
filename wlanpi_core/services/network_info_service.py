@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from typing import Any
 
 from wlanpi_core.adapters import discovery
@@ -202,7 +203,7 @@ def show_info() -> dict[str, Any]:
 def _run_in(cmd: list[str], namespace: str | None) -> CommandResult:
     if namespace is None:
         return run_command(cmd, raise_on_fail=True)
-    return ns_exec(cmd, namespace=namespace)
+    return ns_exec(cmd, namespace=namespace, no_output=True)
 
 
 def show_interfaces() -> dict[str, Any]:
@@ -215,8 +216,8 @@ def show_interfaces() -> dict[str, Any]:
     interfaces = _ifconfig_summaries(ifconfig_info, None)
     for live in discovery.list_namespaced_interfaces():
         try:
-            text = ns_exec([IFCONFIG_FILE, live.name], namespace=live.netns).stdout
-        except RunCommandError:
+            text = _run_in([IFCONFIG_FILE, live.name], live.netns).stdout
+        except (RunCommandError, subprocess.TimeoutExpired):
             log.debug("Unable to read %s in %s", live.name, live.netns, exc_info=True)
             continue
         for name, summary in _ifconfig_summaries(text, live.netns).items():

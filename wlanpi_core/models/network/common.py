@@ -1,6 +1,7 @@
 """Helpers for listing interfaces via ip addr show."""
 
 import logging
+import subprocess
 from collections import defaultdict
 from typing import Any
 
@@ -53,26 +54,33 @@ def get_interfaces(
 def get_interfaces_by_interface(
     show_type: IP_SHOW_TYPES | None = None,
     custom_filter: CustomIPInterfaceFilter | None = None,
+    namespaced: bool = False,
 ) -> dict[str, list[IPInterface]]:
-    """Return interfaces grouped by name, with wireless ones from named namespaces."""
+    """Return interfaces grouped by name.
+
+    With ``namespaced``, also include wireless interfaces in named namespaces.
+    """
     out_dict = defaultdict(list)
     for interface in get_interfaces(show_type=show_type, custom_filter=custom_filter):
         out_dict[interface.ifname].append(interface)
-    if show_type:
+    if not namespaced:
         return out_dict
     for live in discovery.list_namespaced_interfaces():
         try:
             parsed = ns_exec(
                 ["ip", "--details", "-j", "addr", "show", "dev", live.name],
                 namespace=live.netns,
+                no_output=True,
             ).output_from_json()
-        except RunCommandError as exc:
+            entries = [
+                IPInterface.model_validate({**entry, "namespace": live.netns})
+                for entry in (parsed if isinstance(parsed, list) else [])
+                if isinstance(entry, dict) and entry.get("ifname")
+            ]
+        except (RunCommandError, subprocess.TimeoutExpired, ValueError) as exc:
             log.warning(f"Could not read {live.name} in {live.netns}: {exc}")
             continue
-        for entry in parsed if isinstance(parsed, list) else []:
-            if not isinstance(entry, dict) or not entry.get("ifname"):
-                continue
-            interface = IPInterface.model_validate({**entry, "namespace": live.netns})
+        for interface in entries:
             if custom_filter is None or custom_filter(interface):
                 out_dict[interface.ifname].append(interface)
     return out_dict

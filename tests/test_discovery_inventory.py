@@ -3,12 +3,15 @@
 Tests by Josh Schmelzle, from his review of the namespace safety series.
 """
 
+import subprocess
 from unittest.mock import patch
 
 import pytest
 
 from wlanpi_core.adapters import discovery
 from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.network.namespace.namespace_errors import NetworkNamespaceError
+from wlanpi_core.models.runcommand_error import RunCommandError
 
 # iw 6.17 on mt7921u/iwlwifi once wpa_supplicant has run: the P2P-device
 # wdev has a type line but no netdev.
@@ -105,3 +108,27 @@ def test_up_sibling_monitors_only_returns_the_same_radio():
         assert phy.up_sibling_monitors("wlan1", None) == ["wlanpi0"]
         assert phy.up_sibling_monitors("wlanpi1", None) == []  # not itself
         assert phy.up_sibling_monitors("wlan9", None) == []  # unknown iface
+
+
+def test_list_namespaced_interfaces_leaves_out_root():
+    live = [
+        discovery.LiveInterface("wlan0", 0, None, "managed"),
+        discovery.LiveInterface("wlan1", 1, "lab", "managed"),
+        discovery.LiveInterface("wlanpi1", 1, "lab", "monitor"),
+    ]
+    with patch.object(discovery, "list_interfaces_all_namespaces", return_value=live):
+        assert discovery.list_namespaced_interfaces() == live[1:]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RunCommandError("iw failed", 1),
+        NetworkNamespaceError("ip netns list failed"),
+        subprocess.TimeoutExpired("iw", 30),
+    ],
+    ids=["iw", "netns-list", "timeout"],
+)
+def test_list_namespaced_interfaces_is_empty_when_listing_fails(error):
+    with patch.object(discovery, "list_interfaces_all_namespaces", side_effect=error):
+        assert discovery.list_namespaced_interfaces() == []

@@ -72,7 +72,7 @@ def test_show_wlan_interfaces_includes_namespaced_interface():
         ),
     }
 
-    def fake_ns_exec(cmd, namespace=None):
+    def fake_ns_exec(cmd, namespace=None, no_output=False):
         assert namespace == "rcmlo"
         return CommandResult(ns_outputs[(cmd[0].rsplit("/", 1)[-1], *cmd[1:])], "", 0)
 
@@ -124,7 +124,7 @@ def test_show_interfaces_includes_namespaced_interface():
         "ip": "192.168.18.223",
         "namespace": "rcmlo",
     }
-    assert ns_exec.call_args.kwargs == {"namespace": "rcmlo"}
+    assert ns_exec.call_args.kwargs == {"namespace": "rcmlo", "no_output": True}
 
 
 def test_network_debug_label_does_not_include_addresses():
