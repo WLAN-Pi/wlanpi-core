@@ -5362,6 +5362,21 @@
             "type": "array",
             "title": "Addr Info",
             "examples": []
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace holding the interface; null for root",
+            "examples": [
+              "lab"
+            ]
           }
         },
         "additionalProperties": true,
@@ -5605,6 +5620,18 @@
               "-",
               "Monitor"
             ]
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace holding the interface; null for root"
           }
         },
         "type": "object",
@@ -8492,6 +8519,18 @@
               }
             ],
             "title": "Channel"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace",
+            "description": "Network namespace holding the interface; null for root"
           }
         },
         "type": "object",

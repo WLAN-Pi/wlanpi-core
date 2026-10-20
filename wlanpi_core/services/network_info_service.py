@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from wlanpi_core.adapters import discovery
 from wlanpi_core.constants import (
     ETHTOOL_FILE,
     IFCONFIG_FILE,
@@ -15,8 +16,10 @@ from wlanpi_core.constants import (
     PUBLICIP_CMD,
 )
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
+from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = get_logger(__name__)
 
@@ -196,20 +199,35 @@ def show_info() -> dict[str, Any]:
     return output
 
 
+def _run_in(cmd: list[str], namespace: str | None) -> CommandResult:
+    if namespace is None:
+        return run_command(cmd, raise_on_fail=True)
+    return ns_exec(cmd, namespace=namespace)
+
+
 def show_interfaces() -> dict[str, Any]:
     """Return the list of network interfaces with IP address (if available)."""
-
-    ifconfig_file = IFCONFIG_FILE
-    iw_file = IW_FILE
-
-    interfaces: dict[str, Any] = {}
-
     try:
-        ifconfig_info = run_command([ifconfig_file, "-a"], raise_on_fail=True).stdout
+        ifconfig_info = run_command([IFCONFIG_FILE, "-a"], raise_on_fail=True).stdout
     except (RunCommandError, OSError) as ex:
-        interfaces["error"] = "ifconfig error" + str(ex)
-        return interfaces
+        return {"error": "ifconfig error" + str(ex)}
 
+    interfaces = _ifconfig_summaries(ifconfig_info, None)
+    for live in discovery.list_namespaced_interfaces():
+        try:
+            text = ns_exec([IFCONFIG_FILE, live.name], namespace=live.netns).stdout
+        except RunCommandError:
+            log.debug("Unable to read %s in %s", live.name, live.netns, exc_info=True)
+            continue
+        for name, summary in _ifconfig_summaries(text, live.netns).items():
+            # ponytail: a root interface of the same name wins; key entries by
+            # namespace if clients need both.
+            interfaces.setdefault(name, summary)
+    return interfaces
+
+
+def _ifconfig_summaries(ifconfig_info: str, namespace: str | None) -> dict[str, Any]:
+    interfaces: dict[str, Any] = {}
     # Extract interface info with a bit of regex magic
     interface_re = re.findall(
         r"^(\w+?)\: flags(.*?)RX packets", ifconfig_info, re.DOTALL | re.MULTILINE
@@ -242,9 +260,8 @@ def show_interfaces() -> dict[str, Any]:
                 if re.search(r"(wlan\d+)|(mon\d+)", interface_name, re.MULTILINE):
                     # fire up 'iw' for this interface (hmmm..is this a bit of an un-necessary ovehead?)
                     try:
-                        iw_info = run_command(
-                            [iw_file, interface_name, "info"],
-                            raise_on_fail=True,
+                        iw_info = _run_in(
+                            [IW_FILE, interface_name, "info"], namespace
                         ).stdout
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
@@ -257,6 +274,8 @@ def show_interfaces() -> dict[str, Any]:
             # format interface info
             interfaces[interface_name]["status"] = status
             interfaces[interface_name]["ip"] = ip_address
+            if namespace is not None:
+                interfaces[interface_name]["namespace"] = namespace
 
     return interfaces
 
@@ -278,25 +297,33 @@ def channel_lookup(freq_mhz: int) -> int | None:
 def show_wlan_interfaces() -> dict[str, Any]:
     """Create pages to summarise WLAN interface info."""
 
-    interfaces: list[Any] = []
+    interfaces: list[tuple[str, str | None]] = []
     output: dict[str, Any] = {}
 
     try:
         iw_dev_output = run_command([IW_FILE, "dev"]).stdout
-        interfaces = []
         for line in iw_dev_output.splitlines():
             fields = line.strip().split()
             if len(fields) >= 2 and fields[0].lower() == "interface":
-                interfaces.append(fields[1])
+                interfaces.append((fields[1], None))
     except (RunCommandError, OSError):
         log.debug("Unable to enumerate WLAN interfaces", exc_info=True)
+    interfaces += [
+        (live.name, live.netns) for live in discovery.list_namespaced_interfaces()
+    ]
 
-    for interface in interfaces:
+    for interface, namespace in interfaces:
+        if interface in output:
+            continue  # ponytail: same name in root and a namespace; root wins
         output[interface] = {}
+        if namespace is not None:
+            output[interface]["namespace"] = namespace
 
         # Driver
         try:
-            ethtool_output = run_command([ETHTOOL_FILE, "-i", interface]).stdout.strip()
+            ethtool_output = _run_in(
+                [ETHTOOL_FILE, "-i", interface], namespace
+            ).stdout.strip()
             driver = _first_group(r".*driver:\s+(.*)", ethtool_output)
             output[interface]["driver"] = driver
         except (RunCommandError, OSError):
@@ -304,7 +331,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
 
         # Addr, SSID, Mode, Channel
         try:
-            iw_output = run_command([IW_FILE, interface, "info"]).stdout.strip()
+            iw_output = _run_in([IW_FILE, interface, "info"], namespace).stdout.strip()
             # Addr
             try:
                 addr = (

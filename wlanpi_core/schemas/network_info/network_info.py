@@ -24,6 +24,10 @@ class InterfaceSummary(BaseModel):
         examples=["192.168.1.10", "-", "Monitor"],
         description="IPv4 address, `-` when none, or `Monitor` for monitor-mode WLAN",
     )
+    namespace: str | None = Field(
+        default=None,
+        description="Network namespace holding the interface; null for root",
+    )
 
 
 class WlanInterfaceSummary(BaseModel):
@@ -35,6 +39,10 @@ class WlanInterfaceSummary(BaseModel):
     ssid: str | None = None
     freq: int | None = Field(default=None, description="Centre frequency MHz")
     channel: int | None = None
+    namespace: str | None = Field(
+        default=None,
+        description="Network namespace holding the interface; null for root",
+    )
 
 
 class InfoLinesSection(BaseModel):

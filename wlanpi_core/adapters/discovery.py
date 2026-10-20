@@ -204,6 +204,17 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
     return found
 
 
+def list_namespaced_interfaces() -> list[LiveInterface]:
+    """Return wireless interfaces in named namespaces; [] if listing fails."""
+    try:
+        return [
+            live for live in list_interfaces_all_namespaces() if live.netns is not None
+        ]
+    except (RunCommandError, OSError) as exc:
+        log.warning(f"Could not list namespaced wireless interfaces: {exc}")
+        return []
+
+
 def interface_driver(iface: str, namespace: str | None = None) -> str | None:
     """Return the kernel driver bound to `iface` (e.g. `iwlwifi`), or None.
 
