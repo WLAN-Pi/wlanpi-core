@@ -52,6 +52,15 @@ def _read_interface_wlan_link(iface: str) -> dict[str, Any]:
     return network_primitives.get_wlan_link(iface, namespace=namespace)
 
 
+def _read_interface_wpa_status(iface: str) -> dict[str, Any]:
+    """Resolve interface ownership and read wpa_supplicant status in one thread."""
+    try:
+        namespace = resolve_interface_namespace(iface)
+    except ValidationError:
+        namespace = None  # an unknown interface keeps the root "not connected" answer
+    return get_wpa_status(iface, namespace)
+
+
 ################################
 # General Network Management   #
 ################################
@@ -686,15 +695,16 @@ async def get_a_systemd_currentNetwork_details(
     interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
     """
-    Prefer `GET /api/v1/network/config/status` plus wpa state; this endpoint is deprecated.
+    Prefer `GET /api/v1/network/interfaces/{iface}/wlan-link`; this endpoint is deprecated.
 
-    **Replacement:** `GET /api/v1/network/config/status`
+    **Replacement:** `GET /api/v1/network/interfaces/{iface}/wlan-link`
 
-    **Behaviour today:** delegates to `wpa_cli status` for the given `interface`.
+    **Behaviour today:** delegates to `wpa_cli status` for the given `interface`,
+    in the network namespace that holds it.
     """
     del timeout
     try:
-        status = await asyncio.to_thread(get_wpa_status, interface, None)
+        status = await asyncio.to_thread(_read_interface_wpa_status, interface)
         wpa = status.get("wpa_status") or {}
         connected = wpa.get("wpa_state") == "COMPLETED"
         connected_net = None

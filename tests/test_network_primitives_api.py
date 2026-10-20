@@ -341,3 +341,34 @@ def test_api_revert_wlan_namespace_delegates_to_revert_all(client, mocker):
     assert response.json()["success"] is True
     assert response.json()["left_alone"] == []
     revert.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("resolved", "namespace"),
+    [
+        ("rcmlo", "rcmlo"),
+        (ValidationError("Interface wlan1 was not found", status_code=404), None),
+    ],
+)
+def test_api_get_connected_reads_wpa_in_the_interface_namespace(
+    client, resolved, namespace
+):
+    status = {
+        "wpa_status": {"wpa_state": "COMPLETED", "ssid": "wlanpi"},
+        "connected_scan": {"ssid": "wlanpi", "bssid": "68:51:34:7c:32:05"},
+    }
+    with (
+        patch(
+            "wlanpi_core.api.api_v1.endpoints.network_api.resolve_interface_namespace",
+            side_effect=[resolved],
+        ),
+        patch(
+            "wlanpi_core.api.api_v1.endpoints.network_api.get_wpa_status",
+            return_value=status,
+        ) as get_wpa_status,
+    ):
+        response = client.get("/api/v1/network/wlan/getConnected?interface=wlan1")
+
+    assert response.status_code == 200
+    assert response.json()["connectedStatus"] is True
+    get_wpa_status.assert_called_once_with("wlan1", namespace)
