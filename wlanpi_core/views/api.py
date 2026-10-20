@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.templating import Jinja2Templates
 
-from wlanpi_core.core.config import endpoints, settings
+from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -25,7 +25,9 @@ async def index(request: Request) -> Response:
 async def api(request: Request) -> Response:
     """Render the API landing page."""
     return templates.TemplateResponse(
-        request, "api/index.html", {"request": request, "endpoints": endpoints}
+        request,
+        "api/index.html",
+        {"request": request, "endpoints": request.app.state.endpoints},
     )
 
 

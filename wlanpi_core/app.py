@@ -39,7 +39,6 @@ from wlanpi_core.core.auth import (
     AuthClockNotSetError,
 )
 from wlanpi_core.core.config import (
-    endpoints,
     settings,
     wlan_management_is_manual,
 )
@@ -751,15 +750,15 @@ def create_app(debug: bool = False) -> FastAPI:
     app.add_middleware(ActivityMiddleware)
 
     app.include_router(api_router, prefix=settings.API_V1_STR)
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            endpoints.append(
-                {
-                    "path": route.path,
-                    "methods": "".join(list(route.methods or [])),
-                    "description": route.description.split("\n")[0],
-                }
-            )
+    app.state.endpoints = [
+        {
+            "path": route.path,
+            "methods": "".join(list(route.methods or [])),
+            "description": route.description.split("\n")[0],
+        }
+        for route in app.routes
+        if isinstance(route, APIRoute)
+    ]
 
     app.include_router(views_router)
 
