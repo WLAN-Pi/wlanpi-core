@@ -1,3 +1,49 @@
+wlanpi-core (2.4.9-1) unstable; urgency=medium
+
+  * Open ports 3443 and 8443 in the wlanpi-webui ufw profile, where the
+    WebUI now serves Grafana and LibreSpeed. Upgrades rewrite existing
+    wlanpi-webui rules to the new port list.
+  * New POST /api/v1/auth/pam/account reports whether a user may still
+    sign in and a fingerprint of their password, so the WebUI can end
+    sessions after a password change, lock, expiry or removal from sudo
+    (#395).
+  * New GET and POST /api/v1/system/journal read and switch journald
+    between persistent and volatile storage, and name the file that sets
+    it. Core never changes the default on its own (#339).
+  * New GET /api/v1/system/services returns the service allowlist
+    (#391).
+  * The API rate limit applies to each client separately, so one busy
+    client no longer leaves the WebUI and other local callers with 429s.
+  * GET /api/v1/network/interfaces and /network/info list wireless
+    interfaces inside profile namespaces, with a new namespace field
+    (null in the root namespace).
+  * getConnected reads wpa_supplicant in the interface's namespace, so
+    an interface in a profile namespace no longer reports
+    connectedStatus false while connected.
+  * Scan results and connection status return SSIDs as UTF-8 text
+    instead of iw or wpa_cli escapes (Caf\xc3\xa9 is now Café).
+  * Start dhcpcd without ARP probing, so IPv4 no longer drops for about
+    5 seconds after every reassociation or roam. Duplicate-address
+    detection is off.
+  * mt7921 monitors receive other stations' unicast frames (auth,
+    association, EAPOL, ACK, RTS/CTS, Block Ack) after a scan on the
+    same radio (#364).
+  * Bluetooth endpoints use the adapter wlanpi-bluetooth chose instead
+    of hci0, so turning Bluetooth off no longer leaves the radio in use
+    on.
+  * Add the Bluetooth PAN address 198.18.43.1 to the certificate. An
+    existing certificate without it is regenerated on install, so
+    clients that pin it must re-pin.
+  * Startup treats only wlanpi<digits> monitors as its own, and skips
+    monitor creation on radios without monitor mode, such as brcmfmac.
+  * A malformed default network config (default.json) is moved
+    aside and regenerated instead of leaving the default config inactive
+    on every boot.
+  * GET /api/v1/utils/reachability no longer fails when a page returns
+    text that isn't UTF-8.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 05:26:14 -0400
+
 wlanpi-core (2.4.8-1) unstable; urgency=medium
 
   * /var/log/wlanpi_core/debug/debug.log rotates at 4 MiB and keeps four
