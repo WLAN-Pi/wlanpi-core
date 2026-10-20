@@ -1,3 +1,12 @@
+wlanpi-core (2.4.10-1) unstable; urgency=medium
+
+  * Remove dead code and comments that restated the code (#418). No
+    behavior change: the API schema, the files under /etc and every
+    endpoint's output stay the same; one D-Bus error log line now
+    includes its exception.
+
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 14:29:18 -0400
+
 wlanpi-core (2.4.9-1) unstable; urgency=medium
 
   * Open ports 3443 and 8443 in the wlanpi-webui ufw profile, where the
