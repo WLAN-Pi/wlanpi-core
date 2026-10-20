@@ -39,10 +39,10 @@ TARGET_DIR=/opt/wlanpi-core/lib/$PYTHONSTUB/site-packages/wlanpi_core
 
 LINK=/opt/wlanpi-core/workingdirectory
 
-TEST_PATH=/opt/wlanpi-core/workingdirectory/wlanpi_core
+ln -sfn "$TARGET_DIR" "$LINK"
 
-if ! isValidSymlink $TEST_PATH; then
-    ln -sf "$TARGET_DIR" "$LINK"
+if isValidSymlink "$TARGET_DIR/wlanpi_core"; then
+    rm -f "$TARGET_DIR/wlanpi_core"
 fi
 
 NGINX_CONF=/etc/nginx/nginx.conf
