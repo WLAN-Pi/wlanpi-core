@@ -6,7 +6,7 @@
 |-------------|--------|-------------|-------|
 | `GET /network/wlan/scan` | **Redirected** | `GET /utils/wlan/scan` | Same auth; maps to legacy `nets[]` shape. Prefer canonical endpoint for new code. |
 | `GET /network/wlan/getInterfaces` | **Redirected** | `GET /network/config/status` | Now uses `iw dev`, not DBus. |
-| `GET /network/wlan/getConnected` | **Redirected** | `GET /network/config/status` | Uses `wpa_cli status`. |
+| `GET /network/wlan/getConnected` | **Redirected** | `GET /network/interfaces/{iface}/wlan-link` | Uses `wpa_cli status` in the interface's namespace. |
 | `POST /network/wlan/set-dbus` | **410 Gone** | `POST /network/config/` + `POST /network/config/activate/{id}` | Body includes `replacement` path. |
 | `POST /network/wlan/set` | **410 Gone** | Same as set-dbus | Broken legacy stub removed. |
 | `POST /network/wlan/revert` | **Live (align)** | `POST /network/config/deactivate/{id}` | Still works; prefer config deactivate. |
@@ -38,4 +38,4 @@ Always branch on the JSON `error` field — **409 is overloaded** on this legacy
 1. Replace all `GET /network/wlan/scan` with `GET /utils/wlan/scan` (response shape differs — see [wlan-scan.md](./api/wlan-scan.md)).
 2. Replace connect/set flows with NetConfig CRUD + activate (see [API-INTEGRATION-GUIDE.md](./API-INTEGRATION-GUIDE.md) §5).
 3. Remove calls to `set-dbus` / `set`; handle 410 if still present in old apps.
-4. Use `/network/config/status` instead of `getInterfaces` / `getConnected`.
+4. Use `/network/config/status` instead of `getInterfaces`, and `/network/interfaces/{iface}/wlan-link` instead of `getConnected`.
