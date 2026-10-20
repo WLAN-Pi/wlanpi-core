@@ -1,11 +1,18 @@
 wlanpi-core (2.4.10-1) unstable; urgency=medium
 
-  * Remove dead code and comments that restated the code (#418). No
-    behavior change: the API schema, the files under /etc and every
-    endpoint's output stay the same; one D-Bus error log line now
-    includes its exception.
+  * Stop the install script from creating a wlanpi_core link to itself
+    inside the package directory; upgrades remove the one older versions
+    left (#420).
+  * getjwt reports a missing shared secret as missing instead of as a
+    permission problem (#422).
+  * The Ethernet endpoints pick wired ports by link type instead of the
+    eth name prefix, so a USB adapter named enx... is listed. Wi-Fi, USB
+    gadget, bridge and VLAN links stay excluded (#423).
+  * Remove the unused wpa_supplicant D-Bus service, other dead code, and
+    comments that restated the code (#418, #421, #423). The API schema and
+    the files under /etc are unchanged.
 
- -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 14:29:18 -0400
+ -- Josh Schmelzle <josh@joshschmelzle.com>  Tue, 20 Oct 2026 15:51:30 -0400
 
 wlanpi-core (2.4.9-1) unstable; urgency=medium
 
