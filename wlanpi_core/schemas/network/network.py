@@ -205,14 +205,12 @@ class NetSecurity(BaseModel):
     __repr__ = __str__
 
 
-class RootConfig(BaseModel):
-    """Configuration for a root (non-namespaced) interface."""
-
+class _RootConfigBase[SecurityT: BaseModel](BaseModel):
     mode: NetworkModeEnum = NetworkModeEnum.managed
     iface_display_name: str
     phy: str
     interface: str
-    security: NetSecurity | None = None
+    security: SecurityT | None = None
     default_route: bool = False
     autostart_app: str | None = None
 
@@ -235,9 +233,11 @@ class RootConfig(BaseModel):
     __repr__ = __str__
 
 
-class NamespaceConfig(RootConfig):
-    """Configuration for an interface in a network namespace."""
+class RootConfig(_RootConfigBase[NetSecurity]):
+    """Configuration for a root (non-namespaced) interface."""
 
+
+class _NamespaceField(BaseModel):
     namespace: str
 
     @field_validator("namespace")
@@ -245,6 +245,11 @@ class NamespaceConfig(RootConfig):
     def validate_namespace_field(cls, value: str) -> str:
         """Validate the namespace name."""
         return validate_namespace_name(value)
+
+
+# _NamespaceField goes first so `namespace` stays the last field in the schema.
+class NamespaceConfig(_NamespaceField, RootConfig):
+    """Configuration for an interface in a network namespace."""
 
 
 class NetConfig(BaseModel):
@@ -331,27 +336,24 @@ class NetSecurityPublic(BaseModel):
         )
 
 
-class RootConfigPublic(RootConfig):
+class RootConfigPublic(_RootConfigBase[NetSecurityPublic]):
     """A root entry as the API returns it (no secrets)."""
 
-    security: NetSecurityPublic | None = None  # type: ignore[assignment]
 
-
-class NamespaceConfigPublic(NamespaceConfig):
+class NamespaceConfigPublic(_NamespaceField, RootConfigPublic):
     """A namespace entry as the API returns it (no secrets)."""
 
-    security: NetSecurityPublic | None = None  # type: ignore[assignment]
 
-
-class NetConfigPublic(NetConfig):
+class NetConfigPublic(BaseModel):
     """A configuration as the API returns it: psk and password omitted.
 
     `psk_set` / `password_set` say whether a secret is stored. Send the
     entry back without `psk` or `password` in a PATCH to keep it.
     """
 
-    namespaces: list[NamespaceConfigPublic] | None = None  # type: ignore[assignment]
-    roots: list[RootConfigPublic] | None = None  # type: ignore[assignment]
+    id: str
+    namespaces: list[NamespaceConfigPublic] | None = None
+    roots: list[RootConfigPublic] | None = None
 
     @classmethod
     def from_config(cls, cfg: NetConfig) -> "NetConfigPublic":
@@ -368,8 +370,11 @@ class NetConfigPublic(NetConfig):
 
         return cls(
             id=cfg.id,
-            namespaces=[public(e) for e in cfg.namespaces or []],  # type: ignore[misc]
-            roots=[public(e) for e in cfg.roots or []],  # type: ignore[misc]
+            namespaces=[
+                NamespaceConfigPublic.model_validate(public(e))
+                for e in cfg.namespaces or []
+            ],
+            roots=[RootConfigPublic.model_validate(public(e)) for e in cfg.roots or []],
         )
 
 
