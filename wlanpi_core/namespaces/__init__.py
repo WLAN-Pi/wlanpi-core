@@ -7,7 +7,6 @@ from wlanpi_core.namespaces.apps import (
 )
 from wlanpi_core.namespaces.interfaces import (
     get_interfaces_in_namespace,
-    move_interface_to_namespace,
     move_interface_to_root,
 )
 from wlanpi_core.namespaces.namespace import (
@@ -27,7 +26,6 @@ __all__ = [
     "get_interfaces_in_namespace",
     "get_processes_in_namespace",
     "list_namespaces",
-    "move_interface_to_namespace",
     "move_interface_to_root",
     "namespace_exists",
     "start_app_in_namespace",
