@@ -37,10 +37,10 @@ expected_hostname() {
     fi
 }
 
-# Return 0 (true) when the certificate lacks DNS:<hostname>.local.
-cert_missing_hostname() {
-    if openssl x509 -in "$CERT" -noout -text 2>/dev/null |
-        grep -q "DNS:${1}.local"; then
+# Return 0 (true) when the certificate's SAN lacks the exact entry $1.
+cert_missing_san() {
+    if openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null |
+        tr ',' '\n' | sed 's/^ *//' | grep -qxF "$1"; then
         return 1
     fi
     return 0
@@ -54,7 +54,7 @@ build_san() {
     if [ -n "$expected" ] && [ "$expected" != "$hostname" ]; then
         san="$san,DNS:${expected}.local"
     fi
-    echo "$san,IP:127.0.0.1,IP:198.18.42.1"
+    echo "$san,IP:127.0.0.1,IP:198.18.42.1,IP:198.18.43.1"
 }
 
 generate() {
@@ -85,8 +85,10 @@ main() {
     expected=$(expected_hostname || true)
 
     if [ -f "$CERT" ] && [ -f "$KEY" ]; then
-        if [ -n "$expected" ] && cert_missing_hostname "$expected"; then
+        if [ -n "$expected" ] && cert_missing_san "DNS:${expected}.local"; then
             echo "Existing certificate lacks ${expected}.local; regenerating"
+        elif cert_missing_san "IP Address:198.18.43.1"; then
+            echo "Existing certificate lacks 198.18.43.1; regenerating"
         else
             echo "Self-signed certificates already present and current"
             exit 0

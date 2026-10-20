@@ -167,3 +167,56 @@ def test_get_wpa_status_non_mlo_miss_stays_unmatched(mocker):
     result = _GET_WPA_STATUS("wlan0", None)
 
     assert result["connected_scan"]["signal"] == 0
+
+
+def test_get_wpa_status_matches_mlo_link_with_escaped_ssid(mocker):
+    """wpa_cli status escapes the SSID the same way scan_results does."""
+    mocker.patch.object(
+        status,
+        "ns_exec",
+        side_effect=[
+            MagicMock(
+                stdout=(
+                    "bssid=cc:2d:d2:a9:a6:00\nfreq=6375\nssid=Caf\\xc3\\xa9\n"
+                    "ap_mld_addr=cc:2d:d2:a9:a6:00\n"
+                )
+            ),
+            MagicMock(stdout="3: wlan2: <UP>\n"),
+        ],
+    )
+    mocker.patch.object(
+        status,
+        "fetch_scan_results",
+        return_value="header\ncc:2d:d2:e9:a5:00\t6375\t-45\t[SAE]\tCaf\\xc3\\xa9\n",
+    )
+
+    result = _GET_WPA_STATUS("wlan2", None)
+
+    assert result["connected_scan"]["ssid"] == "Café"
+    assert result["connected_scan"]["signal"] == -45
+
+
+def test_get_wpa_status_keeps_ssid_edge_spaces_for_the_mlo_match(mocker):
+    mocker.patch.object(
+        status,
+        "ns_exec",
+        side_effect=[
+            MagicMock(
+                stdout=(
+                    "bssid=02:00:00:00:00:aa\nfreq=5180\nssid= edge \n"
+                    "ap_mld_addr=02:00:00:00:00:aa\n"
+                )
+            ),
+            MagicMock(stdout="3: wlan2: <UP>\n"),
+        ],
+    )
+    mocker.patch.object(
+        status,
+        "fetch_scan_results",
+        return_value="header\n02:00:00:00:00:01\t5180\t-45\t[SAE]\t edge \n",
+    )
+
+    result = _GET_WPA_STATUS("wlan2", None)
+
+    assert result["connected_scan"]["ssid"] == " edge "
+    assert result["connected_scan"]["signal"] == -45

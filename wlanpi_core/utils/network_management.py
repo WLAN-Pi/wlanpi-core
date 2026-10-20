@@ -167,6 +167,9 @@ def restart_dhcp_with_timeout(
         str(state / "lib"),
         "-4",
         "-L",
+        # No ARP probe of the offered address: it held IPv4 back ~5 s after
+        # every reassociation (#354), at the cost of duplicate-address detection.
+        "-A",
         "-t",
         str(timeout),
         *route,

@@ -1649,7 +1649,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] Connected network details",
-        "description": "Prefer `GET /api/v1/network/config/status` plus wpa state; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/network/config/status`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`.",
+        "description": "Prefer `GET /api/v1/network/interfaces/{iface}/wlan-link`; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/network/interfaces/{iface}/wlan-link`\n\n**Behaviour today:** delegates to `wpa_cli status` for the given `interface`,\nin the network namespace that holds it.",
         "operationId": "get_a_systemd_currentNetwork_details_api_v1_network_wlan_getConnected_get",
         "deprecated": true,
         "security": [
@@ -7445,6 +7445,7 @@
           "ssid": {
             "type": "string",
             "title": "Ssid",
+            "description": "SSID as UTF-8 text; empty for a hidden network. A byte that is not valid UTF-8 appears as `\\xNN`.",
             "example": "A Network"
           },
           "bssid": {
@@ -8780,7 +8781,8 @@
         "properties": {
           "ssid": {
             "type": "string",
-            "title": "Ssid"
+            "title": "Ssid",
+            "description": "SSID as UTF-8 text; empty for a hidden network. A byte that is not valid UTF-8 appears as `\\xNN`."
           },
           "bssid": {
             "type": "string",

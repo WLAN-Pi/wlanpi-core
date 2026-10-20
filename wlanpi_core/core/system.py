@@ -141,6 +141,13 @@ class SystemManager:
             log.error(f"Failed to create monitor interface {mon}")
             return None
 
+    def _is_core_monitor(self, name: str) -> bool:
+        # Only <iface_name><digits>: another tool may name a monitor wlanpi-prof (#372).
+        return (
+            name.startswith(self.iface_name)
+            and name.removeprefix(self.iface_name).isdigit()
+        )
+
     def sync_monitor_interfaces(self) -> None:
         """Sync monitor interfaces with their managed counterparts."""
         interfaces = self._get_interfaces_by_type()
@@ -159,10 +166,7 @@ class SystemManager:
 
         # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
-            if (
-                mon_name.startswith(self.iface_name)
-                and mon_index not in managed.values()
-            ):
+            if self._is_core_monitor(mon_name) and mon_index not in managed.values():
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 
@@ -170,7 +174,7 @@ class SystemManager:
         # a monitor's name can lag its phy index (#365), and a second monitor
         # plus a scan crashes BE200 firmware (#314).
         core_monitor_phys = {
-            index for name, index in monitor.items() if name.startswith(self.iface_name)
+            index for name, index in monitor.items() if self._is_core_monitor(name)
         }
         for iface, index in managed.items():
             expected_mon = f"{self.iface_name}{index}"

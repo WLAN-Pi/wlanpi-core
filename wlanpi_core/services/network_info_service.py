@@ -21,6 +21,7 @@ from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
 
 log = get_logger(__name__)
 
@@ -354,7 +355,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
             # SSID
             try:
                 ssid = _first_group(r".*ssid\s+(.*)", iw_output)
-                output[interface]["ssid"] = ssid
+                output[interface]["ssid"] = ssid_text(ssid)
             except Exception:
                 pass
 

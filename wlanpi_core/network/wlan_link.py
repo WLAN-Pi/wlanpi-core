@@ -10,6 +10,7 @@ from typing import Any
 from wlanpi_core.constants import IW_FILE
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
 from wlanpi_core.utils.validation import validate_interface_name
 
 log = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ def _parse_iw_link(stdout: str) -> dict[str, Any]:
             link = {"link_id": int(mlo.group(1)), "bssid": mlo.group(2)}
             parsed["links"].append(link)
         elif line.startswith("SSID:"):
-            parsed["ssid"] = line.split(":", 1)[1].strip()
+            parsed["ssid"] = ssid_text(line.split(":", 1)[1].strip())
         elif line.startswith("freq:"):
             try:
                 freq = float(line.split(":", 1)[1].strip())

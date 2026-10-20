@@ -16,6 +16,7 @@ from wlanpi_core.adapters import phy as adapter_phy
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.streaming.mt76_rxfilter import MT7921_DRIVERS, allow_other_unicast
 from wlanpi_core.utils.namespace_execution import ns_exec
+from wlanpi_core.utils.network import ssid_text
 from wlanpi_core.wpa.supplicant import wpa_cli_command
 
 log = logging.getLogger(__name__)
@@ -154,7 +155,8 @@ def parse_wpa_scan_results(
             parts.append("")
         if len(parts) < 5:
             continue
-        bssid, freq_str, signal_str, flags, ssid = parts[:5]
+        bssid, freq_str, signal_str, flags, escaped_ssid = parts[:5]
+        ssid = ssid_text(escaped_ssid)
         if not include_hidden and not ssid:
             continue
         try:
@@ -313,7 +315,7 @@ def parse_iw_bss_block(
     for line in block.splitlines():
         stripped = line.strip()
         if stripped.startswith("SSID:"):
-            ssid = stripped.split(":", 1)[1].strip()
+            ssid = ssid_text(stripped.split(":", 1)[1].strip())
         elif stripped.startswith("signal:"):
             try:
                 signal = int(float(stripped.split()[1]))
@@ -399,7 +401,7 @@ def fetch_scan_results(iface: str, namespace: str | None = None) -> str:
     return ns_exec(
         wpa_cli_command(iface, namespace, "scan_results"),
         namespace=namespace,
-    ).stdout.strip()
+    ).stdout
 
 
 def find_bss(networks: list[dict[str, Any]], bssid: str) -> dict[str, Any] | None:
