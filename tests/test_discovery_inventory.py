@@ -126,9 +126,28 @@ def test_list_namespaced_interfaces_leaves_out_root():
         RunCommandError("iw failed", 1),
         NetworkNamespaceError("ip netns list failed"),
         subprocess.TimeoutExpired("iw", 30),
+        OSError("iw unavailable"),
     ],
-    ids=["iw", "netns-list", "timeout"],
+    ids=["iw", "netns-list", "timeout", "oserror"],
 )
 def test_list_namespaced_interfaces_is_empty_when_listing_fails(error):
     with patch.object(discovery, "list_interfaces_all_namespaces", side_effect=error):
         assert discovery.list_namespaced_interfaces() == []
+
+
+def test_inventory_skips_a_namespace_whose_iw_times_out():
+    def fake_ns_exec(cmd, namespace=None, no_output=False):
+        if namespace == "stuck":
+            raise subprocess.TimeoutExpired(cmd, 30)
+        return CommandResult("phy#1\n\tInterface wlan1\n\t\ttype managed\n", "", 0)
+
+    with (
+        patch.object(discovery, "run_command", return_value=CommandResult("", "", 0)),
+        patch.object(
+            discovery.ns_namespace, "list_namespaces", return_value=["stuck", "lab"]
+        ),
+        patch.object(discovery, "ns_exec", side_effect=fake_ns_exec),
+    ):
+        found = discovery.list_interfaces_all_namespaces()
+
+    assert [(i.name, i.netns) for i in found] == [("wlan1", "lab")]

@@ -267,7 +267,7 @@ def _ifconfig_summaries(ifconfig_info: str, namespace: str | None) -> dict[str, 
 
                         if re.search("type monitor", iw_info, re.MULTILINE):
                             ip_address = "Monitor"
-                    except (RunCommandError, OSError):
+                    except (RunCommandError, OSError, subprocess.TimeoutExpired):
                         ip_address = "-"
             else:
                 ip_address = inet_search.group(1)
@@ -327,7 +327,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
             ).stdout.strip()
             driver = _first_group(r".*driver:\s+(.*)", ethtool_output)
             output[interface]["driver"] = driver
-        except (RunCommandError, OSError):
+        except (RunCommandError, OSError, subprocess.TimeoutExpired):
             pass
 
         # Addr, SSID, Mode, Channel
@@ -367,7 +367,7 @@ def show_wlan_interfaces() -> dict[str, Any]:
             except ValueError:
                 pass
 
-        except (RunCommandError, OSError):
+        except (RunCommandError, OSError, subprocess.TimeoutExpired):
             log.debug("Unable to inspect WLAN interface %s", interface, exc_info=True)
 
     return output

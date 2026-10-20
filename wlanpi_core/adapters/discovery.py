@@ -201,7 +201,7 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
     for netns in ns_namespace.list_namespaces():
         try:
             ns_result = ns_exec([IW_FILE, "dev"], namespace=netns, no_output=True)
-        except (RunCommandError, ValueError) as e:
+        except (RunCommandError, ValueError, OSError, subprocess.TimeoutExpired) as e:
             log.warning(f"Could not list wireless interfaces in {netns}: {e}")
             continue
         found += _parse_iw_dev(ns_result.stdout, netns)

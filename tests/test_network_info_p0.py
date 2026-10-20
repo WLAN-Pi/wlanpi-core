@@ -1,5 +1,6 @@
 """Tests for P0 network info API additions."""
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from wlanpi_core.adapters.discovery import LiveInterface
@@ -135,3 +136,29 @@ def test_network_debug_label_does_not_include_addresses():
 
     assert "192.0.2.10" not in repr(label)
     assert label["interface_names"] == ["eth0"]
+
+
+def test_show_wlan_interfaces_keeps_partial_data_when_a_namespaced_probe_times_out():
+    def fake_ns_exec(cmd, namespace=None, no_output=False):
+        if "ethtool" in cmd[0]:
+            raise subprocess.TimeoutExpired(cmd, 30)
+        return CommandResult("Interface wlan1\n\ttype managed\n", "", 0)
+
+    with (
+        patch.object(
+            network_info_service.discovery,
+            "list_namespaced_interfaces",
+            return_value=_NAMESPACED_WLAN1,
+        ),
+        patch.object(
+            network_info_service,
+            "run_command",
+            return_value=CommandResult("phy#0\n", "", 0),
+        ),
+        patch.object(network_info_service, "ns_exec", side_effect=fake_ns_exec),
+    ):
+        result = network_info_service.show_wlan_interfaces()
+
+    assert result["wlan1"]["namespace"] == "rcmlo"
+    assert result["wlan1"]["mode"] == "Managed"
+    assert "driver" not in result["wlan1"]
