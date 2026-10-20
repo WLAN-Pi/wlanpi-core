@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -489,3 +489,78 @@ def test_api_get_connected_reads_wpa_in_the_interface_namespace(
     assert response.status_code == 200
     assert response.json()["connectedStatus"] is True
     get_wpa_status.assert_called_once_with("wlan1", namespace)
+
+
+def test_api_ethernet_lists_only_wired_ports(client):
+    base = {
+        "flags": ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"],
+        "mtu": 1500,
+        "qdisc": "mq",
+        "operstate": "UP",
+        "group": "default",
+        "txqlen": 1000,
+        "link_type": "ether",
+        "addr_info": [],
+    }
+    entries = [
+        {**base, "ifindex": 1, "ifname": "lo", "link_type": "loopback"},
+        {**base, "ifindex": 2, "ifname": "eth0", "parentbus": "platform"},
+        {**base, "ifindex": 3, "ifname": "eth1", "parentbus": "usb"},
+        {**base, "ifindex": 4, "ifname": "enx00e04c680001", "parentbus": "usb"},
+        {**base, "ifindex": 5, "ifname": "wlan0", "parentbus": "pci"},
+        {**base, "ifindex": 6, "ifname": "usb0", "parentbus": "gadget"},
+        {**base, "ifindex": 7, "ifname": "pan0", "linkinfo": {"info_kind": "bridge"}},
+        {
+            **base,
+            "ifindex": 8,
+            "ifname": "eth0.100",
+            "link": "eth0",
+            "linkinfo": {"info_kind": "vlan", "info_data": {"id": 100}},
+        },
+        {**base, "ifindex": 9, "ifname": "wg0", "link_type": "none"},
+        {
+            **base,
+            "ifindex": 10,
+            "ifname": "wlan1mon",
+            "link_type": "ieee802.11/radiotap",
+        },
+    ]
+    devtypes = {"wlan0": "wlan", "wlan1mon": "wlan", "usb0": "gadget", "pan0": "bridge"}
+
+    def _fake_run(cmd, **kwargs):
+        if cmd[0] == "ip":
+            return CommandResult(stdout=json.dumps(entries), stderr="", return_code=0)
+        return CommandResult(stdout="1000", stderr="", return_code=0)
+
+    with (
+        patch("wlanpi_core.models.network.common.run_command", side_effect=_fake_run),
+        patch(
+            "wlanpi_core.api.api_v1.endpoints.network_api._net_devtype",
+            side_effect=devtypes.get,
+        ),
+    ):
+        response = client.get("/api/v1/network/ethernet/all")
+
+    assert response.status_code == 200
+    assert sorted(response.json()) == ["enx00e04c680001", "eth0", "eth1"]
+
+
+@pytest.mark.parametrize(
+    ("uevent", "expected"),
+    [
+        ("INTERFACE=wlan0\nIFINDEX=5\nDEVTYPE=wlan\n", "wlan"),
+        ("INTERFACE=eth0\nIFINDEX=2\n", None),
+    ],
+)
+def test_net_devtype_reads_uevent(uevent, expected):
+    from wlanpi_core.api.api_v1.endpoints.network_api import _net_devtype
+
+    with patch("builtins.open", mock_open(read_data=uevent)):
+        assert _net_devtype("x") == expected
+
+
+def test_net_devtype_of_a_vanished_interface_is_none():
+    from wlanpi_core.api.api_v1.endpoints.network_api import _net_devtype
+
+    with patch("builtins.open", side_effect=FileNotFoundError):
+        assert _net_devtype("gone0") is None

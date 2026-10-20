@@ -55,6 +55,3 @@ settings = Settings()
 def wlan_management_is_manual() -> bool:
     """Return True when wlanpi-core is configured to leave Wi-Fi alone."""
     return settings.WLAN_MANAGEMENT == "manual"
-
-
-endpoints: list[Any] = []

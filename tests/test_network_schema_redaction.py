@@ -1,6 +1,7 @@
 from wlanpi_core.schemas.network.network import (
     NamespaceConfig,
     NetConfig,
+    NetConfigPublic,
     NetSecurity,
     RootConfig,
     SecurityTypes,
@@ -98,3 +99,65 @@ def test_netconfig_str_redacts_all_entries():
     assert "secret-b" not in rendered
     assert "lab_cfg" in rendered
     assert "ns_a" in rendered
+
+
+def _keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from _keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _keys(child)
+
+
+def test_net_config_public_masks_secrets_in_roots_and_namespaces():
+    cfg = NetConfig(
+        id="lab_cfg",
+        namespaces=[
+            NamespaceConfig(
+                namespace="ns_b",
+                iface_display_name="wlan1",
+                phy="phy1",
+                interface="wlan1",
+                security=NetSecurity(
+                    ssid="NetB",
+                    security=SecurityTypes.wpa2,
+                    identity="lab-user",
+                    password="eap-secret-pw",
+                ),
+            ),
+            NamespaceConfig(
+                namespace="ns_a",
+                iface_display_name="wlan2",
+                phy="phy2",
+                interface="wlan2",
+            ),
+        ],
+        roots=[
+            RootConfig(
+                iface_display_name="wlan0",
+                phy="phy0",
+                interface="wlan0",
+                security=NetSecurity(
+                    ssid="NetA",
+                    security=SecurityTypes.wpa2,
+                    psk="root-secret-psk",
+                ),
+            )
+        ],
+    )
+
+    public = NetConfigPublic.from_config(cfg)
+    dumped = public.model_dump()
+    rendered = public.model_dump_json()
+
+    for text in (rendered, str(dumped)):
+        assert "root-secret-psk" not in text
+        assert "eap-secret-pw" not in text
+    assert {"psk", "password"}.isdisjoint(_keys(dumped))
+    assert dumped["roots"][0]["security"]["psk_set"] is True
+    assert dumped["namespaces"][0]["security"]["password_set"] is True
+    assert dumped["namespaces"][0]["security"]["identity"] == "lab-user"
+    assert [ns["namespace"] for ns in dumped["namespaces"]] == ["ns_b", "ns_a"]
+    assert all(isinstance(ns, RootConfig) for ns in cfg.namespaces or [])

@@ -20,6 +20,7 @@ from wlanpi_core.constants import (
     NETNS_ETC_DIR,
     NETNS_RUN_DIR,
     PID_DIR,
+    ROOT_NS_DIR_NAME,
     RUN_DIR,
 )
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -515,7 +516,7 @@ class NetworkNamespaceService:
 
     # Ownership is the cfg80211 wdev id: a netns move keeps it, anyone else's recreate changes it.
     def _owned_path(self, name: str, netns: str | None) -> Path:
-        return Path(RUN_DIR) / "owned" / (netns or "@root") / name
+        return Path(RUN_DIR) / "owned" / (netns or ROOT_NS_DIR_NAME) / name
 
     def _claim(self, name: str, netns: str | None) -> None:
         """Record the netdev Core just created as Core's."""
