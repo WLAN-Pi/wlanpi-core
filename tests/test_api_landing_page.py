@@ -1,5 +1,3 @@
-"""The /api landing page lists the routes of the app that serves it."""
-
 from fastapi.testclient import TestClient
 
 from wlanpi_core.app import create_app

@@ -52,12 +52,7 @@ def _net_devtype(ifname: str) -> str | None:
 
 
 def _is_wired_ethernet(i: IPInterface) -> bool:
-    """Whether an `ip --details` entry is a physical Ethernet port.
-
-    Wi-Fi, USB gadget and Bluetooth links also report link_type ether; the
-    kernel tags those with a DEVTYPE (wlan, gadget, bluetooth), plain NICs
-    have none. Virtual links (VLAN, bridge, veth) carry linkinfo.
-    """
+    """Wi-Fi, gadget and Bluetooth links report link_type ether too; plain NICs alone have no uevent DEVTYPE."""
     return (
         i.link_type == "ether"
         and "linkinfo" not in i.model_dump()

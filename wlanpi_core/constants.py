@@ -57,7 +57,7 @@ CURRENT_CONFIG_FILE = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/current.tx
 PID_DIR = str(HOME_DIR / ".local/share/wlanpi-core/netcfg/pids")
 # Runtime state (pidfiles); tmpfs, so it is cleared on reboot.
 RUN_DIR = "/run/wlanpi-core"
-# Runtime subdirectory name for the root namespace; `@` cannot appear in a netns name.
+# validate_namespace_name rejects `@`, so this never collides with a namespace.
 ROOT_NS_DIR_NAME = "@root"
 # Named network namespaces (`ip netns add` bind-mounts them here).
 NETNS_RUN_DIR = "/run/netns"
