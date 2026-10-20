@@ -6,7 +6,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.api.api_v1.endpoints.auth_api import generate_token, revoke_token
+from wlanpi_core.core.auth import CallerKind
 from wlanpi_core.schemas.auth import TokenRequest
+
+HMAC = CallerKind.LOCALHOST_HMAC
 
 
 def _request_with_token_manager(token_manager):
@@ -22,7 +25,7 @@ async def test_generate_token_returns_412_for_missing_or_blank_device_id(device_
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id=device_id), True)
+        await generate_token(request, TokenRequest(device_id=device_id), HMAC)
 
     assert exc.value.status_code == 412
     token_manager.create_token.assert_not_awaited()
@@ -34,7 +37,7 @@ async def test_generate_token_normalizes_device_id():
     request = _request_with_token_manager(token_manager)
 
     response = await generate_token(
-        request, TokenRequest(device_id="  mcp-client  "), True
+        request, TokenRequest(device_id="  mcp-client  "), HMAC
     )
 
     assert response.access_token == "jwt"
@@ -50,7 +53,7 @@ async def test_generate_token_maps_unexpected_error_to_500():
     request = _request_with_token_manager(token_manager)
 
     with pytest.raises(HTTPException) as exc:
-        await generate_token(request, TokenRequest(device_id="mcp-client"), True)
+        await generate_token(request, TokenRequest(device_id="mcp-client"), HMAC)
 
     assert exc.value.status_code == 500
     assert "database unavailable" not in exc.value.detail
@@ -60,7 +63,8 @@ async def test_generate_token_maps_unexpected_error_to_500():
 @pytest.mark.parametrize(
     ("caller", "allowed"),
     [
-        pytest.param(True, True, id="localhost-hmac-allowed"),
+        pytest.param(HMAC, True, id="localhost-hmac-allowed"),
+        pytest.param(True, False, id="bare-true-forbidden"),
         pytest.param(
             SimpleNamespace(device_id="wlanpi-webui"),
             False,
