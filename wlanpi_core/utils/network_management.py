@@ -8,15 +8,12 @@ import time
 from pathlib import Path
 
 from wlanpi_core.adapters import usage
-from wlanpi_core.constants import RUN_DIR
+from wlanpi_core.constants import ROOT_NS_DIR_NAME, RUN_DIR
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.namespace_execution import ns_exec
 
 log = logging.getLogger(__name__)
 
-
-# Directory name for the root namespace; `@` cannot appear in a netns name.
-_ROOT_DIR_NAME = "@root"
 
 # dhcpcd's fixed /run/dhcpcd and /var/lib/dhcpcd are shared across netns, so each
 # runs in a private mount ns; mkdir first, as /run/dhcpcd is absent after boot.
@@ -29,7 +26,7 @@ _DHCPCD_WRAPPER = (
 
 def dhcp_dir(iface: str, namespace: str | None) -> Path:
     """Return the private dhcpcd state directory for (namespace, iface)."""
-    return Path(RUN_DIR) / "dhcpcd" / (namespace or _ROOT_DIR_NAME) / iface
+    return Path(RUN_DIR) / "dhcpcd" / (namespace or ROOT_NS_DIR_NAME) / iface
 
 
 def _read_cmdline(pid: int) -> list[str]:
