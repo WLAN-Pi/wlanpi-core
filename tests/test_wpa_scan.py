@@ -193,6 +193,44 @@ def test_parse_wpa_scan_results_includes_flags():
     assert networks[0]["secondaryChannelOffset"] is None
 
 
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        (r"Caf\xc3\xa9", "Café"),
+        (r"\xf0\x9f\x93\xb6 Pi", "📶 Pi"),
+        (r"a\\b", "a\\b"),
+        (r"say \"hi\"", 'say "hi"'),
+        (r"tab\there", "tab\there"),
+        (r"\x00\x00\x00", ""),
+        (r"caf\xe9", r"caf\xe9"),
+    ],
+)
+def test_parse_wpa_scan_results_decodes_ssid(printed, expected):
+    text = f"header\naa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\t{printed}\n"
+    assert parse_wpa_scan_results(text)[0]["ssid"] == expected
+
+
+@pytest.mark.parametrize(
+    ("printed", "expected"),
+    [
+        (r"Caf\xc3\xa9", "Café"),
+        (r"a\x5cb", "a\\b"),
+        (r"\x20edge two\x20", " edge two "),
+        (r"\x00\x00\x00", ""),
+    ],
+)
+def test_parse_iw_scan_output_decodes_ssid(printed, expected):
+    block = f"BSS aa:bb:cc:dd:ee:02(on wlan0)\n\tSSID: {printed}\n\tfreq: 2412\n"
+    assert parse_iw_scan_output(block)[0]["ssid"] == expected
+
+
+def test_nul_ssid_counts_as_hidden():
+    text = "header\naa:bb:cc:dd:ee:01\t2412\t-45\t[ESS]\t\\x00\\x00\n"
+    assert parse_wpa_scan_results(text, include_hidden=False) == []
+    block = "BSS aa:bb:cc:dd:ee:02(on wlan0)\n\tSSID: \\x00\n"
+    assert parse_iw_scan_output(block, include_hidden=False) == []
+
+
 def test_normalize_scan_detail_accepts_short_and_full():
     assert normalize_scan_detail("short") == "short"
     assert normalize_scan_detail("FULL") == "full"

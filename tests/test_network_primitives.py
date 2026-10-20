@@ -102,7 +102,7 @@ def test_get_link_stats_parses_ethtool():
 def test_get_wlan_link_parses_connected():
     iw_out = (
         "Connected to 68:51:34:7c:32:13 (on wlan0)\n"
-        "\tSSID: PurpleDove\n"
+        "\tSSID: Purple\\xc3\\xa9Dove\n"
         "\tfreq: 5200.0\n"
         "\tsignal: -48 dBm\n"
         "\trx bitrate: 286.7 MBit/s HE-MCS 11\n"
@@ -117,7 +117,7 @@ def test_get_wlan_link_parses_connected():
         result = wlan_link.get_wlan_link("wlan0")
 
     assert result["connected"] is True
-    assert result["ssid"] == "PurpleDove"
+    assert result["ssid"] == "PurpleéDove"
     assert result["bssid"] == "68:51:34:7c:32:13"
     assert result["freq_mhz"] == 5200.0
     assert result["signal_dbm"] == -48.0

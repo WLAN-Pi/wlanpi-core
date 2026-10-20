@@ -7418,6 +7418,7 @@
           "ssid": {
             "type": "string",
             "title": "Ssid",
+            "description": "SSID as UTF-8 text; empty for a hidden network. A byte that is not valid UTF-8 appears as `\\xNN`.",
             "example": "A Network"
           },
           "bssid": {
