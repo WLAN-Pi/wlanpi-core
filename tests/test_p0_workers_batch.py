@@ -279,10 +279,11 @@ def test_bluetooth_pair(client, mocker):
 
 
 def test_bluetooth_power(client, mocker):
+    mocker.patch.object(bluetooth_service, "bluetooth_adapter", return_value="hci1")
     present = mocker.patch.object(
         bluetooth_service,
         "bluetooth_present",
-        return_value="hci0",
+        return_value=True,
     )
     set_power = mocker.patch.object(
         bluetooth_service,
@@ -294,8 +295,8 @@ def test_bluetooth_power(client, mocker):
 
     assert response.status_code == 200
     assert response.json() == {"status": "success", "action": "on"}
-    present.assert_called_once_with()
-    set_power.assert_called_once_with(True)
+    present.assert_called_once_with("hci1")
+    set_power.assert_called_once_with(True, "hci1")
 
 
 def test_bluetooth_pair_conflict(client, mocker):

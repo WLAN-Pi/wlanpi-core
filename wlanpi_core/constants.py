@@ -54,9 +54,6 @@ WPAS_DBUS_NETWORK_INTERFACE: str = "fi.w1.wpa_supplicant1.Network"
 DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"
 DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
 
-# Service Constants
-BT_ADAPTER = "hci0"
-
 # Network Namespace/Config Constants
 SUPPORTED_MODELS = ["M4", "M4+", "R4"]
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
