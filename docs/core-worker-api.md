@@ -10,7 +10,7 @@
 
 This effort delivers the minimum **core worker primitives** and documents the **wlanpi-ui helper layer** needed so every UI surface (panel, TUI, mobile, WebUI) can drive the same capabilities — without duplicating shell scripts or exposing raw namespace internals.
 
-**Spreadsheet:** [`docs/api-gap-matrix.csv`](./api-gap-matrix.csv) — verified against `wlanpi-core` on branch `dev` (OpenAPI at `/docs`).
+**Spreadsheet:** [`docs/api-gap-matrix.csv`](./api-gap-matrix.csv) — verified against `wlanpi-core` on branch `main` (OpenAPI at `/docs`).
 
 ### Counts (from gap matrix)
 

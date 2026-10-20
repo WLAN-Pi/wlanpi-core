@@ -38,7 +38,7 @@ def openapi_schema():
 def test_openapi_has_external_docs(openapi_schema):
     assert "externalDocs" in openapi_schema
     assert openapi_schema["externalDocs"]["url"] == (
-        "https://github.com/WLAN-Pi/wlanpi-core/blob/dev/docs/API-INTEGRATION-GUIDE.md"
+        "https://github.com/WLAN-Pi/wlanpi-core/blob/main/docs/API-INTEGRATION-GUIDE.md"
     )
 
 

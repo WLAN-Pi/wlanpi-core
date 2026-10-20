@@ -22,7 +22,7 @@ After you've done `./init`, you can use `./run` to skip all the staging. This _s
 ## Setup development environment
 
  1. Clone repo
- 1. Create your feature or fix branch from the `dev` branch 
+ 1. Create your feature or fix branch from the `main` branch
  1. Create virtualenv
  1. Install wheel and setuptools in virtualenv
  1. Install package into virtualenv with extras
@@ -230,36 +230,19 @@ tmpfs            25M   12K   25M   1% /var/log/wlanpi_core/debug
 
 ## Versioning and releases
 
-### For maintainers
+### Branches
 
-Merge strategy between dev (development) and main (release branch)
+`main` is the only long-lived branch. Every pull request targets `main`.
+Squash-merge feature and fix branches so that each change lands as one commit.
 
-**NEVER use squash merges when merging between `dev` and `main`.** 
-
-Please always use regular merge commits (`git merge --no-ff`).
-
-**Why?** Squash merging between permanent branches destroys the shared commit history, making it impossible for Git to track which commits exist in both branches.
-
-This leads to:
-
-- Inability to merge main back into dev without massive conflicts
-- Branch divergence that cannot be reconciled
-- Loss of detailed commit history on the release branch
-
-Regular merge commits preserve the full history and keep both branches properly synchronized.
-
-**Summary:**
-
-- ✅ **Squash merge OK**: `feature/branch` → `dev` (keeps dev clean of the many commits a feat/fix may take)
-- ❌ **Regular merge REQUIRED**: `dev` → `main` (preserves shared history)
-- ❌ **Regular merge REQUIRED**: `main` → `dev` (preserves shared history)
+A push to `main` that changes `debian/changelog` builds the package and
+deploys it to packagecloud. A version bump on `main` is a release.
 
 ### Version locations
 
-Before cutting a release, confirm the **OpenAPI Reference Check** is green on
-the dev→main PR. If it fails, `docs/openapi.json` is stale: merge the open
-`chore: update generated OpenAPI reference` PR into `dev` (the sync workflow
-keeps one current) and the release PR re-runs green.
+Before you merge a version bump, confirm that the **OpenAPI Reference Check**
+passes on its pull request. If the check fails, `docs/openapi.json` is stale.
+Run `tox -e openapi` and commit the result in the same pull request.
 
 Each release requires versions to be updated in **two** locations:
 

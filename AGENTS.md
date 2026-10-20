@@ -4,7 +4,8 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 
 ## Branch and PR rules
 
-- PRs target `dev` (the default branch). `main` is the release line; never PR it.
+- PRs target `main`, the only long-lived branch. A `debian/changelog` change
+  merged to `main` deploys to packagecloud.
 - One concern per PR: one domain router, one fix, one refactor. Size is a soft
   target: above 500 changed lines, add a `Review order` section to the
   description; above 1,000 is fine when the change is cohesive. Split only at
@@ -109,13 +110,11 @@ deterministic and warning-clean. Hard rules, each one from a real failure:
 
 `docs/openapi.json` is generated (`scripts/export_openapi.py`) and maintained
 by the sync workflow, which keeps a `chore: update generated OpenAPI
-reference` PR open against `dev`. Never hand-edit it; fix the source
-docstrings or `openapi_docs.py` on `dev`. PRs into both `dev` and `main` are
-gated on freshness (the OpenAPI Reference Check workflow, required on both
-branches): if it fails on a PR into `dev`, regenerate and commit the result
-in that PR; if it fails on a PR into `main`, merge the automation PR into
-`dev` first. Placeholders like `<jwt>` in descriptions must sit inside
-backticks or Swagger UI swallows them as HTML tags.
+reference` PR open against `main`. Never hand-edit it; fix the source
+docstrings or `openapi_docs.py`. PRs into `main` are gated on freshness (the
+OpenAPI Reference Check workflow). If the check fails, regenerate and commit
+the result in that PR. Placeholders like `<jwt>` in descriptions must sit
+inside backticks or Swagger UI swallows them as HTML tags.
 
 Regenerate with `tox -e openapi` (writes the file) or `tox -e openapicheck`
 (fails on any diff, writes nothing) rather than running
