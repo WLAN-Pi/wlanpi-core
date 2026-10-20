@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 
@@ -70,6 +70,10 @@ def _mock_root_adapters(mocker, *ifaces):
     mocker.patch(
         "wlanpi_core.streaming.connection_manager.network_config.status",
         return_value=_root_status(*ifaces),
+    )
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.allow_other_unicast",
+        return_value=None,
     )
 
 
@@ -177,6 +181,38 @@ async def test_capture_process_is_isolated_and_reaped_on_stop(mocker):
         "CAPTURE_STOPPED",
         {"message": "Capture stopped.", "session_id": session_id},
     )
+
+
+@pytest.mark.asyncio
+async def test_capture_clears_unicast_filter_before_dumpcap_starts(mocker):
+    manager = ConnectionManager()
+    websocket = object()
+    _connected_client(manager, websocket)
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.network_config.status",
+        return_value={"lab": {i: {"type": "monitor"} for i in ("wlanpi0", "wlanpi2")}},
+    )
+    order = Mock()
+    order.dumpcap = AsyncMock(return_value=CaptureProcess())
+    mocker.patch(
+        "wlanpi_core.streaming.connection_manager.allow_other_unicast", order.allow
+    )
+    mocker.patch.object(
+        connection_manager.asyncio, "create_subprocess_exec", new=order.dumpcap
+    )
+    mocker.patch.object(manager, "send_message_event", new=AsyncMock())
+    mocker.patch.object(manager, "send_event", new=AsyncMock())
+    manager.configure(websocket, "wlanpi0", {})
+    manager.configure(websocket, "wlanpi2", {})
+
+    await manager.start_streaming(websocket, ["wlanpi0", "wlanpi2"], "")
+    await manager.stop_streaming(websocket)
+
+    assert [c[0] for c in order.mock_calls] == ["allow", "allow", "dumpcap"]
+    assert order.allow.call_args_list == [
+        call("wlanpi0", "lab"),
+        call("wlanpi2", "lab"),
+    ]
 
 
 @pytest.mark.asyncio
