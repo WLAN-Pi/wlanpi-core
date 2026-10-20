@@ -1287,9 +1287,7 @@ class NetworkConfigCLI:
                 func = options[idx][1]
                 print()
                 func()
-
-                if idx < len(options) - 1:
-                    input("\nPress Enter to continue...")
+                input("\nPress Enter to continue...")
 
             except (ValueError, KeyboardInterrupt):
                 if (
