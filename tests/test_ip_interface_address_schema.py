@@ -40,7 +40,6 @@ def test_dynamic_address_keeps_non_24_prefixlen():
 
 
 def test_dynamic_request_without_address_gets_placeholders():
-    # VLAN creation requests may omit local/prefixlen when asking for DHCP
     addr = IPInterfaceAddress.model_validate({"family": "inet", "dynamic": True})
 
     assert addr.local == "0.0.0.0"

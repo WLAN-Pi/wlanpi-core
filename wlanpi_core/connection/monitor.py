@@ -1,9 +1,4 @@
-"""
-Connection monitoring for network interfaces.
-
-This module provides background monitoring of network connections,
-handling DHCP, default routes, and app startup when connections complete.
-"""
+"""Background monitors that finish DHCP, route and app setup once a connection completes."""
 
 import logging
 import threading
@@ -19,19 +14,13 @@ from wlanpi_core.wpa.status import get_wpa_status
 
 log = logging.getLogger(__name__)
 
-# Global monitor tracking
 _connection_monitors: dict[str, threading.Thread] = {}
 _monitor_stop_flags: dict[str, threading.Event] = {}
 _monitor_lock = threading.Lock()
 
 
 class ConnectionMonitor:
-    """
-    Connection monitor for tracking network connection status.
-
-    This class manages background threads that monitor network connections
-    and trigger actions (DHCP, routes, apps) when connections complete.
-    """
+    """Start background threads that complete setup once an interface connects."""
 
     @staticmethod
     def start_monitor(
@@ -40,37 +29,21 @@ class ConnectionMonitor:
         namespace: str | None,
         timeout: int = 15,
     ) -> None:
-        """
-        Start a background connection monitor for an interface.
-
-        Args:
-            cfg: Network configuration
-            iface: Interface name
-            namespace: Network namespace name, or None for root
-            timeout: Monitor timeout in seconds
-
-        Examples:
-            >>> ConnectionMonitor.start_monitor(config, "wlan0", "test_ns", timeout=15)
-        """
+        """Start a monitor for `iface` in `namespace` (None for root), waiting `timeout` seconds."""
         namespace_display = namespace if namespace else "root"
         monitor_key = f"{namespace_display}:{iface}"
 
-        # One monitor per (namespace, iface): an older one would otherwise
-        # keep polling and run DHCP or start an app for a superseded config.
+        # An older monitor would run DHCP or start an app for a superseded config.
         stop_connection_monitor(namespace, iface)
 
-        # Each generation owns its own stop event; it is captured here, not
-        # looked up by key, so a newer monitor cannot hand it a different one.
+        # Captured, not looked up by key, so a newer monitor cannot swap it.
         stop_event = threading.Event()
 
         def monitor_loop() -> None:
             try:
                 _monitor_body()
             finally:
-                # Deregister only after ALL side effects (dhcp, route, app
-                # start) have run, and on every exit path, so stop helpers
-                # and tests observe a live thread until it is truly done.
-                # Only remove our own generation's entries.
+                # Deregister last so a join waits for every side effect.
                 with _monitor_lock:
                     if _connection_monitors.get(monitor_key) is monitor_thread:
                         _connection_monitors.pop(monitor_key, None)
@@ -93,7 +66,6 @@ class ConnectionMonitor:
             )
 
             while time.time() - start < timeout:
-                # Check if we should stop
                 if stop_event.is_set():
                     log.info(
                         f"[ConnectionMonitor] Connection monitor for {iface} in {namespace_display} "
@@ -107,7 +79,6 @@ class ConnectionMonitor:
                     wpa_state = (wpa.get("wpa_state") or "").upper()
                     poll_count += 1
 
-                    # Log status every 3 polls (every ~3 seconds)
                     if poll_count % 3 == 0:
                         elapsed = int(time.time() - start)
                         log.info(
@@ -133,12 +104,10 @@ class ConnectionMonitor:
                     time.sleep(poll_interval)
 
             if connected_state:
-                # A stop request can arrive while a poll was in flight; check
-                # before every side effect, not just between polls.
+                # A stop can land mid-poll; recheck before each side effect.
                 if stop_event.is_set():
                     log.info(f"[ConnectionMonitor] {monitor_key} stopped before DHCP")
                     return
-                # Start DHCP after connection
                 try:
                     log.info(
                         f"[ConnectionMonitor] Starting DHCP for {iface} in {namespace_display} after connection"
@@ -152,14 +121,12 @@ class ConnectionMonitor:
                         )
                         return
 
-                    # Set default route if requested
                     if cfg.default_route:
                         log.info(
                             f"[ConnectionMonitor] Setting default route for {iface} in {namespace_display}"
                         )
                         set_default_route(iface, namespace)
 
-                    # Start app if configured (and still wanted)
                     if cfg.autostart_app and not stop_event.is_set():
                         log.info(
                             f"[ConnectionMonitor] Starting autostart app '{cfg.autostart_app}' "
@@ -178,7 +145,6 @@ class ConnectionMonitor:
                         exc_info=True,
                     )
             else:
-                # Not connected within timeout
                 elapsed = int(time.time() - start)
                 log.info(
                     f"[ConnectionMonitor] Did not reach connected state within {timeout}s for {iface} "
@@ -187,10 +153,7 @@ class ConnectionMonitor:
                 )
                 if stop_event.is_set():
                     return
-                # Leave dhcpcd waiting in the background: it follows the link
-                # and leases when a late association completes (a Wi-Fi 7
-                # radio scanning 2.4/5/6 GHz can take longer than `timeout`).
-                # The app still waits for a confirmed connection.
+                # dhcpcd leases on a late association; Wi-Fi 7 tri-band scans can outlast `timeout`.
                 try:
                     restart_dhcp_with_timeout(
                         iface, namespace, timeout=1, default_route=cfg.default_route
@@ -200,7 +163,6 @@ class ConnectionMonitor:
                         f"[ConnectionMonitor] Could not leave DHCP running for {iface}: {e}"
                     )
 
-        # Create and start monitor thread
         log.info(
             f"[ConnectionMonitor] Creating monitor thread for {iface} in {namespace_display} "
             f"(monitor_key={monitor_key})"
@@ -227,23 +189,13 @@ class ConnectionMonitor:
                 f"[ConnectionMonitor] Failed to start monitor thread for {iface} in {namespace_display}: {e}",
                 exc_info=True,
             )
-            # Clean up on failure
             with _monitor_lock:
                 _connection_monitors.pop(monitor_key, None)
                 _monitor_stop_flags.pop(monitor_key, None)
 
 
 def stop_connection_monitor(namespace: str | None, iface: str) -> None:
-    """
-    Stop a connection monitor for a specific interface/namespace.
-
-    Args:
-        namespace: Network namespace name, or None for root
-        iface: Interface name
-
-    Examples:
-        >>> stop_connection_monitor("test_ns", "wlan0")
-    """
+    """Stop the connection monitor for `iface` in `namespace` (None for root)."""
     namespace_display = namespace if namespace else "root"
     monitor_key = f"{namespace_display}:{iface}"
 
@@ -253,8 +205,7 @@ def stop_connection_monitor(namespace: str | None, iface: str) -> None:
         if stop_event:
             stop_event.set()
 
-    # Join OUTSIDE the lock: the monitor thread's own deregistration needs
-    # _monitor_lock, so joining while holding it guarantees a timeout.
+    # Join outside the lock: the thread's deregistration takes _monitor_lock.
     if monitor_thread and monitor_thread.is_alive():
         monitor_thread.join(timeout=2.0)
 
@@ -266,20 +217,13 @@ def stop_connection_monitor(namespace: str | None, iface: str) -> None:
 
 
 def stop_all_connection_monitors() -> None:
-    """
-    Stop all active connection monitors. Useful for shutdown or cleanup.
-
-    Examples:
-        >>> stop_all_connection_monitors()
-    """
+    """Stop all active connection monitors."""
     with _monitor_lock:
-        # Signal all monitors to stop
         for stop_event in _monitor_stop_flags.values():
             stop_event.set()
         threads = list(_connection_monitors.items())
 
-    # Join OUTSIDE the lock: each monitor thread's own deregistration needs
-    # _monitor_lock, so joining while holding it guarantees a timeout.
+    # Join outside the lock: each thread's deregistration takes _monitor_lock.
     for monitor_key, monitor_thread in threads:
         if monitor_thread.is_alive():
             monitor_thread.join(timeout=2.0)

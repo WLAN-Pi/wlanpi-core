@@ -1,16 +1,5 @@
 #!/bin/sh
-# wlanpi-core-preflight
-#
-# ExecStartPre writable probe for wlanpi-core. Fails (non-zero exit) if the
-# state directory backing our secrets/token database is not writable, so the
-# service refuses to start rather than coming up half-initialized. systemd's
-# restart policy then retries (bounded by StartLimit*), which papers over the
-# transient first-boot filesystem races that make early writes fail.
-#
-# NOTE: a .service ExecStartPre cannot import Python constants, so these paths
-# are duplicated from wlanpi_core/constants.py (SECRETS_DIR). A0 keeps the
-# CURRENT paths under /home/wlanpi; the flip to /home/wlanpi-core is a later PR
-# and must update this script in lockstep.
+# wlanpi-core-preflight: ExecStartPre probe; exits non-zero unless the secrets state directory is writable
 
 set -eu
 
@@ -23,13 +12,7 @@ fail() {
     exit 1
 }
 
-# ~/.local and ~/.local/share are the wlanpi user's XDG data home, shared
-# with other wlanpi apps. This probe runs as root before wlanpi-core's own
-# Python startup, so on a truly fresh boot it would otherwise be the first
-# thing to auto-vivify them via `mkdir -p` below -- leaving them root-owned
-# and locking the wlanpi user out of their own data home. Reclaim them for
-# wlanpi:wlanpi first; only .local/share/wlanpi-core itself (created next)
-# is meant to be root-owned.
+# Run as root, mkdir -p below would leave the wlanpi user's XDG data home root-owned.
 for d in "$WLANPI_HOME/.local" "$WLANPI_HOME/.local/share"; do
     if [ ! -d "$d" ]; then
         mkdir -m 0755 "$d" 2>/dev/null || fail "cannot create $d"
@@ -39,16 +22,11 @@ for d in "$WLANPI_HOME/.local" "$WLANPI_HOME/.local/share"; do
     fi
 done
 
-# Create the tree if missing (mkdir -p is idempotent). SecurityManager also
-# does this in-process, but doing it here lets the probe below be meaningful on
-# a truly fresh boot.
-# shellcheck disable=SC2174  # only the leaf needs 0700; SecurityManager
-# self-heals leaf ownership/mode (root:wlanpi 0710) at startup anyway.
+# shellcheck disable=SC2174  # only the leaf needs 0700
 mkdir -p -m 0700 "$STATE_DIR" 2>/dev/null || fail "cannot create state directory $STATE_DIR"
 
 [ -d "$STATE_DIR" ] || fail "state directory $STATE_DIR does not exist"
 
-# Verify we can actually write+read+remove in the state directory.
 PROBE="$STATE_DIR/.preflight_$$"
 if ! ( : > "$PROBE" ) 2>/dev/null; then
     fail "state directory $STATE_DIR is not writable"

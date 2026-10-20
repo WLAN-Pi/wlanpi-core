@@ -8,7 +8,7 @@ class KeyResponse(BaseModel):
 
     key_id: int
     message: str
-    key: str | None = None  # Base64 encoded key, only included when needed
+    key: str | None = None
 
 
 class TokenRequest(BaseModel):
@@ -37,8 +37,7 @@ class TokenRevokeResponse(BaseModel):
     )
 
 
-# No control characters: PAM would truncate at an embedded NUL and check a
-# different account than the one named.
+# No control characters: PAM truncates at NUL and would check another account.
 PAM_USERNAME_PATTERN = r"^[^\x00-\x1f\x7f]+$"
 
 

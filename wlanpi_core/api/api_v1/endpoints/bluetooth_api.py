@@ -58,12 +58,9 @@ async def bt_power(action: str) -> Any:
 
     - action: "on" or "off"
     """
-
-    # Validate action parameter
     if action not in ["on", "off"]:
         return Response(content="Invalid action. Use 'on' or 'off'.", status_code=400)
 
-    # Convert action to Boolean
     state = action == "on"
 
     try:

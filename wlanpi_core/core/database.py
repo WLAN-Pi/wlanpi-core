@@ -41,24 +41,13 @@ metadata = MetaData(naming_convention=convention)
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """
-    Base class for SQLAlchemy models with additional helper methods.
-
-    Provides:
-    - Automatic table naming (snake_case)
-    - Metadata with naming conventions
-    - Timestamps for created/updated records
-    """
+    """Declarative base: snake_case table names, constraint naming, and timestamps."""
 
     metadata = metadata
 
     @declared_attr.directive
     def __tablename__(cls) -> str:
-        """
-        Convert CamelCase class names to snake_case table names.
-
-        e.g. DeviceActivity -> device_activity
-        """
+        """Convert CamelCase class names to snake_case table names."""
         return "".join(
             ["_" + c.lower() if c.isupper() else c for c in cls.__name__]
         ).lstrip("_")
@@ -75,15 +64,7 @@ ModelType = TypeVar("ModelType", bound=Base)
 
 
 class DatabaseManager:
-    """
-    Async database management class with connection pooling and session handling.
-
-    Supports:
-    - Async engine creation
-    - Connection pooling
-    - Session management
-    - Logging and error handling
-    """
+    """Own the async engine, session factory, and table creation."""
 
     def __init__(
         self,
@@ -91,14 +72,7 @@ class DatabaseManager:
         echo: bool = False,
         pool_recycle: int = 1800,
     ):
-        """
-        Initialize async database engine and session factory.
-
-        Args:
-            database_url: Database connection URL (defaults to sqlite+aiosqlite)
-            echo: Whether to log SQL statements
-            pool_recycle: Recycle connections after this many seconds (optional)
-        """
+        """Create the engine and session factory; database_url defaults to DATABASE_PATH."""
         if database_url is None:
             database_url = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 
@@ -178,12 +152,7 @@ class DatabaseManager:
 
     @asynccontextmanager
     async def session(self) -> AsyncGenerator[AsyncSession]:
-        """
-        Async context manager for database sessions.
-
-        Yields:
-            An async database session
-        """
+        """Yield a session that commits on success and rolls back on error."""
         async with self._async_session_factory() as session:
             try:
                 yield session
@@ -230,11 +199,7 @@ class DatabaseManager:
 
 
 class BaseRepository:
-    """
-    Generic async repository with common CRUD operations.
-
-    Can be inherited by specific model repositories
-    """
+    """Generic async repository with common CRUD operations."""
 
     def __init__(self, session: AsyncSession):
         self._session = session

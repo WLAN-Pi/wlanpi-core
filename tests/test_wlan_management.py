@@ -1,5 +1,3 @@
-"""Tests for WLAN_MANAGEMENT=auto|manual (core leaves Wi-Fi to the operator)."""
-
 import asyncio
 
 import pytest
@@ -25,7 +23,6 @@ def test_value_is_normalized():
 
 
 def test_invalid_value_falls_back_to_auto():
-    # Startup must never fail on a bad value; fall back to auto.
     assert Settings(WLAN_MANAGEMENT="bogus").WLAN_MANAGEMENT == "auto"
 
 

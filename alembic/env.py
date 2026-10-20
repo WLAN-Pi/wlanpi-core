@@ -67,7 +67,6 @@ if context.is_offline_mode():
 else:
     asyncio.run(run_migrations_online())
 
-# alembic/versions/001_initial.py
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
@@ -152,7 +151,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
 
-    # Create indexes
     op.create_index('idx_tokens_device_id', 'tokens', ['device_id'])
     op.create_index('idx_tokens_expires', 'tokens', ['expires_at']) 
     op.create_index('idx_activity_device', 'device_activity', ['device_id'])

@@ -1,9 +1,4 @@
-"""
-WPA supplicant configuration file generation.
-
-This module provides functions for generating wpa_supplicant configuration files,
-including global headers and network blocks.
-"""
+"""wpa_supplicant configuration file generation."""
 
 import logging
 import os
@@ -20,9 +15,7 @@ from wlanpi_core.schemas.network.network import (
 log = logging.getLogger(__name__)
 
 
-# wpa_supplicant 2.x does not unescape "quoted" values: it takes everything
-# up to the LAST quote on the line literally. So `\"` or `\\` written inside
-# quotes changes the value. Each field uses a form that round-trips exactly.
+# wpa_supplicant 2.x reads a "quoted" value literally up to the line's last quote; escapes change it.
 
 
 def _ssid_value(ssid: str) -> str:
@@ -51,20 +44,7 @@ def generate_global_header(
     ctrl_interface: str = "/run/wpa_supplicant",
     update_config: int = 1,
 ) -> str:
-    """
-    Generate the global header for wpa_supplicant configuration.
-
-    Args:
-        ctrl_interface: Control interface path
-        update_config: Update config flag (0 or 1)
-
-    Returns:
-        Global header string
-
-    Examples:
-        >>> header = generate_global_header()
-        >>> print(header)
-    """
+    """Return the global section of a wpa_supplicant configuration."""
     lines = [
         f"ctrl_interface={ctrl_interface}",
         f"update_config={update_config}",
@@ -77,34 +57,20 @@ def generate_network_block(
     cfg: NamespaceConfig | RootConfig,
     priority: int = 0,
 ) -> str:
-    """
-    Generate a network block for wpa_supplicant configuration.
-
-    Args:
-        cfg: Network configuration (NamespaceConfig or RootConfig)
-        priority: Network priority
-
-    Returns:
-        Network block string
+    """Return the wpa_supplicant network block for cfg.
 
     Raises:
-        ValueError: If security.ssid is required but missing
-
-    Examples:
-        >>> block = generate_network_block(config, priority=1)
+        ValueError: If cfg has no security.ssid.
     """
     lines = ["network={"]
 
-    # Validate security.ssid exists before accessing
     if not cfg.security or not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
         raise ValueError("security.ssid is required when generating network block")
 
-    # Preserve exact SSID case
     original_ssid = cfg.security.ssid
     lines.append(f"    ssid={_ssid_value(original_ssid)}")
     lines.append(f"    priority={priority}")
 
-    # Get security type safely
     if hasattr(cfg.security, "security") and cfg.security.security:
         sec_str = (
             cfg.security.security.value
@@ -128,8 +94,7 @@ def generate_network_block(
     elif sec == "WPA3-PSK":
         if cfg.security.psk:
             lines.append(f"    psk={_psk_value(cfg.security.psk)}")
-        # SAE-EXT-KEY (AKM 24) is preferred when the AP offers it, as Wi-Fi 7
-        # MLO APs do; GCMP-256 is its cipher, CCMP stays for plain SAE.
+        # SAE-EXT-KEY (AKM 24) with GCMP-256 for Wi-Fi 7 MLO APs; plain SAE keeps CCMP.
         lines.append("    key_mgmt=SAE SAE-EXT-KEY")
         lines.append("    pairwise=GCMP-256 CCMP")
         lines.append("    group=GCMP-256 CCMP")
@@ -141,7 +106,6 @@ def generate_network_block(
         if cfg.security.password:
             lines.append(f"    password={_string_value(cfg.security.password)}")
 
-        # Enhanced EAP method support
         eap_method = getattr(cfg.security, "eap_method", "PEAP")
         lines.append(f"    eap={eap_method}")
 
@@ -176,24 +140,12 @@ def write_wpa_config(
     global_settings: dict[str, Any],
     ctrl_interface: str,
 ) -> None:
-    """
-    Write the wpa_supplicant configuration for one config entry.
+    """Write a 0600 wpa_supplicant config holding only this entry's network.
 
-    The file holds exactly this entry's network, so a supplicant cannot fall
-    back to a network from an earlier profile. It is created 0600 because it
-    holds the PSK.
-
-    Args:
-        cfg: Network configuration
-        conf_path: File to write, keyed by (namespace, iface)
-        global_settings: Global settings dictionary
-        ctrl_interface: Control socket directory for this supplicant
+    No other network, so the supplicant cannot fall back to an earlier profile's.
 
     Raises:
-        ValueError: If security.ssid is required but missing
-
-    Examples:
-        >>> write_wpa_config(config, Path("/run/wlanpi-core/wpa_supplicant/@root/wlan0.conf"), {}, "/run/wpa_supplicant")
+        ValueError: If cfg has no security.ssid.
     """
     if not cfg.security or not hasattr(cfg.security, "ssid") or not cfg.security.ssid:
         raise ValueError("security.ssid is required when writing config with security")

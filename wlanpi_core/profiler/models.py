@@ -17,9 +17,6 @@ class Start(BaseModel):
     interface: str | None = None
     ssid: str | None = None
 
-    # config_file_path: Optional[str] = None
-    # files_path: Optional[str] = None
-
     debug: bool | None = None
     noprep: bool | None = None
     noAP: bool | None = None

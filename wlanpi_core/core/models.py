@@ -11,11 +11,7 @@ from wlanpi_core.core.database import Base
 
 
 class SigningKey(Base):
-    """
-    Model representing cryptographic signing keys.
-
-    Stores encrypted keys used for token signing and verification
-    """
+    """Encrypted key used to sign and verify tokens."""
 
     __tablename__ = "signing_keys"
 
@@ -34,11 +30,7 @@ class SigningKey(Base):
 
 
 class Token(Base):
-    """
-    Model representing authentication tokens.
-
-    Stores token details, associated device, and signing key
-    """
+    """Issued token with its device and signing key."""
 
     __tablename__ = "tokens"
 
@@ -61,11 +53,7 @@ class Token(Base):
 
 
 class APIDevice(Base):
-    """
-    Model representing devices interacting with the system.
-
-    Tracks device first seen and last seen timestamps
-    """
+    """API client device with first-seen and last-seen timestamps."""
 
     __tablename__ = "devices"
 
@@ -107,7 +95,7 @@ class APIDeviceActivity(Base):
 
 
 class APIDeviceActivityRecent(Base):
-    """Model for recent device activities with short-term retention."""
+    """Model for recent device activities."""
 
     __tablename__ = "device_activity_recent"
 
@@ -117,9 +105,6 @@ class APIDeviceActivityRecent(Base):
     )
     endpoint: Mapped[str] = mapped_column(String, nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # Optional: Add relationship if needed
-    # device: Mapped[Device] = relationship("Device")
 
 
 class APIDeviceStats(Base):

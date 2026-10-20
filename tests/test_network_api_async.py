@@ -1,5 +1,3 @@
-"""Concurrency-boundary checks for read-only network API handlers."""
-
 from unittest.mock import AsyncMock
 
 import pytest

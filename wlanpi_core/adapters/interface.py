@@ -1,9 +1,4 @@
-"""
-Interface operations for network adapters.
-
-This module provides functions for creating, deleting, and managing network interfaces,
-separate from namespace concerns.
-"""
+"""Create, delete, query and set the state of wireless interfaces."""
 
 import logging
 from typing import Any
@@ -38,10 +33,6 @@ def create_interface(
     Raises:
         RunCommandError: If creation fails
         ValueError: If phy or interface_name is invalid
-
-    Examples:
-        >>> create_interface("phy0", "wlan0", "managed")
-        >>> create_interface("phy1", "wlan1", "monitor", namespace="test_ns")
     """
     if not phy or not phy.strip():
         raise ValueError("phy cannot be empty")
@@ -72,7 +63,6 @@ def create_interface(
         log.info(f"Successfully created interface {interface_name}")
         return True
     except RunCommandError as e:
-        # Interface might already exist, which is often not a critical error
         if "already exists" in str(e).lower() or "File exists" in str(e):
             log.info(f"Interface {interface_name} already exists")
             return True
@@ -94,10 +84,6 @@ def delete_interface(interface_name: str, namespace: str | None = None) -> bool:
     Raises:
         RunCommandError: If deletion fails (unless interface doesn't exist)
         ValueError: If interface_name is invalid
-
-    Examples:
-        >>> delete_interface("wlan0")
-        >>> delete_interface("wlan1", namespace="test_ns")
     """
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
@@ -115,7 +101,6 @@ def delete_interface(interface_name: str, namespace: str | None = None) -> bool:
         log.info(f"Successfully deleted interface {interface_name}")
         return True
     except RunCommandError as e:
-        # Interface might not exist, which is often not a critical error
         if "No such device" in str(e) or "does not exist" in str(e).lower():
             log.info(f"Interface {interface_name} does not exist, skipping deletion")
             return True
@@ -139,11 +124,6 @@ def get_interface_info(
     Raises:
         RunCommandError: If command execution fails
         ValueError: If interface_name is invalid
-
-    Examples:
-        >>> info = get_interface_info("wlan0")
-        >>> if info:
-        ...     print(f"PHY: {info.get('phy')}")
     """
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
@@ -160,7 +140,6 @@ def get_interface_info(
 
         info = {"name": interface_name, "exists": True}
 
-        # Parse info from output
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.startswith("Interface"):
@@ -204,10 +183,6 @@ def bring_interface_up(interface_name: str, namespace: str | None = None) -> boo
     Raises:
         RunCommandError: If operation fails
         ValueError: If interface_name is invalid
-
-    Examples:
-        >>> bring_interface_up("wlan0")
-        >>> bring_interface_up("wlan1", namespace="test_ns")
     """
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")
@@ -245,10 +220,6 @@ def bring_interface_down(interface_name: str, namespace: str | None = None) -> b
     Raises:
         RunCommandError: If operation fails
         ValueError: If interface_name is invalid
-
-    Examples:
-        >>> bring_interface_down("wlan0")
-        >>> bring_interface_down("wlan1", namespace="test_ns")
     """
     if not interface_name or not interface_name.strip():
         raise ValueError("interface_name cannot be empty")

@@ -1,13 +1,8 @@
 """Ownership self-heal for the wlanpi user's XDG data-home tree.
 
-wlanpi-core runs as root and is often the first process to touch
-``~wlanpi/.local`` and ``~wlanpi/.local/share`` on a fresh image (via the
-preflight probe or the directory setup below). ``Path.mkdir(parents=True)``
-creates any missing ancestor with the calling process's ownership, so a
-root-run mkdir silently leaves the wlanpi user locked out of their own XDG
-data home. Only ``~/.local/share/wlanpi-core`` (and what's under it) is meant
-to be root-owned; ``.local`` and ``.local/share`` are shared with other
-wlanpi apps and must stay wlanpi:wlanpi.
+A root-run ``mkdir(parents=True)`` leaves a missing ``~wlanpi/.local`` or
+``.local/share`` root-owned. They are shared with other wlanpi apps and must
+stay wlanpi:wlanpi; only ``.local/share/wlanpi-core`` is root's.
 """
 
 import grp

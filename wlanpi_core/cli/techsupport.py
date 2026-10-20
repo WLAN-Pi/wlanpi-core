@@ -57,14 +57,12 @@ def generate_report() -> str:
     """Generate the full diagnostic report text."""
     report = []
 
-    # Header
     report.append("=" * 80)
     report.append("WLAN PI TECHNICAL SUPPORT DIAGNOSTIC REPORT")
     report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     report.append("=" * 80)
     report.append("")
 
-    # 1. OS and Kernel Info
     section(report, "1. OS and Kernel Information")
     report.append(f"uname -a:\n{run(['uname', '-a'])}")
     report.append(f"/etc/os-release:\n{read_file('/etc/os-release')}")
@@ -72,41 +70,34 @@ def generate_report() -> str:
     report.append(f"/etc/wlanpi-release:\n{read_file('/etc/wlanpi-release')}")
     report.append("")
 
-    # 2. System Resources
     section(report, "2. System Resources")
     report.append(f"uptime:\n{run(['uptime'])}")
     report.append(f"free -h:\n{run(['free', '-h'])}")
     report.append(f"df -h:\n{run(['df', '-h'])}")
     report.append("")
 
-    # 3. WLAN Pi Packages
     section(report, "3. WLAN Pi Packages (wlanpi-*)")
     report.append(run(["dpkg", "-l", "wlanpi-*"]))
     report.append("")
 
-    # 4. Network Configuration
     section(report, "4. Network Configuration")
     report.append(f"ip addr:\n{run(['ip', 'addr'])}")
     report.append(f"ip route:\n{run(['ip', 'route'])}")
     report.append("")
 
-    # 5. Wireless Interfaces and Capabilities
     section(report, "5. Wireless Interfaces and Capabilities")
     report.append(f"iw dev:\n{run(['iw', 'dev'])}")
     report.append(f"iw phy:\n{run(['iw', 'phy'])}")
     report.append("")
 
-    # 6. USB Devices
     section(report, "6. USB Devices (lsusb)")
     report.append(run(["lsusb"]))
     report.append("")
 
-    # 7. Loaded Kernel Modules
     section(report, "7. Loaded Kernel Modules (lsmod)")
     report.append(run(["lsmod"]))
     report.append("")
 
-    # 8. WLAN Pi Services Status
     section(report, "8. WLAN Pi Services Status")
     services = ["wlanpi-core", "wlanpi-webui", "wlanpi-fpms", "wlanpi-profiler"]
     for service in services:
@@ -116,14 +107,12 @@ def generate_report() -> str:
         )
         report.append("")
 
-    # 9. Recent dmesg logs
     section(report, "9. Recent dmesg logs (filtered/tail)")
     report.append(run(["dmesg", "-T", "--level=err,warn"]))
     dmesg_tail = "\n".join(run(["dmesg", "-T"]).splitlines()[-50:])
     report.append(f"\nLast 50 lines of dmesg:\n{dmesg_tail}")
     report.append("")
 
-    # 10. wlanpi-core Journal
     section(report, "10. Recent wlanpi-core logs")
     report.append(run(["journalctl", "-u", "wlanpi-core", "-n", "50", "--no-pager"]))
     report.append("")

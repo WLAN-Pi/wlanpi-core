@@ -176,7 +176,6 @@ def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
         active = _parse_active_links(info) if info is not None else {}
         details = _parse_link_details(info) if info is not None else {}
         for link in links:
-            # None: activity unknown because iw dev info failed.
             link["active"] = link["link_id"] in active if info is not None else None
             link.update(details.get(link["link_id"], {}))
         # Several active links (EMLSR, STR): iw cannot tell which carries
@@ -193,7 +192,6 @@ def get_wlan_link(iface: str, namespace: str | None = None) -> dict[str, Any]:
         # the primary (active) link.
         signal = None
         keys = ("beacon signal avg:", "signal avg:")
-    # Station fallback only for a managed association (one peer: the AP).
     if signal is None and parsed.get("managed"):
         # The AP (MLD address for MLO) only, not TDLS or other peers.
         sta = _iw(iface, namespace, "station", "get", parsed["bssid"])

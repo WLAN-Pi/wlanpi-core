@@ -1,9 +1,4 @@
-"""
-WPA supplicant process management.
-
-This module provides functions for starting, stopping, and managing
-wpa_supplicant processes.
-"""
+"""wpa_supplicant process management."""
 
 import logging
 import os
@@ -26,8 +21,7 @@ _ROOT_DIR_NAME = "@root"
 ROOT_CTRL_DIR = "/run/wpa_supplicant"
 
 
-# Short on purpose: the control socket <this>/<netns>/ctrl/<iface> must fit
-# in a unix socket path (107 bytes) for a 63-char netns and 15-char iface.
+# Short: <this>/<netns>/ctrl/<iface> must fit a 107-byte unix socket path at max name lengths.
 _RUNTIME_SUBDIR = "wpa"
 
 
@@ -146,12 +140,10 @@ def _stop_pidfile(path: Path) -> bool:
 
 
 def stop_supplicant(iface: str, namespace: str | None) -> bool:
-    """
-    Stop the wpa_supplicant Core started for (namespace, iface), if any.
+    """Stop the wpa_supplicant Core started for (namespace, iface), if any.
 
-    Only the process named in Core's pidfile is signalled, and only if it is
-    still the wpa_supplicant Core started with that pidfile; nothing else on
-    the host is touched. Returns False if the process would not die.
+    Only the pidfile's process, and only while it is still that supplicant, is
+    signalled. Returns False if it would not die.
     """
     return _stop_pidfile(pidfile_path(iface, namespace))
 
@@ -162,8 +154,7 @@ def stop_namespace_supplicants(namespace: str) -> None:
         _stop_pidfile(path)
 
 
-# The whole line (with the -t timestamp) must match, so a value that merely
-# contains this text is still redacted.
+# Anchored on the whole -t line so a value merely containing this text is still redacted.
 _UNKNOWN_FIELD = re.compile(
     r"^[\d.]+: Line \d+: unknown (?:network|global) field '\w+'\.$"
 )
@@ -187,35 +178,23 @@ def _log_tail(path: Path, lines: int = 10) -> str:
 
 
 def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
-    """
-    Start or restart wpa_supplicant for an interface.
-
-    The config must already be written to config_path(iface, namespace). The
-    pidfile, log, and control socket are all keyed by (namespace, iface).
-
-    Args:
-        iface: Interface name
-        namespace: Network namespace name, or None for root
+    """Start or restart wpa_supplicant from the config already at config_path().
 
     Raises:
-        RunCommandError: If wpa_supplicant fails to start
-
-    Examples:
-        >>> start_or_restart_supplicant("wlan0", "test_ns")
+        RunCommandError: If the old supplicant will not stop or the new one fails to start.
     """
     namespace_display = namespace if namespace else "root"
     log.info(
         f"Starting/restarting wpa_supplicant for {iface} in namespace {namespace_display}"
     )
 
-    # Stop the supplicant Core previously started for this (namespace, iface);
-    # never start a second one beside a supplicant that would not die.
+    # Never start a second supplicant beside one that would not die.
     if not stop_supplicant(iface, namespace):
         raise RunCommandError(
             f"wpa_supplicant for {iface} in {namespace_display} did not stop", 1
         )
 
-    # Remove a stale control socket left by a supplicant that died
+    # A supplicant that died leaves a stale socket.
     (Path(ctrl_dir(namespace)) / iface).unlink(missing_ok=True)
 
     runtime_dir(namespace).mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -223,7 +202,6 @@ def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
     log_file.unlink(missing_ok=True)
     log_file.touch()
 
-    # Start wpa_supplicant, recording its PID for targeted teardown
     try:
         ns_exec(
             [
@@ -254,19 +232,10 @@ def start_or_restart_supplicant(iface: str, namespace: str | None) -> None:
 
 
 def parse_wpa_log(iface: str, namespace: str | None = None, timeout: int = 30) -> None:
-    """
-    Parse wpa_supplicant log file waiting for connection completion.
-
-    Args:
-        iface: Interface name
-        namespace: Network namespace name, or None for root
-        timeout: Maximum time to wait in seconds
+    """Follow the supplicant log until the connection completes.
 
     Raises:
-        TimeoutError: If connection doesn't complete within timeout
-
-    Examples:
-        >>> parse_wpa_log("wlan0", timeout=30)
+        TimeoutError: If it does not complete within `timeout` seconds.
     """
     start_time = time.time()
     log_file = log_path(iface, namespace)
@@ -286,7 +255,6 @@ def parse_wpa_log(iface: str, namespace: str | None = None, timeout: int = 30) -
 
             line = line.strip()
 
-            # Extract timestamp if present
             parts = line.split(":", 1)
             if len(parts) == 2 and parts[0].replace(".", "", 1).isdigit():
                 float(parts[0])
@@ -302,8 +270,7 @@ def parse_wpa_log(iface: str, namespace: str | None = None, timeout: int = 30) -
 
 
 def kill_all_supplicants() -> None:
-    """
-    Stop every wpa_supplicant Core started, in every namespace.
+    """Stop every wpa_supplicant Core started, in every namespace.
 
     Uses Core's pidfiles, then sweeps supplicants started by Core before
     pidfiles existed (recognised by Core's `-f /tmp/wpa-<iface>.log`

@@ -16,9 +16,7 @@ _REGDB_HEADER_SIZE = 8
 _REGDB_COUNTRY_RECORD_SIZE = 4
 _COUNTRY_CODE_RE = re.compile(rb"(?:00|[A-Z]{2})")
 
-# Keep the endpoint useful in development environments without wireless-regdb.
-# Production WLAN Pi images use the active regulatory.db file above, so package
-# updates can add or remove domains without a wlanpi-core release.
+# Only for hosts without wireless-regdb; devices read regulatory.db.
 _FALLBACK_REG_DOMAIN_CODES = tuple(
     "AD AE AF AI AL AM AN AR AS AT AU AW AZ BA BB BD BE BF BG BH BL BM BN BO "
     "BR BS BT BW BY BZ CA CF CH CI CL CN CO CR CU CX CY CZ DE DK DM DO DZ EC "

@@ -29,15 +29,7 @@ class TokenRepository(BaseRepository):
         super().__init__(session)
 
     async def get_token_by_value(self, token_value: str) -> Token | None:
-        """
-        Retrieve a token by its string value.
-
-        Args:
-            token_value: The token string to search for
-
-        Returns:
-            Token instance or None
-        """
+        """Return the token row matching token_value, with its signing key, or None."""
         query = (
             select(Token)
             .options(selectinload(Token.signing_key))
@@ -49,16 +41,7 @@ class TokenRepository(BaseRepository):
     async def get_active_tokens_for_device(
         self, device_id: str, include_revoked: bool = False
     ) -> list[Token]:
-        """
-        Retrieve active tokens for a specific device.
-
-        Args:
-            device_id: Device identifier
-            include_revoked: Whether to include revoked tokens
-
-        Returns:
-            List of active tokens
-        """
+        """Return the device's unrevoked, unexpired tokens; include_revoked returns all of them."""
         query = (
             select(Token)
             .options(selectinload(Token.signing_key))
@@ -78,15 +61,7 @@ class DeviceRepository(BaseRepository):
     """Repository for managing device-related operations."""
 
     async def get_or_create_device(self, device_id: str) -> APIDevice:
-        """
-        Retrieve an existing device or create a new one.
-
-        Args:
-            device_id: Unique device identifier
-
-        Returns:
-            Device instance
-        """
+        """Return the device row, creating it if needed, and stamp last_seen."""
         query = select(APIDevice).where(APIDevice.device_id == device_id)
         result = await self._session.execute(query)
         device = result.scalar_one_or_none()
@@ -135,14 +110,7 @@ class DeviceRepository(BaseRepository):
     async def update_device_stats(
         self, device_id: str, increment_requests: int = 1, increment_errors: int = 0
     ) -> APIDeviceStats:
-        """
-        Update device statistics.
-
-        Args:
-            device_id: Device identifier
-            increment_requests: Number of requests to increment
-            increment_errors: Number of errors to increment
-        """
+        """Add request and error counts to the device's stats row, creating it if needed."""
         await self.get_or_create_device(device_id)
 
         query = select(APIDeviceStats).where(APIDeviceStats.device_id == device_id)
@@ -175,18 +143,7 @@ class ActivityRepository(BaseRepository):
         status_code: int,
         activity_type: str = "recent",
     ) -> APIDeviceActivity | APIDeviceActivityRecent:
-        """
-        Create a new activity record.
-
-        Args:
-            device_id: Device identifier
-            endpoint: API endpoint accessed
-            status_code: HTTP status code
-            activity_type: "recent" or "historical"
-
-        Returns:
-            Created activity record
-        """
+        """Add one activity row; activity_type "recent" picks the recent table."""
         ActivityModel = (
             APIDeviceActivityRecent if activity_type == "recent" else APIDeviceActivity
         )
@@ -214,17 +171,7 @@ class ActivityRepository(BaseRepository):
     async def get_activities(
         self, device_id: str | None = None, limit: int = 100, recent: bool = True
     ) -> list[APIDeviceActivity | APIDeviceActivityRecent]:
-        """
-        Retrieve activity records for a device.
-
-        Args:
-            device_id: ID of the device to filter activities (optional)
-            limit: Maximum number of activities to retrieve (default: 100)
-            recent: Whether to retrieve recent activities or historical activities (default: True)
-
-        Returns:
-            List of activity records, either recent or historical
-        """
+        """Return up to limit activity rows, newest first, from the recent or full table."""
         Model = APIDeviceActivityRecent if recent else APIDeviceActivity
 
         query = select(Model).order_by(Model.created_at.desc())
@@ -242,16 +189,7 @@ class ActivityRepository(BaseRepository):
     async def bulk_create_activities(
         self, activities: list[dict[str, Any]], activity_type: str = "recent"
     ) -> list[APIDeviceActivity | APIDeviceActivityRecent]:
-        """
-        Bulk create activity records.
-
-        Args:
-            activities: List of activity dictionaries
-            activity_type: "recent" or "historical"
-
-        Returns:
-            List of created activities
-        """
+        """Add one activity row per dict; activity_type "recent" picks the recent table."""
         Model = (
             APIDeviceActivityRecent if activity_type == "recent" else APIDeviceActivity
         )
@@ -278,15 +216,7 @@ class StatsRepository(BaseRepository):
     """Repository for managing device statistics."""
 
     async def get_stats(self, device_id: str) -> APIDeviceStats | None:
-        """
-        Get statistics for a device.
-
-        Args:
-            device_id: Device identifier
-
-        Returns:
-            Device statistics or None if not found
-        """
+        """Return the device's stats row, or None."""
         query = select(APIDeviceStats).where(APIDeviceStats.device_id == device_id)
         result = await self._session.execute(query)
         return result.scalar_one_or_none()
@@ -298,18 +228,7 @@ class StatsRepository(BaseRepository):
         errors: int = 0,
         endpoints: set[str] | None = None,
     ) -> APIDeviceStats:
-        """
-        Update statistics for a device.
-
-        Args:
-            device_id: Device identifier
-            request_count: Number of requests to add
-            error_count: Number of errors to add
-            endpoint_count: Optional new endpoint count
-
-        Returns:
-            Updated statistics
-        """
+        """Add request and error counts, set the endpoint count, and stamp last_activity."""
         query = select(APIDeviceStats).where(APIDeviceStats.device_id == device_id)
         result = await self._session.execute(query)
         stats = result.scalar_one_or_none()
@@ -361,12 +280,7 @@ class StatsRepository(BaseRepository):
         }
 
     async def get_active_devices(self) -> list[dict[str, Any]]:
-        """
-        Get statistics for all active devices.
-
-        Returns:
-            List of device statistics
-        """
+        """Return one row per unrevoked, unexpired token with its device's stats."""
         now = datetime.now(UTC)
         query = (
             select(Token, APIDeviceStats)

@@ -1,10 +1,4 @@
-"""
-Namespace execution utilities for running commands in network namespaces.
-
-This module provides reusable functions for executing commands in network namespaces
-or in the root namespace. These utilities are used throughout the codebase for
-namespace-aware command execution.
-"""
+"""Run commands in a network namespace or the root namespace."""
 
 import logging
 
@@ -22,40 +16,17 @@ def ns_exec(
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
-    """
-    Execute a command in a network namespace or in the root namespace.
+    """Run `cmd` under sudo, inside `namespace` via `ip netns exec` when given.
 
-    Args:
-        cmd: Command to execute as a list of strings
-        namespace: Network namespace name. If None, executes in root namespace.
-        no_output: If True, suppresses logging of command output
-        raise_on_fail: If True, raises RunCommandError on command failure
-
-    Returns:
-        CommandResult object with stdout, stderr, and return_code
+    `no_output` suppresses debug logging of the output.
 
     Raises:
-        RunCommandError: If raise_on_fail=True and command fails
-
-    Examples:
-        >>> # Execute in a namespace
-        >>> result = ns_exec(["ip", "addr", "show"], namespace="test_ns")
-
-        >>> # Execute in root namespace
-        >>> result = ns_exec(["ip", "addr", "show"], namespace=None)
-
-        >>> # Execute with error handling
-        >>> try:
-        ...     result = ns_exec(["invalid", "cmd"], namespace="test_ns")
-        ... except RunCommandError as e:
-        ...     print(f"Command failed: {e}")
+        RunCommandError: If `raise_on_fail` and the command fails.
     """
     if namespace is None:
-        # Root namespace: use sudo
         full_cmd = ["sudo", *cmd]
     else:
         namespace = validate_namespace_name(namespace)
-        # Named namespace: use ip netns exec
         full_cmd = ["sudo", "ip", "netns", "exec", namespace, *cmd]
 
     log.debug(f"Executing in namespace '{namespace or 'root'}': {' '.join(full_cmd)}")
@@ -89,21 +60,10 @@ def run_in_namespace(
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
-    """
-    Run a command in a specific namespace.
-
-    Args:
-        namespace: Network namespace name (must not be None)
-        cmd: Command to execute as a list of strings
-        no_output: If True, suppresses logging of command output
-        raise_on_fail: If True, raises RunCommandError on command failure
-
-    Returns:
-        CommandResult object with stdout, stderr, and return_code
+    """Run `cmd` in `namespace`; see ns_exec.
 
     Raises:
-        ValueError: If namespace is None
-        RunCommandError: If raise_on_fail=True and command fails
+        ValueError: If namespace is None.
     """
     if namespace is None:
         raise ValueError(
@@ -120,20 +80,7 @@ def run_in_root(
     no_output: bool = False,
     raise_on_fail: bool = True,
 ) -> CommandResult:
-    """
-    Run a command in the root namespace.
-
-    Args:
-        cmd: Command to execute as a list of strings
-        no_output: If True, suppresses logging of command output
-        raise_on_fail: If True, raises RunCommandError on command failure
-
-    Returns:
-        CommandResult object with stdout, stderr, and return_code
-
-    Raises:
-        RunCommandError: If raise_on_fail=True and command fails
-    """
+    """Run `cmd` in the root namespace; see ns_exec."""
     return ns_exec(
         cmd, namespace=None, no_output=no_output, raise_on_fail=raise_on_fail
     )

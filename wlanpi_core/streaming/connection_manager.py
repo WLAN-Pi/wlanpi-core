@@ -33,10 +33,7 @@ _IW_TIMEOUT_SEC = 5
 # drain rate) or drop-oldest if busy channels still evict.
 _SUBSCRIBER_SEND_TIMEOUT_SEC = 5.0
 _SUBSCRIBER_QUEUE_BLOCKS = 1024
-# Cap concurrent subscribers per session so N stalled queues cannot pin
-# _SUBSCRIBER_QUEUE_BLOCKS * block_size each. Any authenticated principal may
-# subscribe (device-open reads), so without this a handful of stalled
-# subscribers is a soft memory DoS.
+# Any authenticated principal may subscribe; this bounds stalled queues' memory.
 _MAX_SUBSCRIBERS_PER_SESSION = 4
 _SLOW_SUBSCRIBER_CLOSE_CODE = 1013
 _PCAPNG_SECTION_HEADER = b"\x0a\x0d\x0d\x0a"
@@ -49,8 +46,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.clients: dict[WebSocket, dict[str, Any]] = {}
         self.interface_owners: dict[str, WebSocket] = {}
-        # Running captures by session id -> owning WebSocket. Sessions exist
-        # so other authenticated principals can subscribe read-only (#141).
+        # Read-only subscribers attach to a session (#141).
         self.sessions: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> None:
@@ -534,9 +530,6 @@ class ConnectionManager:
     async def send_supported_frequencies(self, websocket: WebSocket) -> None:
         """Send supported channel frequencies for capture adapters."""
         try:
-            # Discover capture adapters across all namespaces via core's own
-            # enumeration, then query each phy inside its namespace, so a
-            # namespaced adapter is not invisible here.
             from wlanpi_core.adapters.interface import get_interface_info
 
             status = await asyncio.to_thread(network_config.status)
@@ -606,9 +599,6 @@ class ConnectionManager:
         self, interfaces: list[str]
     ) -> tuple[str | None, str | None]:
         """Find the namespace the capture interfaces live in.
-
-        Uses core's own adapter enumeration (network_config.status), never a
-        bespoke iw call.
 
         Returns (namespace, error). namespace is None for root. error is a
         short reason string when the interfaces are missing or split across
@@ -735,11 +725,8 @@ class ConnectionManager:
                 if freq and width:
                     error = await self._set_channel(iface, freq, width, namespace)
                     if error:
-                        # Warn but continue: capture on whatever channel the
-                        # radio is currently on rather than aborting. This is
-                        # what keeps single-radio devices usable when the
-                        # managed vif briefly holds the phy (see the busy retry
-                        # in _set_channel). Do not turn this into a hard abort.
+                        # Not fatal: on single-radio devices the managed vif
+                        # can briefly hold the phy.
                         await self.send_message_event(
                             websocket,
                             "error",
@@ -747,8 +734,6 @@ class ConnectionManager:
                             f"Could not set initial channel for {iface}: {error}",
                         )
 
-        # mt7921 firmware drops other stations' unicast after a scan on the
-        # radio; clear that before capturing (see mt76_rxfilter).
         for iface in interfaces:
             await asyncio.to_thread(allow_other_unicast, iface, namespace)
 
@@ -831,8 +816,6 @@ class ConnectionManager:
 
         session_id = f"cap_{secrets.token_hex(4)}"
         client["session_id"] = session_id
-        # Snapshot the requested config so subscribers know what the owner
-        # asked dumpcap and the channel hopper to capture.
         client["session_config"] = {
             "interfaces": {
                 iface: client["configs"].get(iface, {}) for iface in interfaces

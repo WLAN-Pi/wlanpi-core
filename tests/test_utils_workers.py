@@ -1,5 +1,3 @@
-"""Unit tests for reachability and speedtest helpers."""
-
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch

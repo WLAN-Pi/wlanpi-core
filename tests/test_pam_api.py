@@ -1,5 +1,3 @@
-"""Tests for the internal PAM authentication endpoints."""
-
 import hashlib
 import logging
 import sys
@@ -123,7 +121,7 @@ async def test_non_administrator_refusal_waits_like_a_wrong_password(monkeypatch
     started = time.monotonic()
     resp = await _verify("alice", "secret", code, admin=False)
     assert resp.status == "failure"
-    assert time.monotonic() - started >= 0.025  # 0.5x the delay at least
+    assert time.monotonic() - started >= 0.025
 
 
 @pytest.mark.parametrize("draw,factor", [(0.0, 0.5), (0.5, 1.0), (1.0, 1.5)])
@@ -197,7 +195,7 @@ async def test_change_password_non_expired_refusal_waits_like_a_wrong_password(
     started = time.monotonic()
     resp = await _change("alice", "current", "new", SUCCESS, SUCCESS, admin=False)
     assert resp.status == "failure"
-    assert time.monotonic() - started >= 0.025  # 0.5x the delay at least
+    assert time.monotonic() - started >= 0.025
 
 
 @pytest.mark.asyncio

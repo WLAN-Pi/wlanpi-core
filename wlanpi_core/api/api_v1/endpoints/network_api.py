@@ -57,15 +57,11 @@ def _read_interface_wpa_status(iface: str) -> dict[str, Any]:
     try:
         namespace = resolve_interface_namespace(iface)
     except ValidationError:
-        # Unknown interface (404) or unreadable namespace status (503): keep the
-        # root answer this deprecated endpoint always gave.
+        # Deprecated endpoint: keep its historical root answer on 404/503.
         namespace = None
     return get_wpa_status(iface, namespace)
 
 
-################################
-# General Network Management   #
-################################
 @router.get(
     "/interfaces",
     response_model=dict[str, list[IPInterface]],
@@ -97,9 +93,6 @@ async def show_all_interfaces(
         return Response(content="Internal Server Error", status_code=500)
 
 
-################################
-# Ethernet Management          #
-################################
 @router.get(
     "/ethernet/{interface}",
     response_model=dict[str, list[IPInterface]],
@@ -116,7 +109,6 @@ async def show_all_ethernet_interfaces(
 
         def filterfunc(i: IPInterface) -> bool:
             iface_obj = i.model_dump()
-            # TODO: Naive approach, come up with a better one later, maybe IP command has a better way to filter?
             return (
                 "linkinfo" not in iface_obj
                 and iface_obj["link_type"] != "loopback"
@@ -134,11 +126,6 @@ async def show_all_ethernet_interfaces(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-
-
-################################
-# VLAN Management              #
-################################
 
 
 @router.get(
@@ -210,8 +197,6 @@ async def create_ethernet_vlan(
     interface: str, vlan: str | int, addresses: list[IPInterfaceAddress]
 ) -> NetworkConfigResponse | Response:
     """Create (or replace) a VLAN on the given interface."""
-
-    # Screen against "all" for this operation
     if interface and interface.lower() == "all":
         ve = ValidationError(
             'The "all" meta-interface is not currently supported for this operation',
@@ -249,8 +234,6 @@ async def delete_ethernet_vlan(
     interface: str, vlan: str | int, allow_missing: bool = False
 ) -> NetworkConfigResponse | Response:
     """Remove a VLAN from the given interface."""
-
-    # Screen against "all" for this operation
     if interface and interface.lower() == "all":
         ve = ValidationError(
             'The "all" meta-interface is not currently supported for this operation',
@@ -274,11 +257,6 @@ async def delete_ethernet_vlan(
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
-
-
-################################
-# Network primitives (P0)      #
-################################
 
 
 @router.get(
@@ -493,11 +471,6 @@ async def show_wlan_pci_drivers() -> Any:
     except Exception as ex:
         log.error(ex)
         return Response(content="Unable to list PCI WLAN drivers", status_code=503)
-
-
-################################
-# WLAN Management (legacy DBus)#
-################################
 
 
 @legacy_wlan_router.get(

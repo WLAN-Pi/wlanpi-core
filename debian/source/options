@@ -1,4 +1,3 @@
-# stuff to keep out of source tarballs
 tar-ignore = "*.egg-info"
 tar-ignore = ".pip-cache"
 tar-ignore = "*.exe"

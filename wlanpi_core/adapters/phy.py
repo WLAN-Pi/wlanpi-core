@@ -1,9 +1,4 @@
-"""
-PHY (physical device) operations for wireless adapters.
-
-This module provides functions for managing wireless PHY devices, including
-moving them between namespaces and querying their state.
-"""
+"""Wireless PHY queries and namespace moves."""
 
 import logging
 from typing import Any
@@ -23,7 +18,8 @@ def phy_args(phy: str) -> list[str]:
 
 
 def _phy_netdevs(phy: str, namespace: str | None) -> list[discovery.LiveInterface]:
-    # ponytail: assumes phyN is phy index N, as the callers already do.
+    # ponytail: assumes phyN is index N, false after `iw phy set name`; read
+    # `wiphy index` from `iw phy <name> info` if renamed phys appear.
     index = phy.removeprefix("phy#").removeprefix("phy")
     result = ns_exec([IW_FILE, "dev"], namespace=namespace, no_output=True)
     return [
@@ -108,10 +104,6 @@ def list_phys(namespace: str | None = None) -> list[str]:
 
     Raises:
         RunCommandError: If command execution fails
-
-    Examples:
-        >>> phys = list_phys()
-        >>> print(f"Found {len(phys)} PHY devices")
     """
     log.debug(f"Listing PHY devices in namespace {namespace or 'root'}")
 
@@ -125,7 +117,6 @@ def list_phys(namespace: str | None = None) -> list[str]:
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.startswith("Wiphy"):
-                # Format: "Wiphy phy0" or "Wiphy phy1"
                 parts = line.split()
                 if len(parts) >= 2:
                     phy_name = parts[1]
@@ -153,11 +144,6 @@ def get_phy_info(phy: str, namespace: str | None = None) -> dict[str, Any] | Non
     Raises:
         RunCommandError: If command execution fails
         ValueError: If phy name is invalid
-
-    Examples:
-        >>> info = get_phy_info("phy0")
-        >>> if info:
-        ...     print(f"PHY name: {info.get('name')}")
     """
     if not phy or not phy.strip():
         raise ValueError("phy cannot be empty")
@@ -165,13 +151,11 @@ def get_phy_info(phy: str, namespace: str | None = None) -> dict[str, Any] | Non
     log.debug(f"Getting information for PHY: {phy}")
 
     try:
-        # Check if PHY exists
         phys = list_phys(namespace=namespace)
         if phy not in phys:
             log.debug(f"PHY {phy} not found in namespace {namespace or 'root'}")
             return None
 
-        # Get detailed info using 'iw phy <phy> info'
         if namespace is None:
             result = run_command([IW_FILE, "phy", phy, "info"], raise_on_fail=True)
         else:
@@ -181,7 +165,6 @@ def get_phy_info(phy: str, namespace: str | None = None) -> dict[str, Any] | Non
 
         info = {"name": phy, "exists": True}
 
-        # Parse basic info from output (can be extended with more fields)
         for line in result.stdout.splitlines():
             line = line.strip()
             if line.startswith("Wiphy"):
@@ -210,9 +193,6 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
     Raises:
         RunCommandError: If move operation fails
         ValueError: If phy or namespace is invalid
-
-    Examples:
-        >>> move_phy_to_namespace("phy0", "test_ns")
     """
     if not phy or not phy.strip():
         raise ValueError("phy cannot be empty")
@@ -223,7 +203,6 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
 
     up = _up_monitors(phy, None)
     try:
-        # Move PHY to namespace using 'iw phy <phy> set netns name <namespace>'
         run_command(
             ["sudo", IW_FILE, *phy_args(phy), "set", "netns", "name", namespace],
             raise_on_fail=True,
@@ -251,9 +230,6 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
     Raises:
         RunCommandError: If move operation fails
         ValueError: If phy or namespace is invalid
-
-    Examples:
-        >>> move_phy_to_root("phy0", "test_ns")
     """
     if not phy or not phy.strip():
         raise ValueError("phy cannot be empty")
@@ -264,7 +240,7 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
 
     up = _up_monitors(phy, namespace)
     try:
-        # Move PHY to root (PID 1) using 'iw phy <phy> set netns 1'
+        # `set netns 1` targets PID 1's namespace, the root one.
         ns_exec(
             [IW_FILE, *phy_args(phy), "set", "netns", "1"],
             namespace=namespace,

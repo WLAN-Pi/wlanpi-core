@@ -77,11 +77,7 @@ class SystemManager:
         return None
 
     def _supports_monitor(self, index: str) -> bool:
-        """Whether phy<index> lists monitor among its interface modes.
-
-        Returns True when ``iw phy`` output is missing or has no interface
-        mode list, so an unknown phy keeps the old behaviour of trying.
-        """
+        """Whether phy<index> lists monitor mode; True when ``iw phy`` gives no mode list."""
         output = self._run([IW_FILE, "phy", f"phy{index}", "info"], capture_output=True)
         if not output:
             return True
@@ -164,15 +160,12 @@ class SystemManager:
                 if index is not None:
                     monitor[name] = index
 
-        # Delete orphan <iface_name><index> interfaces
         for mon_name, mon_index in monitor.items():
             if self._is_core_monitor(mon_name) and mon_index not in managed.values():
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 
-        # Create missing <iface_name><index> interfaces. Match by phy, not name:
-        # a monitor's name can lag its phy index (#365), and a second monitor
-        # plus a scan crashes BE200 firmware (#314).
+        # Match by phy: names can lag the phy index (#365); a second monitor plus a scan crashes BE200 firmware (#314).
         core_monitor_phys = {
             index for name, index in monitor.items() if self._is_core_monitor(name)
         }

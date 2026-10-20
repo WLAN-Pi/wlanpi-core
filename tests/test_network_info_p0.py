@@ -1,5 +1,3 @@
-"""Tests for P0 network info API additions."""
-
 import subprocess
 from unittest.mock import MagicMock, patch
 

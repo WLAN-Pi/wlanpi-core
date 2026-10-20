@@ -2,12 +2,6 @@ import sqlite3
 
 
 def list_all_tables(db_path):
-    """
-    Retrieves all table names from the SQLite database.
-
-    :param db_path: Path to the SQLite database file.
-    :return: List of table names.
-    """
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -26,12 +20,6 @@ def list_all_tables(db_path):
 
 
 def list_table_records(db_path, table_name):
-    """
-    Retrieves and prints all records from a specified table.
-
-    :param db_path: Path to the SQLite database file.
-    :param table_name: Name of the table to retrieve records from.
-    """
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()

@@ -67,7 +67,6 @@ def test_dhcpcd_hooks_never_touch_hostname_or_root_dns(run_dir):
         return {argv[i + 1] for i, arg in enumerate(argv) if arg == "-C"}
 
     assert disabled(root) == {"hostname", "timesyncd", "resolv.conf"}
-    # In a namespace resolv.conf goes to /etc/netns/<ns>/resolv.conf.
     assert disabled(namespaced) == {"hostname", "timesyncd"}
 
 
@@ -96,13 +95,13 @@ def test_stop_dhcp_releases_only_its_own_dhcpcd(run_dir):
     procs = _Procs(
         {
             10: ["dhcpcd: sta0 [ip4]"],
-            11: ["dhcpcd: sta0 [ip4]"],  # same iface name, other namespace
+            11: ["dhcpcd: sta0 [ip4]"],
             12: ["/usr/bin/python3", "x"],
         }
     )
     _pidfile(run_dir, "ns_a", "sta0", 10)
     _pidfile(run_dir, "ns_b", "sta0", 11)
-    _pidfile(run_dir, "ns_c", "sta0", 12)  # PID reused by something else
+    _pidfile(run_dir, "ns_c", "sta0", 12)
     with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
         with patch.object(nm.os, "kill", side_effect=procs.kill):
             nm.stop_dhcp("sta0", "ns_a")
@@ -164,7 +163,6 @@ def test_default_route_goes_via_the_dhcp_router():
 
 def test_dhcpcd_wrapper_creates_mount_points_before_binding(run_dir):
     # /run/dhcpcd is tmpfs and absent on a fresh boot; binding onto it fails.
-    # (Josh Schmelzle, review of #291.)
     with patch.object(nm, "ns_exec") as ns_exec:
         nm.restart_dhcp_with_timeout("sta0", "ns_a")
     argv = _started_argv(ns_exec)
@@ -176,7 +174,7 @@ def test_dhcpcd_wrapper_creates_mount_points_before_binding(run_dir):
 
 def test_stop_dhcp_does_not_match_a_longer_iface_name(run_dir):
     procs = _Procs({10: ["dhcpcd: wlan10 [ip4]"]})
-    _pidfile(run_dir, None, "wlan1", 10)  # stale: PID now runs dhcpcd for wlan10
+    _pidfile(run_dir, None, "wlan1", 10)
     with patch.object(nm, "_read_cmdline", side_effect=procs.cmdline):
         with patch.object(nm.os, "kill", side_effect=procs.kill):
             nm.stop_dhcp("wlan1", None)
@@ -219,7 +217,6 @@ def test_stop_dhcp_ignores_a_reused_pid_naming_the_iface(run_dir):
 
 
 def test_stop_dhcp_ignores_a_reused_pid_in_another_namespace(run_dir, monkeypatch):
-    # A stale ns_a pidfile whose PID now runs dhcpcd for the same iface in ns_b.
     procs = _Procs({10: ["dhcpcd: wlan1 [ip4]"]})
     _pidfile(run_dir, "ns_a", "wlan1", 10)
     monkeypatch.setattr(

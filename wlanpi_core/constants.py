@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 
-# Core config
 API_V1_STR: str = "/api/v1"
 PROJECT_NAME: str = "wlanpi-core"
 PROJECT_DESCRIPTION: str = (
@@ -17,7 +16,6 @@ ENCRYPTION_KEY_FILE = "fernet_key.b64"
 SHARED_SECRET_FILE = "shared_secret.bin"
 DATABASE_PATH = f"{SECRETS_DIR}/tokens.db"
 
-# Linux programs
 IFCONFIG_FILE: str = "/sbin/ifconfig"
 IW_FILE: str = "/sbin/iw"
 IP_FILE: str = "/usr/sbin/ip"
@@ -26,10 +24,8 @@ ETHTOOL_FILE: str = "/sbin/ethtool"
 DUMPCAP_FILE: str = "/usr/bin/dumpcap"
 LLDPCTL_FILE: str = "/usr/sbin/lldpctl"
 
-# Mode changer scripts
 MODE_FILE: str = "/etc/wlanpi-state"
 
-# Version file for WLAN Pi image
 WLANPI_IMAGE_FILE: str = "/etc/wlanpi-release"
 
 WCONSOLE_SWITCHER_FILE: str = "/opt/wlanpi-wconsole/wconsole_switcher"
@@ -41,7 +37,6 @@ BRIDGE_SWITCHER_FILE: str = "/opt/wlanpi-bridge/bridge_switcher"
 REG_DOMAIN_FILE: str = "/usr/bin/wlanpi-reg-domain"
 TIME_ZONE_FILE: str = "/usr/bin/wlanpi-timezone"
 
-# WPA Supplicant dbus service and interface
 WPAS_DBUS_SERVICE: str = "fi.w1.wpa_supplicant1"
 WPAS_DBUS_INTERFACE: str = "fi.w1.wpa_supplicant1"
 WPAS_DBUS_OPATH: str = "/fi/w1/wpa_supplicant1"
@@ -50,11 +45,9 @@ WPAS_DBUS_INTERFACES_OPATH: str = "/fi/w1/wpa_supplicant1/Interfaces"
 WPAS_DBUS_BSS_INTERFACE: str = "fi.w1.wpa_supplicant1.BSS"
 WPAS_DBUS_NETWORK_INTERFACE: str = "fi.w1.wpa_supplicant1.Network"
 
-# VLAN model constants
 DEFAULT_VLAN_INTERFACE_FILE = "/etc/network/interfaces.d/vlans"
 DEFAULT_INTERFACE_FILE = "/etc/network/interfaces"
 
-# Network Namespace/Config Constants
 SUPPORTED_MODELS = ["M4", "M4+", "R4"]
 DEFAULT_CTRL_INTERFACE = "/run/wpa_supplicant"
 DEFAULT_CONFIG_DIR = "/etc/wpa_supplicant"
@@ -75,9 +68,7 @@ MONITOR_IFACE_PREFIX = "wlanpi"
 CREATE_MONITOR_PAIRS_DEFAULT = True
 CREATE_MONITOR_PAIRS_UNINIT = True
 
-#### Paths below here are relative to script dir or /tmp fixed paths ###
 
-# Networkinfo data file names
 IPCONFIG_FILE: str = "/opt/wlanpi-common/networkinfo/ipconfig.sh"
 REACHABILITY_FILE: str = "/opt/wlanpi-common/networkinfo/reachability.sh"
 REACHABILITY_MAX_CUSTOM_TARGETS: int = 10

@@ -1,5 +1,3 @@
-"""Tests for the getjwt CLI."""
-
 from unittest.mock import MagicMock
 
 import pytest

@@ -32,8 +32,7 @@ class Settings(BaseSettings):
 
     base_dir: Path = Path(__file__).parent.parent.absolute()
 
-    # "auto": wlanpi-core manages Wi-Fi interfaces (default).
-    # "manual": wlanpi-core leaves Wi-Fi entirely to the operator.
+    # "auto": Core manages Wi-Fi interfaces; "manual": Core leaves Wi-Fi to the operator.
     WLAN_MANAGEMENT: str = "auto"
 
     @field_validator("WLAN_MANAGEMENT", mode="before")
@@ -58,5 +57,4 @@ def wlan_management_is_manual() -> bool:
     return settings.WLAN_MANAGEMENT == "manual"
 
 
-# when app is created, endpoints will be stored here for api landing page
 endpoints: list[Any] = []

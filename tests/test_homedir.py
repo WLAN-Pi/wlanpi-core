@@ -1,5 +1,3 @@
-"""Tests for wlanpi XDG data-home ownership self-heal."""
-
 import os
 
 import pytest

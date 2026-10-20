@@ -1,5 +1,3 @@
-# DBUS managed wpa_supplicant service on wlan0
-
 [Unit]
 Description=WPA supplicant daemon (interface-specific version)
 Requires=sys-subsystem-net-devices-%i.device
@@ -7,11 +5,8 @@ After=sys-subsystem-net-devices-%i.device
 Before=network.target
 Wants=network.target
 
-# NetworkManager users will probably want the dbus version instead.
-
 [Service]
 Type=simple
-#ExecStart=/sbin/wpa_supplicant -c/etc/wpa_supplicant/wpa_supplicant-%I.conf -i%I
 ExecStart=/sbin/wpa_supplicant -u -O /run/wpa_supplicant -c/etc/wpa_supplicant/wpa_supplicant-%I.conf -i%I
 ExecReload=/bin/kill -HUP \$MAINPID
 

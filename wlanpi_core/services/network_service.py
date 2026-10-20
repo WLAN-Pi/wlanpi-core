@@ -29,11 +29,7 @@ log = get_logger(__name__)
 
 
 class AsyncDBusManager:
-    """
-    An asyncio-friendly wrapper for DBus operations without PyGObject dependency.
-
-    Uses polling instead of signals for state changes.
-    """
+    """Asyncio-friendly D-Bus wrapper that polls instead of using signals (no PyGObject)."""
 
     def __init__(self) -> None:
         self._bus: Any = None
@@ -55,20 +51,7 @@ class AsyncDBusManager:
         initial_interval: float = 0.1,
         max_interval: float = 0.5,
     ) -> bool:
-        """
-        Poll at regular intervals until condition_func returns True or timeout is reached.
-
-        Uses adaptive polling to reduce CPU usage.
-
-        Args:
-            condition_func: Function that returns True when condition is met
-            timeout: Maximum seconds to wait before giving up
-            initial_interval: Starting polling interval in seconds
-            max_interval: Maximum polling interval in seconds
-
-        Returns:
-            bool: True if condition was met, False if timed out
-        """
+        """Poll condition_func with a growing interval; return False after `timeout` seconds."""
         start_time = asyncio.get_event_loop().time()
         interval = initial_interval
         polls = 0
@@ -97,18 +80,7 @@ class AsyncDBusManager:
         interface_name: str,
         property_name: str,
     ) -> Any:
-        """
-        Get a property from a DBus object without using signals.
-
-        Args:
-            service_name: DBus service name
-            object_path: DBus object path
-            interface_name: Interface name
-            property_name: Property name
-
-        Returns:
-            The property value
-        """
+        """Return a property of a D-Bus object."""
         obj = self.bus.get_object(service_name, object_path)
         return obj.Get(
             interface_name, property_name, dbus_interface=dbus.PROPERTIES_IFACE
@@ -122,33 +94,16 @@ class AsyncDBusManager:
         method_name: str,
         *args: Any,
     ) -> Any:
-        """
-        Call a method on a DBus object.
-
-        Args:
-            service_name: DBus service name
-            object_path: DBus object path
-            interface_name: Interface name
-            method_name: Method name
-            *args: Method arguments
-
-        Returns:
-            Method return value
-        """
+        """Call a method on a D-Bus object and return its result."""
         obj = self.bus.get_object(service_name, object_path)
         method = obj.get_dbus_method(method_name, interface_name)
         return method(*args)
 
 
-# For running locally (not in API)
-# import asyncio
-
 DBUS_MANAGER = AsyncDBusManager()
 
 API_TIMEOUT = 20
 
-# Module-level state written by setup_DBus_Supplicant_Access() and friends.
-# Kept as plain globals to preserve the legacy callback behaviour.
 bus: Any = None
 if_obj: Any = None
 iface: Any = None
@@ -159,31 +114,17 @@ connectionEvents: list[Any] = []
 supplicantState: list[Any] = []
 selectedNetworkSSID: list[Any] = []
 
-# Define a global debug level variable
 DEBUG_LEVEL = 1
-# Debug Level 0: No messages are printed.
-# Debug Level 1: Only low-level messages (level 1) are printed.
-# Debug Level 2: Low-level and medium-level messages (levels 1 and 2) are printed.
-# Debug Level 3: All messages (levels 1, 2, and 3) are printed.
 
 
 def set_debug_level(level: int) -> None:
-    """
-    Set the global debug level.
-
-    :param level: The desired debug level (0 for no debug, higher values for more verbosity).
-    """
+    """Set the global debug level (0 prints nothing, 3 prints everything)."""
     global DEBUG_LEVEL
     DEBUG_LEVEL = level
 
 
 def debug_print(message: Any, level: int) -> None:
-    """
-    Print a message to the console based on the global debug level.
-
-    :param message: The message to be printed.
-    :param level: The level of the message (e.g., 1 for low, 2 for medium, 3 for high).
-    """
+    """Print `message` when `level` is at or below the global debug level."""
     if level <= DEBUG_LEVEL:
         print(message)
 
@@ -219,17 +160,14 @@ def byte_array_to_string(s: Any) -> str:
             r += chr(c)
         else:
             r += " "
-            # r += urllib.quote(chr(c))
     return r
 
 
 def renew_dhcp(interface: str) -> None:
     """Use dhclient to release and request a new DHCP lease."""
     try:
-        # Release the current DHCP lease
         run_command(["sudo", "dhclient", "-r", interface], raise_on_fail=True)
         time.sleep(3)
-        # Obtain a new DHCP lease
         run_command(["sudo", "dhclient", interface], raise_on_fail=True)
     except RunCommandError as err:
         debug_print(
@@ -253,18 +191,11 @@ def get_ip_address(interface: str) -> str | None:
 
 
 def getBss(bss: str) -> dict[str, Any] | None:
-    """
-    Query DBUS_BSS_INTERFACE through dbus for a BSS path.
-
-    Example path: /fi/w1/wpa_supplicant1/Interfaces/0/BSSs/567
-    """
+    """Return SSID, BSSID, key_mgmt, signal, freq and minrate for a wpa_supplicant BSS path."""
 
     try:
         net_obj = bus.get_object(WPAS_DBUS_SERVICE, bss)
-        # dbus.Interface(net_obj, WPAS_DBUS_BSS_INTERFACE)
-        # Convert the byte-array to printable strings
 
-        # Get the BSSID from the byte array
         val = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "BSSID", dbus_interface=dbus.PROPERTIES_IFACE
         )
@@ -273,36 +204,30 @@ def getBss(bss: str) -> dict[str, Any] | None:
             bssid = bssid + f":{item:02x}"
         bssid = bssid[1:]
 
-        # Get the SSID from the byte array
         val = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "SSID", dbus_interface=dbus.PROPERTIES_IFACE
         )
         ssid = byte_array_to_string(val)
 
-        # Get the WPA Type from the byte array
         val = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "WPA", dbus_interface=dbus.PROPERTIES_IFACE
         )
         if len(val["KeyMgmt"]) > 0:
             pass
 
-        # Get the RSN Info from the byte array
         val = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "RSN", dbus_interface=dbus.PROPERTIES_IFACE
         )
         key_mgmt = "/".join([str(r) for r in val["KeyMgmt"]])
 
-        # Get the Frequency from the byte array
         freq = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "Frequency", dbus_interface=dbus.PROPERTIES_IFACE
         )
 
-        # Get the RSSI from the byte array
         signal = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "Signal", dbus_interface=dbus.PROPERTIES_IFACE
         )
 
-        # Get the Phy Rates from the byte array
         rates = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "Rates", dbus_interface=dbus.PROPERTIES_IFACE
         )
@@ -311,7 +236,6 @@ def getBss(bss: str) -> dict[str, Any] | None:
         if len(rates) > 0:
             minrate = rates[-1]
 
-        # Get the IEs from the byte array
         IEs = net_obj.Get(
             WPAS_DBUS_BSS_INTERFACE, "IEs", dbus_interface=dbus.PROPERTIES_IFACE
         )
@@ -356,7 +280,6 @@ def fetch_interfaces(wpas_obj: Any) -> list[dict[str, Any]]:
         WPAS_DBUS_INTERFACE, "Interfaces", dbus_interface=dbus.PROPERTIES_IFACE
     )
     debug_print(f"InterfacesRequested: {ifaces}", 2)
-    # time.sleep(3)
     for path in ifaces:
         debug_print(f"Resolving Interface Path: {path}", 2)
         if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
@@ -372,7 +295,6 @@ def fetch_interfaces(wpas_obj: Any) -> list[dict[str, Any]]:
 
 def fetch_currentBSS(interface: str) -> Any:
     """Return the current BSS details for an interface."""
-    # Refresh the path to the adapter and read back the current BSSID
     bssid: Any = ""
 
     try:
@@ -394,7 +316,6 @@ def fetch_currentBSS(interface: str) -> Any:
     time.sleep(1)
 
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    # time.sleep(2)
     currentBssPath = if_obj.Get(
         WPAS_DBUS_INTERFACES_INTERFACE,
         "CurrentBSS",
@@ -406,11 +327,6 @@ def fetch_currentBSS(interface: str) -> Any:
         bssid = getBss(currentBssPath)
     debug_print(currentBssPath, 2)
     return bssid
-
-
-"""
-Call back functions
-"""
 
 
 def scanDone(success: bool) -> None:
@@ -434,7 +350,6 @@ def scanDone(success: bool) -> None:
 
 def networkSelected(network: Any) -> None:
     """Record the selected network path."""
-    # returns the current selected network path
     debug_print(f"Network Selected (Signal) : {network}", 1)
     selectedNetworkSSID.append(network)
 
@@ -458,12 +373,10 @@ def propertiesChanged(properties: Any) -> None:
                 )
             supplicantState.append(state)
             debug_print(f"Connection Completed: State: {state}", 1)
-            # elif state == "scanning":
             debug_print("SCAN---", 3)
         elif state == "associating":
             debug_print(f"PropertiesChanged: {state}", 1)
         elif state == "authenticating":
-            # scanning = properties["Scanning"]
             debug_print(f"PropertiesChanged: {state}", 1)
         elif state == "4way_handshake":
             debug_print(f"PropertiesChanged: {state}", 1)
@@ -501,13 +414,6 @@ def propertiesChanged(properties: Any) -> None:
                     )
                 )
                 supplicantState.append("disconnected")
-
-    # For debugging purposes only
-    # if properties.get("BSSs") is not None:
-    #     print("Supplicant has found the following BSSs")
-    #     for BSS in properties["BSSs"]:
-    #         if len(BSS) > 0:
-    #             print(pretty_print_BSS(BSS))
 
     if properties.get("CurrentAuthMode") is not None:
         currentAuthMode = properties["CurrentAuthMode"]
@@ -561,13 +467,7 @@ def setup_DBus_Supplicant_Access(interface: str) -> None:
     time.sleep(1)
     debug_print(path, 3)
     if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-    # time.sleep(1)
     iface = dbus.Interface(if_obj, WPAS_DBUS_INTERFACES_INTERFACE)
-
-
-"""
-These are the functions used to deliver the API
-"""
 
 
 async def get_systemd_network_interfaces(
@@ -606,7 +506,6 @@ async def get_async_systemd_network_scan(
             if not scan_successful:
                 return {"nets": []}
 
-            # scan = [{"ssid": "A Network", "bssid": "11:22:33:44:55", "wpa": "no", "wpa2": "yes", "signal": -65, "freq": 5650}]
             return {"nets": scan}
         except DBusException as de:
             debug_print(f"DBUS Error State: {de}", 0)
@@ -616,11 +515,7 @@ async def get_async_systemd_network_scan(
 
 
 def collect_scan_results() -> bool:
-    """
-    Poll for scan results and collect them.
-
-    Returns True when scan results are found.
-    """
+    """Store the current scan results globally; return True once there are any."""
     global scan
 
     try:
@@ -680,7 +575,6 @@ async def set_systemd_network_addNetwork(
     try:
         debug_print("Configuring DBUS", 3)
 
-        # Remove all configured networks and apply the new network
         if removeAllFirst:
             debug_print("Removing existing connections", 2)
             netw = iface.RemoveAllNetworks()
@@ -691,20 +585,15 @@ async def set_systemd_network_addNetwork(
 
         if netw != "/":
             debug_print("Valid network entry received", 2)
-            # A valid network entry has been created - get the Index
             netw.split("/")[-1]
 
-            # Select this network using its full path name
             selectErr = iface.SelectNetwork(netw)
-            # time.sleep(10)
             debug_print(f"Network selected with result: {selectErr}", 2)
 
             if selectErr is None:
-                # Poll for connection completion instead of waiting for signals
                 connected = await monitor_connection_state(API_TIMEOUT.timeout)
 
                 if connected:
-                    # Check the current BSSID post connection
                     bssidPath = if_obj.Get(
                         WPAS_DBUS_INTERFACES_INTERFACE,
                         "CurrentBSS",
@@ -790,13 +679,12 @@ async def monitor_connection_state(timeout: int) -> bool:
 async def get_systemd_network_currentNetwork_details(
     interface: network.Interface, timeout: network.APIConfig
 ) -> dict[str, Any] | None:
-    """Query systemd via dbus to get a scan of the available networks."""
+    """Return whether `interface` is connected and its current BSS details."""
     try:
         res: Any = ""
         setup_DBus_Supplicant_Access(interface.interface)
         await asyncio.sleep(1)
 
-        # res = fetch_currentBSS(interface)
         bssidPath = if_obj.Get(
             WPAS_DBUS_INTERFACES_INTERFACE,
             "CurrentBSS",
@@ -814,24 +702,6 @@ async def get_systemd_network_currentNetwork_details(
     except ValueError as error:
         raise ValidationError(f"{error}", status_code=400) from None
 
-
-# async def main():
-#     await get_async_systemd_network_scan('passive', 'wlan0')
-#     # testnet = '{"ssid":"PiAP_6","psk":"wlanpieea","key_mgmt":"SAE","ieee80211w":2}'
-#     # await set_systemd_network_addNetwork('wlan0',testnet,True)
-
-# if __name__ == "__main__":
-# 	asyncio.run(main())
-
-# ### -- Test for printing out the connected network ###
-# if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-# res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentNetwork', dbus_interface=dbus.PROPERTIES_IFACE)
-# # showNetwork(res)
-
-# ### -- Test for printing out the connected network ###
-# if_obj = bus.get_object(WPAS_DBUS_SERVICE, path)
-# res = if_obj.Get(WPAS_DBUS_INTERFACES_INTERFACE, 'CurrentBSS', dbus_interface=dbus.PROPERTIES_IFACE)
-# print(getBss(res))
 
 if __name__ == "__main__":
     print(get_ip_address("eth0"))

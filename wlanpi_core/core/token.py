@@ -102,10 +102,7 @@ class TokenValidationResult:
 
     @property
     def is_expired(self) -> bool:
-        """Check if token is expired."""
-        # if not self.exp:
-        #     return True
-        # return self.exp <= datetime.now(timezone.utc)
+        """Always False; TokenManager._validate_lifetime enforces expiry."""
         return False
 
     def __str__(self) -> str:
@@ -129,12 +126,7 @@ class TokenManager:
     """Manage token issuance, validation, and signing key rotation."""
 
     def __init__(self, app_state: Any) -> None:
-        """
-        Initialize TokenManager with application state.
-
-        Args:
-            app_state: Application state containing database manager
-        """
+        """Keep the application state that holds db_manager."""
         self.app_state = app_state
 
     def _normalize_token(self, token: str | bytes) -> str:
@@ -170,15 +162,7 @@ class TokenManager:
         return token
 
     async def _get_or_create_signing_key(self, session: AsyncSession) -> SigningKey:
-        """
-        Retrieve an existing active signing key or create a new one.
-
-        Args:
-            session: Database session
-
-        Returns:
-            Active SigningKey instance
-        """
+        """Return the active signing key; creating one revokes tokens of every other key."""
         query = select(SigningKey).where(SigningKey.active.is_(True))
         result = await session.execute(query)
         skey = result.scalar_one_or_none()
@@ -203,7 +187,6 @@ class TokenManager:
             .where(
                 Token.key_id != new_key.id,
                 Token.revoked.is_(False),
-                # Token.expires_at > datetime.now(timezone.utc),
             )
             .values(revoked=True)
         )
@@ -223,16 +206,7 @@ class TokenManager:
     async def create_token(
         self, device_id: str, expires_delta: timedelta | None = None
     ) -> str:
-        """
-        Create a new JWT token for a specific device.
-
-        Args:
-            device_id: Device identifier
-            expires_delta: Optional custom token expiration
-
-        Returns:
-            JWT token string
-        """
+        """Create and store a JWT for device_id; lifetime defaults to ACCESS_TOKEN_EXPIRE_DAYS."""
         lifetime = expires_delta or timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         lifetime_seconds = lifetime.total_seconds()
         wall_now = current_wall_time()
@@ -408,20 +382,11 @@ class TokenManager:
             )
 
     async def revoke_token(self, token: str) -> dict[str, Any]:
-        """
-        Revoke a specific token.
-
-        Args:
-            token: JWT token string
-
-        Returns:
-            Revocation status dictionary
-        """
+        """Revoke one token and return a status dict."""
         token = self._normalize_token(token)
 
         async with self.app_state.db_manager.session() as session:
             try:
-                # Create token repository
                 token_repo = TokenRepository(session)
                 token_model = await token_repo.get_token_by_value(token)
 
@@ -471,21 +436,11 @@ class TokenManager:
             return len(live)
 
     async def rotate_key(self) -> tuple[int, str]:
-        """
-        Rotate the signing keys.
-
-        1. Create a new active key
-        2. Deactivate all previous keys
-        3. Revoke tokens associated with old keys
-
-        Returns:
-            Tuple of (new key ID, base64 encoded key)
-        """
+        """Replace the active signing key and revoke older keys' tokens; return (id, key)."""
         async with self.app_state.db_manager.session() as session:
             try:
                 await session.begin()
 
-                # deactivate active keys
                 deactivate_keys = (
                     update(SigningKey)
                     .where(SigningKey.active.is_(True))
@@ -493,7 +448,6 @@ class TokenManager:
                 )
                 await session.execute(deactivate_keys)
 
-                # create new key
                 new_key = SigningKey(
                     key=base64.b64encode(secrets.token_bytes(32)).decode("utf-8"),
                     active=True,
@@ -502,13 +456,11 @@ class TokenManager:
                 session.add(new_key)
                 await session.flush()
 
-                # revoke tokens using old keys
                 revoke_tokens = (
                     update(Token)
                     .where(
                         Token.key_id != new_key.id,
                         Token.revoked.is_(False),
-                        # Token.expires_at > datetime.now(timezone.utc),
                     )
                     .values(revoked=True)
                 )
@@ -538,12 +490,7 @@ class TokenManager:
                 raise
 
     async def get_active_keys(self) -> list[dict[str, Any]]:
-        """
-        Retrieve all signing keys with their metadata.
-
-        Returns:
-            List of dictionaries containing key information
-        """
+        """Return every signing key, newest first, with its unrevoked token count."""
         async with self.app_state.db_manager.session() as session:
             try:
                 query = select(SigningKey).order_by(SigningKey.created_at.desc())
@@ -576,35 +523,20 @@ class TokenManager:
                 raise
 
     async def _count_tokens_for_key(self, session: AsyncSession, key_id: int) -> int:
-        """
-        Count the number of tokens associated with a specific signing key.
-
-        Args:
-            session: Database session
-            key_id: ID of the signing key
-
-        Returns:
-            Number of tokens for the key
-        """
+        """Count unrevoked tokens signed with key_id."""
         query = (
             select(func.count())
             .select_from(Token)
             .where(
                 Token.key_id == key_id,
                 Token.revoked.is_(False),
-                # Token.expires_at > datetime.now(timezone.utc),
             )
         )
         result = await session.execute(query)
         return result.scalar_one()
 
     async def verify_db_state(self) -> dict[str, Any]:
-        """
-        Verify the current state of tokens in the database.
-
-        Returns:
-            dict: A dictionary containing token statistics and active tokens.
-        """
+        """Return token statistics and the unrevoked tokens."""
         try:
             async with self.app_state.db_manager.session() as session:
                 now = datetime.now(UTC)
@@ -629,7 +561,6 @@ class TokenManager:
                     )
                     .where(
                         Token.revoked.is_(False),
-                        # Token.expires_at > now,
                     )
                     .order_by(Token.expires_at.desc())
                 )

@@ -76,9 +76,7 @@ jobs:
             This pull request is maintained automatically. wlanpi-core also
             serves the current schema at `/api/v1/openapi.json`.
 
-      # A PR created with GITHUB_TOKEN gets its pull_request runs gated as
-      # action_required. Approve them so the required checks execute against
-      # the PR head. No stored token is used.
+      # pull_request runs on a GITHUB_TOKEN-created PR wait as action_required until approved.
       - name: Approve the required checks on the automation branch
         if: steps.cpr.outputs.pull-request-number != ''
         env:
@@ -101,8 +99,6 @@ jobs:
             gh api -X POST "repos/$repo/actions/runs/$id/approve"
           done
 
-      # Merge only when the checks pass. A failed check leaves the PR open for
-      # review. No stored token is used: the run's GITHUB_TOKEN is ephemeral.
       - name: Merge the OpenAPI reference PR when the checks pass
         if: steps.cpr.outputs.pull-request-number != ''
         env:

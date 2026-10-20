@@ -1,9 +1,4 @@
-"""
-WPA supplicant status checking and parsing.
-
-This module provides functions for checking wpa_supplicant status and
-parsing status information.
-"""
+"""wpa_supplicant status reading."""
 
 import logging
 from typing import Any
@@ -19,23 +14,7 @@ log = logging.getLogger(__name__)
 
 
 def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
-    """
-    Get wpa_supplicant status for an interface.
-
-    Args:
-        iface: Interface name
-        namespace: Network namespace name, or None for root
-
-    Returns:
-        Dictionary with wpa_status, ip_info, and connected_scan information
-
-    Raises:
-        RunCommandError: If status check fails
-
-    Examples:
-        >>> status = get_wpa_status("wlan0", "test_ns")
-        >>> print(status.get("wpa_status", {}).get("wpa_state"))
-    """
+    """Return wpa_status, ip_info and connected_scan for an interface, or {"error": ...}."""
     iface = validate_interface_name(iface)
     try:
         wpa_status = {}
@@ -73,10 +52,8 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
             )
             matched = find_bss(networks, connected_bssid)
             if matched is None and wpa_status.get("ap_mld_addr"):
-                # MLO: bssid is the AP MLD address, which no scan entry has.
-                # Scans list each link's BSSID; freq is the association link.
-                # Only trust a unique SSID+freq match: another AP of the same
-                # network on the same channel would report its signal instead.
+                # MLO: bssid is the AP MLD address, absent from scans; match the
+                # link by SSID+freq, only when unique (another AP may share the channel).
                 # ponytail: ambiguous matches report signal 0; match
                 # `wpa_cli mlo_status` ap_link_addr for an exact link lookup.
                 candidates = [
@@ -91,7 +68,6 @@ def get_wpa_status(iface: str, namespace: str | None) -> dict[str, Any]:
                 signal = matched.get("signal")
                 key_mgmt = matched.get("key_mgmt", "unknown")
 
-        # Get IP information
         ip = ns_exec(["ip", "addr", "show", iface], namespace=namespace).stdout.strip()
 
         return {

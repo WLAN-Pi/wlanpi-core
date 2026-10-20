@@ -1,5 +1,3 @@
-"""Tests for the /system/journal storage read and switch."""
-
 from types import SimpleNamespace
 
 import pytest

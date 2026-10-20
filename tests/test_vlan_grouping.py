@@ -1,5 +1,3 @@
-"""Tests for live VLAN grouping and the legacy-file-free service path."""
-
 from unittest.mock import MagicMock, patch
 
 import pytest

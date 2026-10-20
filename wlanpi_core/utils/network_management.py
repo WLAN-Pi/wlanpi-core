@@ -1,9 +1,4 @@
-"""
-Network management utilities for DHCP and routing.
-
-This module provides functions for managing DHCP clients and network routes
-in namespaces.
-"""
+"""DHCP client and default-route management, per network namespace."""
 
 import logging
 import os
@@ -23,12 +18,8 @@ log = logging.getLogger(__name__)
 # Directory name for the root namespace; `@` cannot appear in a netns name.
 _ROOT_DIR_NAME = "@root"
 
-# dhcpcd keeps its pidfile, control socket and leases under fixed paths
-# (/run/dhcpcd, /var/lib/dhcpcd) that every netns shares, so a second dhcpcd
-# for the same interface name in another namespace just talks to the first.
-# Run each one in a private mount namespace with its own copies of both.
-# /run/dhcpcd is tmpfs and absent until something runs dhcpcd, so create the
-# mount points first or the bind fails on a freshly booted device.
+# dhcpcd's fixed /run/dhcpcd and /var/lib/dhcpcd are shared across netns, so each
+# runs in a private mount ns; mkdir first, as /run/dhcpcd is absent after boot.
 _DHCPCD_WRAPPER = (
     "mkdir -p /run/dhcpcd /var/lib/dhcpcd "
     '&& mount --bind "$1" /run/dhcpcd && mount --bind "$2" /var/lib/dhcpcd '
@@ -65,8 +56,7 @@ def _stop_dhcpcd_dir(state: Path, namespace: str | None) -> bool:
     except (OSError, ValueError):
         return True
     argv = _read_cmdline(pid)
-    # dhcpcd rewrites its title to "dhcpcd: <iface> [ip4]"; match the name
-    # exactly, so a reused PID running dhcpcd for wlan10 is not taken for wlan1.
+    # dhcpcd retitles itself "dhcpcd: <iface> [ip4]"; exact match so wlan10 is not wlan1.
     title = " ".join(argv)
     if not argv or not (
         title.startswith(f"dhcpcd: {iface} ")
@@ -76,8 +66,7 @@ def _stop_dhcpcd_dir(state: Path, namespace: str | None) -> bool:
     if not usage.in_netns(pid, namespace):
         return True
     try:
-        # SIGALRM: release the lease and exit. (SIGHUP only rebinds in
-        # dhcpcd 10, leaving it running.)
+        # SIGALRM releases and exits; dhcpcd 10's SIGHUP only rebinds.
         os.kill(pid, signal.SIGALRM)
     except ProcessLookupError:
         return True
@@ -121,25 +110,12 @@ def restart_dhcp_with_timeout(
     timeout: int = 15,
     default_route: bool = False,
 ) -> None:
-    """
-    Restart the DHCP client (dhcpcd) for an interface.
+    """Restart dhcpcd for an interface, waiting up to `timeout` seconds for a lease.
 
-    Waits up to `timeout` seconds for a lease, then leaves dhcpcd running in
-    the background to renew or keep trying. No IPv4 link-local fallback, so a
-    missing DHCP server never produces a 169.254 address or a gatewayless
-    default route. The DHCP router becomes the default route (metric 200)
-    only when `default_route` is set. The hostname and timesyncd hooks are
-    off; in root the resolv.conf hook is off too (NetworkManager owns DNS),
-    while in a namespace it writes /etc/netns/<ns>/resolv.conf.
-
-    Args:
-        iface: Interface name
-        namespace: Network namespace name, or None for root
-        timeout: Seconds to wait for a lease before backgrounding
-        default_route: Install a default route via the DHCP router
-
-    Examples:
-        >>> restart_dhcp_with_timeout("wlan0", "test_ns", timeout=15)
+    dhcpcd then keeps running in the background. No IPv4 link-local fallback, so
+    no 169.254 address or gatewayless default route. The DHCP router becomes the
+    default route (metric 200) only with `default_route`. The resolv.conf hook
+    runs only in a namespace (/etc/netns/<ns>/resolv.conf): NetworkManager owns root DNS.
     """
     namespace_display = namespace if namespace else "root"
     log.info(
@@ -167,8 +143,7 @@ def restart_dhcp_with_timeout(
         str(state / "lib"),
         "-4",
         "-L",
-        # No ARP probe of the offered address: it held IPv4 back ~5 s after
-        # every reassociation (#354), at the cost of duplicate-address detection.
+        # No ARP probe: it delayed IPv4 ~5 s after every reassociation (#354).
         "-A",
         "-t",
         str(timeout),
@@ -188,20 +163,9 @@ def set_default_route(
     namespace: str | None,
     metric: int = 200,
 ) -> None:
-    """
-    Make the DHCP router on `iface` the default route in its namespace.
+    """Make the DHCP router on `iface` the default route in its namespace.
 
-    Only a route via a gateway is ever installed. If `iface` has no default
-    route with a gateway (no lease yet, or no router offered), nothing is
-    added: a gatewayless `default dev <iface>` route breaks routing.
-
-    Args:
-        iface: Interface name
-        namespace: Network namespace name, or None for root
-        metric: Route metric (default: 200)
-
-    Examples:
-        >>> set_default_route("wlan0", "test_ns", metric=200)
+    Without a gateway on `iface` nothing is added: a gatewayless default breaks routing.
     """
     namespace_display = namespace if namespace else "root"
     try:
@@ -240,7 +204,6 @@ def set_default_route(
         )
         log.info(f"Default route via {gateway} on {iface} in {namespace_display}")
     except RunCommandError as e:
-        # Log and continue; route setup shouldn't fail activation
         log.warning(
             f"Could not set default route for {iface} in namespace {namespace_display}: {e}"
         )

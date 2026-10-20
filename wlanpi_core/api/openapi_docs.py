@@ -1,8 +1,4 @@
-"""
-OpenAPI metadata, tag descriptions, and shared response definitions.
-
-Used by FastAPI ``openapi_tags``, route ``responses=``, and the integration guide.
-"""
+"""OpenAPI metadata, tag descriptions, and shared response definitions."""
 
 from __future__ import annotations
 
@@ -148,7 +144,6 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
 ]
 
-# Shared OpenAPI response entries for route decorators: responses={**RESPONSES.auth, ...}
 RESPONSES_AUTH: dict[int | str, dict[str, Any]] = {
     401: {
         "model": MessageResponse,

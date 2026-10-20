@@ -106,10 +106,10 @@ def test_failed_owned_stop_preserves_tracking_for_retry(mocker, tmp_path):
     ("cmdline", "killed"),
     [
         (b"orb\0--serve\0", True),
-        (b"/usr/bin/python3\0/usr/bin/orb\0--serve\0", True),  # PATH + shebang
-        (b"orb\0--other\0", False),  # same program, other arguments
+        (b"/usr/bin/python3\0/usr/bin/orb\0--serve\0", True),
+        (b"orb\0--other\0", False),
         (b"/usr/sbin/sshd\0-D\0", False),  # PID reused after a reboot (#304)
-        (b"", False),  # process gone
+        (b"", False),
     ],
 )
 def test_root_stop_signals_only_the_recorded_command(mocker, tmp_path, cmdline, killed):
@@ -138,9 +138,9 @@ def test_namespace_stop_signals_only_the_recorded_command(mocker, tmp_path):
         json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
     )
     cmdlines = {
-        10: b"/usr/sbin/sshd\0-D\0",  # reused PID from the file
-        11: b"/usr/bin/python3\0/usr/bin/orb\0--serve\0",  # Core's app
-        12: b"orbital-tool\0--serve\0",  # substring only
+        10: b"/usr/sbin/sshd\0-D\0",
+        11: b"/usr/bin/python3\0/usr/bin/orb\0--serve\0",
+        12: b"orbital-tool\0--serve\0",
     }
     real_read_bytes = apps.Path.read_bytes
 
@@ -184,7 +184,7 @@ def test_start_is_not_blocked_by_the_same_command_in_another_namespace(
     (tmp_path / "ns_a.pid").write_text(
         json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
     )
-    mocker.patch.object(apps.os, "kill")  # PID 10 is alive and runs orb...
+    mocker.patch.object(apps.os, "kill")
     mocker.patch.object(apps, "_is_recorded_app", return_value=True)
     in_netns = mocker.patch.object(apps.usage, "in_netns", return_value=False)
     mocker.patch.object(apps, "get_app_command", return_value="orb --serve")
@@ -194,7 +194,7 @@ def test_start_is_not_blocked_by_the_same_command_in_another_namespace(
     mocker.patch.object(apps.time, "sleep")
 
     assert apps.start_app_in_namespace("ns_a", "orb", pid_dir=tmp_path) is True
-    in_netns.assert_called_once_with(10, "ns_a")  # ...but not in ns_a
+    in_netns.assert_called_once_with(10, "ns_a")
     popen.assert_called_once()
 
 
@@ -202,8 +202,8 @@ def test_start_is_not_blocked_by_a_reused_pid(mocker, tmp_path):
     (tmp_path / "root.pid").write_text(
         json.dumps({"pid": 10, "app_id": "orb", "app_command": "orb --serve"})
     )
-    mocker.patch.object(apps.os, "kill")  # PID 10 is alive...
-    mocker.patch.object(apps, "_is_recorded_app", return_value=False)  # ...not orb
+    mocker.patch.object(apps.os, "kill")
+    mocker.patch.object(apps, "_is_recorded_app", return_value=False)
     mocker.patch.object(apps, "get_app_command", return_value="orb --serve")
     process = MagicMock(pid=20)
     process.poll.return_value = None
@@ -250,7 +250,7 @@ def test_root_stop_without_pid_signals_nothing(mocker, tmp_path):
 @pytest.mark.parametrize(
     ("content", "expected"),
     [
-        (None, None),  # missing: no apps, and Core does not create it
+        (None, None),
         ("", None),  # created empty by an older Core (#311)
         ("  \n", None),
         ('{"orb": "orb --serve"}', "orb --serve"),

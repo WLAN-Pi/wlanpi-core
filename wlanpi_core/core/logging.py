@@ -11,8 +11,7 @@ import traceback
 from typing import Any
 
 LOG_DIR = pathlib.Path("/var/log/wlanpi_core")
-# debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount). Five 4 MiB
-# files leave 5 MiB for the one record that can overshoot a rollover.
+# debug/ is a 25 MiB tmpfs (debian/var-log-wlanpi_core-debug.mount); 5 x 4 MiB leaves rollover headroom.
 DEBUG_LOG_MAX_BYTES = 4 * 1024 * 1024
 DEBUG_LOG_BACKUP_COUNT = 4
 
@@ -26,7 +25,7 @@ LOG_LEVELS = {
 
 
 def create_contextual_log_record() -> type:
-    """Create ContextualLogRecord class dynamically to avoid circular import."""
+    """Return a LogRecord subclass that records the calling file, line, and function."""
 
     class ContextualLogRecord(logging.LogRecord):
         """Custom LogRecord that captures additional context information."""
@@ -57,7 +56,7 @@ def create_contextual_log_record() -> type:
             else:
                 try:
                     stack = traceback.extract_stack()
-                    for frame in reversed(stack[:-2]):  # Exclude the last two frames
+                    for frame in reversed(stack[:-2]):
                         filename = os.path.basename(frame.filename)
                         lineno = frame.lineno
                         function = frame.name
@@ -182,12 +181,7 @@ def _file_handlers(
 
 
 def configure_logging(debug_mode: bool = False) -> None:
-    """
-    Configure logging with console and file handlers.
-
-    Args:
-        debug_mode: Whether to force DEBUG level logging
-    """
+    """Configure console, app.log, and debug.log handlers; debug_mode lowers the console to DEBUG."""
     create_contextual_log_record()
 
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
@@ -217,15 +211,12 @@ def configure_logging(debug_mode: bool = False) -> None:
     app_file_handler.addFilter(context_filter)
     debug_file_handler.addFilter(context_filter)
 
-    # console - info by default, debug if --debug
     console_stream_handler.setFormatter(standard_formatter)
     console_stream_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
 
-    # /var/log/wlanpi_core/app.log - gets info or higher
     app_file_handler.setFormatter(json_formatter)
     app_file_handler.setLevel(logging.INFO)
 
-    # /var/log/wlanpi_core/debug/debug.log (tmpfs, rotated) - gets everything
     debug_file_handler.setFormatter(json_formatter)
     debug_file_handler.setLevel(logging.DEBUG)
 

@@ -12,7 +12,6 @@ from wlanpi_core.core.logging import get_logger
 from wlanpi_core.utils.general import terminate_process_async
 
 _PROFILER_STOP_GRACE_SEC = 10.0
-# How long start waits for the profiler to report running or to exit.
 # ponytail: kept under the MCP client's 30 s HTTP timeout; a slower start
 # (No IR wait on a self-managed radio) returns reason "starting" instead.
 _PROFILER_START_WAIT_SEC = 25.0
@@ -23,8 +22,6 @@ LAST_SESSION_FILE = "/var/lib/wlanpi-profiler/last-session.json"
 
 log = get_logger(__name__)
 profiler_process: Process | None = None
-# Serialises start, stop, service.purge_data and Core's systemd starts of
-# PROFILER_UNIT (system_service.start/restart_systemd_service).
 _profiler_lock = asyncio.Lock()
 
 
@@ -172,9 +169,8 @@ async def stop_profiler() -> Any:
             profiler_process = None
             return False
 
-        # The profiler needs ~2 s after SIGTERM to stop hostapd, delete its
-        # monitor vif and restore the primary; a SIGKILL before that leaves
-        # the radio staged and breaks later captures on it.
+        # The profiler needs ~2 s after SIGTERM to restore the radio; an
+        # earlier SIGKILL leaves it staged and breaks later captures.
         await terminate_process_async(process, grace=_PROFILER_STOP_GRACE_SEC)
         profiler_process = None
         return True

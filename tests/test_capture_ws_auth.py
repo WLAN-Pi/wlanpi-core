@@ -59,9 +59,6 @@ def _assert_closed(websocket):
     assert exc.value.code == WS_AUTH_CLOSE_CODE
 
 
-# --- Handshake --------------------------------------------------------------
-
-
 def test_token_in_url_is_refused():
     with TestClient(app) as client:
         with client.websocket_connect(f"{WS_PATH}?token=eyJhbGci") as websocket:
@@ -146,9 +143,6 @@ def test_valid_token_authenticates_and_protocol_continues():
     assert manager.clients == {}
 
 
-# --- Subscriber fan-out (manager unit level, mock sockets) ------------------
-
-
 class _MockWS:
     """Hashable stand-in (manager keys clients by socket identity)."""
 
@@ -224,13 +218,10 @@ async def test_subscriber_receives_broadcast_and_stop_notification():
     assert listener in client["subscribers"]
     assert mgr.clients[listener]["subscribed_to"] == "cap_test"
 
-    # The SUBSCRIBED event tells the listener the running config, so it is
-    # not blind to what it receives.
     subscribed = [json.loads(c.args[0]) for c in listener.send_text.await_args_list]
     payload = next(e for e in subscribed if e["code"] == "SUBSCRIBED")
     assert payload["data"]["config"]["pcap_filter"] == "type mgt"
     assert "wlan0" in payload["data"]["config"]["interfaces"]
-    # The subscriber is told which namespace the capture runs in.
     assert payload["data"]["namespace"] == "wlan_ns"
 
     packet = _pcapng_packet()
@@ -250,7 +241,6 @@ async def test_subscriber_receives_broadcast_and_stop_notification():
     assert mgr.sessions == {}
     assert client["subscribers"] == set()
     assert mgr.clients[listener]["subscribed_to"] is None
-    # The stop notification reached the listener.
     sent = [c.args[0] for c in listener.send_text.await_args_list]
     assert any("CAPTURE_STOPPED" in payload for payload in sent)
 
@@ -273,7 +263,6 @@ async def test_failing_subscriber_is_dropped_without_ending_capture():
     await subscription_task
     assert dead not in client["subscribers"]
     assert mgr.clients[dead]["subscribed_to"] is None
-    # Owner stream unaffected.
     owner.send_bytes.assert_awaited_once()
 
 
@@ -466,9 +455,6 @@ async def test_old_session_end_does_not_clear_new_subscription():
     await new_subscription_task
 
 
-# --- Namespace awareness (#141 baseline: capture must run in the adapter's ns)
-
-
 def _status(**ns_ifaces):
     """Build a network_config.status()-shaped dict: {ns_or_root: {iface: {...}}}."""
     return {
@@ -578,7 +564,6 @@ async def test_subscriber_stop_is_rejected_without_ending_owner_session():
 
     await mgr.stop_streaming(listener)
 
-    # Owner's session survives untouched.
     assert "cap_test" in mgr.sessions
     assert mgr.sessions["cap_test"] is owner
     assert mgr.clients[owner]["session_id"] == "cap_test"

@@ -64,8 +64,7 @@ def _resolv_conf_path(namespace: str | None) -> str:
 async def show_reachability(
     targets: list[str] | None = None, namespace: str | None = None
 ) -> dict[str, Any]:
-    """
-    Check if default gateway, internet and DNS are reachable and working.
+    """Check if default gateway, internet and DNS are reachable and working.
 
     Optionally ping additional ``targets`` (hostnames or IPs) in parallel.
     With ``namespace``, every check runs inside that network namespace.
@@ -73,7 +72,6 @@ async def show_reachability(
 
     output: dict[str, Any] = {"results": {}}
 
-    # --- Variables ---
     try:
         custom_targets = parse_targets_param(targets)
         namespace = namespace_from_param(namespace)
@@ -95,7 +93,6 @@ async def show_reachability(
     except RunCommandError as err:
         return {"error": f"Failed to determine network configuration: {err}"}
 
-    # --- Checks ---
     if not default_gateway:
         return {"error": "No default gateway"}
 
@@ -247,15 +244,12 @@ def parse_ufw(output: str) -> dict[str, Any]:
     status_line = lines[0]
     status = status_line.split(":")[1].strip()
 
-    # Check if there are at least 3 lines (status + headers + at least one rule)
     if len(lines) <= 3:
-        # No rules present in the output
         parsed_rules: list[Any] = []
     else:
         rules = lines[3:]
         parsed_rules = []
 
-        # IPv6 pattern detection: "XX (v6)" followed by "ALLOW" and "Anywhere (v6)"
         ipv6_pattern = re.compile(r"\(v6\)")
 
         for rule in rules:
@@ -284,7 +278,6 @@ async def show_ufw() -> dict[str, Any]:
 
     response: dict[str, Any] = {}
 
-    # check ufw is available
     if not os.path.isfile(ufw_file):
         response["error"] = {"error": "UFW is not installed."}
 
@@ -301,8 +294,6 @@ async def show_ufw() -> dict[str, Any]:
         error_descr = "Issue getting ufw info using ufw command"
         response["error"] = {"error": error_descr}
         return response
-
-    # Add in status line
 
     response = ufw_info
 

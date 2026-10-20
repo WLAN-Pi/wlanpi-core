@@ -19,7 +19,6 @@ async def test_initialize_components_fails_loud_when_system_not_ready(monkeypatc
 
     systemd then sees a failed startup instead of serving half-initialized.
     """
-    # Restore the real method over the autouse fixture's stub for this test.
     monkeypatch.setattr(
         app_module.InitializationManager,
         "initialize_components",

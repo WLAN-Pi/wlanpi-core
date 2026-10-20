@@ -1,9 +1,8 @@
 name: Build and Archive Debian Package
 on:
-  # Allow manual runs of workflow from Actions tab
   workflow_dispatch:
   pull_request:
-    paths-ignore: # ignore files that don't change build output
+    paths-ignore:
       - '**.md'
       - .github/dependabot.yml
       - .gitignore

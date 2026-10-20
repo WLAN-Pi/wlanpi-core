@@ -1,5 +1,3 @@
-# wlanpi-core-ufw-first-boot.service
-
 [Unit]
 Description=wlanpi-core ufw first boot setup
 After=network.target ufw.service wlanpi-first-boot.service

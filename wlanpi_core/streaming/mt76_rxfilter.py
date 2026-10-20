@@ -1,18 +1,9 @@
 """Let mt7921 monitor interfaces receive other stations' unicast frames.
 
-MediaTek MT7921 radios (mt7921u/e/s) filter received frames in firmware. A scan
-on the radio - wlanpi-core scans for a ``wlanpiN`` monitor through its ``wlanN``
-sibling - leaves ``DROP_OTHER_UC`` (bit 18 of the band-0 RX filter register
-RFCR, 0x820e5000) set. The monitor then drops every unicast frame not addressed
-to itself: authentication, association, EAPOL, ACK, RTS/CTS and Block Ack never
-reach the capture, while beacons and broadcast still do. Taking the monitor down
-and up or retuning it does not clear the bit, and the driver has no code path
-that does (``mt7921_configure_filter`` only maps FCSFAIL, CONTROL and OTHER_BSS).
-
-Until the driver handles it, a capture clears the bit through mt76's debugfs
-register interface just before it starts, and a scan on the radio clears it
-again when it ends. This is best effort: other drivers, a missing debugfs, or
-any error leave the capture untouched.
+A scan on an MT7921 radio (mt7921u/e/s) leaves firmware ``DROP_OTHER_UC``
+(bit 18 of band-0 RFCR, 0x820e5000) set, so its monitor drops unicast frames
+not addressed to it. Retuning or down/up does not clear it and the driver
+never does, so captures and scans clear it through mt76 debugfs (#364).
 """
 
 from __future__ import annotations

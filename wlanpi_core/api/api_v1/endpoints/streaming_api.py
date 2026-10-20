@@ -1,8 +1,4 @@
-"""
-WebSocket streaming endpoints.
-
-See docs/API-INTEGRATION-GUIDE.md §11 for the capture command protocol.
-"""
+"""WebSocket streaming endpoints; protocol in docs/API-INTEGRATION-GUIDE.md Lesson 11."""
 
 import asyncio
 import json
@@ -20,7 +16,6 @@ manager = ConnectionManager()
 
 #: Close code for authentication failures (WebSocket has no HTTP 401).
 WS_AUTH_CLOSE_CODE = 4401
-#: Seconds a fresh connection has to present its auth message.
 AUTH_TIMEOUT_SECONDS = 10.0
 
 
@@ -37,10 +32,7 @@ async def _authenticate(websocket: WebSocket) -> bool:
 
     The first frame must be
     {"command": "auth", "token": "<core JWT>"} within AUTH_TIMEOUT_SECONDS.
-
-    Tokens are never accepted in the URL: query strings end up in proxy and
-    access logs, so a ?token=... connection is refused outright to keep the
-    unsafe pattern from taking root.
+    A ?token=... URL is refused: query strings land in proxy and access logs.
     """
     if "token" in websocket.query_params:
         await _reject(
@@ -222,9 +214,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except RuntimeError as e:
-        # Starlette raises "WebSocket is not connected" when the peer closes
-        # mid-operation - a disconnect race, not a server fault. Log at debug
-        # so a genuine RuntimeError is still traceable without noise.
+        # Starlette raises "WebSocket is not connected" on a peer-close race.
         log.debug(f"WebSocket closed mid-operation: {e!r}")
     except Exception as e:
         log.error(f"Unhandled error in websocket endpoint: {e!r}")

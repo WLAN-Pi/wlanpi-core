@@ -1,9 +1,4 @@
-"""
-Connection monitoring for network interfaces.
-
-This package provides functions for monitoring network connection status
-and managing connection lifecycle.
-"""
+"""Connection monitoring for network interfaces."""
 
 from wlanpi_core.connection.monitor import (
     ConnectionMonitor,

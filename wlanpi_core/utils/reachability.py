@@ -48,7 +48,6 @@ def parse_targets_param(targets: list[str] | None) -> list[str]:
             f"at most {REACHABILITY_MAX_CUSTOM_TARGETS} custom targets allowed"
         )
 
-    # Preserve order while deduplicating.
     seen: set[str] = set()
     unique: list[str] = []
     for target in parsed:

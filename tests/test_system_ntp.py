@@ -1,5 +1,3 @@
-"""Tests for the /system/ntp clock/NTP state."""
-
 import asyncio
 from unittest.mock import AsyncMock
 

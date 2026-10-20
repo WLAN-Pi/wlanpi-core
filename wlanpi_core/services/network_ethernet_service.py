@@ -24,9 +24,6 @@ def _validated_vlan_id(vlan_id: str | int) -> int:
         raise ValidationError(str(error), status_code=400) from error
 
 
-# https://man.cx/interfaces(5)
-
-
 async def get_vlans(
     interface: str | None = None,
     custom_filter: CustomIPInterfaceFilter | None = None,

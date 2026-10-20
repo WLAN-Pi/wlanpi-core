@@ -82,7 +82,6 @@ async def device_stats() -> Any:
     """
 
     try:
-        # get system stats
         stats = await asyncio.to_thread(system_service.get_stats)
 
         return stats

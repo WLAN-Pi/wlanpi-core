@@ -15,7 +15,6 @@ import requests
 
 COMMAND_TIMEOUT_SEC = 10
 
-# Enhanced security type definitions with detailed descriptions
 SECURITY_TYPES: dict[str, dict[str, Any]] = {
     "OPEN": {
         "name": "Open Network",
@@ -160,10 +159,8 @@ class NetworkConfigCLI:
         if not psk:
             raise ValidationError("PSK/password cannot be empty")
         if len(psk) == 64 and all(c in "0123456789abcdefABCDEF" for c in psk):
-            # Hex PSK
             return True
         elif 8 <= len(psk) <= 63:
-            # Passphrase
             return True
         else:
             raise ValidationError("PSK must be 8-63 characters or 64 hex characters")
@@ -179,7 +176,7 @@ class NetworkConfigCLI:
     def validate_file_path(self, path: str) -> bool:
         """Validate file path exists."""
         if not path:
-            return True  # Optional field
+            return True
         if not Path(path).exists():
             raise ValidationError(f"File does not exist: {path}")
         return True
@@ -202,7 +199,7 @@ class NetworkConfigCLI:
                     if "(phy" in line and ")" in line:
                         phy_name = line.split("(phy")[1].split(")")[0]
                         phys.append(f"phy{phy_name}")
-            return phys if phys else ["phy0"]  # Fallback to phy0
+            return phys if phys else ["phy0"]
         except (
             subprocess.CalledProcessError,
             subprocess.TimeoutExpired,
@@ -225,11 +222,11 @@ class NetworkConfigCLI:
             )
             interfaces = []
             for line in result.stdout.split("\n"):
-                if ": " in line and "wl" in line:  # Look for wireless interfaces
+                if ": " in line and "wl" in line:
                     interface = line.split(": ")[1].split("@")[0]
                     if "wlan" in interface or "wlp" in interface:
                         interfaces.append(interface)
-            return interfaces if interfaces else ["wlan0"]  # Fallback to wlan0
+            return interfaces if interfaces else ["wlan0"]
         except (
             subprocess.CalledProcessError,
             subprocess.TimeoutExpired,
@@ -339,7 +336,7 @@ class NetworkConfigCLI:
             sys.exit(1)
 
     def view_configs(self, no_default: bool = True) -> None:
-        """View existing configurations with enhanced formatting."""
+        """List existing configurations and whether each is active."""
         self.print_header("Loading Network Configurations")
 
         configs_data = self.make_request("GET", self.BASE)
@@ -368,7 +365,7 @@ class NetworkConfigCLI:
         print(f"Total configurations: {len(self.existing_configs)}")
 
     def status(self) -> None:
-        """Show network status with enhanced formatting."""
+        """Print the per-namespace interface status."""
         self.print_header("Network Configuration Status")
 
         status_data = self.make_request("GET", self.BASE + "status")
@@ -418,7 +415,7 @@ class NetworkConfigCLI:
     def prompt_security_type(
         self, existing_security: dict[str, Any] | None = None
     ) -> str:
-        """Enhanced security type selection."""
+        """Prompt for a security type."""
         self.print_header("Security Configuration", "-")
 
         current_type = existing_security.get("security") if existing_security else None
@@ -466,7 +463,7 @@ class NetworkConfigCLI:
     def prompt_eap_method(
         self, existing_method: str | None = None
     ) -> tuple[str, str | None]:
-        """Enhanced EAP method selection."""
+        """Prompt for an EAP method and its phase 2 method."""
         print("\nEAP Method Configuration:")
         print("-" * 40)
 
@@ -507,7 +504,6 @@ class NetworkConfigCLI:
             except ValueError as e:
                 self.print_error(str(e))
 
-        # Handle Phase 2 authentication for methods that support it
         phase2_method = None
         method_info = EAP_METHODS[selected_method]
 
@@ -548,13 +544,12 @@ class NetworkConfigCLI:
         secret: bool = False,
         multiline: bool = False,
     ) -> str:
-        """Enhanced field prompting with validation."""
+        """Prompt for one field, validating input up to three times."""
         attempts = 0
         max_attempts = 3
 
         while attempts < max_attempts:
             try:
-                # Build prompt text
                 prompt_text = prompt
                 if existing_value is not None:
                     if secret:
@@ -584,7 +579,6 @@ class NetworkConfigCLI:
                 else:
                     value = input(prompt_text).strip()
 
-                # Handle empty responses
                 if value == "":
                     if existing_value is not None:
                         self.print_info("Using existing value.")
@@ -599,7 +593,6 @@ class NetworkConfigCLI:
                     else:
                         return ""
 
-                # Validate if validator provided
                 if validator:
                     validator(value)
 
@@ -620,11 +613,10 @@ class NetworkConfigCLI:
     def prompt_security_config(
         self, security_type: str, existing_security: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Enhanced security configuration prompting."""
+        """Prompt for the security settings of a security type."""
         config: dict[str, Any] = {"security": security_type}
         existing_security = existing_security or {}
 
-        # Always prompt for SSID
         config["ssid"] = self.prompt_field_with_validation(
             "Enter SSID",
             validator=self.validate_ssid,
@@ -632,7 +624,6 @@ class NetworkConfigCLI:
             required=True,
         )
 
-        # Configure based on security type
         if security_type in ["WPA2-PSK", "WPA3-PSK"]:
             config["psk"] = self.prompt_field_with_validation(
                 "Enter PSK/Password",
@@ -643,7 +634,6 @@ class NetworkConfigCLI:
             )
 
         elif security_type in ["WPA2-EAP", "WPA3-EAP", "802.1X"]:
-            # EAP Method selection
             eap_method, phase2_method = self.prompt_eap_method(
                 existing_security.get("eap_method")
             )
@@ -651,14 +641,12 @@ class NetworkConfigCLI:
             if phase2_method:
                 config["phase2_method"] = phase2_method
 
-            # Common EAP fields
             config["identity"] = self.prompt_field_with_validation(
                 "Enter username/identity",
                 existing_value=existing_security.get("identity"),
                 required=True,
             )
 
-            # Check if certificate-based authentication
             if EAP_METHODS[eap_method]["requires_cert"]:
                 self.print_info("Certificate-based authentication selected")
                 config["client_cert"] = self.prompt_field_with_validation(
@@ -674,14 +662,12 @@ class NetworkConfigCLI:
                     required=True,
                 )
 
-                # Private key password (optional)
                 config["private_key_passwd"] = self.prompt_field_with_validation(
                     "Enter private key password (optional)",
                     existing_value=existing_security.get("private_key_passwd"),
                     secret=True,
                 )
             else:
-                # Password-based authentication
                 config["password"] = self.prompt_field_with_validation(
                     "Enter password",
                     existing_value=existing_security.get("password"),
@@ -689,7 +675,6 @@ class NetworkConfigCLI:
                     secret=True,
                 )
 
-            # CA Certificate
             config["ca_cert"] = self.prompt_field_with_validation(
                 "Enter CA certificate path (optional)",
                 validator=self.validate_file_path,
@@ -697,7 +682,6 @@ class NetworkConfigCLI:
                 default_value="/etc/ssl/certs/ca-certificates.crt",
             )
 
-            # Optional advanced fields
             if input("Configure advanced options? (y/n): ").lower() == "y":
                 config["anonymous_identity"] = self.prompt_field_with_validation(
                     "Enter anonymous identity (optional)",
@@ -752,7 +736,7 @@ class NetworkConfigCLI:
         return config
 
     def prompt_app_id(self, existing_app: str | None = None) -> str | None:
-        """Enhanced app configuration."""
+        """Prompt for the app to autostart."""
         self.print_header("Application Configuration", "-")
 
         if existing_app:
@@ -789,7 +773,6 @@ class NetworkConfigCLI:
                 )
                 existing_apps[app_id] = command
 
-                # Create directory if needed
                 apps_file.parent.mkdir(parents=True, exist_ok=True)
 
                 try:
@@ -807,14 +790,13 @@ class NetworkConfigCLI:
     def prompt_network_config(
         self, is_namespace: bool = True, existing_data: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
-        """Enhanced network configuration prompting."""
+        """Prompt for one root or namespace interface configuration."""
         config_type = "Namespace" if is_namespace else "Root"
         self.print_header(f"{config_type} Configuration")
 
         existing_data = existing_data or {}
         config: dict[str, Any] = {}
 
-        # Namespace (only for namespace configs)
         if is_namespace:
             config["namespace"] = self.prompt_field_with_validation(
                 "Enter namespace name",
@@ -823,7 +805,6 @@ class NetworkConfigCLI:
                 required=True,
             )
 
-        # Mode selection
         print("\nInterface Mode:")
         print("1. managed (normal Wi-Fi client)")
         print("2. monitor (packet capture)")
@@ -846,7 +827,6 @@ class NetworkConfigCLI:
             except ValueError as e:
                 self.print_error(str(e))
 
-        # PHY selection with auto-detection
         available_phys = self.get_available_phys()
         print(f"\nAvailable PHY interfaces: {', '.join(available_phys)}")
         config["phy"] = self.prompt_field_with_validation(
@@ -855,7 +835,6 @@ class NetworkConfigCLI:
             default_value=available_phys[0] if available_phys else "phy0",
         )
 
-        # Interface selection with auto-detection
         available_interfaces = self.get_available_interfaces()
         if available_interfaces:
             print(f"\nDetected wireless interfaces: {', '.join(available_interfaces)}")
@@ -866,7 +845,6 @@ class NetworkConfigCLI:
             default_value=available_interfaces[0] if available_interfaces else "wlan0",
         )
 
-        # Display interface name
         config["iface_display_name"] = self.prompt_field_with_validation(
             "Enter display interface name",
             validator=self.validate_interface_name,
@@ -874,7 +852,6 @@ class NetworkConfigCLI:
             default_value="wlanpi0",
         )
 
-        # Security configuration (skip for monitor mode)
         if config["mode"] != "monitor":
             configure_security = (
                 input("Configure wireless security? (y/n): ").lower() == "y"
@@ -895,21 +872,17 @@ class NetworkConfigCLI:
         else:
             print("Monitor mode selected - skipping security configuration")
 
-        # Advanced options
         print("\n" + "-" * 40)
         print("Advanced Configuration Options")
         print("-" * 40)
 
-        # Default route
         config["default_route"] = input("Set as default route? (y/n): ").lower() == "y"
 
-        # Autostart application
         if input("Configure autostart application? (y/n): ").lower() == "y":
             app_id = self.prompt_app_id(existing_data.get("autostart_app"))
             if app_id:
                 config["autostart_app"] = app_id
 
-        # Configuration preview and confirmation
         self.print_header("Configuration Preview", "-")
         self._preview_config(config)
 
@@ -938,7 +911,6 @@ class NetworkConfigCLI:
         """Validate that configuration is complete and consistent."""
         issues = []
 
-        # Check required fields
         if config.get("mode") == "managed" and not config.get("security"):
             issues.append("Managed mode typically requires security configuration")
 
@@ -967,17 +939,15 @@ class NetworkConfigCLI:
         return True
 
     def new_config(self) -> None:
-        """Enhanced new configuration creation."""
+        """Create a configuration interactively."""
         self.print_header("Create New Network Configuration")
 
-        # Configuration ID with validation
         config_id = self.prompt_field_with_validation(
             "Enter configuration ID/name",
             validator=self.validate_network_name,
             required=True,
         )
 
-        # Check if ID already exists
         if config_id in self.existing_configs:
             self.print_error(f"Configuration '{config_id}' already exists")
             if input("Edit existing configuration instead? (y/n): ").lower() == "y":
@@ -988,7 +958,6 @@ class NetworkConfigCLI:
         namespaces: list[dict[str, Any]] = []
         roots: list[dict[str, Any]] = []
 
-        # Namespace configurations
         if input("Add namespace configuration(s)? (y/n): ").lower() == "y":
             while True:
                 print(f"\nAdding namespace configuration #{len(namespaces) + 1}")
@@ -1002,7 +971,6 @@ class NetworkConfigCLI:
                 if input("Add another namespace configuration? (y/n): ").lower() != "y":
                     break
 
-        # Root configurations
         if input("Add root configuration(s)? (y/n): ").lower() == "y":
             while True:
                 print(f"\nAdding root configuration #{len(roots) + 1}")
@@ -1016,7 +984,6 @@ class NetworkConfigCLI:
                 if input("Add another root configuration? (y/n): ").lower() != "y":
                     break
 
-        # Validate we have at least one configuration
         if not namespaces and not roots:
             self.print_error("At least one namespace or root configuration is required")
             return
@@ -1024,7 +991,6 @@ class NetworkConfigCLI:
         config["namespaces"] = namespaces if namespaces else None
         config["roots"] = roots if roots else None
 
-        # Final preview and confirmation
         self.print_header("Complete Configuration Preview")
         print(f"Configuration ID: {config_id}")
         print(f"Namespace configs: {len(namespaces)}")
@@ -1034,7 +1000,6 @@ class NetworkConfigCLI:
             self.print_warning("Configuration creation cancelled")
             return
 
-        # Submit configuration
         print("Creating configuration...")
         response = self.make_request("POST", self.BASE, data=config)
         if response:
@@ -1053,7 +1018,6 @@ class NetworkConfigCLI:
         namespaces = []
         roots = []
 
-        # Edit namespaces
         existing_namespaces = existing_config.get("namespaces", [])
         if (
             existing_namespaces
@@ -1075,7 +1039,6 @@ class NetworkConfigCLI:
                 if ns_cfg and self._validate_config_completeness(ns_cfg):
                     namespaces.append(ns_cfg)
                 elif existing_ns:
-                    # Keep existing if user cancelled edit
                     namespaces.append(existing_ns)
 
                 ns_idx += 1
@@ -1088,11 +1051,9 @@ class NetworkConfigCLI:
                     ns_idx < len(existing_namespaces)
                     and input("Edit next namespace? (y/n): ").lower() != "y"
                 ):
-                    # Add remaining unchanged namespaces
                     namespaces.extend(existing_namespaces[ns_idx:])
                     break
 
-        # Edit roots
         existing_roots = existing_config.get("roots", [])
         if (
             existing_roots
@@ -1112,7 +1073,6 @@ class NetworkConfigCLI:
                 if root_cfg and self._validate_config_completeness(root_cfg):
                     roots.append(root_cfg)
                 elif existing_root:
-                    # Keep existing if user cancelled edit
                     roots.append(existing_root)
 
                 root_idx += 1
@@ -1125,7 +1085,6 @@ class NetworkConfigCLI:
                     root_idx < len(existing_roots)
                     and input("Edit next root config? (y/n): ").lower() != "y"
                 ):
-                    # Add remaining unchanged roots
                     roots.extend(existing_roots[root_idx:])
                     break
 
@@ -1143,7 +1102,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to update configuration")
 
     def edit_config(self) -> None:
-        """Enhanced configuration editing."""
+        """Pick a configuration and edit it."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1160,7 +1119,7 @@ class NetworkConfigCLI:
             self.print_error("Please enter a valid number")
 
     def activate_config(self) -> None:
-        """Enhanced configuration activation."""
+        """Pick a configuration and activate it."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1204,15 +1163,14 @@ class NetworkConfigCLI:
                 f"Configuration '{config_id}' activated successfully in {elapsed:.1f}s"
             )
 
-            # Show connection status after activation
             if input("Show connection status? (y/n): ").lower() == "y":
-                time.sleep(2)  # Allow time for connection to establish
+                time.sleep(2)
                 self.status()
         else:
             self.print_error("Failed to activate configuration")
 
     def deactivate_config(self) -> None:
-        """Enhanced configuration deactivation."""
+        """Pick a configuration and deactivate it."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1254,7 +1212,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to deactivate configuration")
 
     def delete_config(self) -> None:
-        """Enhanced configuration deletion."""
+        """Pick a configuration and delete it."""
         self.view_configs()
         if not self.existing_configs:
             return
@@ -1274,7 +1232,6 @@ class NetworkConfigCLI:
             self.print_error("Please enter a valid number")
             return
 
-        # Double confirmation for active configs
         if config_active:
             self.print_warning(f"Configuration '{config_id}' is currently active")
             self.print_warning(
@@ -1299,7 +1256,7 @@ class NetworkConfigCLI:
             self.print_error("Failed to delete configuration")
 
     def menu(self) -> None:
-        """Enhanced main menu."""
+        """Run the interactive main menu."""
         while True:
             self.print_header("WLAN Pi Network Configuration CLI")
 
@@ -1328,10 +1285,10 @@ class NetworkConfigCLI:
                     raise ValueError("Invalid option number")
 
                 func = options[idx][1]
-                print()  # Add spacing
+                print()
                 func()
 
-                if idx < len(options) - 1:  # Not exit
+                if idx < len(options) - 1:
                     input("\nPress Enter to continue...")
 
             except (ValueError, KeyboardInterrupt):
@@ -1347,7 +1304,7 @@ class NetworkConfigCLI:
                     sys.exit(1)
 
     def main(self) -> None:
-        """Enhanced main function."""
+        """Fetch a token and run the menu."""
         self.print_header("WLAN Pi Core Network Configuration CLI")
         print("Advanced network configuration tool with support for:")
         print("- WPA2/WPA3 PSK and Enterprise")

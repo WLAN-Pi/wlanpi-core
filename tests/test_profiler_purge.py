@@ -1,5 +1,3 @@
-"""Tests for purging profiler data (service and POST /profiler/purge)."""
-
 import asyncio
 import json
 import os
@@ -24,7 +22,6 @@ class ObservedLock(asyncio.Lock):
         self.contended = asyncio.Event()
 
     async def acquire(self):
-        """Flag contention, then acquire as usual."""
         if self.locked():
             self.contended.set()
         return await super().acquire()
@@ -119,7 +116,7 @@ class VanishingOs:
         return getattr(os, name)
 
     def unlink(self, path):
-        os.unlink(path)  # someone else got there first
+        os.unlink(path)
         os.unlink(path)
 
 
@@ -139,7 +136,7 @@ def test_purge_skips_dir_removed_concurrently(root, monkeypatch):
 
     def usage_then_vanish(path):
         result = real_usage(path)
-        shutil.rmtree(path)  # removed between counting and rmtree
+        shutil.rmtree(path)
         return result
 
     monkeypatch.setattr(service, "_tree_usage", usage_then_vanish)
@@ -288,14 +285,17 @@ def test_profiler_active_checks_cores_own_process(root, monkeypatch, process, ex
     [
         (json.dumps({"state": "running", "pid": os.getpid()}), True),
         (json.dumps({"state": "starting", "pid": os.getpid()}), True),
-        (json.dumps({"state": "starting"}), False),  # missing pid
+        (json.dumps({"state": "starting"}), False),
         (json.dumps({"state": "running", "pid": str(os.getpid())}), False),
         (json.dumps({"state": "running", "pid": True}), False),
         (json.dumps({"state": "running", "pid": 0}), False),
-        (json.dumps({"state": "running", "pid": 2**22 + 1}), False),  # pid gone
+        (
+            json.dumps({"state": "running", "pid": 2**22 + 1}),
+            False,
+        ),  # above the kernel's pid_max
         (json.dumps({"state": "failed", "pid": os.getpid()}), False),
         (json.dumps(["running"]), False),
-        ('{"state": "running", ', False),  # malformed
+        ('{"state": "running", ', False),
     ],
 )
 def test_profiler_active_checks_status_file(root, content, expected):
@@ -306,7 +306,7 @@ def test_profiler_active_checks_status_file(root, content, expected):
 
 
 def test_profiler_active_ignores_unreadable_status_file(root):
-    os.mkdir(cli.STATUS_FILE)  # open() fails with an OSError
+    os.mkdir(cli.STATUS_FILE)
 
     assert service.profiler_active() is False
 

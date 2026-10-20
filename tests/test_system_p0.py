@@ -1,5 +1,3 @@
-"""Tests for P0 system API additions."""
-
 import json
 import threading
 from pathlib import Path
@@ -22,7 +20,6 @@ _GET_MODE = system_service.get_mode
         ("iperf2", True),
         ("iperf2-udp.service", True),
         ("iperf3", True),
-        # No unit has this name; the iperf2 units replaced it.
         ("iperf", False),
     ],
 )

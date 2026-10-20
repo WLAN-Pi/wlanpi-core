@@ -1,5 +1,3 @@
-"""Tests for reading profiler output (GET /profiler/files and /profiler/files/{path})."""
-
 import os
 import types
 
@@ -281,8 +279,6 @@ def test_read_file_fifo_is_404_without_blocking(client, root):
 def test_read_file_refuses_dir_swapped_for_symlink_mid_open(
     root, tmp_path, monkeypatch, path, swapped
 ):
-    # A directory replaced by a symlink after the path is validated, before
-    # the file is opened, must not lead outside the data root.
     outside = tmp_path / "outside"
     outside.mkdir()
     for name in (f"{MAC}_5GHz.json", "profiler-2026-09-30.csv"):

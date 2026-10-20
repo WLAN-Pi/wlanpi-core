@@ -21,26 +21,15 @@ class NetworkAddress(BaseModel):
         if v:
             v = v.lower()
 
-        # Only supporting inet at the moment
         assert v in ("inet",), "family must be one of 'inet'"
         return v
 
 
-# class InetNetworkAddress(NetworkAddress):
 class InetNetworkAddress(NetworkAddress, extra="allow"):
     """IPv4 network address with an address type."""
 
     family: str = "inet"
     address_type: str
-
-    # @field_validator('address_type')
-    # def validate_address_type(cls, v):
-    #     if v:
-    #         v = v.lower()
-    #     # assert v in ('loopback', 'static', 'manual', 'dhcp'), "address_type must be one of 'loopback', 'static', 'manual', 'dhcp'"
-    #     print("cls: {}".format(cls.model_dump(cls)))
-    #     # assert v.lower() == cls.address_type, f"address_type must be '{cls.address_type}'"
-    #     return v
 
 
 class InetLoopbackNetworkAddress(InetNetworkAddress):
@@ -69,7 +58,6 @@ class InetStaticNetworkAddress(InetNetworkAddress):
     hwaddress: str | None = Field(examples=["12:34:56:78:9A:BC"], default=None)
     mtu: int | None = Field(examples=[1500], default=None)
     scope: str | None = Field(examples=["global"], default=None)
-    # dns: str = Field(json_schema_extra={"example": "192.168.1.1"})
 
     @field_validator("address_type")
     def validate_own_address_type(cls, v: str) -> str:
@@ -137,8 +125,6 @@ class Vlan(BaseModel):
     interface: str = Field(examples=["eth0"])
     vlan_tag: int = Field(examples=[20])
     if_control: str = Field(examples=["auto"])
-    # addresses: list[InetNetworkAddress] = Field()
-    # addresses: list[Union[InetStaticNetworkAddress, InetDhcpNetworkAddress, InetManualNetworkAddress, InetLoopbackNetworkAddress] ] = Field()
     addresses: list[
         InetStaticNetworkAddress
         | InetDhcpNetworkAddress

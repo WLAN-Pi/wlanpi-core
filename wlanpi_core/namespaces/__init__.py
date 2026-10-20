@@ -1,9 +1,4 @@
-"""
-Core namespace functionality for network namespace operations.
-
-This package provides focused modules for namespace lifecycle, interface management,
-and process management, following the pattern established by core/ and profiler/ folders.
-"""
+"""Network namespace lifecycle, interfaces, processes, and apps."""
 
 from wlanpi_core.namespaces.apps import (
     get_app_command,

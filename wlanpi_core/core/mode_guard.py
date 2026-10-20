@@ -25,12 +25,7 @@ def require_mode(*allowed: str) -> str:
 
 
 def require_wlan_management_enabled() -> None:
-    """
-    Raise HTTP 409 when WLAN_MANAGEMENT is set to manual.
-
-    In manual mode the operator owns the Wi-Fi interfaces, so endpoints that
-    create/delete/move Wi-Fi interfaces or activate profiles must not run.
-    """
+    """Raise HTTP 409 when WLAN_MANAGEMENT is manual: the operator owns Wi-Fi interfaces."""
     if settings.WLAN_MANAGEMENT == "manual":
         raise ValidationError(
             "wlanpi-core Wi-Fi management is disabled (WLAN_MANAGEMENT=manual)",

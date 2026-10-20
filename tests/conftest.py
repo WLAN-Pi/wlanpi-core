@@ -1,5 +1,3 @@
-"""Shared fixtures for namespace matrix tests."""
-
 from __future__ import annotations
 
 import subprocess
@@ -83,7 +81,6 @@ def _mock_namespace_run_command(cmd, raise_on_fail=True, **kwargs):
 
 @pytest.fixture
 def mock_namespace_execution():
-    """Block all namespace command execution during tests."""
     patches = [
         patch(
             "wlanpi_core.utils.namespace_execution.run_command",
@@ -107,7 +104,6 @@ def mock_namespace_execution():
 
 @pytest.fixture(autouse=True)
 def _isolate_namespace_execution(mock_namespace_execution):
-    """Ensure matrix and service tests never invoke real netns commands."""
     yield mock_namespace_execution
 
 
@@ -232,7 +228,6 @@ def hardware_success_mocks(interfaces=None, phy_move_side_effect=None):
         return None
 
     def _live(name):
-        # Parity layout: wlanN lives on phyN in root.
         index = interfaces.index(name)
         if name.removeprefix("wlan").isdigit():
             index = int(name.removeprefix("wlan"))
@@ -308,8 +303,6 @@ _NOOP_COMMANDS = {"pkill", "rm"}
 
 @dataclass
 class Iface:
-    """One live wireless netdev."""
-
     phy: str
     netns: str | None = None
     type: str = "managed"
@@ -392,8 +385,6 @@ class InventoryRecorder:
             netns_ids={name: 900 + i for i, name in enumerate(sorted(netns_set))},
         )
 
-    # --- views for assertions ---
-
     def live(self) -> dict[str, tuple[str, str | None, str]]:
         """Return {iface: (phy, netns, type)} for every live netdev."""
         return {
@@ -409,8 +400,6 @@ class InventoryRecorder:
 
     def last_moved_phy(self) -> str | None:
         return self.phy_moves[-1][0] if self.phy_moves else None
-
-    # --- fake command dispatch ---
 
     def run_command(
         self, cmd: list[str], raise_on_fail: bool = True, **kwargs: Any
@@ -442,7 +431,6 @@ class InventoryRecorder:
         if parts[:1] == ["ip"]:
             return self._ip(netns, parts[1:], raise_on_fail)
         if parts == ["cat", "/proc/net/packet"]:
-            # One packet socket per netdev a program is capturing on.
             rows = "".join(
                 f"00000000 3 3 0003 {meta.ifindex} 1 0 0 {9000 + meta.ifindex}\n"
                 for _name, meta in self._netns_ifaces(netns)
@@ -507,7 +495,6 @@ class InventoryRecorder:
             )
             return self._ok(stdout)
 
-        # `iw phy <name> ...` or `iw phy#<index> ...`
         if args[:1] == ["phy"] and len(args) >= 2:
             phy_name = args[1]
             rest = args[2:]

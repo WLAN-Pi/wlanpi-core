@@ -36,7 +36,6 @@ AUTH_DEPENDENCIES = {
     verify_local_auth,
 }
 
-# Public HTML and redirect views. Intentionally reachable without a token.
 PUBLIC_ROUTES = frozenset({"/", "/api", "/api/v1", "/favicon.ico"})
 
 

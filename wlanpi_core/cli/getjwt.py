@@ -67,8 +67,6 @@ class DeviceAuthClient:
         except PermissionError:
             raise PermissionError(unreadable) from None
         except FileNotFoundError:
-            # The secrets directory is not traversable by non-root users, so a
-            # non-root caller cannot stat the file either.
             if not _running_as_root():
                 raise PermissionError(unreadable) from None
             raise FileNotFoundError(f"Secret not found at {self.secret_file}") from None

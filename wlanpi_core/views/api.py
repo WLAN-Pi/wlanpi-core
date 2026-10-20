@@ -1,14 +1,10 @@
 """HTML views for the wlanpi-core application."""
 
-# stdlib imports
-
-# third party imports
 import fastapi
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.templating import Jinja2Templates
 
-# app imports
 from wlanpi_core.core.config import endpoints, settings
 from wlanpi_core.core.logging import get_logger
 

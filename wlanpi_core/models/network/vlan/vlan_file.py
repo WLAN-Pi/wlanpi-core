@@ -53,7 +53,6 @@ class VLANFile:
         for line in filelike:
             line_count += 1
             if line.startswith(cls.STANZA_PREFIXES):
-                # Filter out blank items
                 tmp = [i for i in tmp if i]
                 yield tmp
                 tmp = [line.strip()]
@@ -77,7 +76,6 @@ class VLANFile:
         """Return all VLANs configured in the interface file as objects."""
         raw_if_data = self.read_interfaces_file(self.vlan_interface_file)
 
-        # Create default objects
         vlans_devices: dict[str, dict[str, Any]] = defaultdict(
             lambda: defaultdict(
                 lambda: {
@@ -87,18 +85,15 @@ class VLANFile:
             )
         )
 
-        # This likely can be abstracted up to being a standard interface parser
         for stanza in raw_if_data:
             first_line = stanza[0].strip()
             verb, device, *rest = first_line.split()
-            # This might not be the best approach if renames get used, but it works for now
             (
                 base_device,
                 vlan_id,
             ) = device.split(".")
 
             if verb in ["source", "source-directory"]:
-                # TODO: Should we throw here? We won't be creating these but someone else might add them?
                 continue
 
             if verb == "iface":
@@ -127,7 +122,6 @@ class VLANFile:
                     "if_control": vlan_details["selection"],
                 }
 
-                # There can be multiple addresses assigned to a specific VLAN interface--get them all
                 for address in vlan_details["addresses"]:
                     address_obj = {
                         "family": address["family"],
@@ -151,21 +145,17 @@ class VLANFile:
 
         for address_config in configuration.addresses:
             address_config_string = f"iface {vlan_interface} {address_config.family} {address_config.address_type}\n"
-            # pp([*address_config.model_fields.keys(), *address_config.model_extra.keys()])
             for key in [
                 *address_config.model_fields.keys(),
                 *(address_config.model_extra or {}).keys(),
             ]:
-                # Skip null keys, as well as keys that are used for the data but not actually valid interface config
                 if (
                     key in ["family", "address_type"]
                     or getattr(address_config, key) is None
                 ):
                     continue
-                # print(key)
                 address_config_string += f"\t{address_config.model_fields[key].serialization_alias or key} {getattr(address_config, key)}\n"
             config_string += address_config_string
-            # TODO: Possibly validate details in here.
         return config_string
 
     @staticmethod
@@ -186,38 +176,26 @@ class VLANFile:
     ) -> dict[str, Any]:
         """Create or update a VLAN definition for a given interface."""
 
-        # Validate that the requested interface exists
         if require_existing_interface and not await self.check_interface_exists(
             configuration.interface
         ):
-            # return {
-            #     'success': False,
-            #     'result': self.vlans,
-            #     'errors': {f"Interface {configuration.interface} does not exist"}
-            # }
             raise ValidationError(
                 f"Interface {configuration.interface} does not exist", status_code=400
             )
 
-        # If there's not already a vlan-raw-device set, set it for each address
         for address in configuration.addresses:
             if address.vlan_raw_device is None:
                 address.vlan_raw_device = configuration.interface
-                # address['vlan-raw-device'] = configuration.interface
 
-        # Dump the given VLAN configuration to a basic dict to match the output of get_vlans
         config_obj = configuration.model_dump(
             by_alias=True, exclude_unset=True, exclude_none=True
         )
 
-        # Scan existing to find a matching interface:
         replaced = False
         for vlan_index, existing_vlan in enumerate(self.vlans):
-            # If the right interface
             if existing_vlan["interface"] == configuration.interface and str(
                 existing_vlan["vlan_tag"]
             ) == str(configuration.vlan_tag):
-                # No sophisticated replace logic, just dumb swap for now.
                 self.vlans[vlan_index] = config_obj
                 replaced = True
         if not replaced:
@@ -231,7 +209,6 @@ class VLANFile:
     ) -> dict[str, Any]:
         """Remove a VLAN definition for a given interface."""
 
-        # Scan existing to find a matching interface:
         original_length = len(self.vlans)
 
         self.vlans = [
@@ -241,7 +218,6 @@ class VLANFile:
         ]
 
         if original_length == len(self.vlans):
-            # TODO: is this really a validation error?
             raise ValidationError(
                 f"Interface {interface} with VLAN {vlan_tag} does not exist",
                 status_code=400,

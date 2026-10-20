@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic subscriber buffering test: old vs new constants.
-
-Drives ConnectionManager._broadcast_chunk at a fixed block rate with one
-subscriber whose first send_bytes stalls for a controlled duration. The two
-eviction triggers are queue overflow (QueueFull) and send stall (TimeoutError),
-both of which close the subscriber with 1013.
-
-Run with the package importable, for example from the repo root:
-
-    python tools/capture_harness/subscriber_buffering/budget_test.py
-
-It imports wlanpi_core.streaming.connection_manager and monkeypatches
-_SUBSCRIBER_QUEUE_BLOCKS and _SUBSCRIBER_SEND_TIMEOUT_SEC in-process, so it
-needs no device and no WebSocket.
-"""
+"""Deterministic subscriber buffering test: old vs new constants."""
 
 import asyncio
 import struct
