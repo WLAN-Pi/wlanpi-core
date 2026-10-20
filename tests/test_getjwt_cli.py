@@ -81,3 +81,19 @@ def test_missing_secret_reported_as_missing(
 
     out = capsys.readouterr().out
     assert out == f"File Error: Secret not found at {secret}\n"
+
+
+def test_unreadable_secret_cli_points_at_sudo(
+    monkeypatch, capsys, connected_socket, tmp_path
+):
+    secret = tmp_path / "shared_secret.bin"
+    monkeypatch.setattr(getjwt, "SECRET_PATH", str(secret))
+    monkeypatch.setattr(getjwt.Path, "read_bytes", UnreadableSecret.read_bytes)
+
+    assert _run(monkeypatch, ["pi", "--no-color"]) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        out
+        == f"File Error: Secret at {secret} is not readable. Run getjwt with sudo.\n"
+    )
