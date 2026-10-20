@@ -79,7 +79,7 @@ fi
 # On first real boot the block runs as normal and generates a unique key per device.
 if ! ischroot; then
     # Generate per-device TLS certs (nginx, webui, cockpit, grafana), covering
-    # the renamed .local hostname. Regenerates when an existing cert predates it.
+    # the renamed .local hostname. Regenerates when an existing cert lacks a SAN.
     CERT_MTIME_BEFORE=$(stat -c %Y /etc/nginx/ssl/self-signed-wlanpi.cert 2>/dev/null || echo 0)
     /etc/wlanpi-core/scripts/wlanpi-generate-certs.sh
     CERT_MTIME_AFTER=$(stat -c %Y /etc/nginx/ssl/self-signed-wlanpi.cert 2>/dev/null || echo 0)

@@ -228,7 +228,7 @@ Production uses
 must trust `/etc/nginx/ssl/self-signed-wlanpi.cert` and connect using a name or
 address in its SAN (`localhost`, `wlanpi.local`, the device's current
 `<hostname>.local` name, its eth0-MAC-derived `wlanpi-<last3>.local` name,
-`127.0.0.1`, or `198.18.42.1`). The common name is always `wlanpi.local`, and
+`127.0.0.1`, `198.18.42.1`, or `198.18.43.1`). The common name is always `wlanpi.local`, and
 hostname verification uses the SAN. A hostname changed by other means is not
 kept in sync with the certificate; see the API integration guide.
 
