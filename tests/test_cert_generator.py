@@ -69,6 +69,8 @@ def test_second_run_is_noop(tmp_path):
         "DNS:localhost,DNS:wlanpi.local,IP:127.0.0.1,IP:198.18.42.1",
         # Before #399: no Bluetooth PAN address.
         "DNS:localhost,DNS:wlanpi.local,DNS:wlanpi-e12.local,IP:127.0.0.1,IP:198.18.42.1",
+        # A longer address with 198.18.43.1 as its prefix is not a match.
+        "DNS:localhost,DNS:wlanpi.local,DNS:wlanpi-e12.local,IP:127.0.0.1,IP:198.18.43.10",
     ],
 )
 def test_regenerates_when_a_san_is_missing(tmp_path, old_san):

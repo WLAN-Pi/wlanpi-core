@@ -37,10 +37,10 @@ expected_hostname() {
     fi
 }
 
-# Return 0 (true) when the certificate's text lacks the SAN entry $1.
+# Return 0 (true) when the certificate's SAN lacks the exact entry $1.
 cert_missing_san() {
-    if openssl x509 -in "$CERT" -noout -text 2>/dev/null |
-        grep -qF "$1"; then
+    if openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null |
+        tr ',' '\n' | sed 's/^ *//' | grep -qxF "$1"; then
         return 1
     fi
     return 0
