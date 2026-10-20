@@ -133,6 +133,14 @@ apply_ufw_rules() {
     fi
 
     log_info "Applying UFW rules..."
+    # `ufw allow` skips a profile that already has a rule, so rewrite existing
+    # rules to the profile's current ports first.
+    if ! ufw app update wlanpi-core >/dev/null 2>&1; then
+        error "Failed to update wlanpi-core rules in UFW"
+    fi
+    if ! ufw app update wlanpi-webui >/dev/null 2>&1; then
+        error "Failed to update wlanpi-webui rules in UFW"
+    fi
     if ! ufw allow wlanpi-core >/dev/null 2>&1; then
         error "Failed to allow wlanpi-core in UFW"
     fi
