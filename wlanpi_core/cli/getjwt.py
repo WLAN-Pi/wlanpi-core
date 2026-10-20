@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import hmac
 import json
-import os
 import re
 import socket
 import sys
@@ -29,11 +28,6 @@ BLUE = "\033[0;34m"
 GREEN = "\033[0;32m"
 YELLOW = "\033[0;33m"
 NC = "\033[0m"
-
-
-def _running_as_root() -> bool:
-    """Whether the current process can read the root-only shared secret."""
-    return os.geteuid() == 0
 
 
 class DeviceAuthClient:
@@ -59,16 +53,13 @@ class DeviceAuthClient:
                 "Please ensure wlanpi-core server is running."
             ) from None
 
-        unreadable = (
-            f"Secret at {self.secret_file} is not readable. Run getjwt with sudo."
-        )
         try:
             self.secret_file.read_bytes()
         except PermissionError:
-            raise PermissionError(unreadable) from None
+            raise PermissionError(
+                f"Secret at {self.secret_file} is not readable. Run getjwt with sudo."
+            ) from None
         except FileNotFoundError:
-            if not _running_as_root():
-                raise PermissionError(unreadable) from None
             raise FileNotFoundError(f"Secret not found at {self.secret_file}") from None
 
     def generate_signature(self, request_body: str) -> str:
