@@ -84,7 +84,9 @@ async def show_all_interfaces(
         interface = None
 
     try:
-        return await network_ethernet_service.get_interfaces(interface=interface)
+        return await network_ethernet_service.get_interfaces(
+            interface=interface, namespaced=True
+        )
     except ValidationError as ve:
         return Response(content=ve.error_msg, status_code=ve.status_code)
     except VLANError as ve:

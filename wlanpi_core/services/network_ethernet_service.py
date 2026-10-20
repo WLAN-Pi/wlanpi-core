@@ -1,5 +1,7 @@
 """Ethernet interface and VLAN management service."""
 
+import asyncio
+
 from ..models.network import common
 from ..models.network.vlan import LiveVLANs
 from ..models.validation_error import ValidationError
@@ -67,14 +69,19 @@ async def get_interfaces(
     interface: str | None,
     allow_missing: bool = False,
     custom_filter: CustomIPInterfaceFilter | None = None,
+    namespaced: bool = False,
 ) -> dict[str, list[IPInterface]]:
-    """Return definitions for all network interfaces known by the `ip` command."""
-    if interface is None:
-        return common.get_interfaces_by_interface(custom_filter=custom_filter)
-    else:
+    """Return definitions for all network interfaces known by the `ip` command.
+
+    With ``namespaced``, also include wireless interfaces in named namespaces.
+    """
+    if interface is not None:
         interface = _validated_interface(interface)
-        return {
-            interface: common.get_interfaces_by_interface(
-                custom_filter=custom_filter
-            ).get(interface, [])
-        }
+    interfaces = await asyncio.to_thread(
+        common.get_interfaces_by_interface,
+        custom_filter=custom_filter,
+        namespaced=namespaced,
+    )
+    if interface is None:
+        return interfaces
+    return {interface: interfaces.get(interface, [])}

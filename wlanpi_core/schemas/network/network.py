@@ -87,6 +87,11 @@ class IPInterface(BaseModel, extra="allow"):
         description="Link-layer broadcast address; null when the link has none",
     )
     addr_info: list[IPInterfaceAddress] = Field(examples=[])
+    namespace: str | None = Field(
+        default=None,
+        examples=["lab"],
+        description="Network namespace holding the interface; null for root",
+    )
 
 
 class NetworkModeEnum(StrEnum):

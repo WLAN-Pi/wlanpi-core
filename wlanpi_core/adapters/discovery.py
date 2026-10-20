@@ -6,9 +6,13 @@ on the system.
 """
 
 import logging
+import subprocess
 from typing import Any, NamedTuple
 
 from wlanpi_core.constants import IW_FILE
+from wlanpi_core.models.network.namespace.namespace_errors import (
+    NetworkNamespaceError,
+)
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.namespaces import namespace as ns_namespace
 from wlanpi_core.utils.general import run_command
@@ -197,11 +201,27 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
     for netns in ns_namespace.list_namespaces():
         try:
             ns_result = ns_exec([IW_FILE, "dev"], namespace=netns, no_output=True)
-        except (RunCommandError, ValueError) as e:
+        except (RunCommandError, ValueError, OSError, subprocess.TimeoutExpired) as e:
             log.warning(f"Could not list wireless interfaces in {netns}: {e}")
             continue
         found += _parse_iw_dev(ns_result.stdout, netns)
     return found
+
+
+def list_namespaced_interfaces() -> list[LiveInterface]:
+    """Return wireless interfaces in named namespaces; [] if listing fails."""
+    try:
+        return [
+            live for live in list_interfaces_all_namespaces() if live.netns is not None
+        ]
+    except (
+        RunCommandError,
+        NetworkNamespaceError,
+        OSError,
+        subprocess.TimeoutExpired,
+    ) as exc:
+        log.warning(f"Could not list namespaced wireless interfaces: {exc}")
+        return []
 
 
 def interface_driver(iface: str, namespace: str | None = None) -> str | None:

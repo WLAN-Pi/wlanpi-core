@@ -8,9 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from wlanpi_core.adapters.discovery import LiveInterface
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.models.command_result import CommandResult
+from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 
 
@@ -160,16 +162,131 @@ def test_api_interfaces_with_no_link_layer_address(client, path):
             )
         return CommandResult(stdout="1000", stderr="", return_code=0)
 
-    with patch("wlanpi_core.models.network.common.run_command", side_effect=_fake_run):
+    with (
+        patch("wlanpi_core.models.network.common.run_command", side_effect=_fake_run),
+        patch(
+            "wlanpi_core.adapters.discovery.list_namespaced_interfaces",
+            return_value=[],
+        ),
+    ):
         response = client.get(path)
 
     assert response.status_code == 200
     body = response.json()
     assert body["eth0"][0]["address"] == "52:54:00:00:00:01"
+    assert body["eth0"][0]["namespace"] is None
     if path.endswith("/interfaces"):
         assert body["tailscale0"][0]["address"] is None
         assert body["tailscale0"][0]["broadcast"] is None
         assert body["tailscale0"][0]["addr_info"][0]["local"] == "100.81.248.82"
+
+
+@pytest.mark.parametrize(
+    "path", ["/api/v1/network/interfaces", "/api/v1/network/interfaces/wlan1"]
+)
+def test_api_interfaces_include_namespaced_wireless(client, path):
+    lo = {
+        "ifindex": 1,
+        "ifname": "lo",
+        "flags": ["LOOPBACK", "UP"],
+        "mtu": 65536,
+        "qdisc": "noqueue",
+        "operstate": "UNKNOWN",
+        "group": "default",
+        "txqlen": 1000,
+        "link_type": "loopback",
+        "addr_info": [],
+    }
+    wlan1 = {
+        **lo,
+        "ifindex": 7,
+        "ifname": "wlan1",
+        "flags": ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"],
+        "mtu": 1500,
+        "operstate": "UP",
+        "link_type": "ether",
+        "address": "aa:bb:cc:dd:ee:01",
+        "addr_info": [{"family": "inet", "local": "192.168.18.223", "prefixlen": 24}],
+    }
+    root = CommandResult(stdout=json.dumps([lo]), stderr="", return_code=0)
+    in_ns = CommandResult(stdout=json.dumps([wlan1]), stderr="", return_code=0)
+    with (
+        patch("wlanpi_core.models.network.common.run_command", return_value=root),
+        patch(
+            "wlanpi_core.adapters.discovery.list_namespaced_interfaces",
+            return_value=[LiveInterface("wlan1", 1, "rcmlo", "managed")],
+        ),
+        patch(
+            "wlanpi_core.models.network.common.ns_exec", return_value=in_ns
+        ) as ns_exec,
+    ):
+        response = client.get(path)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["wlan1"][0]["namespace"] == "rcmlo"
+    assert body["wlan1"][0]["addr_info"][0]["local"] == "192.168.18.223"
+    ns_exec.assert_called_once_with(
+        ["ip", "--details", "-j", "addr", "show", "dev", "wlan1"],
+        namespace="rcmlo",
+        no_output=True,
+    )
+
+
+def test_api_interfaces_skip_a_namespace_that_fails_and_keep_the_rest(client):
+    def fake_ns_exec(cmd, namespace=None, no_output=False):
+        if namespace == "broken":
+            raise RunCommandError("Cannot open network namespace", 1)
+        entry = {
+            "ifindex": 3,
+            "ifname": cmd[-1],
+            "flags": ["UP"],
+            "mtu": 1500,
+            "qdisc": "noqueue",
+            "operstate": "UP",
+            "group": "default",
+            "txqlen": 1000,
+            "link_type": "ether",
+            "addr_info": [],
+        }
+        return CommandResult(stdout=json.dumps([entry]), stderr="", return_code=0)
+
+    with (
+        patch(
+            "wlanpi_core.models.network.common.run_command",
+            return_value=CommandResult(stdout="[]", stderr="", return_code=0),
+        ),
+        patch(
+            "wlanpi_core.adapters.discovery.list_namespaced_interfaces",
+            return_value=[
+                LiveInterface("wlan1", 1, "broken", "managed"),
+                LiveInterface("wlan2", 2, "lab", "managed"),
+            ],
+        ),
+        patch("wlanpi_core.models.network.common.ns_exec", side_effect=fake_ns_exec),
+    ):
+        response = client.get("/api/v1/network/interfaces")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "wlan1" not in body
+    assert body["wlan2"][0]["namespace"] == "lab"
+
+
+def test_api_ethernet_does_not_read_namespaces(client):
+    with (
+        patch(
+            "wlanpi_core.models.network.common.run_command",
+            return_value=CommandResult(stdout="[]", stderr="", return_code=0),
+        ),
+        patch(
+            "wlanpi_core.adapters.discovery.list_namespaced_interfaces"
+        ) as namespaced,
+    ):
+        response = client.get("/api/v1/network/ethernet/all")
+
+    assert response.status_code == 200
+    namespaced.assert_not_called()
 
 
 def test_api_wlan_link(client):
