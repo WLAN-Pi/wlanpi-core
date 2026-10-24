@@ -63,7 +63,6 @@ def _resolv_conf_path(namespace: str | None) -> str:
 
 
 async def _isolated_check(label: str, check: Awaitable[Any]) -> Any:
-    """Return one sub-check's result, or None so a failure stays on that row."""
     try:
         return await check
     except asyncio.CancelledError:
