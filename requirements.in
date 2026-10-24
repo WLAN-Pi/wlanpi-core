@@ -15,9 +15,6 @@ alembic
 websockets
 
 psutil
-dbus-python
-
-# PAM authentication broker (wlanpi-webui session login)
 pamela
 
 --extra-index-url https://www.piwheels.org/simple

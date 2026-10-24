@@ -48,7 +48,7 @@ Flag defects below. Skip style nits that ruff, mypy, or CI already enforce, and 
 ## Dependencies
 
 - Runtime dependencies are unpinned in `pyproject.toml` `[project].dependencies` and in `requirements.in`. `requirements.txt` is the lockfile: `pip-compile --no-index requirements.in`, with the piwheels `--extra-index-url` kept. Flag a `requirements.in` edit that does not regenerate `requirements.txt`, or a new import whose distribution is missing from either file.
-- A new dependency is package content: it needs a `debian/changelog` bump and a human accepting the dependency. `dbus-python` is built from the sdist in `debian/rules` (no binary wheel). Flag a casual change to that pin or to the `--preinstall` versions in `override_dh_virtualenv`.
+- A new dependency is package content: it needs a `debian/changelog` bump and a human accepting the dependency. `dbus-python` is built from the sdist in `debian/rules` (no binary wheel). The pin is the single line in `debian/dbus-python.pin`. `debian/rules` and the openapi tox envs install that line. It stays out of `requirements.in` because Dependabot's pip-compile image has no libdbus and cannot build that sdist. Flag a casual change to that pin, putting `dbus-python` back in `requirements.in`, or a change to the `--preinstall` versions in `override_dh_virtualenv`.
 
 ## Debian packaging, versions, and paths
 
