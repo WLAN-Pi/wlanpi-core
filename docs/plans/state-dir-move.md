@@ -207,8 +207,8 @@ Update line 152:
 
 ### 9. `debian/changelog`
 
-New `2.3.0-1` entry (breaking package-content change; version bump required),
-and `wlanpi_core/__version__.py` to `2.3.0`.
+Do not edit `debian/changelog` or `wlanpi_core/__version__.py` in this change.
+The release pull request sets the version.
 
 ## Companion changes
 

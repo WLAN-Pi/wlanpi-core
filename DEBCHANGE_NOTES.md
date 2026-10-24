@@ -11,25 +11,19 @@ If you do not, when `debchange` is invoked, it will automatically author the cha
 
 ## debchange - usage tips
 
-### Create a new version entry
+### Release entry
 
-You can run debchange from the root of the repository as debchange will climb the directory tree until it finds a `debian/changelog` file.
+A fix or feature pull request does not edit `debian/changelog`. Only a release pull request does. From the repository root, run `dch -v <version>` with no Debian revision, then `dch -r ""`. Do not run `dch -i`. On `2.4.12-1`, `dch -i` writes `2.4.12-2`.
 
-```
-(venv) wlanpi@rbpi4b-8gb:[~/dev/wlanpi-core]: debchange
-```
-
-### Update an existing version entry
-
-You should minially use `dch -i` when adding a new changelog because `-i` increases the release number and adds a changelog entry.
-
-If you want to edit the changelog without changing the version or adding a new entry, use `-e` instead of `-i`.
+To edit the current entry without a new version, run `dch -e`.
 
 ## debchange - versions
 
 On version numbers, from the Debian maintainers guide:
 
 > One tricky case can occur when you make a local package, to experiment with the packaging before uploading the normal version to the official archive, e.g., 1.0.1-1. For smoother upgrades, it is a good idea to create a changelog entry with a version string such as 1.0.1-1~rc1. You may unclutter changelog by consolidating such local change entries into a single entry for the official package.
+
+Do not add that local revision on a fix. The release pull request sets the version.
 
 ## debchange - environment variables
 
