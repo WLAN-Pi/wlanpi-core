@@ -206,7 +206,7 @@ async def show_reachability(
     page = ""
     if browse_google is not None and browse_google.success:
         page = browse_google.stdout
-    seen = "google.com" in page  # lgtm[py/incomplete-url-substring-sanitization] body
+    seen = "google.com" in page
     output["results"]["Browse Google"] = "OK" if seen else "FAIL"
     output["results"]["Ping Gateway"] = ping_stats_from_jc(_as_dict(ping_gateway))[
         "display"
