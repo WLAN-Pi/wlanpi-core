@@ -208,6 +208,7 @@ async def show_reachability(
         "OK"
         if browse_google is not None
         and browse_google.success
+        # lgtm[py/incomplete-url-substring-sanitization] curl body, not a URL allowlist
         and "google.com" in browse_google.stdout
         else "FAIL"
     )
