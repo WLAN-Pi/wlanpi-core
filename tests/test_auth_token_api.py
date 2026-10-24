@@ -102,6 +102,40 @@ async def test_generate_token_reserves_the_pam_client_device_id(caller, allowed)
         token_manager.create_token.assert_not_awaited()
 
 
+def _bearer(device_id: str) -> TokenValidationResult:
+    return TokenValidationResult(
+        is_valid=True, token="caller-jwt", payload={"did": device_id}
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_token_rejects_bearer_mint_for_another_device():
+    token_manager = SimpleNamespace(create_token=AsyncMock(return_value="jwt"))
+    request = _request_with_token_manager(token_manager)
+
+    with pytest.raises(HTTPException) as exc:
+        await generate_token(
+            request, TokenRequest(device_id="device-b"), _bearer("device-a")
+        )
+
+    assert exc.value.status_code == 403
+    token_manager.create_token.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generate_token_lets_bearer_rotate_its_own_device():
+    token_manager = SimpleNamespace(create_token=AsyncMock(return_value="new-jwt"))
+    request = _request_with_token_manager(token_manager)
+
+    response = await generate_token(
+        request, TokenRequest(device_id="device-a"), _bearer("device-a")
+    )
+
+    assert response.access_token == "new-jwt"
+    assert response.token_type == "bearer"
+    assert token_manager.create_token.await_args.kwargs["device_id"] == "device-a"
+
+
 def test_token_request_bounds_device_id():
     with pytest.raises(PydanticValidationError):
         TokenRequest(device_id="x" * 129)
@@ -184,4 +218,20 @@ def test_reserved_device_id_rejects_valid_bearer_request(endpoint_state):
 
     assert resp.status_code == 403
     endpoint_state.verify_token.assert_awaited_once_with("jwt")
+    endpoint_state.create_token.assert_not_awaited()
+
+
+def test_bearer_cannot_mint_token_for_another_device(endpoint_state):
+    endpoint_state.verify_token.return_value = TokenValidationResult(
+        is_valid=True, token="jwt", payload={"did": "device-a"}
+    )
+    client = TestClient(app, client=("203.0.113.10", 50000))
+
+    resp = client.post(
+        TOKEN_PATH,
+        content=json.dumps({"device_id": "device-b"}),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer jwt"},
+    )
+
+    assert resp.status_code == 403
     endpoint_state.create_token.assert_not_awaited()

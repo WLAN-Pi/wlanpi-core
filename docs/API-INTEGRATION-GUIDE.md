@@ -167,7 +167,8 @@ Core never extends a token. To keep working past expiry, trade the current
 token for a new one while the current token is still valid.
 
 1. Keep a copy of the current token, then request a new one, sending the
-   current token as the bearer and the same `device_id`:
+   current token as the bearer and the same `device_id`. A different
+   `device_id` returns 403, and the token you sent stays valid:
 
    ```bash
    OLD_WLANPI_TOKEN=$WLANPI_TOKEN

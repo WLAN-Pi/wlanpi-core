@@ -277,7 +277,12 @@ async def pam_account(body: PAMAccountRequest) -> PAMAccountResponse:
     summary="Issue JWT bearer token",
     responses={
         401: RESPONSES_AUTH[401],
-        403: {"description": "device_id is reserved for on-device use"},
+        403: {
+            "description": (
+                "device_id is reserved for on-device use, or does not match"
+                " the bearer token"
+            )
+        },
         412: {"description": "device_id missing from request body"},
         500: {"description": "Token generation failed"},
     },
@@ -296,7 +301,9 @@ async def generate_token(
     (UI proxy) — see `docs/API-INTEGRATION-GUIDE.md` §1.
 
     The `wlanpi-webui` device id is reserved: only localhost HMAC callers can
-    mint it (403 otherwise).
+    mint it (403 otherwise). A bearer can mint a token only for its own
+    device id. Any other device id returns 403, and the bearer used for the
+    call stays valid until it expires.
 
     Send the returned `access_token` as `Authorization: Bearer <token>` on all
     subsequent API calls until expiry (default 7 days) or `DELETE /auth/token`.
@@ -309,6 +316,10 @@ async def generate_token(
         ):
             raise HTTPException(
                 status_code=403, detail="device_id is reserved for on-device use"
+            )
+        if isinstance(caller, TokenValidationResult) and device_id != caller.device_id:
+            raise HTTPException(
+                status_code=403, detail="device_id does not match token"
             )
 
         access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
