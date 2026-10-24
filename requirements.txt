@@ -39,7 +39,7 @@ fastapi==0.115.6
     # via -r requirements.in
 greenlet==3.1.1
     # via sqlalchemy
-gunicorn==23.0.0
+gunicorn==26.2.0
     # via -r requirements.in
 h11==0.16.0
     # via
@@ -65,9 +65,9 @@ markupsafe==3.0.2
     #   jinja2
     #   mako
 packaging==24.2
-    # via
-    #   gunicorn
-    #   limits
+    # via limits
+pamela==1.2.0
+    # via -r requirements.in
 psutil==6.1.1
     # via -r requirements.in
 pycparser==2.22
@@ -84,8 +84,6 @@ python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   pydantic-settings
-pamela==1.2.0
-    # via -r requirements.in
 requests==2.34.2
     # via -r requirements.in
 slowapi==0.1.9
