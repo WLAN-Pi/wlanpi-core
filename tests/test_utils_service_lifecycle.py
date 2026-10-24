@@ -78,6 +78,84 @@ async def test_reachability_reports_dns_server_address(monkeypatch):
     assert result["results"]["DNS Server 2 Resolution"] == "1.1.1.1: FAIL"
 
 
+def _reachability_check_name(cmd: list[str]) -> str:
+    if cmd[0] == "curl":
+        return "curl"
+    if cmd[0] == "arping":
+        return "arping"
+    if cmd[0] == "dig":
+        return "dig"
+    if cmd[0] == "jc" and cmd[-1] == "google.com":
+        return "ping-google"
+    if cmd[0] == "jc" and cmd[-1] == "192.0.2.1":
+        return "ping-gateway"
+    if cmd[0] == "jc" and cmd[-1] == "8.8.8.8":
+        return "custom"
+    raise AssertionError(cmd)
+
+
+def _ping_stdout(avg_ms: int) -> str:
+    return json.dumps(
+        {
+            "packets_received": 1,
+            "round_trip_ms_min": avg_ms,
+            "round_trip_ms_avg": avg_ms,
+            "round_trip_ms_max": avg_ms,
+            "packet_loss_percent": 0,
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failing",
+    ["curl", "arping", "dig", "ping-google", "ping-gateway", "custom"],
+)
+async def test_reachability_keeps_other_rows_when_one_check_times_out(
+    monkeypatch, failing
+):
+    monkeypatch.setattr(
+        utils_service,
+        "get_default_gateways",
+        lambda *_: {"eth0": "192.0.2.1"},
+    )
+    monkeypatch.setattr(utils_service, "_read_dns_servers", lambda *_: ["1.1.1.1"])
+
+    async def run_command(cmd, **_kwargs):
+        name = _reachability_check_name(cmd)
+        if name == failing:
+            raise TimeoutError()
+        if name == "curl":
+            return CommandResult("google.com", "", 0)
+        if name == "arping":
+            return CommandResult("1.25ms", "", 0)
+        if name == "dig":
+            return CommandResult("ns1.example.test", "", 0)
+        if name == "ping-google":
+            return CommandResult(_ping_stdout(5), "", 0)
+        if name == "ping-gateway":
+            return CommandResult(_ping_stdout(1), "", 0)
+        return CommandResult(_ping_stdout(9), "", 0)
+
+    monkeypatch.setattr(utils_service, "run_command_async", run_command)
+    monkeypatch.setattr(reachability, "run_command_async", run_command)
+
+    result = await utils_service.show_reachability(targets=["8.8.8.8"])
+
+    assert "error" not in result
+    results = result["results"]
+    assert results["Ping Google"] == ("FAIL" if failing == "ping-google" else "5ms")
+    assert results["Browse Google"] == ("FAIL" if failing == "curl" else "OK")
+    assert results["Ping Gateway"] == ("FAIL" if failing == "ping-gateway" else "1ms")
+    assert results["Arping Gateway"] == ("FAIL" if failing == "arping" else "1.25ms")
+    assert results["DNS Server 1 Resolution"] == (
+        "1.1.1.1: FAIL" if failing == "dig" else "1.1.1.1: OK"
+    )
+    assert results["custom"][0]["target"] == "8.8.8.8"
+    assert results["custom"][0]["display"] == ("FAIL" if failing == "custom" else "9ms")
+    assert results["custom"][0]["success"] == (failing != "custom")
+
+
 @pytest.mark.asyncio
 async def test_reachability_runs_every_check_in_namespace(monkeypatch, tmp_path):
     netns_etc = tmp_path / "netns"

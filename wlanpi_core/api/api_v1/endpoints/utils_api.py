@@ -54,6 +54,9 @@ async def reachability(
     With `namespace`, the gateway comes from that namespace's routing table, DNS
     servers from `/etc/netns/<namespace>/resolv.conf` when it exists, and every
     check runs under `ip netns exec`.
+
+    A sub-check that times out or errors is `FAIL` for that row. The other rows
+    are still returned.
     """
 
     try:

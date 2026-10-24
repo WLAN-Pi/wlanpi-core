@@ -92,6 +92,8 @@ Built-in checks use the **legacy display keys** (unchanged for fpms2 / existing 
 
 DNS fields are omitted (not `null`) when fewer than N resolvers are configured — same as before.
 
+A sub-check that times out or errors is `FAIL` for that row (`custom[]` uses `success: false` and `display: "FAIL"`, and still names `target`). The other rows are still returned.
+
 ### 1.3 Errors
 
 | HTTP | When |
@@ -190,6 +192,7 @@ lhapitest -e /utils/speedtest -p 8000 --http
 
 | Date | Change |
 |------|--------|
+| 2026-10-24 | A timed-out or failed sub-check is `FAIL` for that row; the other rows are still returned |
 | 2026-09-28 | Added `namespace` query param on reachability |
 | 2026-06-14 | Added `targets` query param and `custom[]` ping stats on reachability |
 | 2026-06-14 | Added `GET /utils/speedtest` (LibreSpeed CLI wrapper) |
