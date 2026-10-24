@@ -12,6 +12,8 @@ aiosqlite==0.20.0
     # via -r requirements.in
 alembic==1.14.1
     # via -r requirements.in
+annotated-doc==0.0.5
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.8.0
@@ -35,7 +37,7 @@ cryptography==50.0.1
     # via authlib
 deprecated==1.2.15
     # via limits
-fastapi==0.115.6
+fastapi==0.157.0
     # via -r requirements.in
 greenlet==3.1.1
     # via sqlalchemy
@@ -64,10 +66,14 @@ markupsafe==3.0.2
     # via
     #   jinja2
     #   mako
+opentelemetry-api==1.45.1
+    # via fastapi
 packaging==24.2
     # via
     #   gunicorn
     #   limits
+pamela==1.2.0
+    # via -r requirements.in
 psutil==6.1.1
     # via -r requirements.in
 pycparser==2.22
@@ -84,8 +90,6 @@ python-dotenv==1.2.3
     # via
     #   -r requirements.in
     #   pydantic-settings
-pamela==1.2.0
-    # via -r requirements.in
 requests==2.34.2
     # via -r requirements.in
 slowapi==0.1.9
@@ -96,7 +100,7 @@ sqlalchemy[asyncio]==2.0.37
     # via
     #   -r requirements.in
     #   alembic
-starlette==0.41.3
+starlette==1.9.0
     # via fastapi
 typing-extensions==4.12.2
     # via
@@ -104,9 +108,13 @@ typing-extensions==4.12.2
     #   alembic
     #   fastapi
     #   limits
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via fastapi
 urllib3==2.8.0
     # via requests
 uvicorn==0.34.0
