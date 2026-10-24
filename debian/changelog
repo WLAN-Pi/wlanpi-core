@@ -1,3 +1,11 @@
+wlanpi-core (2.4.12-1) unstable; urgency=medium
+
+  * A bearer token can mint a new token only for its own device id.
+    A different device id returns 403, and the token used for the
+    call stays valid until it expires (#386).
+
+ -- Cursor Agent <cursoragent@cursor.com>  Sat, 24 Oct 2026 13:24:30 +0000
+
 wlanpi-core (2.4.11-1) unstable; urgency=medium
 
   * Start Core once per install. An upgrade with the WebUI open, or two
