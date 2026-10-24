@@ -3171,7 +3171,7 @@
           "device utils"
         ],
         "summary": "Reachability",
-        "description": "Run reachability checks for gateway, internet, DNS, and optional custom targets.\n\nWith `namespace`, the gateway comes from that namespace's routing table, DNS\nservers from `/etc/netns/<namespace>/resolv.conf` when it exists, and every\ncheck runs under `ip netns exec`.",
+        "description": "Run reachability checks for gateway, internet, DNS, and optional custom targets.\n\nWith `namespace`, the gateway comes from that namespace's routing table, DNS\nservers from `/etc/netns/<namespace>/resolv.conf` when it exists, and every\ncheck runs under `ip netns exec`.\n\nA sub-check that times out or errors is `FAIL` for that row. The other rows\nare still returned.",
         "operationId": "reachability_api_v1_utils_reachability_get",
         "security": [
           {

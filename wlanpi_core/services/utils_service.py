@@ -7,6 +7,7 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Awaitable
 from typing import Any
 
 from wlanpi_core.constants import BLINKER_FILE, NETNS_ETC_DIR, UFW_FILE
@@ -25,9 +26,9 @@ from ..utils.validation import namespace_from_param, validate_interface_name
 log = get_logger(__name__)
 
 
-def _as_dict(result: CommandResult) -> dict[str, Any] | None:
+def _as_dict(result: CommandResult | None) -> dict[str, Any] | None:
     """JSON output of a command as a dict, or None on failure/non-dict output."""
-    if not result.success:
+    if result is None or not result.success:
         return None
     parsed = result.output_from_json()
     return parsed if isinstance(parsed, dict) else None
@@ -59,6 +60,16 @@ def _resolv_conf_path(namespace: str | None) -> str:
         if os.path.exists(netns_resolv):
             return netns_resolv
     return "/etc/resolv.conf"
+
+
+async def _isolated_check(label: str, check: Awaitable[Any]) -> Any:
+    try:
+        return await check
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.warning("Reachability check %s failed: %r", label, exc)
+        return None
 
 
 async def show_reachability(
@@ -99,51 +110,69 @@ async def show_reachability(
     netns = netns_prefix(namespace)
 
     ping_google_task = asyncio.create_task(
-        run_command_async(
-            [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
-            raise_on_fail=False,
+        _isolated_check(
+            "Ping Google",
+            run_command_async(
+                [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", "google.com"],
+                raise_on_fail=False,
+            ),
         )
     )
     browse_google_task = asyncio.create_task(
-        run_command_async(
-            [*netns, "curl", "-s", "-L", "www.google.com"],
-            raise_on_fail=False,
-            timeout=2,
+        _isolated_check(
+            "Browse Google",
+            run_command_async(
+                [*netns, "curl", "-s", "-L", "www.google.com"],
+                raise_on_fail=False,
+                timeout=2,
+            ),
         )
     )
     ping_gateway_task = asyncio.create_task(
-        run_command_async(
-            [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
-            raise_on_fail=False,
+        _isolated_check(
+            "Ping Gateway",
+            run_command_async(
+                [*netns, "jc", "ping", "-c1", "-W2", "-q", "-4", default_gateway],
+                raise_on_fail=False,
+            ),
         )
     )
     arping_gateway_task = asyncio.create_task(
-        run_command_async(
-            [*netns, "arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
-            raise_on_fail=False,
-            timeout=2,
+        _isolated_check(
+            "Arping Gateway",
+            run_command_async(
+                [*netns, "arping", "-c1", "-w2", "-I", dg_interface, default_gateway],
+                raise_on_fail=False,
+                timeout=2,
+            ),
         )
     )
     dns_tasks = [
         asyncio.create_task(
-            run_command_async(
-                [
-                    *netns,
-                    "dig",
-                    "+short",
-                    "+time=2",
-                    "+tries=1",
-                    f"@{dns}",
-                    "NS",
-                    "google.com",
-                ],
-                raise_on_fail=False,
+            _isolated_check(
+                f"DNS Server {index} Resolution",
+                run_command_async(
+                    [
+                        *netns,
+                        "dig",
+                        "+short",
+                        "+time=2",
+                        "+tries=1",
+                        f"@{dns}",
+                        "NS",
+                        "google.com",
+                    ],
+                    raise_on_fail=False,
+                ),
             )
         )
-        for dns in dns_servers[:3]
+        for index, dns in enumerate(dns_servers[:3], start=1)
     ]
     custom_tasks = [
-        asyncio.create_task(ping_target(target, namespace)) for target in custom_targets
+        asyncio.create_task(
+            _isolated_check(f"custom {target}", ping_target(target, namespace))
+        )
+        for target in custom_targets
     ]
     all_tasks = [
         ping_google_task,
@@ -174,11 +203,11 @@ async def show_reachability(
     output["results"]["Ping Google"] = ping_stats_from_jc(_as_dict(ping_google))[
         "display"
     ]
-    output["results"]["Browse Google"] = (
-        "OK"
-        if browse_google.success and "google.com" in browse_google.stdout
-        else "FAIL"
-    )
+    page = ""
+    if browse_google is not None and browse_google.success:
+        page = browse_google.stdout
+    seen = "google.com" in page
+    output["results"]["Browse Google"] = "OK" if seen else "FAIL"
     output["results"]["Ping Gateway"] = ping_stats_from_jc(_as_dict(ping_gateway))[
         "display"
     ]
@@ -186,13 +215,21 @@ async def show_reachability(
     for index, (dns, dns_result) in enumerate(
         zip(dns_servers[:3], dns_results, strict=True), start=1
     ):
+        dns_ok = dns_result is not None and dns_result.success
         output["results"][f"DNS Server {index} Resolution"] = (
-            f"{dns}: {'OK' if dns_result.success else 'FAIL'}"
+            f"{dns}: {'OK' if dns_ok else 'FAIL'}"
         )
 
-    arping_rtt = re.search(r"\d+(?:\.\d+)?ms", arping_gateway.stdout)
+    arping_text = arping_gateway.stdout if arping_gateway is not None else ""
+    arping_rtt = re.search(r"\d+(?:\.\d+)?ms", arping_text)
     output["results"]["Arping Gateway"] = arping_rtt.group(0) if arping_rtt else "FAIL"
-    output["results"]["custom"] = custom_results
+    custom_rows: list[dict[str, Any]] = []
+    for target, custom_result in zip(custom_targets, custom_results, strict=True):
+        if not isinstance(custom_result, dict):
+            custom_result = ping_stats_from_jc(None)
+            custom_result["target"] = target
+        custom_rows.append(custom_result)
+    output["results"]["custom"] = custom_rows
 
     return output
 
