@@ -107,7 +107,7 @@ typing-extensions==4.12.2
     #   sqlalchemy
 urllib3==2.8.0
     # via requests
-uvicorn==0.34.0
+uvicorn==0.54.0
     # via -r requirements.in
 websockets==15.0.1
     # via -r requirements.in
