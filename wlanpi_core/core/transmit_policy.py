@@ -7,7 +7,6 @@ UNKNOWN_DETAIL: str = "transmit is disabled because the WLAN Pi model is unknown
 TRANSMIT_UNITS: frozenset[str] = frozenset(
     {
         "hostapd",
-        "wlanpi-profiler",
         "wpa_supplicant",
         "wpa_supplicant@wlan0",
         "bt-agent",

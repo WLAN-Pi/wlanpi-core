@@ -47,7 +47,6 @@ _TRANSMIT_DEPENDENCIES = {
 }
 
 _GATED_ROUTES = {
-    ("POST", "/api/v1/profiler/start"): require_transmit,
     ("POST", "/api/v1/network/config/activate/{id}"): require_transmit_for_activate,
     ("POST", "/api/v1/system/reg-domain/set"): require_transmit,
     ("POST", "/api/v1/bluetooth/pair"): require_transmit,
@@ -57,6 +56,7 @@ _GATED_ROUTES = {
 }
 
 _UNGATED_ROUTES = (
+    ("POST", "/api/v1/profiler/start"),
     ("POST", "/api/v1/profiler/stop"),
     ("POST", "/api/v1/profiler/purge"),
     ("POST", "/api/v1/system/service/stop"),
@@ -264,29 +264,45 @@ def test_transmit_dependencies_match_the_route_table():
         PlatformSnapshot(model="Go", error=None),
         PlatformSnapshot(model="Unknown", error=None),
         PlatformSnapshot(model="", error=None),
+        PlatformSnapshot(model="M4", error=_timeout()),
     ],
 )
-def test_profiler_start_refused_including_no_ap(client, mocker, snapshot):
+def test_profiler_start_reaches_downstream_including_no_ap(client, mocker, snapshot):
     store_platform_snapshot(snapshot)
-    start = mocker.patch.object(profiler_api.cli, "start_profiler", new=AsyncMock())
+    start = mocker.patch.object(
+        profiler_api.cli,
+        "start_profiler",
+        new=AsyncMock(return_value={"success": True}),
+    )
 
     response = client.post("/api/v1/profiler/start", json={"noAP": True})
+
+    assert response.status_code == 200
+    start.assert_awaited()
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        PlatformSnapshot(model="Go", error=None),
+        PlatformSnapshot(model="Unknown", error=None),
+        PlatformSnapshot(model="", error=None),
+        PlatformSnapshot(model="M4", error=_timeout()),
+    ],
+)
+def test_reg_domain_set_refused_when_model_untrusted(client, mocker, snapshot):
+    store_platform_snapshot(snapshot)
+    set_domain = mocker.patch.object(system_api.system_service, "set_reg_domain")
+
+    response = client.post(
+        "/api/v1/system/reg-domain/set",
+        json={"country": "US"},
+    )
 
     detail = GO_DETAIL if snapshot.model == "Go" else UNKNOWN_DETAIL
     assert response.status_code == 403
     assert response.json() == {"detail": detail}
-    start.assert_not_awaited()
-
-
-def test_profiler_start_timeout_snapshot_is_unknown_403(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="M4", error=_timeout()))
-    start = mocker.patch.object(profiler_api.cli, "start_profiler", new=AsyncMock())
-
-    response = client.post("/api/v1/profiler/start", json={"noAP": True})
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": UNKNOWN_DETAIL}
-    start.assert_not_awaited()
+    set_domain.assert_not_called()
 
 
 @pytest.mark.parametrize("model", ["M4", "M4+", "R4", "Pro"])
@@ -341,6 +357,25 @@ def test_service_start_cockpit_on_go_reaches_downstream(client, mocker):
 
     assert response.status_code == 200
     start.assert_awaited_once_with("cockpit")
+
+
+@pytest.mark.parametrize("action", ["start", "restart"])
+def test_wlanpi_profiler_service_on_go_reaches_downstream(client, mocker, action: str):
+    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    method = "start_systemd_service" if action == "start" else "restart_systemd_service"
+    called = mocker.patch.object(
+        system_api.system_service,
+        method,
+        new=AsyncMock(return_value={"name": "wlanpi-profiler", "active": True}),
+    )
+
+    response = client.post(
+        f"/api/v1/system/service/{action}",
+        params={"name": "wlanpi-profiler"},
+    )
+
+    assert response.status_code == 200
+    called.assert_awaited_once_with("wlanpi-profiler")
 
 
 @pytest.mark.parametrize("name", ["hostapd", "Hostapd.service"])
@@ -446,16 +481,20 @@ def test_openapi_documents_transmit_403_only_on_gated_routes():
     profiler = spec["paths"]["/api/v1/profiler/start"]["post"]
     service_start = spec["paths"]["/api/v1/system/service/start"]["post"]
     pair = spec["paths"]["/api/v1/bluetooth/pair"]["post"]
+    reg_domain = spec["paths"]["/api/v1/system/reg-domain/set"]["post"]
 
-    assert "403" in profiler["responses"]
-    assert f"`{GO_DETAIL}`" in profiler["responses"]["403"]["description"]
-    assert f"`{UNKNOWN_DETAIL}`" in profiler["responses"]["403"]["description"]
-    assert "noAP" in profiler["description"]
+    assert "403" not in profiler.get("responses", {})
+    assert "transmit is disabled" not in profiler["description"]
+
+    assert "403" in reg_domain["responses"]
+    assert f"`{GO_DETAIL}`" in reg_domain["responses"]["403"]["description"]
+    assert f"`{UNKNOWN_DETAIL}`" in reg_domain["responses"]["403"]["description"]
 
     assert "403" in service_start["responses"]
     start_description = service_start["responses"]["403"]["description"]
     for unit in TRANSMIT_UNITS:
         assert f"`{unit}`" in start_description
+    assert "`wlanpi-profiler`" not in start_description
 
     assert "403" in pair["responses"]
     assert "409" in pair["responses"]

@@ -2504,7 +2504,7 @@
             }
           },
           "403": {
-            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wlanpi-profiler`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2610,7 +2610,7 @@
             }
           },
           "403": {
-            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wlanpi-profiler`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3882,7 +3882,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.\n\nReturns 403 when transmit is disabled on this WLAN Pi, including when\n`noAP` is true. The profiler does not start.",
+        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
@@ -3901,16 +3901,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Start-Output"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
