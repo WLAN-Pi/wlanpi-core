@@ -6,8 +6,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 
+from wlanpi_core.api.openapi_docs import RESPONSES_TRANSMIT_DISABLED
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.transmit_gate import require_transmit, require_transmit_for_power
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import bluetooth
 from wlanpi_core.schemas.common import ApiErrorResponse
@@ -50,13 +52,18 @@ async def btstatus() -> Any:
 @router.post(
     "/power/{action}",
     response_model=bluetooth.PowerState,
-    dependencies=[Depends(verify_auth_wrapper)],
+    responses={**RESPONSES_TRANSMIT_DISABLED},
+    dependencies=[Depends(require_transmit_for_power)],
 )
 async def bt_power(action: str) -> Any:
     """
     Turn bluetooth on or off.
 
     - action: "on" or "off"
+
+    Returns 403 when `action` is `on` and transmit is disabled. `off` is
+    unchanged. Any other action still returns plain text 400 from this
+    handler.
     """
     if action not in ["on", "off"]:
         return Response(content="Invalid action. Use 'on' or 'off'.", status_code=400)
@@ -87,6 +94,7 @@ async def bt_power(action: str) -> Any:
     "/pair",
     response_model=bluetooth.BluetoothPairResponse,
     responses={
+        **RESPONSES_TRANSMIT_DISABLED,
         409: {
             "model": ApiErrorResponse,
             "description": "Bluetooth is already in its pairing window",
@@ -96,10 +104,14 @@ async def bt_power(action: str) -> Any:
             "description": "Bluetooth is unavailable or pairing could not be started",
         },
     },
-    dependencies=[Depends(verify_auth_wrapper)],
+    dependencies=[Depends(require_transmit)],
 )
 async def bt_pair() -> Any:
-    """Enter Bluetooth discoverable pairing mode (starts bt-timedpair)."""
+    """Enter Bluetooth discoverable pairing mode (starts bt-timedpair).
+
+    Returns 403 when transmit is disabled on this WLAN Pi, and `bt-timedpair`
+    does not start.
+    """
     try:
         return await bluetooth_service.bluetooth_pair()
     except bluetooth_service.BluetoothPairingInProgressError as exc:

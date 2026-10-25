@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from wlanpi_core.core.transmit_policy import GO_DETAIL, TRANSMIT_UNITS, UNKNOWN_DETAIL
 from wlanpi_core.schemas.common.errors import (
     ApiErrorResponse,
     DeprecatedEndpointResponse,
@@ -199,3 +200,30 @@ RESPONSES_SERVICE_UNAVAILABLE: dict[int | str, dict[str, Any]] = {
         "description": "Underlying command or hardware unavailable",
     },
 }
+
+
+def _transmit_disabled_response(extra: str) -> dict[int | str, dict[str, Any]]:
+    return {
+        403: {
+            "model": MessageResponse,
+            "description": (
+                f"{extra} `Go` returns `{GO_DETAIL}`. "
+                f"An unknown model returns `{UNKNOWN_DETAIL}`."
+            ),
+        }
+    }
+
+
+_TRANSMIT_UNIT_LIST = ", ".join(f"`{unit}`" for unit in sorted(TRANSMIT_UNITS))
+
+RESPONSES_TRANSMIT_DISABLED: dict[int | str, dict[str, Any]] = (
+    _transmit_disabled_response(
+        "This call would enable transmit and is refused when transmit is disabled."
+    )
+)
+
+RESPONSES_TRANSMIT_UNIT: dict[int | str, dict[str, Any]] = _transmit_disabled_response(
+    "Refused, without changing the unit, when `name` is transmit-capable and "
+    f"transmit is disabled. The transmit-capable units are {_TRANSMIT_UNIT_LIST}. "
+    "The comparison lowercases `name`, strips whitespace, and removes `.service`."
+)

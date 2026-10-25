@@ -41,9 +41,15 @@ def test_device_info_caches_static_fields_but_not_mode(mocker):
     finally:
         system_api._read_static_device_info.cache_clear()
 
+    assert first["model"] == "M4"
+    assert second["model"] == "M4"
     assert first["mode"] == "classic"
     assert second["mode"] == "hotspot"
-    get_platform.assert_called_once_with()
+    assert first["hostname"] == "wlanpi.local"
+    assert second["hostname"] == "wlanpi.local"
+    assert first["software_version"] == "3.0.0"
+    assert second["software_version"] == "3.0.0"
+    get_platform.assert_not_called()
     get_hostname.assert_called_once_with()
     get_image_ver.assert_called_once_with()
     assert get_mode.call_count == 2

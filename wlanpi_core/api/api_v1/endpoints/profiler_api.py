@@ -9,8 +9,10 @@ import wlanpi_core.profiler.cli as cli
 import wlanpi_core.profiler.models as models
 import wlanpi_core.profiler.schemas as schemas
 import wlanpi_core.profiler.service as service
+from wlanpi_core.api.openapi_docs import RESPONSES_TRANSMIT_DISABLED
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.transmit_gate import require_transmit
 from wlanpi_core.models.validation_error import ValidationError
 
 router = APIRouter()
@@ -42,7 +44,8 @@ async def profiler_status() -> Any:
     "/start",
     response_model=schemas.Start,
     response_model_exclude_none=True,
-    dependencies=[Depends(verify_auth_wrapper)],
+    responses={**RESPONSES_TRANSMIT_DISABLED},
+    dependencies=[Depends(require_transmit)],
 )
 async def start_profiler(args: models.Start) -> Any:
     """Start the profiler and wait (up to about 25 s) until it runs or fails.
@@ -59,6 +62,9 @@ async def start_profiler(args: models.Start) -> Any:
     If it is still starting when the wait ends, `success` is true with
     `reason` `starting`. In AP mode, poll `GET /profiler/status` until
     `running` is true.
+
+    Returns 403 when transmit is disabled on this WLAN Pi, including when
+    `noAP` is true. The profiler does not start.
     """
 
     try:

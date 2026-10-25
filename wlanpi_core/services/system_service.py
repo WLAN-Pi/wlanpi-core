@@ -32,6 +32,7 @@ from wlanpi_core.data.reg_domain_countries import (
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.profiler import cli as profiler_cli
+from wlanpi_core.services.platform_cache import cached_model
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.network_config import _atomic_write
 
@@ -267,8 +268,8 @@ def get_platform() -> str:
 
 
 def get_model() -> str:
-    """Return the model from `wlanpi-model -b`, or "Unknown"."""
-    return get_platform()
+    """Return the model resolved once at startup, or "Unknown" when unset."""
+    return cached_model().value
 
 
 def _read_cpu_temperature() -> str:
@@ -354,9 +355,14 @@ def get_allowed_services() -> dict[str, Any]:
     return {"services": list(allowed_services)}
 
 
+def service_allowlist_key(name: str) -> str:
+    """Return the key: stripped, lowercased, with every `.service` removed."""
+    return name.strip().lower().replace(".service", "")
+
+
 def is_allowed_service(service: str) -> bool:
     """Check if service is in allowed services list."""
-    service_name = service.replace(".service", "")
+    service_name = service_allowlist_key(service)
     is_allowed = service_name in allowed_services
 
     log.debug(

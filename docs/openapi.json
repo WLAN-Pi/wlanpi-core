@@ -172,7 +172,7 @@
           "bluetooth"
         ],
         "summary": "Bt Power",
-        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"",
+        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"\n\nReturns 403 when `action` is `on` and transmit is disabled. `off` is\nunchanged. Any other action still returns plain text 400 from this\nhandler.",
         "operationId": "bt_power_api_v1_bluetooth_power__action__post",
         "security": [
           {
@@ -201,6 +201,16 @@
               }
             }
           },
+          "403": {
+            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -220,7 +230,7 @@
           "bluetooth"
         ],
         "summary": "Bt Pair",
-        "description": "Enter Bluetooth discoverable pairing mode (starts bt-timedpair).",
+        "description": "Enter Bluetooth discoverable pairing mode (starts bt-timedpair).\n\nReturns 403 when transmit is disabled on this WLAN Pi, and `bt-timedpair`\ndoes not start.",
         "operationId": "bt_pair_api_v1_bluetooth_pair_post",
         "responses": {
           "200": {
@@ -229,6 +239,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BluetoothPairResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2064,7 +2084,7 @@
           "network_config"
         ],
         "summary": "Activate Config",
-        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). Activating `default` only touches interfaces\nCore created; the others are reported `skipped` and left alone. A radio\nanother tool is using (a mode Core never sets such as AP, a\nwpa_supplicant or hostapd Core did not start, or a program capturing on\nanother interface of the same radio) is never taken: its entry is reported\n`in_use` with the reason, and the rest of the configuration still runs.\nTo use that radio, stop the other tool first. Every entry is validated\nbefore any radio is touched: if one fails, the request returns 422 with\nthe invalid outcomes in `detail` and nothing has changed (a previously\nactive profile keeps running). The one exception is re-activating the\nrecorded current profile with `override_active` after it became invalid\non disk: it is torn down and the default configuration is active again.\nIf an adapter fails during activation\nthe request returns 500, `detail` holds the message and the outcomes,\nand the default configuration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.",
+        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). Activating `default` only touches interfaces\nCore created; the others are reported `skipped` and left alone. A radio\nanother tool is using (a mode Core never sets such as AP, a\nwpa_supplicant or hostapd Core did not start, or a program capturing on\nanother interface of the same radio) is never taken: its entry is reported\n`in_use` with the reason, and the rest of the configuration still runs.\nTo use that radio, stop the other tool first. Every entry is validated\nbefore any radio is touched: if one fails, the request returns 422 with\nthe invalid outcomes in `detail` and nothing has changed (a previously\nactive profile keeps running). The one exception is re-activating the\nrecorded current profile with `override_active` after it became invalid\non disk: it is torn down and the default configuration is active again.\nIf an adapter fails during activation\nthe request returns 500, `detail` holds the message and the outcomes,\nand the default configuration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.\n\nReturns 403 when transmit is disabled on this WLAN Pi. The handler's\n409, 422, and 500 still apply when this check returns.",
         "operationId": "activate_config_api_v1_network_config_activate__id__post",
         "security": [
           {
@@ -2099,6 +2119,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ActivationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2234,7 +2264,7 @@
           "system"
         ],
         "summary": "Show Device Info",
-        "description": "Return core information about the PI.\n\nCommands:\n - Uses 'wlanpi-model -b' to query the device model.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
+        "description": "Return core information about the PI.\n\nCommands:\n - Uses the model resolved once at startup from `wlanpi-model -b`.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
         "operationId": "show_device_info_api_v1_system_device_info_get",
         "responses": {
           "200": {
@@ -2288,7 +2318,7 @@
           "system"
         ],
         "summary": "Show Device Model",
-        "description": "Use 'wlanpi-model -b' to query the device model.",
+        "description": "Return the device model resolved once at startup from `wlanpi-model -b`.",
         "operationId": "show_device_model_api_v1_system_device_model_get",
         "responses": {
           "200": {
@@ -2444,7 +2474,7 @@
           "system"
         ],
         "summary": "Start A Systemd Service",
-        "description": "Use systemd via dbus to start an allowed service.",
+        "description": "Use systemd via dbus to start an allowed service.\n\nReturns 403, without starting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units. Other\nallowlisted names are unchanged.",
         "operationId": "start_a_systemd_service_api_v1_system_service_start_post",
         "security": [
           {
@@ -2469,6 +2499,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wlanpi-profiler`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2540,7 +2580,7 @@
           "system"
         ],
         "summary": "Restart A Systemd Service",
-        "description": "Use systemd via dbus to restart an allowed service.",
+        "description": "Use systemd via dbus to restart an allowed service.\n\nReturns 403, without restarting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units. Other\nallowlisted names are unchanged.",
         "operationId": "restart_a_systemd_service_api_v1_system_service_restart_post",
         "security": [
           {
@@ -2565,6 +2605,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused, without changing the unit, when `name` is transmit-capable and transmit is disabled. The transmit-capable units are `bt-agent`, `bt-network`, `hostapd`, `wlanpi-profiler`, `wpa_supplicant`, `wpa_supplicant@wlan0`. The comparison lowercases `name`, strips whitespace, and removes `.service`. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2914,7 +2964,7 @@
           "system"
         ],
         "summary": "Set Reg Domain",
-        "description": "Set the Wi-Fi regulatory domain country code.",
+        "description": "Set the Wi-Fi regulatory domain country code.\n\nReturns 403 when transmit is disabled on this WLAN Pi.",
         "operationId": "set_reg_domain_api_v1_system_reg_domain_set_post",
         "requestBody": {
           "content": {
@@ -2933,6 +2983,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegDomainInfo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -3822,7 +3882,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.",
+        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.\n\nReturns 403 when transmit is disabled on this WLAN Pi, including when\n`noAP` is true. The profiler does not start.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
@@ -3841,6 +3901,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Start-Output"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This call would enable transmit and is refused when transmit is disabled. `Go` returns `transmit is disabled on the WLAN Pi Go`. An unknown model returns `transmit is disabled because the WLAN Pi model is unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }

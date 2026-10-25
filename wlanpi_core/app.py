@@ -49,7 +49,7 @@ from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
-from wlanpi_core.services.system_service import get_model
+from wlanpi_core.services.platform_cache import boot_model, load_platform_cache
 from wlanpi_core.utils.homedir import ensure_wlanpi_home_data_dirs
 from wlanpi_core.utils.network_config import (
     activate_config,
@@ -418,7 +418,7 @@ class InitializationManager:
                             f"Error initializing system manager: {e} (non-critical, continuing)"
                         )
             else:
-                model = get_model()
+                model = boot_model()
                 if model not in SUPPORTED_MODELS:
                     self.log.warning(
                         f"Model {model} is not supported, using default configuration"
@@ -500,6 +500,8 @@ class InitializationManager:
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
             raise CriticalInitializationError("System not ready for initialization")
+
+        await asyncio.to_thread(load_platform_cache)
 
         await self._initialize_network_namespaces()
 
