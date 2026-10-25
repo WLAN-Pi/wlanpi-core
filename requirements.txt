@@ -68,7 +68,7 @@ packaging==24.2
     # via limits
 pamela==1.2.0
     # via -r requirements.in
-psutil==6.1.1
+psutil==7.2.2
     # via -r requirements.in
 pycparser==2.22
     # via cffi
