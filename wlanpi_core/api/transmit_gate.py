@@ -37,17 +37,14 @@ _MountedRoute = tuple[str, str | None, APIRoute]
 
 
 def _always(_connection: HTTPConnection) -> bool:
-    """Return True for an operation that always transmits."""
     return True
 
 
 def _power_on(connection: HTTPConnection) -> bool:
-    """Return True when the Bluetooth `action` path parameter is `on`."""
     return connection.path_params.get("action") == "on"
 
 
 def _transmit_service(connection: HTTPConnection) -> bool:
-    """Return True when the `name` query is a transmit systemd unit."""
     name = connection.query_params.get("name")
     if name is None:
         return False
@@ -56,7 +53,6 @@ def _transmit_service(connection: HTTPConnection) -> bool:
 
 
 def _detail(model: str) -> str:
-    """Return the 403 detail for a refused model."""
     if model == "Go":
         return TRANSMIT_DISABLED_ON_GO
     return TRANSMIT_DISABLED_UNKNOWN
@@ -76,7 +72,6 @@ GATED_OPERATIONS: dict[tuple[str, str], TransmitPredicate] = {
 
 
 def _mounted_api_routes(app: FastAPI) -> list[_MountedRoute]:
-    """Return each mounted API route path, path format, and route."""
     mounted: list[_MountedRoute] = []
     for context in iter_route_contexts(app.routes):
         route = context.original_route
@@ -89,7 +84,6 @@ def _mounted_api_routes(app: FastAPI) -> list[_MountedRoute]:
 def _routes_for_key(
     mounted: list[_MountedRoute], method: str, template: str
 ) -> list[APIRoute]:
-    """Return the one API route mounted at `method` and `template`."""
     found: list[APIRoute] = []
     for path, path_format, route in mounted:
         methods = route.methods
@@ -108,7 +102,6 @@ def _routes_for_key(
 
 
 def _route_index(mounted: list[_MountedRoute]) -> dict[int, str]:
-    """Map each mounted API route object to its mounted path template."""
     index: dict[int, str] = {}
     for path, _path_format, route in mounted:
         previous = index.get(id(route))
@@ -121,12 +114,7 @@ def _route_index(mounted: list[_MountedRoute]) -> dict[int, str]:
 
 
 async def enforce_transmit_gate(connection: HTTPConnection) -> None:
-    """Refuse gated transmit operations on a Go or an unknown model.
-
-    Registered once, on the v1 `include_router`. A route that is not in
-    `GATED_OPERATIONS` returns without raising. A matching predicate that
-    returns false returns without raising.
-    """
+    """Refuse gated transmit operations on a Go or an unknown model."""
     route = connection.scope.get("route")
     if not isinstance(route, APIRoute):
         return
@@ -154,8 +142,7 @@ async def enforce_transmit_gate(connection: HTTPConnection) -> None:
 def install_transmit_gate(app: FastAPI) -> None:
     """Index mounted templates and stamp 403 onto each gated operation.
 
-    Call once from `create_app` after `include_router`. Raises
-    `RuntimeError` when a table row is not mounted exactly once.
+    Raises `RuntimeError` when a table row is not mounted exactly once.
     """
     mounted = _mounted_api_routes(app)
     for method, template in GATED_OPERATIONS:
