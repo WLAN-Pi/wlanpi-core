@@ -6,7 +6,7 @@
 #
 --extra-index-url https://www.piwheels.org/simple
 
-aiofiles==24.1.0
+aiofiles==25.1.0
     # via -r requirements.in
 aiosqlite==0.20.0
     # via -r requirements.in
@@ -41,7 +41,7 @@ fastapi==0.157.0
     # via -r requirements.in
 greenlet==3.1.1
     # via sqlalchemy
-gunicorn==23.0.0
+gunicorn==26.2.0
     # via -r requirements.in
 h11==0.16.0
     # via
@@ -69,12 +69,10 @@ markupsafe==3.0.2
 opentelemetry-api==1.45.1
     # via fastapi
 packaging==24.2
-    # via
-    #   gunicorn
-    #   limits
+    # via limits
 pamela==1.2.0
     # via -r requirements.in
-psutil==6.1.1
+psutil==7.2.2
     # via -r requirements.in
 pycparser==2.22
     # via cffi
@@ -117,7 +115,7 @@ typing-inspection==0.4.2
     # via fastapi
 urllib3==2.8.0
     # via requests
-uvicorn==0.34.0
+uvicorn==0.54.0
     # via -r requirements.in
 websockets==15.0.1
     # via -r requirements.in
