@@ -230,38 +230,41 @@ tmpfs            25M   12K   25M   1% /var/log/wlanpi_core/debug
 
 ## Versioning and releases
 
-### Branches
-
 `main` is the only long-lived branch. Every pull request targets `main`.
-Squash-merge feature and fix branches so that each change lands as one commit.
+Squash-merge a fix or a feature so it lands as one commit.
 
-A push to `main` that changes `debian/changelog` builds the package and
-deploys it to packagecloud. A version bump on `main` is a release.
+A fix or feature pull request does not edit `debian/changelog` or
+`wlanpi_core/__version__.py`. Do not run `dch`. Do not add a Debian revision
+(`-N`). Only a release pull request changes those files. In the fix or feature
+pull request, write one line that says what changed for the person installing
+the package. Use that line as the squash-merge subject.
 
-### Version locations
+Dev-build stamping is planned and is not live. When it is live, CI stamps the
+next patch in the build workspace and does not commit that stamp. The deb
+version is
+`X.Y.Z~dev<YYYYMMDD>.<run_id>.<run_attempt>+g<sha>`. CI strips a Debian
+revision before adding 1 to the patch, so `2.4.12-1` yields
+`2.4.13~dev<YYYYMMDD>.<run_id>.<run_attempt>+g<sha>`. CI uploads that `.deb`
+to Packagecloud `wlanpi/dev` and does not tag it. In the built package,
+`wlanpi_core/__version__.py` is `X.Y.Z.dev<YYYYMMDD>` per
+[PEP 440](https://www.python.org/dev/peps/pep-0440/).
 
-Before you merge a version bump, confirm that the **OpenAPI Reference Check**
-passes on its pull request. If the check fails, `docs/openapi.json` is stale.
-Run `tox -e openapi` and commit the result in the same pull request.
+A release pull request sets the changelog with `dch -v <version>` and no
+Debian revision, then `dch -r ""`. Set `wlanpi_core/__version__.py` to that
+same `major.minor.patch`. The version check fails if they diverge. On a
+changelog that still says `2.4.12-1`, `dch -i` writes `2.4.12-2`. Do not use
+`dch -i`.
 
-Each release requires versions to be updated in **two** locations:
+When that stamping is live, CI uploads the release to `wlanpi/main` and tags
+`v<version>`. Do not create that tag by hand. Until then, a changelog edit
+on `main` still uploads to `wlanpi/dev`. Do not edit the changelog to publish
+a fix.
 
-1. **Debian changelog**: `debian/changelog` via `dch` (`devscripts`)
-   ```bash
-   dch -i  # Create new changelog entry
-   ```
+Before you merge a release, confirm that the OpenAPI Reference Check passes.
+If it fails, run `tox -e openapi` and commit `docs/openapi.json` in that
+same pull request.
 
-2. **Python package**: `wlanpi_core/__version__.py` (manual edit)
-
-Python package versioning should follow [PEP 440](https://www.python.org/dev/peps/pep-0440/).
-
-### Tagging
-
-After the package deploys, the deploy workflow tags the commit as
-`v<version>` without the Debian revision (for example, `v2.4.9` for
-`2.4.9-1`). Do not create release tags by hand.
-
-For complete release procedures, see [Release Process](https://github.com/WLAN-Pi/developers/blob/main/RELEASE_PROCESS.md).
+Follow [Land a Fix and Cut a Release](https://github.com/WLAN-Pi/developers/blob/main/RELEASING.md).
 
 ## Code quality
 
@@ -295,6 +298,6 @@ See [PACKAGING.md](PACKAGING.md) for detailed packaging information.
 ## See also
 
 - [Contributing guide](https://github.com/WLAN-Pi/developers/blob/main/CONTRIBUTING.md) - General Git workflow and contribution guidelines
-- [Release process](https://github.com/WLAN-Pi/developers/blob/main/RELEASE_PROCESS.md) - Detailed release procedures
+- [Land a Fix and Cut a Release](https://github.com/WLAN-Pi/developers/blob/main/RELEASING.md) - Fix, dev build, and release procedure
 - [PACKAGING.md](PACKAGING.md) - Packaging standards for this repo
-- [Gunicorn settings documentation](https://docs.gunicorn.org/en/stable/settings.html#debugging)
+- [Gunicorn settings documentation](https://gunicorn.org/reference/settings/#debugging)
