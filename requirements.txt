@@ -6,7 +6,7 @@
 #
 --extra-index-url https://www.piwheels.org/simple
 
-aiofiles==24.1.0
+aiofiles==25.1.0
     # via -r requirements.in
 aiosqlite==0.20.0
     # via -r requirements.in
