@@ -4,19 +4,27 @@ Read this first. WORKFLOW.md covers setup, building, and releases.
 
 ## Branch and PR rules
 
-- PRs target `main`, the only long-lived branch. A `debian/changelog` change
-  merged to `main` deploys to packagecloud.
+- PRs target `main`, the only long-lived branch.
 - One concern per PR: one domain router, one fix, one refactor. Size is a soft
   target: above 500 changed lines, add a `Review order` section to the
   description; above 1,000 is fine when the change is cohesive. Split only at
   real seams, never to hit a number. Put moves and formatting in separate
   commits from behavioral changes. Full policy:
   [developer guide](https://github.com/WLAN-Pi/developers/blob/main/CONTRIBUTING.md#pr-size-and-scope).
-- CI-only or docs-only changes do not bump `debian/changelog`. A version bump
-  is a release; only package-content changes get one.
-- Keep `wlanpi_core/__version__.py` in sync with the deb version minus the
-  revision (e.g. `2.1.16` for `2.1.16-1`). The build/deploy checks fail if they
-  diverge.
+- A fix or feature pull request does not edit `debian/changelog` or
+  `wlanpi_core/__version__.py`, and does not add a Debian revision (`-N`).
+  Only a release pull request changes those files, and it sets both to the
+  same `major.minor.patch`. The version check fails if they diverge. Do not
+  run `dch` on any other pull request.
+- Dev-build stamping is planned and is not live. When it is live, CI stamps
+  the next patch in the build workspace as
+  `X.Y.Z~dev<YYYYMMDD>.<run_id>.<run_attempt>+g<sha>`, uploads that `.deb`
+  to Packagecloud `wlanpi/dev`, and does not tag it. CI does not commit the
+  stamp. A release pull request
+  uploads to `wlanpi/main` and tags `v<version>`. Until then, a changelog
+  edit on `main` still uploads to `wlanpi/dev`. Do not edit the changelog to
+  publish a fix. The procedure is
+  [Land a Fix and Cut a Release](https://github.com/WLAN-Pi/developers/blob/main/RELEASING.md).
 
 ## Tooling and gates
 
@@ -134,8 +142,8 @@ Reuse first, write second:
   for these.
 - New endpoints go in the existing routers (`api/api_v1/endpoints/`).
 - A dependency already installed (`httpx`, `requests`, `aiosqlite`, `psutil`,
-  `sqlalchemy`, ...) covers most needs. Adding a new one is a package-content
-  change: it bumps `debian/changelog` and needs a human OK.
+  `sqlalchemy`, ...) covers most needs. Adding a new one needs a human OK.
+  Leave `debian/changelog` unchanged.
 
 ## Cost and scope
 
