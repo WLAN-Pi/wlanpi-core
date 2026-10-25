@@ -522,9 +522,9 @@ async def get_a_systemd_network_interfaces(
 async def get_a_systemd_network_scan(
     type: str, interface: str, timeout: int = settings.API_DEFAULT_TIMEOUT
 ) -> Any:
-    """
-    Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.
+    """Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.
 
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
     **Replacement:** `GET /api/v1/utils/wlan/scan`
 
     Delegates to the namespace-aware scan primitive; maps to legacy `nets[]`.

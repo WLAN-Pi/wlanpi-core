@@ -199,3 +199,20 @@ RESPONSES_SERVICE_UNAVAILABLE: dict[int | str, dict[str, Any]] = {
         "description": "Underlying command or hardware unavailable",
     },
 }
+
+TRANSMIT_DISABLED_ON_GO: str = "Transmit is disabled on the WLAN Pi Go."
+TRANSMIT_DISABLED_UNKNOWN: str = (
+    "Transmit is disabled because the WLAN Pi model is unknown."
+)
+
+RESPONSES_TRANSMIT_FORBIDDEN: dict[int | str, dict[str, Any]] = {
+    403: {
+        "model": MessageResponse,
+        "description": (
+            "Transmit is disabled for this WLAN Pi model. "
+            f"For model Go, `detail` is `{TRANSMIT_DISABLED_ON_GO}` "
+            "For an unknown model, an empty model, or a startup cache that was never filled, "
+            f"`detail` is `{TRANSMIT_DISABLED_UNKNOWN}`"
+        ),
+    },
+}

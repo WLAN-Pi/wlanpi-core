@@ -22,12 +22,10 @@ log = get_logger(__name__)
 @lru_cache(maxsize=1)
 def _read_static_device_info() -> dict[str, Any]:
     """Cache device identity fields that only change across system reconfiguration."""
-    model = system_service.get_platform()
     hostname = system_service.get_hostname()
     name = hostname.split(".")[0]
     software_ver = system_service.get_image_ver()
     return {
-        "model": model,
         "hostname": hostname,
         "name": name,
         "software_version": software_ver,
@@ -38,6 +36,7 @@ def _read_device_info() -> dict[str, Any]:
     """Combine cached device identity with the current operating mode."""
     return {
         **_read_static_device_info(),
+        "model": system_service.get_platform(),
         "mode": system_service.get_mode(),
         "wlan_management": settings.WLAN_MANAGEMENT,
     }
@@ -49,14 +48,11 @@ def _read_device_info() -> dict[str, Any]:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_info() -> Any:
-    """
-    Return core information about the PI.
+    """Return core information about the PI.
 
-    Commands:
-     - Uses 'wlanpi-model -b' to query the device model.
-     - Uses '/usr/bin/hostname' to query the device hostname.
-     - Uses '/etc/wlanpi-release' to query the device software version.
-     - Uses '/etc/wlanpi-state' to query the device mode.
+    The model is the startup snapshot from `wlanpi-model -b`, not a per-request probe.
+    Hostname comes from `/usr/bin/hostname`. Software version comes from
+    `/etc/wlanpi-release`. Mode comes from `/etc/wlanpi-state`.
     """
 
     try:
@@ -99,7 +95,10 @@ async def device_stats() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_model() -> Any:
-    """Use 'wlanpi-model -b' to query the device model."""
+    """Return the device model.
+
+    The model is the startup snapshot from `wlanpi-model -b`, not a per-request probe.
+    """
     try:
         model = await asyncio.to_thread(system_service.get_model)
         return {"model": model}
@@ -196,7 +195,10 @@ async def show_a_systemd_service_status(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def start_a_systemd_service(name: str) -> Any:
-    """Use systemd via dbus to start an allowed service."""
+    """Use systemd via dbus to start an allowed service.
+
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown when `name` is a transmit service; other names stay allowed.
+    """
 
     try:
         return await system_service.start_systemd_service(name)
@@ -230,7 +232,10 @@ async def stop_a_systemd_service(name: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def restart_a_systemd_service(name: str) -> Any:
-    """Use systemd via dbus to restart an allowed service."""
+    """Use systemd via dbus to restart an allowed service.
+
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown when `name` is a transmit service; other names stay allowed.
+    """
 
     try:
         return await system_service.restart_systemd_service(name)
@@ -441,7 +446,10 @@ async def show_reg_domain() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def set_reg_domain(body: system.RegDomainSetRequest) -> Any:
-    """Set the Wi-Fi regulatory domain country code."""
+    """Set the Wi-Fi regulatory domain country code.
+
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
+    """
     try:
         log.debug("POST /system/reg-domain/set request country=%s", body.country)
         result = await asyncio.to_thread(system_service.set_reg_domain, body.country)

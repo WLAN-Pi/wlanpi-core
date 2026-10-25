@@ -271,9 +271,9 @@ async def delete_config(id: str, force: bool = False) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def activate_config(id: str, override_active: bool = False) -> Any:
-    """
-    Activate a network configuration by ID.
+    """Activate a network configuration by ID.
 
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
     The response lists one outcome per entry (`connected`, `provisioned`, or
     `error` with a `detail`). Activating `default` only touches interfaces
     Core created; the others are reported `skipped` and left alone. A radio

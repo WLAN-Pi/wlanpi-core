@@ -47,6 +47,21 @@ def mock_app_initialization(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def cached_transmitting_model():
+    """Store a model the transmit gate allows.
+
+    Lifespan does not call load_platform while initialize_components is
+    mocked. Production leaves the cache unset until load_platform, and an
+    unset cache refuses. This fixture is why existing tests reach handlers.
+    """
+    from wlanpi_core.services import system_service
+
+    system_service.set_cached_platform("M4")
+    yield
+    system_service.set_cached_platform(None)
+
+
 _DEFAULT_WPA_STATUS = {
     "wpa_status": {
         "wpa_state": "COMPLETED",

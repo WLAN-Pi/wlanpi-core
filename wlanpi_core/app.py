@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -22,6 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from wlanpi_core.__version__ import __license__, __license_url__, __version__
 from wlanpi_core.api.api_v1.api import api_router
+from wlanpi_core.api.transmit_gate import enforce_transmit_gate, install_transmit_gate
 from wlanpi_core.constants import (
     CONFIG_DIR,
     CREATE_MONITOR_PAIRS_DEFAULT,
@@ -49,7 +50,7 @@ from wlanpi_core.core.security import SecurityInitError, SecurityManager
 from wlanpi_core.core.system import SystemManager
 from wlanpi_core.core.token import AUTH_CLOCK_NOT_SET, TokenManager
 from wlanpi_core.models.network_config_errors import ConfigMalformedError
-from wlanpi_core.services.system_service import get_model
+from wlanpi_core.services.system_service import get_model, load_platform
 from wlanpi_core.utils.homedir import ensure_wlanpi_home_data_dirs
 from wlanpi_core.utils.network_config import (
     activate_config,
@@ -497,6 +498,7 @@ class InitializationManager:
         Non-critical components (token manager) degrade to limited functionality
         without aborting startup.
         """
+        load_platform()
         if not await self.check_system_readiness():
             self.log.error("System not ready for initialization")
             raise CriticalInitializationError("System not ready for initialization")
@@ -749,7 +751,12 @@ def create_app(debug: bool = False) -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(ActivityMiddleware)
 
-    app.include_router(api_router, prefix=settings.API_V1_STR)
+    app.include_router(
+        api_router,
+        prefix=settings.API_V1_STR,
+        dependencies=[Depends(enforce_transmit_gate)],
+    )
+    install_transmit_gate(app)
     app.state.endpoints = [
         {
             "path": route.path,

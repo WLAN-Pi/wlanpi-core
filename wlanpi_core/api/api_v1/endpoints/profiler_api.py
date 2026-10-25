@@ -47,6 +47,7 @@ async def profiler_status() -> Any:
 async def start_profiler(args: models.Start) -> Any:
     """Start the profiler and wait (up to about 25 s) until it runs or fails.
 
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
     `success` is false when the profiler did not start; `reason` and `message`
     say why:
 

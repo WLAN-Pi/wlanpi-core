@@ -208,9 +208,9 @@ async def wlan_scan_endpoint(
     hidden: bool = True,
     detail: str = "short",
 ) -> Any:
-    """
-    Namespace-aware WLAN scan with automatic monitor adapter selection.
+    """Namespace-aware WLAN scan with automatic monitor adapter selection.
 
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
     When multiple monitor adapters exist and ``iface`` is omitted, returns
     ``needsSelection`` with candidates instead of scanning.
 

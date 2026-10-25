@@ -172,7 +172,7 @@
           "bluetooth"
         ],
         "summary": "Bt Power",
-        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"",
+        "description": "Turn bluetooth on or off.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown when `action` is `on`; `off` stays allowed.\n\n- action: \"on\" or \"off\"",
         "operationId": "bt_power_api_v1_bluetooth_power__action__post",
         "security": [
           {
@@ -201,6 +201,16 @@
               }
             }
           },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -220,7 +230,7 @@
           "bluetooth"
         ],
         "summary": "Bt Pair",
-        "description": "Enter Bluetooth discoverable pairing mode (starts bt-timedpair).",
+        "description": "Enter Bluetooth discoverable pairing mode (starts bt-timedpair).\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.",
         "operationId": "bt_pair_api_v1_bluetooth_pair_post",
         "responses": {
           "200": {
@@ -249,6 +259,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -1443,7 +1463,7 @@
           "deprecated"
         ],
         "summary": "[Deprecated] WLAN scan",
-        "description": "Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.\n\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
+        "description": "Use `GET /api/v1/utils/wlan/scan`; this endpoint is deprecated.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.\n**Replacement:** `GET /api/v1/utils/wlan/scan`\n\nDelegates to the namespace-aware scan primitive; maps to legacy `nets[]`.\nQuery `type` is ignored. Pass `interface` as the scan iface.",
         "operationId": "get_a_systemd_network_scan_api_v1_network_wlan_scan_get",
         "deprecated": true,
         "security": [
@@ -1516,6 +1536,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScanNoAdapterResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2064,7 +2094,7 @@
           "network_config"
         ],
         "summary": "Activate Config",
-        "description": "Activate a network configuration by ID.\n\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). Activating `default` only touches interfaces\nCore created; the others are reported `skipped` and left alone. A radio\nanother tool is using (a mode Core never sets such as AP, a\nwpa_supplicant or hostapd Core did not start, or a program capturing on\nanother interface of the same radio) is never taken: its entry is reported\n`in_use` with the reason, and the rest of the configuration still runs.\nTo use that radio, stop the other tool first. Every entry is validated\nbefore any radio is touched: if one fails, the request returns 422 with\nthe invalid outcomes in `detail` and nothing has changed (a previously\nactive profile keeps running). The one exception is re-activating the\nrecorded current profile with `override_active` after it became invalid\non disk: it is torn down and the default configuration is active again.\nIf an adapter fails during activation\nthe request returns 500, `detail` holds the message and the outcomes,\nand the default configuration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.",
+        "description": "Activate a network configuration by ID.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.\nThe response lists one outcome per entry (`connected`, `provisioned`, or\n`error` with a `detail`). Activating `default` only touches interfaces\nCore created; the others are reported `skipped` and left alone. A radio\nanother tool is using (a mode Core never sets such as AP, a\nwpa_supplicant or hostapd Core did not start, or a program capturing on\nanother interface of the same radio) is never taken: its entry is reported\n`in_use` with the reason, and the rest of the configuration still runs.\nTo use that radio, stop the other tool first. Every entry is validated\nbefore any radio is touched: if one fails, the request returns 422 with\nthe invalid outcomes in `detail` and nothing has changed (a previously\nactive profile keeps running). The one exception is re-activating the\nrecorded current profile with `override_active` after it became invalid\non disk: it is torn down and the default configuration is active again.\nIf an adapter fails during activation\nthe request returns 500, `detail` holds the message and the outcomes,\nand the default configuration is active again. If an adapter command fails outright\n(for example a driver refusing to delete an interface), the 500's\n`detail` holds the message and the command's `error`. 409 means another\nchange is running or the configuration is already active.",
         "operationId": "activate_config_api_v1_network_config_activate__id__post",
         "security": [
           {
@@ -2099,6 +2129,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ActivationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2234,7 +2274,7 @@
           "system"
         ],
         "summary": "Show Device Info",
-        "description": "Return core information about the PI.\n\nCommands:\n - Uses 'wlanpi-model -b' to query the device model.\n - Uses '/usr/bin/hostname' to query the device hostname.\n - Uses '/etc/wlanpi-release' to query the device software version.\n - Uses '/etc/wlanpi-state' to query the device mode.",
+        "description": "Return core information about the PI.\n\nThe model is the startup snapshot from `wlanpi-model -b`, not a per-request probe.\nHostname comes from `/usr/bin/hostname`. Software version comes from\n`/etc/wlanpi-release`. Mode comes from `/etc/wlanpi-state`.",
         "operationId": "show_device_info_api_v1_system_device_info_get",
         "responses": {
           "200": {
@@ -2288,7 +2328,7 @@
           "system"
         ],
         "summary": "Show Device Model",
-        "description": "Use 'wlanpi-model -b' to query the device model.",
+        "description": "Return the device model.\n\nThe model is the startup snapshot from `wlanpi-model -b`, not a per-request probe.",
         "operationId": "show_device_model_api_v1_system_device_model_get",
         "responses": {
           "200": {
@@ -2444,7 +2484,7 @@
           "system"
         ],
         "summary": "Start A Systemd Service",
-        "description": "Use systemd via dbus to start an allowed service.",
+        "description": "Use systemd via dbus to start an allowed service.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown when `name` is a transmit service; other names stay allowed.",
         "operationId": "start_a_systemd_service_api_v1_system_service_start_post",
         "security": [
           {
@@ -2469,6 +2509,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2540,7 +2590,7 @@
           "system"
         ],
         "summary": "Restart A Systemd Service",
-        "description": "Use systemd via dbus to restart an allowed service.",
+        "description": "Use systemd via dbus to restart an allowed service.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown when `name` is a transmit service; other names stay allowed.",
         "operationId": "restart_a_systemd_service_api_v1_system_service_restart_post",
         "security": [
           {
@@ -2565,6 +2615,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServiceRunning"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -2914,7 +2974,7 @@
           "system"
         ],
         "summary": "Set Reg Domain",
-        "description": "Set the Wi-Fi regulatory domain country code.",
+        "description": "Set the Wi-Fi regulatory domain country code.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.",
         "operationId": "set_reg_domain_api_v1_system_reg_domain_set_post",
         "requestBody": {
           "content": {
@@ -2933,6 +2993,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegDomainInfo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -3409,7 +3479,7 @@
           "device utils"
         ],
         "summary": "WLAN scan (canonical)",
-        "description": "Namespace-aware WLAN scan with automatic monitor adapter selection.\n\nWhen multiple monitor adapters exist and ``iface`` is omitted, returns\n``needsSelection`` with candidates instead of scanning.\n\n``detail=short`` (default) returns list-friendly fields plus RF extensions.\n``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).",
+        "description": "Namespace-aware WLAN scan with automatic monitor adapter selection.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.\nWhen multiple monitor adapters exist and ``iface`` is omitted, returns\n``needsSelection`` with candidates instead of scanning.\n\n``detail=short`` (default) returns list-friendly fields plus RF extensions.\n``detail=full`` adds a per-BSS ``raw`` iw dump blob (uses ``iw scan``).",
         "operationId": "wlan_scan_endpoint_api_v1_utils_wlan_scan_get",
         "security": [
           {
@@ -3517,6 +3587,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
@@ -3822,7 +3902,7 @@
           "profiler"
         ],
         "summary": "Start Profiler",
-        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.",
+        "description": "Start the profiler and wait (up to about 25 s) until it runs or fails.\n\nTransmit is disabled on the WLAN Pi Go and when the model is unknown.\n`success` is false when the profiler did not start; `reason` and `message`\nsay why:\n\n- the profiler's own exit reason when it exited during startup, for example\n  `country_code_detection` (no reg domain set) or `interface_validation`\n  (unknown interface), or `exited` if it gave none\n- `already_running` when a profiler started by Core is still running\n- `spawn_failed` when the profiler could not be launched\n\nIf it is still starting when the wait ends, `success` is true with\n`reason` `starting`. In AP mode, poll `GET /profiler/status` until\n`running` is true.",
         "operationId": "start_profiler_api_v1_profiler_start_post",
         "requestBody": {
           "content": {
@@ -3841,6 +3921,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Start-Output"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Transmit is disabled for this WLAN Pi model. For model Go, `detail` is `Transmit is disabled on the WLAN Pi Go.` For an unknown model, an empty model, or a startup cache that was never filled, `detail` is `Transmit is disabled because the WLAN Pi model is unknown.`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }

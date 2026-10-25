@@ -349,14 +349,18 @@ def test_set_reg_domain_accepts_installed_database_country(mocker):
 
 
 def test_get_platform_missing_wlanpi_model(mocker):
-    mocker.patch.object(
+    system_service.set_cached_platform(None)
+    run = mocker.patch.object(
         system_service,
         "run_command",
         side_effect=FileNotFoundError(2, "No such file or directory: 'wlanpi-model'"),
     )
 
+    assert system_service.load_platform() == "Unknown"
     assert system_service.get_platform() == "Unknown"
     assert system_service.get_model() == "Unknown"
+    assert system_service.load_platform() == "Unknown"
+    assert run.call_count == 1
 
 
 def _path_factory(supply_root):

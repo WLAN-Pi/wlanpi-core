@@ -238,8 +238,15 @@ def get_hostname() -> str:
     return hostname
 
 
-def get_platform() -> str:
-    """Return the platform from `wlanpi-model -b`, or "Unknown"."""
+_cached_platform: str | None = None
+
+
+def _read_wlanpi_model() -> str:
+    """Run `wlanpi-model -b` and return the platform string.
+
+    Returns `Unknown` when the command fails or the text ends with `?`.
+    This is the only place that executes the binary.
+    """
     platform = PLATFORM_UNKNOWN
 
     model_cmd = ["wlanpi-model", "-b"]
@@ -266,9 +273,46 @@ def get_platform() -> str:
     return platform
 
 
+def load_platform() -> str:
+    """Store the platform string once.
+
+    Runs `_read_wlanpi_model` only when the cache is unset. A later call
+    returns the stored string and does not execute `wlanpi-model`.
+    """
+    cached = _cached_platform
+    if cached is not None:
+        return cached
+    cached = _read_wlanpi_model()
+    set_cached_platform(cached)
+    return cached
+
+
+def get_platform() -> str:
+    """Return the platform stored by `load_platform`.
+
+    Does not execute `wlanpi-model`. Returns an empty string when the
+    cache is unset.
+    """
+    cached = _cached_platform
+    if cached is None:
+        return ""
+    return cached
+
+
 def get_model() -> str:
-    """Return the model from `wlanpi-model -b`, or "Unknown"."""
+    """Return the model stored by `load_platform`. Same value as `get_platform`."""
     return get_platform()
+
+
+def set_cached_platform(model: str | None) -> None:
+    """Store `model`, or clear the cache when `model` is None.
+
+    Tests use this. Startup uses `load_platform`. Handlers do not call it.
+    """
+    global _cached_platform
+
+    # ponytail: no lock; one write before serving; a reload endpoint would need a lock.
+    _cached_platform = model
 
 
 def _read_cpu_temperature() -> str:

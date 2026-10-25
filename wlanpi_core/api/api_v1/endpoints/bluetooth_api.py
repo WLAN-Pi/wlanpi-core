@@ -53,8 +53,9 @@ async def btstatus() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def bt_power(action: str) -> Any:
-    """
-    Turn bluetooth on or off.
+    """Turn bluetooth on or off.
+
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown when `action` is `on`; `off` stays allowed.
 
     - action: "on" or "off"
     """
@@ -99,7 +100,10 @@ async def bt_power(action: str) -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def bt_pair() -> Any:
-    """Enter Bluetooth discoverable pairing mode (starts bt-timedpair)."""
+    """Enter Bluetooth discoverable pairing mode (starts bt-timedpair).
+
+    Transmit is disabled on the WLAN Pi Go and when the model is unknown.
+    """
     try:
         return await bluetooth_service.bluetooth_pair()
     except bluetooth_service.BluetoothPairingInProgressError as exc:

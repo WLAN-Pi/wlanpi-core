@@ -43,7 +43,9 @@ def test_device_info_caches_static_fields_but_not_mode(mocker):
 
     assert first["mode"] == "classic"
     assert second["mode"] == "hotspot"
-    get_platform.assert_called_once_with()
+    assert first["model"] == "WLAN Pi Pro"
+    assert second["model"] == "WLAN Pi Pro"
+    assert get_platform.call_count == 2
     get_hostname.assert_called_once_with()
     get_image_ver.assert_called_once_with()
     assert get_mode.call_count == 2
