@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+import threading
+import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,12 +31,14 @@ from wlanpi_core.core.transmit_gate import (
 )
 from wlanpi_core.services import bluetooth_service, system_service
 from wlanpi_core.services.platform_cache import (
+    _PROBE_BACKOFF_SEC,
     ModelToken,
     PlatformSnapshot,
     boot_model,
     cached_model,
     clear_platform_cache,
     load_platform_cache,
+    resolve_model,
     store_platform_snapshot,
     token_from_snapshot,
 )
@@ -630,6 +634,150 @@ def test_second_m4_probe_is_final(client, mocker):
     assert first.status_code == 200
     assert second.status_code == 200
     probe.assert_called_once()
+
+
+def test_single_m4_after_unknown_does_not_transmit(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="Unknown platform", error=None, final=False)
+    )
+    calls = {"n": 0}
+
+    def one_m4_then_timeout():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "M4"
+        raise _timeout()
+
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        side_effect=one_m4_then_timeout,
+    )
+    start = mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": UNKNOWN_DETAIL}
+    start.assert_not_awaited()
+    assert probe.call_count == 2
+
+
+def test_two_m4_probes_in_one_call_allow(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="Unknown platform", error=None, final=False)
+    )
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="M4",
+    )
+    start = mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    first = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+    second = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    start.assert_awaited()
+    assert probe.call_count == 2
+
+
+def test_untrusted_reprobe_backs_off(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="Unknown platform", error=None, final=False)
+    )
+    now = {"t": 100.0}
+    mocker.patch(
+        "wlanpi_core.services.platform_cache.time.monotonic",
+        side_effect=lambda: now["t"],
+    )
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="Unknown platform",
+    )
+
+    first, _called = _refuse_service(client, mocker, "hostapd")
+    second, _called = _refuse_service(client, mocker, "hostapd")
+    now["t"] += _PROBE_BACKOFF_SEC
+    third, _called = _refuse_service(client, mocker, "hostapd")
+
+    assert first.status_code == 403
+    assert second.status_code == 403
+    assert third.status_code == 403
+    assert probe.call_count == 2
+
+
+def test_provisional_m4_confirms_during_backoff(client, mocker):
+    import wlanpi_core.services.platform_cache as platform_cache
+
+    store_platform_snapshot(
+        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
+    )
+    platform_cache._last_resolve_probe_at = time.monotonic()
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="Go",
+    )
+    start = mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": GO_DETAIL}
+    start.assert_not_awaited()
+    probe.assert_called_once()
+
+
+def test_inflight_probe_does_not_block_the_next_caller(mocker):
+    clear_platform_cache()
+    store_platform_snapshot(
+        PlatformSnapshot(model="Unknown platform", error=None, final=False)
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def hang() -> str:
+        started.set()
+        if not release.wait(timeout=2):
+            raise AssertionError("probe was not released")
+        return "Pro"
+
+    mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        side_effect=hang,
+    )
+    holder: dict[str, ModelToken] = {}
+
+    def run() -> None:
+        holder["token"] = resolve_model()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        if not started.wait(timeout=2):
+            raise AssertionError("probe did not start")
+        began = time.monotonic()
+        other = resolve_model()
+        elapsed = time.monotonic() - began
+        assert other.value == "Unknown"
+        assert elapsed < 1
+    finally:
+        release.set()
+        thread.join(timeout=2)
+        if thread.is_alive():
+            raise AssertionError("probe thread still alive")
+    assert holder["token"].value == "Pro"
 
 
 def test_startup_populates_platform_cache(mocker):

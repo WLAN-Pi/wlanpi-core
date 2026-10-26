@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 
+from wlanpi_core.constants import COMMAND_TIMEOUT_SEC
 from wlanpi_core.core.transmit_policy import (
     TRANSMIT_ALLOWED_MODELS,
     is_go_token,
 )
 
 _UNKNOWN = "Unknown"
+_PROBE_BACKOFF_SEC = float(COMMAND_TIMEOUT_SEC)
 _lock = threading.Lock()
+_inflight = False
+_last_resolve_probe_at: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +88,7 @@ def _snapshot_for_probe(
     )
 
 
-def _probe_unlocked(prior: PlatformSnapshot | None) -> PlatformSnapshot:
+def _probe(prior: PlatformSnapshot | None) -> PlatformSnapshot:
     from wlanpi_core.services.system_service import get_platform
 
     try:
@@ -100,42 +105,86 @@ def cached_model() -> ModelToken:
     return token_from_snapshot(_cached)
 
 
+def _is_provisional_m4(snapshot: PlatformSnapshot) -> bool:
+    return snapshot.error is None and snapshot.model == "M4" and not snapshot.final
+
+
+def _resolve_should_wait(snapshot: PlatformSnapshot) -> bool:
+    if _is_provisional_m4(snapshot):
+        return False
+    if _last_resolve_probe_at is None:
+        return False
+    return (time.monotonic() - _last_resolve_probe_at) < _PROBE_BACKOFF_SEC
+
+
+def _end_inflight(*, count_as_resolve: bool) -> None:
+    global _inflight, _last_resolve_probe_at
+    with _lock:
+        _inflight = False
+        if count_as_resolve:
+            _last_resolve_probe_at = time.monotonic()
+
+
 def store_platform_snapshot(snapshot: PlatformSnapshot) -> PlatformSnapshot:
     """Overwrite the process slot."""
     global _cached
-    _cached = snapshot
-    return snapshot
+    with _lock:
+        _cached = snapshot
+        return snapshot
 
 
 def clear_platform_cache() -> None:
     """Drop the slot so the next read is cold."""
-    global _cached
-    _cached = None
+    global _cached, _inflight, _last_resolve_probe_at
+    with _lock:
+        _cached = None
+        _inflight = False
+        _last_resolve_probe_at = None
 
 
 def load_platform_cache() -> PlatformSnapshot:
     """Probe `get_platform()` once and store the snapshot."""
+    global _inflight
     with _lock:
         if _cached is not None:
             return _cached
-        return _probe_unlocked(None)
+        _inflight = True
+    try:
+        return _probe(None)
+    finally:
+        _end_inflight(count_as_resolve=False)
 
 
 def resolve_model() -> ModelToken:
-    """Return a final token, probing again when the stored one is not final.
+    """Return a final token, probing when the stored one is not final.
 
-    `Go`, `M4+`, `R4`, `R5`, and `Pro` stick. The first `M4` does not, because
-    `wlanpi-model -b` prints `M4` when Go detection fails. A second `M4`
-    sticks. A timeout or any other string is probed again on the next call.
+    One `M4` is probed again before this call returns. A non-final result
+    other than that first `M4` waits out the backoff before the next probe.
     """
-    # ponytail: one lock, and a non-final model re-probes on every gated call.
-    # Add a backoff if that probe shows up under load.
+    # ponytail: one probe in flight. Other gated calls fail closed and do not
+    # wait on it. A non-final result other than a first M4 waits
+    # _PROBE_BACKOFF_SEC (one command timeout) before another probe. A first
+    # M4 is confirmed in this call. If a probe still ties up a worker, run it
+    # on its own thread.
+    global _inflight
     with _lock:
         if _cached is not None and _cached.final:
             return token_from_snapshot(_cached)
+        if _inflight:
+            return ModelToken(_UNKNOWN)
+        if _cached is not None and _resolve_should_wait(_cached):
+            return ModelToken(_UNKNOWN)
+        _inflight = True
         prior = _cached
-        stored = _probe_unlocked(prior)
-        return token_from_snapshot(stored)
+    try:
+        stored = _probe(prior)
+        if _is_provisional_m4(stored):
+            stored = _probe(stored)
+    finally:
+        _end_inflight(count_as_resolve=True)
+    if not stored.final:
+        return ModelToken(_UNKNOWN)
+    return token_from_snapshot(stored)
 
 
 def boot_model() -> str:
