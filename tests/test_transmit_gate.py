@@ -13,7 +13,7 @@ from wlanpi_core.api.api_v1.endpoints import (
     profiler_api,
     system_api,
 )
-from wlanpi_core.app import create_app
+from wlanpi_core.app import InitializationManager, create_app
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
@@ -48,7 +48,6 @@ _TRANSMIT_DEPENDENCIES = {
 
 _GATED_ROUTES = {
     ("POST", "/api/v1/network/config/activate/{id}"): require_transmit_for_activate,
-    ("POST", "/api/v1/system/reg-domain/set"): require_transmit,
     ("POST", "/api/v1/bluetooth/pair"): require_transmit,
     ("POST", "/api/v1/system/service/start"): require_transmit_for_unit,
     ("POST", "/api/v1/system/service/restart"): require_transmit_for_unit,
@@ -59,6 +58,7 @@ _UNGATED_ROUTES = (
     ("POST", "/api/v1/profiler/start"),
     ("POST", "/api/v1/profiler/stop"),
     ("POST", "/api/v1/profiler/purge"),
+    ("POST", "/api/v1/system/reg-domain/set"),
     ("POST", "/api/v1/system/service/stop"),
     ("POST", "/api/v1/network/config/deactivate/{id}"),
     ("POST", "/api/v1/network/config/reset"),
@@ -111,6 +111,8 @@ def client():
         (PlatformSnapshot(model="Go", error=None), "Go"),
         (PlatformSnapshot(model="go", error=None), "go"),
         (PlatformSnapshot(model="Go2", error=None), "Go2"),
+        (PlatformSnapshot(model="Unknown platform", error=None), "Unknown platform"),
+        (PlatformSnapshot(model="R5", error=None), "R5"),
         (PlatformSnapshot(model="Pro", error=None), "Pro"),
         (PlatformSnapshot(model="M4+", error=None), "M4+"),
     ],
@@ -134,8 +136,10 @@ def test_model_token_rejects_blank_and_question_suffix(value: str):
         ("M4+", None),
         ("R4", None),
         ("Pro", None),
-        ("go", None),
-        ("Go2", None),
+        ("R5", None),
+        ("go", GO_DETAIL),
+        ("Go2", GO_DETAIL),
+        ("Unknown platform", UNKNOWN_DETAIL),
     ],
 )
 def test_refusal_detail(value: str, detail: str | None):
@@ -281,28 +285,18 @@ def test_profiler_start_reaches_downstream_including_no_ap(client, mocker, snaps
     start.assert_awaited()
 
 
-@pytest.mark.parametrize(
-    "snapshot",
-    [
-        PlatformSnapshot(model="Go", error=None),
-        PlatformSnapshot(model="Unknown", error=None),
-        PlatformSnapshot(model="", error=None),
-        PlatformSnapshot(model="M4", error=_timeout()),
-    ],
-)
-def test_reg_domain_set_refused_when_model_untrusted(client, mocker, snapshot):
-    store_platform_snapshot(snapshot)
-    set_domain = mocker.patch.object(system_api.system_service, "set_reg_domain")
-
-    response = client.post(
-        "/api/v1/system/reg-domain/set",
-        json={"country": "US"},
+def test_reg_domain_set_on_go_reaches_downstream(client, mocker):
+    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    set_domain = mocker.patch.object(
+        system_api.system_service,
+        "set_reg_domain",
+        return_value={"country": "US", "source": "wlanpi-reg-domain", "raw": "US"},
     )
 
-    detail = GO_DETAIL if snapshot.model == "Go" else UNKNOWN_DETAIL
-    assert response.status_code == 403
-    assert response.json() == {"detail": detail}
-    set_domain.assert_not_called()
+    response = client.post("/api/v1/system/reg-domain/set", json={"country": "US"})
+
+    assert response.status_code == 200
+    set_domain.assert_called_once_with("US")
 
 
 @pytest.mark.parametrize("model", ["M4", "M4+", "R4", "Pro"])
@@ -476,6 +470,187 @@ def test_activate_go_auto_is_transmit_403(client, mocker, monkeypatch):
     activate.assert_not_called()
 
 
+def _plant_untrusted(
+    mocker, snapshot: PlatformSnapshot, probe: str | Exception
+) -> None:
+    store_platform_snapshot(snapshot)
+    if isinstance(probe, Exception):
+        mocker.patch(
+            "wlanpi_core.services.system_service.get_platform",
+            side_effect=probe,
+        )
+        return
+    mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value=probe,
+    )
+
+
+_UNTRUSTED = (
+    (
+        PlatformSnapshot(model="Unknown platform", error=None, final=False),
+        "Unknown platform",
+    ),
+    (PlatformSnapshot(model="Unknown", error=None, final=False), "Unknown"),
+    (PlatformSnapshot(model="", error=_timeout(), final=False), _timeout()),
+)
+
+
+def _refuse_service(client, mocker, name: str, action: str = "start"):
+    method = "start_systemd_service" if action == "start" else "restart_systemd_service"
+    called = mocker.patch.object(
+        system_api.system_service,
+        method,
+        new=AsyncMock(return_value={"name": name, "active": True}),
+    )
+    response = client.post(
+        f"/api/v1/system/service/{action}",
+        params={"name": name},
+    )
+    return response, called
+
+
+@pytest.mark.parametrize(
+    ("action", "name"),
+    [
+        ("restart", "hostapd"),
+        ("start", "wpa_supplicant@wlan0"),
+        ("start", "bt-agent"),
+        ("start", "bt-network"),
+    ],
+)
+def test_transmit_units_on_go_are_403(client, mocker, action: str, name: str):
+    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+
+    response, called = _refuse_service(client, mocker, name, action)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": GO_DETAIL}
+    called.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
+def test_hostapd_start_untrusted_is_403(client, mocker, snapshot, probe):
+    _plant_untrusted(mocker, snapshot, probe)
+
+    response, called = _refuse_service(client, mocker, "hostapd")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": UNKNOWN_DETAIL}
+    called.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
+def test_bluetooth_power_on_untrusted_is_403(client, mocker, snapshot, probe):
+    _plant_untrusted(mocker, snapshot, probe)
+    set_power = mocker.patch.object(
+        bluetooth_service, "bluetooth_set_power", return_value=True
+    )
+
+    response = client.post("/api/v1/bluetooth/power/on")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": UNKNOWN_DETAIL}
+    set_power.assert_not_called()
+
+
+@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
+def test_activate_untrusted_is_403(client, mocker, monkeypatch, snapshot, probe):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant_untrusted(mocker, snapshot, probe)
+    activate = mocker.patch.object(
+        network_config_api.network_config, "activate_config_report"
+    )
+
+    response = client.post("/api/v1/network/config/activate/lab_cfg")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": UNKNOWN_DETAIL}
+    activate.assert_not_called()
+
+
+def test_timeout_reprobe_allows_pro(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="Pro", error=_timeout(), final=False)
+    )
+    mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="Pro",
+    )
+    start = mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert response.status_code == 200
+    start.assert_awaited_once_with("hostapd")
+
+
+def test_provisional_m4_reprobe_refuses_go(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
+    )
+    mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="Go",
+    )
+    start = mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": GO_DETAIL}
+    start.assert_not_awaited()
+
+
+def test_second_m4_probe_is_final(client, mocker):
+    store_platform_snapshot(
+        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
+    )
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="M4",
+    )
+    mocker.patch.object(
+        system_api.system_service,
+        "start_systemd_service",
+        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    )
+
+    first = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+    second = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    probe.assert_called_once()
+
+
+def test_startup_populates_platform_cache(mocker):
+    import asyncio
+    import inspect
+
+    source = inspect.getsource(InitializationManager)
+    assert "await asyncio.to_thread(load_platform_cache)" in source
+
+    clear_platform_cache()
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform",
+        return_value="Pro",
+    )
+
+    asyncio.run(asyncio.to_thread(load_platform_cache))
+
+    probe.assert_called_once()
+    assert cached_model().value == "Pro"
+
+
 def test_openapi_documents_transmit_403_only_on_gated_routes():
     spec = create_app(debug=False).openapi()
     profiler = spec["paths"]["/api/v1/profiler/start"]["post"]
@@ -485,10 +660,10 @@ def test_openapi_documents_transmit_403_only_on_gated_routes():
 
     assert "403" not in profiler.get("responses", {})
     assert "transmit is disabled" not in profiler["description"]
+    assert "403" not in reg_domain.get("responses", {})
 
-    assert "403" in reg_domain["responses"]
-    assert f"`{GO_DETAIL}`" in reg_domain["responses"]["403"]["description"]
-    assert f"`{UNKNOWN_DETAIL}`" in reg_domain["responses"]["403"]["description"]
+    assert f"`{GO_DETAIL}`" in pair["responses"]["403"]["description"]
+    assert f"`{UNKNOWN_DETAIL}`" in pair["responses"]["403"]["description"]
 
     assert "403" in service_start["responses"]
     start_description = service_start["responses"]["403"]["description"]
