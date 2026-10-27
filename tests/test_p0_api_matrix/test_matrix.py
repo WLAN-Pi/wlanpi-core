@@ -14,9 +14,7 @@ from tests.test_p0_api_matrix.handlers import HANDLERS, run_api_scenario
 pytestmark = pytest.mark.usefixtures("no_real_run_command")
 
 # Rows that replicate open bugs. strict=True, so the fix must delete its entry.
-KNOWN_BUGS = {
-    "network_config_create_snapshots_mac": "#237: add_config does not snapshot the MAC",
-}
+KNOWN_BUGS: dict[str, str] = {}
 
 
 def _scenario_id(scenario: ApiScenario) -> str:

@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from wlanpi_core.adapters import discovery
-from wlanpi_core.constants import IW_FILE
+from wlanpi_core.constants import IW_FILE, MONITOR_IFACE_PREFIX
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.namespace_execution import ns_exec
@@ -29,28 +29,22 @@ def _phy_netdevs(phy: str, namespace: str | None) -> list[discovery.LiveInterfac
     ]
 
 
-def _up_monitors(phy: str, namespace: str | None) -> list[str]:
-    """Return the monitor netdevs on `phy` that are up in `namespace`.
-
-    A netns move takes every netdev of the phy down. Monitors (`wlanpiN`, the
-    capture targets) are brought back up; Core ups a managed netdev itself
-    when it configures one, and one handed back stays down. Best effort: []
-    when the state cannot be read.
-    """
-    try:
-        monitors = [m for m in _phy_netdevs(phy, namespace) if m.type == "monitor"]
-        links = ns_exec(
-            ["ip", "-o", "link", "show", "up"], namespace=namespace, no_output=True
-        )
-    except (RunCommandError, ValueError) as e:
-        log.warning(f"Could not read which monitors of {phy} are up: {e}")
+def _netdev_states(
+    phy: str, namespace: str | None
+) -> list[tuple[discovery.LiveInterface, bool]]:
+    """Return every netdev on `phy` in `namespace` with whether it is up."""
+    netdevs = _phy_netdevs(phy, namespace)
+    if not netdevs:
         return []
+    links = ns_exec(
+        ["ip", "-o", "link", "show", "up"], namespace=namespace, no_output=True
+    )
     up = {
         line.split(":")[1].strip().split("@")[0]
         for line in links.stdout.splitlines()
         if line.count(":") >= 2
     }
-    return [m.name for m in monitors if m.name in up]
+    return [(live, live.name in up) for live in netdevs]
 
 
 def up_sibling_monitors(iface: str, namespace: str | None) -> list[str]:
@@ -60,36 +54,81 @@ def up_sibling_monitors(iface: str, namespace: str | None) -> list[str]:
     """
     try:
         result = ns_exec([IW_FILE, "dev"], namespace=namespace, no_output=True)
+        for live in discovery._parse_iw_dev(result.stdout, namespace):
+            if live.name == iface:
+                return [
+                    m.name
+                    for m, is_up in _netdev_states(live.phy, namespace)
+                    if is_up and m.type == "monitor" and m.name != iface
+                ]
     except (RunCommandError, ValueError) as e:
         log.warning(f"Could not list the netdevs next to {iface}: {e}")
-        return []
-    for live in discovery._parse_iw_dev(result.stdout, namespace):
-        if live.name == iface:
-            return [m for m in _up_monitors(live.phy, namespace) if m != iface]
     return []
 
 
-def _bring_up(phy: str, names: list[str], namespace: str | None) -> None:
-    """Bring `names` up again in `namespace` if they are still `phy`'s monitors.
+def _is_core_monitor(live: discovery.LiveInterface) -> bool:
+    """Whether `live` is one of Core's own `wlanpiN` capture monitors."""
+    suffix = live.name.removeprefix(MONITOR_IFACE_PREFIX)
+    return live.type == "monitor" and suffix.isdigit() and suffix != live.name
 
-    The kernel renames a travelling netdev whose name is taken in the target,
-    so a name is only trusted if it is still a monitor on this phy there.
+
+def _move_phy(phy: str, source: str | None, target: str | None) -> None:
+    """Move `phy` from `source` to `target`, keeping Core's monitors as they were.
+
+    Every netdev on a phy travels with it, arrives down, and is renamed by
+    the kernel to the lowest free `wlanN` when its name is taken in the
+    target: a `wlanpi0` monitor can arrive as `wlan1`. Each of Core's
+    monitors is found again by its wdev id (kept across the move, unlike
+    the name) and brought back up if it was up. One the kernel renamed is
+    removed, since under a `wlanN` name it would pass for a managed netdev
+    and block Core's own; Core's monitor sync recreates it later. Netdevs
+    Core did not create travel untouched (#202).
     """
-    if not names:
+    try:
+        monitors = [
+            (live, is_up)
+            for live, is_up in _netdev_states(phy, source)
+            if _is_core_monitor(live)
+        ]
+    except (RunCommandError, ValueError) as e:
+        log.warning(f"Could not list the netdevs on {phy} before moving it: {e}")
+        monitors = []
+    where = ["name", target] if target is not None else ["1"]
+    ns_exec([IW_FILE, *phy_args(phy), "set", "netns", *where], namespace=source)
+    if not monitors:
         return
     try:
-        here = {m.name for m in _phy_netdevs(phy, namespace) if m.type == "monitor"}
+        arrived = _phy_netdevs(phy, target)
     except (RunCommandError, ValueError) as e:
         log.warning(f"Could not list {phy}'s netdevs after moving it: {e}")
         return
-    for name in names:
-        if name not in here:
-            log.warning(f"{name} did not arrive with {phy}; not bringing it up")
+    for live, was_up in monitors:
+        now = next((a for a in arrived if live.wdev and a.wdev == live.wdev), None)
+        if now is None:
+            # iw without wdev lines: trust the name only on this phy's monitors.
+            now = next(
+                (a for a in arrived if a.name == live.name and a.type == "monitor"),
+                None,
+            )
+        if now is None:
+            log.warning(f"{live.name} did not arrive with {phy}")
+            continue
+        if now.name != live.name:
+            log.error(
+                f"{live.name} arrived in {target or 'root'} as {now.name}: that name "
+                f"is taken there. Removing it; Core's monitor sync recreates it."
+            )
+            try:
+                ns_exec([IW_FILE, "dev", now.name, "del"], namespace=target)
+            except RunCommandError as e:
+                log.warning(f"Could not remove {now.name}: {e}")
+            continue
+        if not was_up:
             continue
         try:
-            ns_exec(["ip", "link", "set", name, "up"], namespace=namespace)
+            ns_exec(["ip", "link", "set", now.name, "up"], namespace=target)
         except RunCommandError as e:
-            log.warning(f"Could not bring {name} back up after moving {phy}: {e}")
+            log.warning(f"Could not bring {now.name} back up after moving {phy}: {e}")
 
 
 def list_phys(namespace: str | None = None) -> list[str]:
@@ -180,8 +219,7 @@ def get_phy_info(phy: str, namespace: str | None = None) -> dict[str, Any] | Non
 
 
 def move_phy_to_namespace(phy: str, namespace: str) -> bool:
-    """
-    Move a PHY device to a network namespace.
+    """Move a PHY from root into `namespace`; its netdevs travel with it (see _move_phy).
 
     Args:
         phy: PHY name (e.g., "phy0") or index selector (e.g., "phy#0")
@@ -200,15 +238,8 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
         raise ValueError("namespace cannot be empty")
 
     log.info(f"Moving PHY {phy} to namespace {namespace}")
-
-    up = _up_monitors(phy, None)
     try:
-        run_command(
-            ["sudo", IW_FILE, *phy_args(phy), "set", "netns", "name", namespace],
-            raise_on_fail=True,
-        )
-        _bring_up(phy, up, namespace)
-
+        _move_phy(phy, None, namespace)
         log.info(f"Successfully moved PHY {phy} to namespace {namespace}")
         return True
     except RunCommandError as e:
@@ -217,8 +248,7 @@ def move_phy_to_namespace(phy: str, namespace: str) -> bool:
 
 
 def move_phy_to_root(phy: str, namespace: str) -> bool:
-    """
-    Move a PHY device from a namespace back to root namespace.
+    """Move a PHY from `namespace` back to root; its netdevs travel with it (see _move_phy).
 
     Args:
         phy: PHY name (e.g., "phy0") or index selector (e.g., "phy#0")
@@ -237,16 +267,8 @@ def move_phy_to_root(phy: str, namespace: str) -> bool:
         raise ValueError("namespace cannot be empty")
 
     log.info(f"Moving PHY {phy} from namespace {namespace} to root")
-
-    up = _up_monitors(phy, namespace)
     try:
-        # `set netns 1` targets PID 1's namespace, the root one.
-        ns_exec(
-            [IW_FILE, *phy_args(phy), "set", "netns", "1"],
-            namespace=namespace,
-        )
-        _bring_up(phy, up, None)
-
+        _move_phy(phy, namespace, None)
         log.info(f"Successfully moved PHY {phy} to root namespace")
         return True
     except RunCommandError as e:

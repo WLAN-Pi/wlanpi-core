@@ -5986,6 +5986,20 @@
             "type": "string",
             "title": "Interface"
           },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac",
+            "examples": [
+              "00:11:22:33:44:55"
+            ]
+          },
           "security": {
             "anyOf": [
               {
@@ -6044,6 +6058,20 @@
           "interface": {
             "type": "string",
             "title": "Interface"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac",
+            "examples": [
+              "00:11:22:33:44:55"
+            ]
           },
           "security": {
             "anyOf": [
@@ -7262,6 +7290,20 @@
             "type": "string",
             "title": "Interface"
           },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac",
+            "examples": [
+              "00:11:22:33:44:55"
+            ]
+          },
           "security": {
             "anyOf": [
               {
@@ -7315,6 +7357,20 @@
           "interface": {
             "type": "string",
             "title": "Interface"
+          },
+          "mac": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac",
+            "examples": [
+              "00:11:22:33:44:55"
+            ]
           },
           "security": {
             "anyOf": [

@@ -6,6 +6,7 @@ import fcntl
 import json
 import logging
 import os
+import subprocess
 import tempfile
 import time
 from collections.abc import Iterator
@@ -194,6 +195,7 @@ def get_default_config(cfg_id: str = "default") -> NetConfig:
                 iface_display_name=live.name,
                 phy=f"phy{live.phy_index}",
                 interface=live.name,
+                mac=live.phy_mac,
                 security=None,
                 default_route=False,
                 autostart_app=None,
@@ -473,12 +475,47 @@ def _rollback_activated_configs(
             )
 
 
+def _snapshot_macs(cfg: NetConfig) -> None:
+    """Record the radio behind each entry that has no `mac` yet (#237).
+
+    `interface` names a radio only now: a replug, a reboot or a namespace
+    move can hand that name to another one. The live radio called
+    `interface` (in root first, else anywhere Core may look) is pinned by
+    its MAC. An entry whose name is not live is left for activation to pin.
+    """
+    entries = [entry for entry in _all_entries(cfg) if entry.mac is None]
+    if not entries:
+        return
+    try:
+        inventory = discovery.list_interfaces_all_namespaces()
+    except (RunCommandError, OSError, subprocess.TimeoutExpired) as e:
+        log.warning(f"Could not read the radio inventory to pin {cfg.id}: {e}")
+        return
+    inventory.sort(key=lambda live: live.netns is not None)
+    for entry in entries:
+        for live in inventory:
+            if live.name == entry.interface and live.phy_mac:
+                entry.mac = live.phy_mac
+                break
+
+
+def _persist_learned_macs(cfg: NetConfig, before: list[str | None]) -> None:
+    """Write cfg back if activation pinned an entry's radio by MAC."""
+    if [entry.mac for entry in _all_entries(cfg)] == before:
+        return
+    try:
+        _atomic_write(_config_path(cfg.id), cfg.model_dump_json(indent=4))
+    except OSError as e:
+        log.warning(f"Could not record radio MACs in {cfg.id}: {e}")
+
+
 def add_config(config: NetConfig) -> bool:
     """Add a new configuration."""
     _reject_reserved_id(config.id)
     path = _config_path(config.id)
     if path.exists():
         raise FileExistsError(f"Configuration {config.id} already exists.")
+    _snapshot_macs(config)
     _atomic_write(path, config.model_dump_json(indent=4))
     return True
 
@@ -528,6 +565,7 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
     except PydanticValidationError as e:
         raise ValidationError(str(e), status_code=422) from None
     _keep_stored_secrets(stored, cfg)
+    _snapshot_macs(cfg)
 
     _atomic_write(path, cfg.model_dump_json(indent=4))
 
@@ -685,43 +723,47 @@ def _apply_entries(
     Entries that come up connected or provisioned are appended to `activated`
     as they succeed, so a caller can roll them back after an exception. With
     `only_core_managed` (the default configuration), an entry whose radio
-    Core did not create is reported "skipped" and not touched.
+    Core did not create is reported "skipped" and not touched. A radio MAC
+    the service records on the way is written back to the profile.
     """
     outcomes: list[AdapterOutcome] = []
-    for entry in _all_entries(cfg):
-        where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
-        if only_core_managed and not ns.is_core_managed(entry):
-            log.info(f"Leaving {entry.interface} in {where} alone: not created by Core")
-            outcomes.append(
-                AdapterOutcome(
-                    interface=entry.interface,
-                    namespace=entry.namespace
-                    if isinstance(entry, NamespaceConfig)
-                    else None,
-                    status="skipped",
-                    detail="Not created by Core; left alone",
-                )
-            )
-            continue
-        log.info(f"Activating {entry.interface} in {where}")
-        result = ns.activate_config(entry)
-        status = getattr(result, "status", "error") if result is not None else "error"
-        detail = result.response.selectErr if result is not None else ""
-        outcomes.append(
-            AdapterOutcome(
-                interface=entry.interface,
-                namespace=entry.namespace
-                if isinstance(entry, NamespaceConfig)
-                else None,
-                status=status,
-                detail=detail,
-                invalid=status == "error"
-                and detail.startswith("Config validation failed"),
-            )
-        )
-        if status in {"connected", "provisioned"}:
-            activated.append(entry)
+    macs_before = [entry.mac for entry in _all_entries(cfg)]
+    try:
+        for entry in _all_entries(cfg):
+            outcomes.append(_apply_entry(entry, activated, only_core_managed))
+    finally:
+        _persist_learned_macs(cfg, macs_before)
     return outcomes
+
+
+def _apply_entry(
+    entry: NamespaceConfig | RootConfig,
+    activated: list[NamespaceConfig | RootConfig],
+    only_core_managed: bool,
+) -> AdapterOutcome:
+    where = entry.namespace if isinstance(entry, NamespaceConfig) else "root"
+    namespace = entry.namespace if isinstance(entry, NamespaceConfig) else None
+    if only_core_managed and not ns.is_core_managed(entry):
+        log.info(f"Leaving {entry.interface} in {where} alone: not created by Core")
+        return AdapterOutcome(
+            interface=entry.interface,
+            namespace=namespace,
+            status="skipped",
+            detail="Not created by Core; left alone",
+        )
+    log.info(f"Activating {entry.interface} in {where}")
+    result = ns.activate_config(entry)
+    status = getattr(result, "status", "error") if result is not None else "error"
+    detail = result.response.selectErr if result is not None else ""
+    if status in {"connected", "provisioned"}:
+        activated.append(entry)
+    return AdapterOutcome(
+        interface=entry.interface,
+        namespace=namespace,
+        status=status,
+        detail=detail,
+        invalid=status == "error" and detail.startswith("Config validation failed"),
+    )
 
 
 def _teardown_profile(cfg_id: str) -> None:

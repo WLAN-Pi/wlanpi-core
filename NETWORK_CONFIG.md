@@ -35,6 +35,7 @@ mode:               either "managed" or "monitor"
 iface_display_name: name of the interface for the scanning api to use (e.g. wlanpi<x> or myiface<x>)
 phy:                the phy to use (defaults to phy0)
 interface:          the interface to use (defaults to wlan0)
+mac:                the radio's permanent MAC (optional). Core fills it in when the config is created or first activated, and from then on finds the radio by it even if the kernel has renamed its interface or a replug has given the name to another radio.
 security ↓
     ssid:           SSID of the network
     security:       security standard to use, e.g. "WPA2-PSK"

@@ -54,6 +54,17 @@ wrong radio or none at all (e.g. live `wlan1→phy2` while `default.json` says
 - `prepare_missing_phy_after_delete` (#236): delete-then-skip leaves a radio with no netdev
 - `iface_already_in_netns_at_activation` (#236): the iface sits in another netns
 - `phy10_vs_phy1_substring` (#236): `phy1` must not match `phy10`
+
+Since #237 an entry also carries `mac`, the radio's permanent MAC
+(`/sys/class/ieee80211/phyN/macaddress`), recorded on create or first
+activation. With it set, `_find_live` matches the radio by MAC wherever it is
+and whatever its netdev is called, and treats a missing MAC as absence: the
+name is never used to pick a radio. Rows:
+
+- `mac_identity_follows_radio_not_name`: names swapped after a reboot; the pinned radio moves
+- `mac_identity_absent_radio_skipped`: the pinned radio is gone; the radio holding its name is left alone
+- `mac_learned_on_first_activation`: a pre-#237 profile is pinned and written back
+- `return_to_root_name_taken_gets_free_wlan`: hand-back when another radio took the root name
 - `iface_display_name_differs` (#236): the live iface carries `iface_display_name`
 - `rollback_after_partial_prepare` (#236): rollback of namespaced entries
 - `phy_index_neq_iface_index`: control, non-parity indexes are fine when cfg matches live

@@ -1,6 +1,7 @@
 """Wireless interface discovery."""
 
 import logging
+import re
 import subprocess
 from typing import Any, NamedTuple
 
@@ -111,6 +112,9 @@ class LiveInterface(NamedTuple):
     # cfg80211 wdev id: kept across netns moves and new when a netdev is
     # recreated, so it tells a netdev apart from a later one of the same name.
     wdev: str | None = None
+    # The radio's permanent MAC: the one identity that survives a rename, a
+    # netns move, a replug and a reboot. None when it could not be read.
+    phy_mac: str | None = None
 
     @property
     def phy(self) -> str:
@@ -162,6 +166,39 @@ def _parse_iw_dev(output: str, netns: str | None) -> list[LiveInterface]:
     ]
 
 
+_MAC_RE = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
+
+
+def phy_mac(phy_index: int, namespace: str | None) -> str | None:
+    """Return the permanent MAC of `phy#<phy_index>` as seen in `namespace`, or None.
+
+    Read from sysfs inside the namespace, since a moved phy is hidden from
+    root's. The netdev `addr` is not an identity: drivers with several
+    addresses (iwlwifi, hwsim) give a second vif on the radio a different one.
+    """
+    # ponytail: assumes phyN is index N, false after `iw phy set name`.
+    path = f"/sys/class/ieee80211/phy{phy_index}/macaddress"
+    try:
+        if namespace is None:
+            result = run_command(["cat", path], raise_on_fail=False)
+        else:
+            result = ns_exec(["cat", path], namespace=namespace, no_output=True)
+    except (RunCommandError, ValueError, OSError, subprocess.TimeoutExpired) as e:
+        log.warning(f"Could not read the MAC of phy{phy_index}: {e}")
+        return None
+    mac = result.stdout.strip().lower()
+    return mac if _MAC_RE.match(mac) else None
+
+
+def _with_phy_macs(entries: list[LiveInterface]) -> list[LiveInterface]:
+    """Fill `phy_mac` on `entries` (all from one namespace), one read per phy."""
+    macs: dict[int, str | None] = {}
+    for live in entries:
+        if live.phy_index not in macs:
+            macs[live.phy_index] = phy_mac(live.phy_index, live.netns)
+    return [live._replace(phy_mac=macs[live.phy_index]) for live in entries]
+
+
 def list_interfaces_all_namespaces() -> list[LiveInterface]:
     """
     List wireless interfaces in the root namespace and every named netns.
@@ -177,14 +214,14 @@ def list_interfaces_all_namespaces() -> list[LiveInterface]:
         RunCommandError: If `iw dev` fails in the root namespace
     """
     result = run_command([IW_FILE, "dev"], raise_on_fail=True)
-    found = _parse_iw_dev(result.stdout, None)
+    found = _with_phy_macs(_parse_iw_dev(result.stdout, None))
     for netns in ns_namespace.list_namespaces():
         try:
             ns_result = ns_exec([IW_FILE, "dev"], namespace=netns, no_output=True)
         except (RunCommandError, ValueError, OSError, subprocess.TimeoutExpired) as e:
             log.warning(f"Could not list wireless interfaces in {netns}: {e}")
             continue
-        found += _parse_iw_dev(ns_result.stdout, netns)
+        found += _with_phy_macs(_parse_iw_dev(ns_result.stdout, netns))
     return found
 
 

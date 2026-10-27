@@ -48,6 +48,12 @@ from wlanpi_core.wpa import status as wpa_status
 from wlanpi_core.wpa import supplicant as wpa_supplicant
 
 
+def _name_taken(error: RunCommandError) -> bool:
+    """Whether `iw interface add` failed because the name exists (ENFILE, -23)."""
+    text = str(error)
+    return "(-23)" in text or "Too many open files" in text
+
+
 class NetworkNamespaceService:
     """Manage network namespaces and their configuration."""
 
@@ -260,6 +266,12 @@ class NetworkNamespaceService:
 
         live = self._find_live(cfg)
         self.log.info(f"Live interface for {iface}: {live}")
+
+        if live is not None and cfg.mac is None and live.phy_mac:
+            # A profile from before #237 names the radio only by `interface`;
+            # it is this radio from now on, whatever the name does.
+            self.log.info(f"Recording {iface} as the radio with MAC {live.phy_mac}")
+            cfg.mac = live.phy_mac
 
         if live is None:
             skip_msg = f"Interface '{iface}' does not exist, skipping activation for this config."
@@ -487,9 +499,24 @@ class NetworkNamespaceService:
                 phy.move_phy_to_root(live.phy, live.netns)
                 moved_to = None
             # Left down, as at boot (see _take_down).
-            interface.create_interface(
-                live.phy, name, interface_type="managed", namespace=None
-            )
+            try:
+                interface.create_interface(
+                    live.phy, name, interface_type="managed", namespace=None
+                )
+            except RunCommandError as e:
+                if not _name_taken(e):
+                    raise
+                # Another radio took `name` while this one was away (plugged
+                # in, or renamed by the kernel). The profile knows this radio
+                # by MAC, so it gets the next free wlanN instead of staying
+                # stranded under its display name.
+                self.log.warning(
+                    f"{name} is taken by another netdev in root; {live.phy} "
+                    f"({live.phy_mac or 'MAC unknown'}) gets the next free wlanN"
+                )
+                interface.create_interface(
+                    live.phy, "wlan%d", interface_type="managed", namespace=None
+                )
         except RunCommandError as e:
             self.log.error(f"Could not return {live.name} on {live.phy} to root: {e}")
             self._restore_live(live, name, moved_to, None)
@@ -809,8 +836,13 @@ class NetworkNamespaceService:
     ) -> discovery.LiveInterface | None:
         """Find the live netdev backing cfg, in root, Core's namespaces, or cfg's own.
 
-        `interface` is looked up first. `iface_display_name` (Core's rename) is
-        tried only in cfg's namespace: other entries or radios may carry it elsewhere.
+        With `mac` recorded, the radio is found by it wherever it is and
+        whatever its netdev is called now: the kernel renames a netdev whose
+        name is taken when it changes namespace, and a replug or reboot can
+        hand `interface` to another radio. The entry is then absent, not
+        another radio, when no present radio has that MAC. Without `mac`
+        (a profile from before #237), `interface` is looked up first and
+        `iface_display_name` (Core's rename) only in cfg's own namespace.
         """
         namespace = cfg.namespace if isinstance(cfg, NamespaceConfig) else None
         # Radios in others' namespaces are treated as unplugged, never taken.
@@ -820,6 +852,27 @@ class NetworkNamespaceService:
             for live in discovery.list_interfaces_all_namespaces()
             if live.netns is None or live.netns in owned or live.netns == namespace
         ]
+        if cfg.mac:
+            on_radio = sorted(
+                (live for live in inventory if live.phy_mac == cfg.mac),
+                key=lambda live: (
+                    live.netns != namespace,
+                    live.name not in (cfg.interface, cfg.iface_display_name),
+                    live.type == "monitor",
+                    live.name,
+                ),
+            )
+            if not on_radio:
+                self.log.info(
+                    f"No radio with MAC {cfg.mac} ({cfg.interface}) is present"
+                )
+                return None
+            if on_radio[0].name != cfg.interface:
+                self.log.info(
+                    f"{cfg.interface} (MAC {cfg.mac}) is now {on_radio[0].name} in "
+                    f"{on_radio[0].netns or 'root'}"
+                )
+            return on_radio[0]
         matches = sorted(
             (live for live in inventory if live.name == cfg.interface),
             key=lambda live: (live.netns != namespace, live.netns is not None),

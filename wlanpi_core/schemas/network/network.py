@@ -1,5 +1,6 @@
 """Schemas for network configuration and primitives."""
 
+import re
 from enum import StrEnum
 from typing import Any
 
@@ -205,11 +206,18 @@ class NetSecurity(BaseModel):
     __repr__ = __str__
 
 
+_MAC_RE = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
+
+
 class _RootConfigBase[SecurityT: BaseModel](BaseModel):
     mode: NetworkModeEnum = NetworkModeEnum.managed
     iface_display_name: str
     phy: str
     interface: str
+    # The radio's permanent MAC. Core records it when the entry is created or
+    # first activated, and from then on finds the radio by it: `interface`
+    # and `phy` only say what the radio was called at the time (#237).
+    mac: str | None = Field(default=None, examples=["00:11:22:33:44:55"])
     security: SecurityT | None = None
     default_route: bool = False
     autostart_app: str | None = None
@@ -219,6 +227,17 @@ class _RootConfigBase[SecurityT: BaseModel](BaseModel):
     def validate_interface_fields(cls, value: str) -> str:
         """Validate interface field names."""
         return validate_interface_name(value)
+
+    @field_validator("mac")
+    @classmethod
+    def validate_mac_field(cls, value: str | None) -> str | None:
+        """Normalise the MAC to lowercase colon form; reject anything else."""
+        if value is None:
+            return None
+        mac = value.strip().lower().replace("-", ":")
+        if not _MAC_RE.match(mac):
+            raise ValueError("mac must be six colon-separated hex octets")
+        return mac
 
     @field_validator("phy")
     @classmethod

@@ -430,6 +430,19 @@ class InventoryRecorder:
             return self._iw(netns, parts[1:], raise_on_fail)
         if parts[:1] == ["ip"]:
             return self._ip(netns, parts[1:], raise_on_fail)
+        if (
+            len(parts) == 2
+            and parts[0] == "cat"
+            and parts[1].startswith("/sys/class/ieee80211/")
+            and parts[1].endswith("/macaddress")
+        ):
+            # The radio's permanent MAC; a phy in another netns is not in this sysfs.
+            phy_name = parts[1].split("/")[4]
+            if phy_name not in self._visible_phys(netns):
+                return self._fail(
+                    f"cat: {parts[1]}: No such file or directory\n", 1, raise_on_fail
+                )
+            return self._ok(self.phy_mac[phy_name] + "\n")
         if parts == ["cat", "/proc/net/packet"]:
             rows = "".join(
                 f"00000000 3 3 0003 {meta.ifindex} 1 0 0 {9000 + meta.ifindex}\n"
@@ -528,8 +541,15 @@ class InventoryRecorder:
             # Real `iw phy <x> info` has no `addr` line.
             index = phy_name.removeprefix("phy")
             return self._ok(f"Wiphy {phy_name}\n\twiphy index: {index}\n")
-        if len(rest) == 5 and rest[:2] == ["interface", "add"] and rest[3] == "type":
+        if len(rest) >= 5 and rest[:2] == ["interface", "add"] and rest[3] == "type":
+            # Trailing monitor `flags ...` are accepted and not modelled.
             name, iface_type = rest[2], rest[4]
+            if "%d" in name:
+                # The kernel fills a `wlan%d` template with the lowest free number.
+                index = 0
+                while (netns, name.replace("%d", str(index))) in self.ifaces:
+                    index += 1
+                name = name.replace("%d", str(index))
             if (netns, name) in self.ifaces:
                 # What the kernel really returns for a taken name (ENFILE).
                 return self._fail(

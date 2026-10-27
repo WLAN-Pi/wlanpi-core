@@ -2032,10 +2032,10 @@ def handle_bulk_revert_returns_radio_capturable(
     assert "lab_ns" not in inventory.netns
 
 
-def handle_netns_move_skips_renamed_monitor(
+def handle_netns_move_drops_renamed_monitor(
     namespace_service, netcfg_env, scenario: Scenario
 ):
-    """Never bring up a same-named netdev of another radio after a rename."""
+    """Remove a Core monitor the kernel renamed on arrival rather than leave it as wlanN."""
     adapters = _shared_cfg_with_up_monitor(netcfg_env)
     with live_adapter_inventory_mocks(adapters) as inventory:
         assert nc.activate_config("shared_cfg", override_active=True) is True
@@ -2048,12 +2048,133 @@ def handle_netns_move_skips_renamed_monitor(
         namespace_service.revert_to_root(None)
         foreign = inventory.ifaces[(None, "wlanpi0")]
         assert foreign.phy == "phy1" and not foreign.up
-        renamed = [
-            meta
-            for (ns, _name), meta in inventory.ifaces.items()
+        strays = [
+            name
+            for (ns, name), meta in inventory.ifaces.items()
             if ns is None and meta.phy == "phy0" and meta.type == "monitor"
         ]
-        assert len(renamed) == 1 and not renamed[0].up
+        assert strays == []
+        # Netdevs travel oldest first: the monitor took the free wlan0, so
+        # the managed netdev arrived as wlan3. Core removed the stray monitor.
+        assert inventory.deleted[-1] == ("wlan0", None)
+    on_phy0 = {
+        name: rest for name, rest in inventory.live().items() if rest[0] == "phy0"
+    }
+    assert on_phy0 == {"wlan3": ("phy0", None, "managed")}
+
+
+SWAPPED_NAMES: dict[str, dict[str, str]] = {
+    # After a replug or reboot the kernel handed the names out the other way
+    # round: the radio a profile pinned as wlan1 (..01) is now called wlan2.
+    "wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"},
+    "wlan1": {"phy": "phy1", "mac": "00:11:22:33:44:02"},
+    "wlan2": {"phy": "phy2", "mac": "00:11:22:33:44:01"},
+}
+
+
+def handle_mac_identity_follows_radio_not_name(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Move the radio with the pinned MAC, not whichever radio holds the name now."""
+    _write_netconfig(
+        netcfg_env,
+        "pin_cfg",
+        namespaces=[
+            _ns(
+                "lab_ns",
+                interface="wlan1",
+                phy="phy2",
+                iface_display_name="lab0",
+                mac="00:11:22:33:44:01",
+            ).model_dump(mode="json")
+        ],
+    )
+    with live_adapter_inventory_mocks(SWAPPED_NAMES) as inventory:
+        assert nc.activate_config("pin_cfg", override_active=True) is True
+    assert inventory.phy_moves == [("phy2", "lab_ns")]
+    assert inventory.deleted == [("wlan2", None)]
+    assert inventory.adds == [("phy2", "lab0", "lab_ns")]
+    assert inventory.live()["wlan1"] == ("phy1", None, "managed")
+    assert inventory.live()["lab0"] == ("phy2", "lab_ns", "managed")
+    assert netcfg_env["ccf"].read_text().strip() == "pin_cfg"
+
+
+def handle_mac_identity_absent_radio_skipped(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Treat a pinned radio that is not present as unplugged, whatever holds its name."""
+    _write_netconfig(
+        netcfg_env,
+        "gone_cfg",
+        roots=[
+            _root(interface="wlan1", phy="phy2", mac="00:11:22:33:44:09").model_dump(
+                mode="json"
+            )
+        ],
+    )
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO) as inventory:
+        ok, outcomes = nc.activate_config_report("gone_cfg", override_active=True)
+    assert ok is True
+    assert [o.status for o in outcomes] == ["provisioned"]
+    assert "does not exist" in outcomes[0].detail
+    assert inventory.deleted == [] and inventory.adds == []
+    assert inventory.live() == JOSH_LIVE
+    assert netcfg_env["ccf"].read_text().strip() == "gone_cfg"
+
+
+def handle_mac_learned_on_first_activation(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Pin a pre-#237 profile to the radio its name found, and write it back."""
+    path = _write_netconfig(
+        netcfg_env,
+        "old_cfg",
+        roots=[_root(interface="wlan1", phy="phy2").model_dump(mode="json")],
+    )
+    assert json.loads(path.read_text())["roots"][0]["mac"] is None
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
+        assert nc.activate_config("old_cfg", override_active=True) is True
+    assert json.loads(path.read_text())["roots"][0]["mac"] == "00:11:22:33:44:01"
+    assert nc.get_config("old_cfg").roots[0].mac == "00:11:22:33:44:01"
+
+
+def handle_return_to_root_name_taken_gets_free_wlan(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """Hand a radio back under the next free wlanN when its name was taken meanwhile."""
+    _write_netconfig(
+        netcfg_env,
+        "pin_cfg",
+        namespaces=[
+            _ns(
+                "lab_ns",
+                interface="wlan1",
+                phy="phy2",
+                iface_display_name="lab0",
+                mac="00:11:22:33:44:01",
+            ).model_dump(mode="json")
+        ],
+    )
+    netcfg_env["ccf"].write_text("pin_cfg")
+    adapters = {
+        "wlan0": {"phy": "phy0", "mac": "00:11:22:33:44:00"},
+        # Plugged in while the pinned radio was away; the kernel gave it wlan1.
+        "wlan1": {"phy": "phy1", "mac": "00:11:22:33:44:02"},
+        "lab0": {"phy": "phy2", "mac": "00:11:22:33:44:01", "netns": "lab_ns"},
+    }
+    with live_adapter_inventory_mocks(adapters) as inventory:
+        _mark_core_namespace("lab_ns")
+        namespace_service._claim("lab0", "lab_ns")
+        assert nc.deactivate_config("pin_cfg") is True
+    assert inventory.phy_moves == [("phy2", None)]
+    assert inventory.adds == [("phy2", "wlan2", None)]
+    assert inventory.live() == {
+        "wlan0": ("phy0", None, "managed"),
+        "wlan1": ("phy1", None, "managed"),
+        "wlan2": ("phy2", None, "managed"),
+    }
+    assert "lab_ns" not in inventory.netns
+    assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
 def handle_netns_move_monitor_restore_is_best_effort(
@@ -2887,7 +3008,11 @@ HANDLERS = {
     "deactivate_restores_renamed_root_entry": handle_deactivate_restores_renamed_root_entry,
     "deactivate_root_managed_leaves_radio_capturable": handle_deactivate_root_managed_leaves_radio_capturable,
     "bulk_revert_returns_radio_capturable": handle_bulk_revert_returns_radio_capturable,
-    "netns_move_skips_renamed_monitor": handle_netns_move_skips_renamed_monitor,
+    "netns_move_drops_renamed_monitor": handle_netns_move_drops_renamed_monitor,
+    "mac_identity_follows_radio_not_name": handle_mac_identity_follows_radio_not_name,
+    "mac_identity_absent_radio_skipped": handle_mac_identity_absent_radio_skipped,
+    "mac_learned_on_first_activation": handle_mac_learned_on_first_activation,
+    "return_to_root_name_taken_gets_free_wlan": handle_return_to_root_name_taken_gets_free_wlan,
     "netns_move_monitor_restore_is_best_effort": handle_netns_move_monitor_restore_is_best_effort,
     "revert_failure_is_reported": handle_revert_failure_is_reported,
     "post_prepare_failure_rolls_back_entry": handle_post_prepare_failure_rolls_back_entry,
