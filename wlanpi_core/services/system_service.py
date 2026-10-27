@@ -268,8 +268,8 @@ def get_platform() -> str:
 
 
 def get_model() -> str:
-    """Return the model resolved once at startup, or "Unknown" when unset."""
-    return cached_model().value
+    """Return the cached `wlanpi-model -b` result, or "Unknown"."""
+    return cached_model()
 
 
 def _read_cpu_temperature() -> str:

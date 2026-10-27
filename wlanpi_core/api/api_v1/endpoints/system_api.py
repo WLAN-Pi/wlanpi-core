@@ -57,7 +57,7 @@ async def show_device_info() -> Any:
     Return core information about the PI.
 
     Commands:
-     - Uses the model resolved once at startup from `wlanpi-model -b`.
+     - Uses the cached result of 'wlanpi-model -b' for the device model.
      - Uses '/usr/bin/hostname' to query the device hostname.
      - Uses '/etc/wlanpi-release' to query the device software version.
      - Uses '/etc/wlanpi-state' to query the device mode.
@@ -103,7 +103,7 @@ async def device_stats() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_model() -> Any:
-    """Return the device model resolved once at startup from `wlanpi-model -b`."""
+    """Return the cached result of 'wlanpi-model -b'."""
     try:
         model = await asyncio.to_thread(system_service.get_model)
         return {"model": model}

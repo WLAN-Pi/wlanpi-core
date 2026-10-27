@@ -41,8 +41,8 @@ def test_device_info_caches_static_fields_but_not_mode(mocker):
     finally:
         system_api._read_static_device_info.cache_clear()
 
-    assert first["model"] == "M4"
-    assert second["model"] == "M4"
+    assert first["model"] == "Pro"
+    assert second["model"] == "Pro"
     assert first["mode"] == "classic"
     assert second["mode"] == "hotspot"
     assert first["hostname"] == "wlanpi.local"

@@ -48,18 +48,13 @@ def mock_app_initialization(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _plant_platform_snapshot():
+def _plant_platform_model(monkeypatch):
     from wlanpi_core.api.api_v1.endpoints.system_api import _read_static_device_info
-    from wlanpi_core.services.platform_cache import (
-        PlatformSnapshot,
-        clear_platform_cache,
-        store_platform_snapshot,
-    )
+    from wlanpi_core.services import platform_cache
 
-    store_platform_snapshot(PlatformSnapshot(model="M4", error=None))
+    monkeypatch.setattr(platform_cache, "_cached", "Pro")
     _read_static_device_info.cache_clear()
     yield
-    clear_platform_cache()
     _read_static_device_info.cache_clear()
 
 

@@ -297,8 +297,9 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     `detail` holds the message and the command's `error`. 409 means another
     change is running or the configuration is already active.
 
-    Returns 403 when transmit is disabled on this WLAN Pi. The handler's
-    409, 422, and 500 still apply when this check returns.
+    Returns 403 when transmit is disabled on this WLAN Pi and an entry has
+    `security` or `autostart_app`. A configuration with neither, such as
+    monitor only, still activates.
     """
     try:
         require_wlan_management_enabled()

@@ -13,16 +13,18 @@ from wlanpi_core.core.transmit_policy import (
     UNKNOWN_DETAIL,
     is_go_token,
 )
+from wlanpi_core.models.network_config_errors import ConfigMalformedError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.services.platform_cache import ModelToken, resolve_model
+from wlanpi_core.services.platform_cache import resolve_model
 from wlanpi_core.services.system_service import service_allowlist_key
+from wlanpi_core.utils import network_config
 
 
-def refusal_detail(model: ModelToken) -> str | None:
-    """Return the 403 detail, or None when this token may transmit."""
-    if is_go_token(model.value):
+def refusal_detail(model: str) -> str | None:
+    """Return the 403 detail, or None when this model may transmit."""
+    if is_go_token(model):
         return GO_DETAIL
-    if model.value in TRANSMIT_ALLOWED_MODELS:
+    if model in TRANSMIT_ALLOWED_MODELS:
         return None
     return UNKNOWN_DETAIL
 
@@ -58,12 +60,26 @@ def require_transmit_for_power(
         _refuse_cached_model()
 
 
+def _config_transmits(cfg_id: str) -> bool:
+    try:
+        cfg = network_config.get_config(cfg_id)
+    except (FileNotFoundError, ConfigMalformedError, ValidationError):
+        return False
+    entries = [*(cfg.roots or []), *(cfg.namespaces or [])]
+    return any(entry.security or entry.autostart_app for entry in entries)
+
+
 def require_transmit_for_activate(
+    id: str,
     _: Annotated[Caller, Depends(verify_auth_wrapper)],
 ) -> None:
-    """Refuse activation when the model cannot transmit."""
+    """Refuse activation of a config that starts a supplicant or an app.
+
+    A missing, malformed, or invalid config ID is left to the handler.
+    """
     try:
         require_wlan_management_enabled()
     except ValidationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.error_msg) from None
-    _refuse_cached_model()
+    if _config_transmits(id):
+        _refuse_cached_model()

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import threading
-import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,7 +14,7 @@ from wlanpi_core.api.api_v1.endpoints import (
     profiler_api,
     system_api,
 )
-from wlanpi_core.app import InitializationManager, create_app
+from wlanpi_core.app import create_app
 from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
@@ -29,18 +28,13 @@ from wlanpi_core.core.transmit_gate import (
     require_transmit_for_power,
     require_transmit_for_unit,
 )
-from wlanpi_core.services import bluetooth_service, system_service
+from wlanpi_core.schemas.network.network import NetConfig
+from wlanpi_core.services import bluetooth_service, platform_cache, system_service
 from wlanpi_core.services.platform_cache import (
-    _PROBE_BACKOFF_SEC,
-    ModelToken,
-    PlatformSnapshot,
     boot_model,
     cached_model,
-    clear_platform_cache,
     load_platform_cache,
     resolve_model,
-    store_platform_snapshot,
-    token_from_snapshot,
 )
 
 _TRANSMIT_DEPENDENCIES = {
@@ -94,6 +88,43 @@ def _timeout() -> subprocess.TimeoutExpired:
     return subprocess.TimeoutExpired(["wlanpi-model", "-b"], 30)
 
 
+def _plant(value: str | subprocess.TimeoutExpired | None) -> None:
+    platform_cache._cached = value
+
+
+def _probe_returns(mocker, *results: str | Exception):
+    return mocker.patch(
+        "wlanpi_core.services.system_service.get_platform", side_effect=list(results)
+    )
+
+
+def _entry(**fields: object) -> dict[str, object]:
+    return {
+        "iface_display_name": "wlan0",
+        "phy": "phy0",
+        "interface": "wlan0",
+        **fields,
+    }
+
+
+_MONITOR_ONLY = NetConfig.model_validate(
+    {"id": "mon", "roots": [_entry(mode="monitor")]}
+)
+_WITH_SECURITY = NetConfig.model_validate(
+    {"id": "lab_cfg", "roots": [_entry(security={"ssid": "lab", "security": "OPEN"})]}
+)
+_WITH_APP = NetConfig.model_validate(
+    {"id": "app", "namespaces": [_entry(namespace="ns1", autostart_app="orb")]}
+)
+
+
+@pytest.fixture
+def lab_cfg(mocker):
+    return mocker.patch.object(
+        network_config_api.network_config, "get_config", return_value=_WITH_SECURITY
+    )
+
+
 @pytest.fixture
 def client():
     async def _allow():
@@ -103,32 +134,6 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.pop(verify_auth_wrapper, None)
-
-
-@pytest.mark.parametrize(
-    ("snapshot", "expected"),
-    [
-        (PlatformSnapshot(model="M4", error=_timeout()), "Unknown"),
-        (PlatformSnapshot(model="", error=None), "Unknown"),
-        (PlatformSnapshot(model="M4?", error=None), "Unknown"),
-        (PlatformSnapshot(model="Unknown", error=None), "Unknown"),
-        (PlatformSnapshot(model="Go", error=None), "Go"),
-        (PlatformSnapshot(model="go", error=None), "go"),
-        (PlatformSnapshot(model="Go2", error=None), "Go2"),
-        (PlatformSnapshot(model="Unknown platform", error=None), "Unknown platform"),
-        (PlatformSnapshot(model="R5", error=None), "R5"),
-        (PlatformSnapshot(model="Pro", error=None), "Pro"),
-        (PlatformSnapshot(model="M4+", error=None), "M4+"),
-    ],
-)
-def test_token_from_snapshot(snapshot: PlatformSnapshot, expected: str):
-    assert token_from_snapshot(snapshot).value == expected
-
-
-@pytest.mark.parametrize("value", ["", "Go?"])
-def test_model_token_rejects_blank_and_question_suffix(value: str):
-    with pytest.raises(ValueError):
-        ModelToken(value)
 
 
 @pytest.mark.parametrize(
@@ -147,82 +152,7 @@ def test_model_token_rejects_blank_and_question_suffix(value: str):
     ],
 )
 def test_refusal_detail(value: str, detail: str | None):
-    assert refusal_detail(ModelToken(value)) == detail
-
-
-def test_cached_model_cold_is_unknown_and_does_not_probe(mocker):
-    run = mocker.patch(
-        "wlanpi_core.services.system_service.run_command",
-        side_effect=AssertionError("probed"),
-    )
-    clear_platform_cache()
-
-    assert cached_model().value == "Unknown"
-    run.assert_not_called()
-
-
-def test_load_platform_cache_file_not_found_is_idempotent(mocker):
-    run = mocker.patch(
-        "wlanpi_core.services.system_service.run_command",
-        side_effect=FileNotFoundError(2, "No such file or directory: 'wlanpi-model'"),
-    )
-    clear_platform_cache()
-
-    first = load_platform_cache()
-
-    assert first.model == "Unknown"
-    assert first.error is None
-    assert cached_model().value == "Unknown"
-    assert run.call_count == 1
-
-    second = load_platform_cache()
-
-    assert second == first
-    assert run.call_count == 1
-
-
-def test_load_platform_cache_stores_timeout(mocker):
-    exc = _timeout()
-    mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        side_effect=exc,
-    )
-    clear_platform_cache()
-
-    snapshot = load_platform_cache()
-
-    assert snapshot.model == ""
-    assert snapshot.error is exc
-    assert cached_model().value == "Unknown"
-
-
-def test_boot_model_reraises_timeout():
-    exc = _timeout()
-    store_platform_snapshot(PlatformSnapshot(model="", error=exc))
-
-    with pytest.raises(subprocess.TimeoutExpired) as caught:
-        boot_model()
-
-    assert caught.value is exc
-
-
-def test_boot_model_returns_empty_string():
-    store_platform_snapshot(PlatformSnapshot(model="", error=None))
-
-    assert boot_model() == ""
-
-
-def test_boot_model_returns_go():
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
-
-    assert boot_model() == "Go"
-
-
-def test_boot_model_cold_raises():
-    clear_platform_cache()
-
-    with pytest.raises(RuntimeError, match="platform model was not loaded at startup"):
-        boot_model()
+    assert refusal_detail(value) == detail
 
 
 def test_transmit_units_are_allowlisted():
@@ -266,17 +196,9 @@ def test_transmit_dependencies_match_the_route_table():
     assert offenders == []
 
 
-@pytest.mark.parametrize(
-    "snapshot",
-    [
-        PlatformSnapshot(model="Go", error=None),
-        PlatformSnapshot(model="Unknown", error=None),
-        PlatformSnapshot(model="", error=None),
-        PlatformSnapshot(model="M4", error=_timeout()),
-    ],
-)
-def test_profiler_start_reaches_downstream_including_no_ap(client, mocker, snapshot):
-    store_platform_snapshot(snapshot)
+@pytest.mark.parametrize("planted", ["Go", "Unknown", "", _timeout()])
+def test_profiler_start_reaches_downstream_including_no_ap(client, mocker, planted):
+    _plant(planted)
     start = mocker.patch.object(
         profiler_api.cli,
         "start_profiler",
@@ -290,7 +212,7 @@ def test_profiler_start_reaches_downstream_including_no_ap(client, mocker, snaps
 
 
 def test_reg_domain_set_on_go_reaches_downstream(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     set_domain = mocker.patch.object(
         system_api.system_service,
         "set_reg_domain",
@@ -305,7 +227,7 @@ def test_reg_domain_set_on_go_reaches_downstream(client, mocker):
 
 @pytest.mark.parametrize("model", ["M4", "M4+", "R4", "Pro"])
 def test_profiler_start_allowed_models_reach_downstream(client, mocker, model: str):
-    store_platform_snapshot(PlatformSnapshot(model=model, error=None))
+    _plant(model)
     start = mocker.patch.object(
         profiler_api.cli,
         "start_profiler",
@@ -319,7 +241,7 @@ def test_profiler_start_allowed_models_reach_downstream(client, mocker, model: s
 
 
 def test_profiler_start_without_auth_is_401_not_transmit_detail():
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
 
     with TestClient(app) as raw_client:
         response = raw_client.post("/api/v1/profiler/start", json={"noAP": True})
@@ -331,7 +253,7 @@ def test_profiler_start_without_auth_is_401_not_transmit_detail():
 
 
 def test_bluetooth_status_on_go_is_not_403(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     mocker.patch.object(
         bluetooth_service,
         "bluetooth_status",
@@ -344,7 +266,7 @@ def test_bluetooth_status_on_go_is_not_403(client, mocker):
 
 
 def test_service_start_cockpit_on_go_reaches_downstream(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     start = mocker.patch.object(
         system_api.system_service,
         "start_systemd_service",
@@ -359,7 +281,7 @@ def test_service_start_cockpit_on_go_reaches_downstream(client, mocker):
 
 @pytest.mark.parametrize("action", ["start", "restart"])
 def test_wlanpi_profiler_service_on_go_reaches_downstream(client, mocker, action: str):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     method = "start_systemd_service" if action == "start" else "restart_systemd_service"
     called = mocker.patch.object(
         system_api.system_service,
@@ -378,7 +300,7 @@ def test_wlanpi_profiler_service_on_go_reaches_downstream(client, mocker, action
 
 @pytest.mark.parametrize("name", ["hostapd", "Hostapd.service"])
 def test_service_start_transmit_unit_on_go_is_403(client, mocker, name: str):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     start = mocker.patch.object(
         system_api.system_service,
         "start_systemd_service",
@@ -393,7 +315,7 @@ def test_service_start_transmit_unit_on_go_is_403(client, mocker, name: str):
 
 
 def test_bluetooth_power_off_on_go_is_not_403(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     mocker.patch.object(bluetooth_service, "bluetooth_adapter", return_value="hci0")
     mocker.patch.object(bluetooth_service, "bluetooth_present", return_value=True)
     set_power = mocker.patch.object(
@@ -407,7 +329,7 @@ def test_bluetooth_power_off_on_go_is_not_403(client, mocker):
 
 
 def test_bluetooth_power_on_on_go_is_403(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     set_power = mocker.patch.object(
         bluetooth_service, "bluetooth_set_power", return_value=True
     )
@@ -420,7 +342,7 @@ def test_bluetooth_power_on_on_go_is_403(client, mocker):
 
 
 def test_bluetooth_power_banana_on_go_is_plain_text_400(client, mocker):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     set_power = mocker.patch.object(
         bluetooth_service, "bluetooth_set_power", return_value=True
     )
@@ -434,7 +356,7 @@ def test_bluetooth_power_banana_on_go_is_plain_text_400(client, mocker):
 
 def test_activate_manual_on_m4_is_409(client, mocker, monkeypatch):
     monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "manual")
-    store_platform_snapshot(PlatformSnapshot(model="M4", error=None))
+    _plant("M4")
     activate = mocker.patch.object(
         network_config_api.network_config, "activate_config_report"
     )
@@ -448,7 +370,7 @@ def test_activate_manual_on_m4_is_409(client, mocker, monkeypatch):
 
 def test_activate_go_manual_is_409_before_transmit_refusal(client, mocker, monkeypatch):
     monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "manual")
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     activate = mocker.patch.object(
         network_config_api.network_config, "activate_config_report"
     )
@@ -460,9 +382,9 @@ def test_activate_go_manual_is_409_before_transmit_refusal(client, mocker, monke
     activate.assert_not_called()
 
 
-def test_activate_go_auto_is_transmit_403(client, mocker, monkeypatch):
+def test_activate_go_auto_is_transmit_403(client, mocker, monkeypatch, lab_cfg):
     monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
     activate = mocker.patch.object(
         network_config_api.network_config, "activate_config_report"
     )
@@ -472,32 +394,6 @@ def test_activate_go_auto_is_transmit_403(client, mocker, monkeypatch):
     assert response.status_code == 403
     assert response.json() == {"detail": GO_DETAIL}
     activate.assert_not_called()
-
-
-def _plant_untrusted(
-    mocker, snapshot: PlatformSnapshot, probe: str | Exception
-) -> None:
-    store_platform_snapshot(snapshot)
-    if isinstance(probe, Exception):
-        mocker.patch(
-            "wlanpi_core.services.system_service.get_platform",
-            side_effect=probe,
-        )
-        return
-    mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value=probe,
-    )
-
-
-_UNTRUSTED = (
-    (
-        PlatformSnapshot(model="Unknown platform", error=None, final=False),
-        "Unknown platform",
-    ),
-    (PlatformSnapshot(model="Unknown", error=None, final=False), "Unknown"),
-    (PlatformSnapshot(model="", error=_timeout(), final=False), _timeout()),
-)
 
 
 def _refuse_service(client, mocker, name: str, action: str = "start"):
@@ -524,7 +420,7 @@ def _refuse_service(client, mocker, name: str, action: str = "start"):
     ],
 )
 def test_transmit_units_on_go_are_403(client, mocker, action: str, name: str):
-    store_platform_snapshot(PlatformSnapshot(model="Go", error=None))
+    _plant("Go")
 
     response, called = _refuse_service(client, mocker, name, action)
 
@@ -533,9 +429,13 @@ def test_transmit_units_on_go_are_403(client, mocker, action: str, name: str):
     called.assert_not_awaited()
 
 
-@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
-def test_hostapd_start_untrusted_is_403(client, mocker, snapshot, probe):
-    _plant_untrusted(mocker, snapshot, probe)
+_UNTRUSTED = ("Unknown platform", "Unknown", _timeout())
+
+
+@pytest.mark.parametrize("result", _UNTRUSTED)
+def test_hostapd_start_untrusted_is_403(client, mocker, result):
+    _plant(result)
+    _probe_returns(mocker, result)
 
     response, called = _refuse_service(client, mocker, "hostapd")
 
@@ -544,9 +444,10 @@ def test_hostapd_start_untrusted_is_403(client, mocker, snapshot, probe):
     called.assert_not_awaited()
 
 
-@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
-def test_bluetooth_power_on_untrusted_is_403(client, mocker, snapshot, probe):
-    _plant_untrusted(mocker, snapshot, probe)
+@pytest.mark.parametrize("result", _UNTRUSTED)
+def test_bluetooth_power_on_untrusted_is_403(client, mocker, result):
+    _plant(result)
+    _probe_returns(mocker, result)
     set_power = mocker.patch.object(
         bluetooth_service, "bluetooth_set_power", return_value=True
     )
@@ -558,10 +459,11 @@ def test_bluetooth_power_on_untrusted_is_403(client, mocker, snapshot, probe):
     set_power.assert_not_called()
 
 
-@pytest.mark.parametrize(("snapshot", "probe"), _UNTRUSTED)
-def test_activate_untrusted_is_403(client, mocker, monkeypatch, snapshot, probe):
+@pytest.mark.parametrize("result", _UNTRUSTED)
+def test_activate_untrusted_is_403(client, mocker, monkeypatch, lab_cfg, result):
     monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
-    _plant_untrusted(mocker, snapshot, probe)
+    _plant(result)
+    _probe_returns(mocker, result)
     activate = mocker.patch.object(
         network_config_api.network_config, "activate_config_report"
     )
@@ -573,230 +475,172 @@ def test_activate_untrusted_is_403(client, mocker, monkeypatch, snapshot, probe)
     activate.assert_not_called()
 
 
-def test_timeout_reprobe_allows_pro(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="Pro", error=_timeout(), final=False)
+@pytest.mark.parametrize("cfg", [_WITH_SECURITY, _WITH_APP])
+def test_activate_transmitting_config_on_go_is_403(client, mocker, monkeypatch, cfg):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant("Go")
+    mocker.patch.object(
+        network_config_api.network_config, "get_config", return_value=cfg
     )
-    mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="Pro",
-    )
-    start = mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
+    activate = mocker.patch.object(
+        network_config_api.network_config, "activate_config_report"
     )
 
-    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+    response = client.post(f"/api/v1/network/config/activate/{cfg.id}")
+
+    assert response.status_code == 403
+    activate.assert_not_called()
+
+
+@pytest.mark.parametrize("planted", ["Go", "Unknown platform"])
+def test_activate_monitor_only_config_reaches_downstream(
+    client, mocker, monkeypatch, planted
+):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant(planted)
+    _probe_returns(mocker, planted)
+    mocker.patch.object(
+        network_config_api.network_config, "get_config", return_value=_MONITOR_ONLY
+    )
+    activate = mocker.patch.object(
+        network_config_api.network_config,
+        "activate_config_report",
+        return_value=(True, []),
+    )
+
+    response = client.post("/api/v1/network/config/activate/mon")
 
     assert response.status_code == 200
-    start.assert_awaited_once_with("hostapd")
+    activate.assert_called_once_with("mon", False)
 
 
-def test_provisional_m4_reprobe_refuses_go(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
-    )
-    mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="Go",
-    )
-    start = mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
-    )
+def test_activate_missing_config_is_404_not_403(client, monkeypatch):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant("Go")
 
-    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+    response = client.post("/api/v1/network/config/activate/no_such_cfg")
 
-    assert response.status_code == 403
-    assert response.json() == {"detail": GO_DETAIL}
-    start.assert_not_awaited()
+    assert response.status_code == 404
 
 
-def test_second_m4_probe_is_final(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
-    )
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="M4",
-    )
-    mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
-    )
+@pytest.mark.parametrize("model", ["Go", "M4+", "R4", "R5", "Pro"])
+def test_final_model_is_not_probed_again(mocker, model: str):
+    _plant(model)
+    probe = _probe_returns(mocker)
 
-    first = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
-    second = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
+    assert resolve_model() == model
+    probe.assert_not_called()
 
-    assert first.status_code == 200
-    assert second.status_code == 200
+
+@pytest.mark.parametrize(
+    ("second", "expected"), [("M4", "M4"), (_timeout(), "Unknown")]
+)
+def test_m4_is_probed_again_on_every_gated_call(mocker, second, expected):
+    _plant("M4")
+    probe = _probe_returns(mocker, second, "M4")
+
+    assert resolve_model() == expected
+    assert resolve_model() == "M4"
+    assert probe.call_count == 2
+
+
+def test_m4_that_probes_as_go_stays_go(mocker):
+    _plant("M4")
+    probe = _probe_returns(mocker, "Go")
+
+    assert resolve_model() == "Go"
+    assert resolve_model() == "Go"
     probe.assert_called_once()
 
 
-def test_single_m4_after_unknown_does_not_transmit(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="Unknown platform", error=None, final=False)
-    )
-    calls = {"n": 0}
+@pytest.mark.parametrize("first", ["Unknown platform", "", _timeout()])
+def test_untrusted_result_is_probed_again(mocker, first):
+    _plant(first)
+    _probe_returns(mocker, "Pro")
 
-    def one_m4_then_timeout():
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return "M4"
-        raise _timeout()
-
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        side_effect=one_m4_then_timeout,
-    )
-    start = mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
-    )
-
-    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": UNKNOWN_DETAIL}
-    start.assert_not_awaited()
-    assert probe.call_count == 2
+    assert resolve_model() == "Pro"
 
 
-def test_two_m4_probes_in_one_call_allow(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="Unknown platform", error=None, final=False)
-    )
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="M4",
-    )
-    start = mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
-    )
-
-    first = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
-    second = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-    start.assert_awaited()
-    assert probe.call_count == 2
-
-
-def test_untrusted_reprobe_backs_off(client, mocker):
-    store_platform_snapshot(
-        PlatformSnapshot(model="Unknown platform", error=None, final=False)
-    )
-    now = {"t": 100.0}
-    mocker.patch(
-        "wlanpi_core.services.platform_cache.time.monotonic",
-        side_effect=lambda: now["t"],
-    )
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="Unknown platform",
-    )
-
-    first, _called = _refuse_service(client, mocker, "hostapd")
-    second, _called = _refuse_service(client, mocker, "hostapd")
-    now["t"] += _PROBE_BACKOFF_SEC
-    third, _called = _refuse_service(client, mocker, "hostapd")
-
-    assert first.status_code == 403
-    assert second.status_code == 403
-    assert third.status_code == 403
-    assert probe.call_count == 2
-
-
-def test_provisional_m4_confirms_during_backoff(client, mocker):
-    import wlanpi_core.services.platform_cache as platform_cache
-
-    store_platform_snapshot(
-        PlatformSnapshot(model="M4", error=None, final=False, m4_confirmations=1)
-    )
-    platform_cache._last_resolve_probe_at = time.monotonic()
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="Go",
-    )
-    start = mocker.patch.object(
-        system_api.system_service,
-        "start_systemd_service",
-        new=AsyncMock(return_value={"name": "hostapd", "active": True}),
-    )
-
-    response = client.post("/api/v1/system/service/start", params={"name": "hostapd"})
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": GO_DETAIL}
-    start.assert_not_awaited()
-    probe.assert_called_once()
-
-
-def test_inflight_probe_does_not_block_the_next_caller(mocker):
-    clear_platform_cache()
-    store_platform_snapshot(
-        PlatformSnapshot(model="Unknown platform", error=None, final=False)
-    )
-    started = threading.Event()
+def test_concurrent_gated_calls_share_one_probe(mocker, monkeypatch):
+    _plant("M4")
     release = threading.Event()
+    second_waiting = threading.Event()
+    real_lock = threading.Lock()
+    count_lock = threading.Lock()
+    entries = {"n": 0}
 
-    def hang() -> str:
-        started.set()
+    class _CountingLock:
+        def __enter__(self) -> None:
+            with count_lock:
+                entries["n"] += 1
+                if entries["n"] == 2:
+                    second_waiting.set()
+            real_lock.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            real_lock.release()
+
+    monkeypatch.setattr(platform_cache, "_lock", _CountingLock())
+
+    def slow_probe() -> str:
         if not release.wait(timeout=2):
             raise AssertionError("probe was not released")
-        return "Pro"
+        return "M4"
 
-    mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        side_effect=hang,
+    probe = mocker.patch(
+        "wlanpi_core.services.system_service.get_platform", side_effect=slow_probe
     )
-    holder: dict[str, ModelToken] = {}
-
-    def run() -> None:
-        holder["token"] = resolve_model()
-
-    thread = threading.Thread(target=run)
-    thread.start()
+    results: list[str] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(resolve_model()))
+        for _ in range(2)
+    ]
+    for thread in threads:
+        thread.start()
     try:
-        if not started.wait(timeout=2):
-            raise AssertionError("probe did not start")
-        began = time.monotonic()
-        other = resolve_model()
-        elapsed = time.monotonic() - began
-        assert other.value == "Unknown"
-        assert elapsed < 1
+        if not second_waiting.wait(timeout=2):
+            raise AssertionError("second caller never reached the lock")
     finally:
         release.set()
-        thread.join(timeout=2)
-        if thread.is_alive():
-            raise AssertionError("probe thread still alive")
-    assert holder["token"].value == "Pro"
+        for thread in threads:
+            thread.join(timeout=2)
+            if thread.is_alive():
+                raise AssertionError("resolve thread still alive")
+
+    assert results == ["M4", "M4"]
+    probe.assert_called_once()
 
 
-def test_startup_populates_platform_cache(mocker):
-    import asyncio
-    import inspect
-
-    source = inspect.getsource(InitializationManager)
-    assert "await asyncio.to_thread(load_platform_cache)" in source
-
-    clear_platform_cache()
-    probe = mocker.patch(
-        "wlanpi_core.services.system_service.get_platform",
-        return_value="Pro",
+def test_cold_cache_probes_once(mocker):
+    _plant(None)
+    run = mocker.patch(
+        "wlanpi_core.services.system_service.run_command",
+        side_effect=FileNotFoundError(2, "No such file or directory: 'wlanpi-model'"),
     )
 
-    asyncio.run(asyncio.to_thread(load_platform_cache))
+    assert cached_model() == "Unknown"
+    load_platform_cache()
+    assert cached_model() == "Unknown"
+    run.assert_called_once()
 
-    probe.assert_called_once()
-    assert cached_model().value == "Pro"
+
+def test_boot_model_reraises_timeout(mocker):
+    exc = _timeout()
+    _plant(None)
+    _probe_returns(mocker, exc)
+
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        boot_model()
+
+    assert caught.value is exc
+    assert cached_model() == "Unknown"
+
+
+@pytest.mark.parametrize("raw", ["", "Go", "Unknown platform"])
+def test_boot_model_returns_raw_probe(raw: str):
+    _plant(raw)
+
+    assert boot_model() == raw
 
 
 def test_openapi_documents_transmit_403_only_on_gated_routes():
