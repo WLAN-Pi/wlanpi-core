@@ -9,7 +9,6 @@ from wlanpi_core.api.openapi_docs import RESPONSES_TRANSMIT_DISABLED
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.mode_guard import require_wlan_management_enabled
-from wlanpi_core.core.transmit_gate import require_transmit_for_activate
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
     ConfigBusyError,
@@ -271,7 +270,7 @@ async def delete_config(id: str, force: bool = False) -> Any:
     "/activate/{id}",
     response_model=ActivationResponse,
     responses={**RESPONSES_TRANSMIT_DISABLED},
-    dependencies=[Depends(require_transmit_for_activate)],
+    dependencies=[Depends(verify_auth_wrapper)],
 )
 async def activate_config(id: str, override_active: bool = False) -> Any:
     """
@@ -299,7 +298,9 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
 
     Returns 403 when transmit is disabled on this WLAN Pi and an entry has
     `security` or `autostart_app`. A configuration with neither, such as
-    monitor only, still activates.
+    monitor only, still activates. A refused `override_active` re-activation
+    of the recorded current profile tears it down, and the default
+    configuration is active again.
     """
     try:
         require_wlan_management_enabled()

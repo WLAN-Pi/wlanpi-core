@@ -17,6 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from wlanpi_core.adapters import discovery
 from wlanpi_core.constants import CONFIG_DIR, CURRENT_CONFIG_FILE, RUN_DIR
+from wlanpi_core.core.transmit_policy import refusal_detail
 from wlanpi_core.models.network_config_errors import (
     ConfigActiveError,
     ConfigBusyError,
@@ -37,6 +38,7 @@ from wlanpi_core.schemas.network.network import (
     SecurityTypes,
 )
 from wlanpi_core.services.network_namespace_service import NetworkNamespaceService
+from wlanpi_core.services.platform_cache import resolve_model
 from wlanpi_core.utils.general import run_command
 from wlanpi_core.utils.validation import validate_config_id
 
@@ -595,6 +597,16 @@ def _activate_config_locked(
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
 
+    refusal = _transmit_refusal(cfg)
+    if refusal is not None:
+        log.error(f"Configuration {cfg_id} not activated: {refusal}")
+        if active_cfg == cfg_id:
+            try:
+                _teardown_profile(cfg_id)
+            finally:
+                _fall_back_to_default(cfg_id)
+        raise ValidationError(refusal, status_code=403)
+
     # Validate every entry before touching any radio, so an invalid entry
     # cannot cost a valid sibling its interface (#261).
     invalid_outcomes = _invalid_entries(cfg, only_core_managed=cfg_id == "default")
@@ -645,6 +657,13 @@ def _activate_config_locked(
             _rollback_activated_configs(activated_configs)
         _fall_back_to_default(cfg_id)
         raise
+
+
+def _transmit_refusal(cfg: NetConfig) -> str | None:
+    entries = [*(cfg.roots or []), *(cfg.namespaces or [])]
+    if not any(entry.security or entry.autostart_app for entry in entries):
+        return None
+    return refusal_detail(resolve_model())
 
 
 def _invalid_entries(

@@ -19,15 +19,17 @@ from wlanpi_core.asgi import app
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.transmit_gate import (
+    require_transmit,
+    require_transmit_for_power,
+    require_transmit_for_unit,
+)
+from wlanpi_core.core.transmit_policy import (
     GO_DETAIL,
     TRANSMIT_UNITS,
     UNKNOWN_DETAIL,
     refusal_detail,
-    require_transmit,
-    require_transmit_for_activate,
-    require_transmit_for_power,
-    require_transmit_for_unit,
 )
+from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas.network.network import NetConfig
 from wlanpi_core.services import bluetooth_service, platform_cache, system_service
 from wlanpi_core.services.platform_cache import (
@@ -36,16 +38,15 @@ from wlanpi_core.services.platform_cache import (
     load_platform_cache,
     resolve_model,
 )
+from wlanpi_core.utils import network_config
 
 _TRANSMIT_DEPENDENCIES = {
     require_transmit,
     require_transmit_for_unit,
     require_transmit_for_power,
-    require_transmit_for_activate,
 }
 
 _GATED_ROUTES = {
-    ("POST", "/api/v1/network/config/activate/{id}"): require_transmit_for_activate,
     ("POST", "/api/v1/bluetooth/pair"): require_transmit,
     ("POST", "/api/v1/system/service/start"): require_transmit_for_unit,
     ("POST", "/api/v1/system/service/restart"): require_transmit_for_unit,
@@ -119,10 +120,25 @@ _WITH_APP = NetConfig.model_validate(
 
 
 @pytest.fixture
-def lab_cfg(mocker):
-    return mocker.patch.object(
-        network_config_api.network_config, "get_config", return_value=_WITH_SECURITY
-    )
+def radios(netcfg_env, mocker):
+    mocker.patch.object(network_config, "_invalid_entries", return_value=[])
+    return {
+        "apply": mocker.patch.object(network_config, "_apply_entries", return_value=[]),
+        "teardown": mocker.patch.object(network_config, "_teardown_profile"),
+        "ccf": netcfg_env["ccf"],
+    }
+
+
+def _stored(mocker, *configs: NetConfig):
+    versions: dict[str, list[NetConfig]] = {}
+    for cfg in configs:
+        versions.setdefault(cfg.id, []).append(cfg)
+
+    def get_config(cfg_id: str) -> NetConfig:
+        found = versions.get(cfg_id) or [NetConfig(id=cfg_id)]
+        return found.pop(0) if len(found) > 1 else found[0]
+
+    return mocker.patch.object(network_config, "get_config", side_effect=get_config)
 
 
 @pytest.fixture
@@ -382,20 +398,6 @@ def test_activate_go_manual_is_409_before_transmit_refusal(client, mocker, monke
     activate.assert_not_called()
 
 
-def test_activate_go_auto_is_transmit_403(client, mocker, monkeypatch, lab_cfg):
-    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
-    _plant("Go")
-    activate = mocker.patch.object(
-        network_config_api.network_config, "activate_config_report"
-    )
-
-    response = client.post("/api/v1/network/config/activate/lab_cfg")
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": GO_DETAIL}
-    activate.assert_not_called()
-
-
 def _refuse_service(client, mocker, name: str, action: str = "start"):
     method = "start_systemd_service" if action == "start" else "restart_systemd_service"
     called = mocker.patch.object(
@@ -459,59 +461,80 @@ def test_bluetooth_power_on_untrusted_is_403(client, mocker, result):
     set_power.assert_not_called()
 
 
-@pytest.mark.parametrize("result", _UNTRUSTED)
-def test_activate_untrusted_is_403(client, mocker, monkeypatch, lab_cfg, result):
-    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
-    _plant(result)
-    _probe_returns(mocker, result)
-    activate = mocker.patch.object(
-        network_config_api.network_config, "activate_config_report"
-    )
-
-    response = client.post("/api/v1/network/config/activate/lab_cfg")
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": UNKNOWN_DETAIL}
-    activate.assert_not_called()
-
-
+@pytest.mark.parametrize(
+    ("planted", "detail"),
+    [("Go", GO_DETAIL), *((result, UNKNOWN_DETAIL) for result in _UNTRUSTED)],
+)
 @pytest.mark.parametrize("cfg", [_WITH_SECURITY, _WITH_APP])
-def test_activate_transmitting_config_on_go_is_403(client, mocker, monkeypatch, cfg):
-    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
-    _plant("Go")
-    mocker.patch.object(
-        network_config_api.network_config, "get_config", return_value=cfg
-    )
-    activate = mocker.patch.object(
-        network_config_api.network_config, "activate_config_report"
-    )
-
-    response = client.post(f"/api/v1/network/config/activate/{cfg.id}")
-
-    assert response.status_code == 403
-    activate.assert_not_called()
-
-
-@pytest.mark.parametrize("planted", ["Go", "Unknown platform"])
-def test_activate_monitor_only_config_reaches_downstream(
-    client, mocker, monkeypatch, planted
+def test_activate_transmitting_config_is_403(
+    client, mocker, monkeypatch, radios, cfg, planted, detail
 ):
     monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
     _plant(planted)
     _probe_returns(mocker, planted)
-    mocker.patch.object(
-        network_config_api.network_config, "get_config", return_value=_MONITOR_ONLY
-    )
-    activate = mocker.patch.object(
-        network_config_api.network_config,
-        "activate_config_report",
-        return_value=(True, []),
-    )
+    _stored(mocker, cfg)
+
+    response = client.post(f"/api/v1/network/config/activate/{cfg.id}")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": detail}
+    radios["apply"].assert_not_called()
+    radios["teardown"].assert_not_called()
+    assert radios["ccf"].read_text() == "default"
+
+
+@pytest.mark.parametrize("planted", ["Go", "Unknown platform"])
+def test_activate_monitor_only_config_reaches_downstream(
+    client, mocker, monkeypatch, radios, planted
+):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant(planted)
+    _stored(mocker, _MONITOR_ONLY)
 
     response = client.post("/api/v1/network/config/activate/mon")
 
     assert response.status_code == 200
-    activate.assert_called_once_with("mon", False)
+    radios["apply"].assert_called_once()
+    assert radios["ccf"].read_text() == "mon"
+
+
+def test_activate_applies_the_config_it_checked(client, mocker, monkeypatch, radios):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _plant("Go")
+    edited = _WITH_SECURITY.model_copy(update={"id": "mon"})
+    get_config = _stored(mocker, _MONITOR_ONLY, edited)
+
+    response = client.post("/api/v1/network/config/activate/mon")
+
+    assert response.status_code == 200
+    assert [c.args for c in get_config.call_args_list].count(("mon",)) == 1
+    assert radios["apply"].call_args.args[0] is _MONITOR_ONLY
+
+
+def test_activate_transmitting_config_on_allowed_model_reaches_downstream(
+    client, mocker, monkeypatch, radios
+):
+    monkeypatch.setattr(settings, "WLAN_MANAGEMENT", "auto")
+    _stored(mocker, _WITH_SECURITY)
+
+    response = client.post("/api/v1/network/config/activate/lab_cfg")
+
+    assert response.status_code == 200
+    radios["apply"].assert_called_once()
+
+
+def test_restoring_transmitting_profile_on_go_falls_back_to_default(mocker, radios):
+    _plant("Go")
+    radios["ccf"].write_text("lab_cfg")
+    _stored(mocker, _WITH_SECURITY)
+
+    with pytest.raises(ValidationError) as caught:
+        network_config.activate_config("lab_cfg", override_active=True)
+
+    assert caught.value.status_code == 403
+    radios["teardown"].assert_called_once_with("lab_cfg")
+    radios["apply"].assert_not_called()
+    assert radios["ccf"].read_text() == "default"
 
 
 def test_activate_missing_config_is_404_not_403(client, monkeypatch):

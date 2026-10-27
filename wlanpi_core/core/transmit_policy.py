@@ -26,3 +26,12 @@ def is_go_token(value: str) -> bool:
         return False
     suffix = folded[2:]
     return suffix == "" or suffix.isdigit()
+
+
+def refusal_detail(model: str) -> str | None:
+    """Return the 403 detail, or None when this model may transmit."""
+    if is_go_token(model):
+        return GO_DETAIL
+    if model in TRANSMIT_ALLOWED_MODELS:
+        return None
+    return UNKNOWN_DETAIL
