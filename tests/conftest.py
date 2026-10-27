@@ -53,6 +53,7 @@ def _plant_platform_model(monkeypatch):
     from wlanpi_core.services import platform_cache
 
     monkeypatch.setattr(platform_cache, "_cached", "Pro")
+    monkeypatch.setattr(platform_cache, "_m4_streak", 0)
     _read_static_device_info.cache_clear()
     yield
     _read_static_device_info.cache_clear()

@@ -91,6 +91,7 @@ def _timeout() -> subprocess.TimeoutExpired:
 
 def _plant(value: str | subprocess.TimeoutExpired | None) -> None:
     platform_cache._cached = value
+    platform_cache._m4_streak = 1 if value == "M4" else 0
 
 
 def _probe_returns(mocker, *results: str | Exception):
@@ -555,15 +556,30 @@ def test_final_model_is_not_probed_again(mocker, model: str):
     probe.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("second", "expected"), [("M4", "M4"), (_timeout(), "Unknown")]
-)
-def test_m4_is_probed_again_on_every_gated_call(mocker, second, expected):
+def test_m4_is_probed_again_on_every_gated_call(mocker):
     _plant("M4")
-    probe = _probe_returns(mocker, second, "M4")
+    probe = _probe_returns(mocker, "M4", "M4")
+
+    assert resolve_model() == "M4"
+    assert resolve_model() == "M4"
+    assert probe.call_count == 2
+
+
+def test_m4_then_timeout_is_unknown(mocker):
+    _plant("M4")
+    probe = _probe_returns(mocker, _timeout())
+
+    assert resolve_model() == "Unknown"
+    probe.assert_called_once()
+
+
+@pytest.mark.parametrize("first", ["Unknown platform", _timeout()])
+@pytest.mark.parametrize(("confirm", "expected"), [("Go", "Go"), ("M4", "M4")])
+def test_m4_after_untrusted_result_is_confirmed(mocker, first, confirm, expected):
+    _plant(first)
+    probe = _probe_returns(mocker, "M4", confirm)
 
     assert resolve_model() == expected
-    assert resolve_model() == "M4"
     assert probe.call_count == 2
 
 

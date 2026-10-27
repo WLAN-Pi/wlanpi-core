@@ -11,17 +11,19 @@ _UNKNOWN = "Unknown"
 _lock = threading.Lock()
 _cached: str | subprocess.TimeoutExpired | None = None
 _probe_generation = 0
+_m4_streak = 0
 
 
 def _probe() -> None:
     from wlanpi_core.services.system_service import get_platform
 
-    global _cached, _probe_generation
+    global _cached, _probe_generation, _m4_streak
     try:
         _cached = get_platform()
     except subprocess.TimeoutExpired as exc:
         _cached = exc
     _probe_generation += 1
+    _m4_streak = _m4_streak + 1 if _token() == "M4" else 0
 
 
 def _token() -> str:
@@ -52,14 +54,16 @@ def cached_model() -> str:
 
 
 def resolve_model() -> str:
-    """Return the model, probing again unless the cached one is final."""
+    """Return the model, probing again unless the cached one is final.
+
+    `M4` is returned only after two `M4` probes in a row.
+    """
     generation_on_entry = _probe_generation
     with _lock:
-        if _probe_generation == generation_on_entry:
-            if _cached is None:
-                _probe()
-            if not _is_final():
-                _probe()
+        if not _is_final() and _probe_generation == generation_on_entry:
+            _probe()
+        if _token() == "M4" and _m4_streak < 2:
+            _probe()
         return _token()
 
 
