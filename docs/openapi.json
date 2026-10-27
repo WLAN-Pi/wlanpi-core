@@ -172,7 +172,7 @@
           "bluetooth"
         ],
         "summary": "Bt Power",
-        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"\n\nReturns 403 when `action` is `on` and transmit is disabled. `off` is\nunchanged. Any other action still returns plain text 400 from this\nhandler.",
+        "description": "Turn bluetooth on or off.\n\n- action: \"on\" or \"off\"\n\nReturns 403 when `action` is `on` and transmit is disabled. An action\nother than `on` or `off` returns plain text 400.",
         "operationId": "bt_power_api_v1_bluetooth_power__action__post",
         "security": [
           {
@@ -2474,7 +2474,7 @@
           "system"
         ],
         "summary": "Start A Systemd Service",
-        "description": "Use systemd via dbus to start an allowed service.\n\nReturns 403, without starting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units. Other\nallowlisted names are unchanged.",
+        "description": "Use systemd via dbus to start an allowed service.\n\nReturns 403, without starting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units.",
         "operationId": "start_a_systemd_service_api_v1_system_service_start_post",
         "security": [
           {
@@ -2580,7 +2580,7 @@
           "system"
         ],
         "summary": "Restart A Systemd Service",
-        "description": "Use systemd via dbus to restart an allowed service.\n\nReturns 403, without restarting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units. Other\nallowlisted names are unchanged.",
+        "description": "Use systemd via dbus to restart an allowed service.\n\nReturns 403, without restarting the unit, when `name` is transmit-capable\nand transmit is disabled. The 403 response names those units.",
         "operationId": "restart_a_systemd_service_api_v1_system_service_restart_post",
         "security": [
           {

@@ -204,8 +204,7 @@ async def start_a_systemd_service(name: str) -> Any:
     """Use systemd via dbus to start an allowed service.
 
     Returns 403, without starting the unit, when `name` is transmit-capable
-    and transmit is disabled. The 403 response names those units. Other
-    allowlisted names are unchanged.
+    and transmit is disabled. The 403 response names those units.
     """
 
     try:
@@ -244,8 +243,7 @@ async def restart_a_systemd_service(name: str) -> Any:
     """Use systemd via dbus to restart an allowed service.
 
     Returns 403, without restarting the unit, when `name` is transmit-capable
-    and transmit is disabled. The 403 response names those units. Other
-    allowlisted names are unchanged.
+    and transmit is disabled. The 403 response names those units.
     """
 
     try:

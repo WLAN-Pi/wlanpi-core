@@ -31,8 +31,7 @@ def _token() -> str:
 
 
 def _is_final() -> bool:
-    # `wlanpi-model -b` falls back to `M4` when it misses a Go, so `M4` is
-    # probed again on every gated call.
+    # `wlanpi-model -b` falls back to `M4` when it misses a Go.
     model = _token()
     return is_go_token(model) or (model in TRANSMIT_ALLOWED_MODELS and model != "M4")
 

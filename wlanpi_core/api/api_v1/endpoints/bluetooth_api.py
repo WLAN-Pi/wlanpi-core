@@ -61,9 +61,8 @@ async def bt_power(action: str) -> Any:
 
     - action: "on" or "off"
 
-    Returns 403 when `action` is `on` and transmit is disabled. `off` is
-    unchanged. Any other action still returns plain text 400 from this
-    handler.
+    Returns 403 when `action` is `on` and transmit is disabled. An action
+    other than `on` or `off` returns plain text 400.
     """
     if action not in ["on", "off"]:
         return Response(content="Invalid action. Use 'on' or 'off'.", status_code=400)

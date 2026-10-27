@@ -356,7 +356,7 @@ def get_allowed_services() -> dict[str, Any]:
 
 
 def service_allowlist_key(name: str) -> str:
-    """Return the key: stripped, lowercased, with every `.service` removed."""
+    """Return the allowlist lookup key for `name`."""
     return name.strip().lower().replace(".service", "")
 
 

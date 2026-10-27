@@ -73,10 +73,7 @@ def require_transmit_for_activate(
     id: str,
     _: Annotated[Caller, Depends(verify_auth_wrapper)],
 ) -> None:
-    """Refuse activation of a config that starts a supplicant or an app.
-
-    A missing, malformed, or invalid config ID is left to the handler.
-    """
+    """Refuse activation of a config that starts a supplicant or an app."""
     try:
         require_wlan_management_enabled()
     except ValidationError as exc:
