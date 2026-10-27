@@ -55,8 +55,11 @@ def resolve_model() -> str:
     """Return the model, probing again unless the cached one is final."""
     generation_on_entry = _probe_generation
     with _lock:
-        if not _is_final() and _probe_generation == generation_on_entry:
-            _probe()
+        if _probe_generation == generation_on_entry:
+            if _cached is None:
+                _probe()
+            if not _is_final():
+                _probe()
         return _token()
 
 

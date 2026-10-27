@@ -597,7 +597,8 @@ def _activate_config_locked(
         if active_cfg == cfg_id:
             raise ConfigActiveError(f"Configuration {cfg_id} is already active.")
 
-    refusal = _transmit_refusal(cfg)
+    transmits = any(e.security or e.autostart_app for e in _all_entries(cfg))
+    refusal = refusal_detail(resolve_model()) if transmits else None
     if refusal is not None:
         log.error(f"Configuration {cfg_id} not activated: {refusal}")
         if active_cfg == cfg_id:
@@ -657,13 +658,6 @@ def _activate_config_locked(
             _rollback_activated_configs(activated_configs)
         _fall_back_to_default(cfg_id)
         raise
-
-
-def _transmit_refusal(cfg: NetConfig) -> str | None:
-    entries = [*(cfg.roots or []), *(cfg.namespaces or [])]
-    if not any(entry.security or entry.autostart_app for entry in entries):
-        return None
-    return refusal_detail(resolve_model())
 
 
 def _invalid_entries(

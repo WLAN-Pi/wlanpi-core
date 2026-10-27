@@ -567,6 +567,36 @@ def test_m4_is_probed_again_on_every_gated_call(mocker, second, expected):
     assert probe.call_count == 2
 
 
+@pytest.mark.parametrize(
+    ("second", "expected"), [("Go", "Go"), ("M4", "M4"), (_timeout(), "Unknown")]
+)
+def test_cold_m4_is_probed_twice(mocker, second, expected):
+    _plant(None)
+    probe = _probe_returns(mocker, "M4", second)
+
+    assert resolve_model() == expected
+    assert probe.call_count == 2
+
+
+def test_cold_final_model_is_probed_once(mocker):
+    _plant(None)
+    probe = _probe_returns(mocker, "Pro")
+
+    assert resolve_model() == "Pro"
+    probe.assert_called_once()
+
+
+def test_cold_m4_on_go_refuses_hostapd(client, mocker):
+    _plant(None)
+    _probe_returns(mocker, "M4", "Go")
+
+    response, called = _refuse_service(client, mocker, "hostapd")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": GO_DETAIL}
+    called.assert_not_awaited()
+
+
 def test_m4_that_probes_as_go_stays_go(mocker):
     _plant("M4")
     probe = _probe_returns(mocker, "Go")
