@@ -6,7 +6,11 @@ Flag defects below. Skip style nits that ruff, mypy, or CI already enforce, and 
 
 ## Reporting Threshold
 
-Judge customer impact before you raise an implementation gap. Describe a realistic task, the normal steps a user takes, and what the user materially loses. Report a finding only when it would materially prevent or mislead a customer doing ordinary work. Omit a low-impact finding. Do not include it at a lower priority. The Flag rules below name changes that meet this bar.
+- Report a finding only if it would materially prevent or mislead a user doing ordinary work, or could cause data loss, a security hole, or a crash. Write the scenario first: the task, the normal steps, and what the user loses. If you cannot write a concrete scenario, drop the finding.
+- After the scenario, label the finding with one word: Blocker (fix it in this change), Follow-up (file an issue and leave the code alone), or Drop (do not report it). A rare data-loss, security, or crash bug never drops below Blocker because it is rare.
+- Do not report style, naming, docs, or rare future cases nobody asked about. A review with no comments is fine.
+
+The Flag rules below name changes that meet this bar.
 
 ## Do not flag
 
