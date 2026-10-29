@@ -4,6 +4,10 @@
 
 Flag defects below. Skip style nits that ruff, mypy, or CI already enforce, and skip advice that would apply to any Python repo.
 
+## Reporting Threshold
+
+Judge customer impact before you raise an implementation gap. Describe a realistic task, the normal steps a user takes, and what the user materially loses. Report a finding only when it would materially prevent or mislead a customer doing ordinary work. Omit a low-impact finding. Do not include it at a lower priority. The Flag rules below name changes that meet this bar.
+
 ## Do not flag
 
 - Line length, import order, or wrapping. `ruff format` owns those (`E501` is off). Do not ask for hand-wrapping.
