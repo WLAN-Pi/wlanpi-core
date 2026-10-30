@@ -47,6 +47,18 @@ def mock_app_initialization(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _plant_platform_model(monkeypatch):
+    from wlanpi_core.api.api_v1.endpoints.system_api import _read_static_device_info
+    from wlanpi_core.services import platform_cache
+
+    monkeypatch.setattr(platform_cache, "_cached", "Pro")
+    monkeypatch.setattr(platform_cache, "_m4_streak", 0)
+    _read_static_device_info.cache_clear()
+    yield
+    _read_static_device_info.cache_clear()
+
+
 _DEFAULT_WPA_STATUS = {
     "wpa_status": {
         "wpa_state": "COMPLETED",

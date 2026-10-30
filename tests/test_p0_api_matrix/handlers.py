@@ -83,7 +83,6 @@ def handle_timezone_get_set(client, auth_headers, scenario):
 
 
 def _static_device_info():
-    """Stub the cached model/hostname lookup, which runs wlanpi-model and hostname."""
     return patch(
         "wlanpi_core.api.api_v1.endpoints.system_api._read_static_device_info",
         return_value={
