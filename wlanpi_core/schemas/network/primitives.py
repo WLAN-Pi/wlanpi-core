@@ -163,7 +163,7 @@ class WlanLink(BaseModel):
     connected: bool = Field(description="Whether the interface is associated")
     ssid: str | None = Field(default=None, json_schema_extra={"example": "HomeNet"})
     bssid: str | None = Field(
-        default=None, json_schema_extra={"example": "68:51:34:7c:32:13"}
+        default=None, json_schema_extra={"example": "02:00:00:00:00:01"}
     )
     freq_mhz: float | None = Field(
         default=None,
