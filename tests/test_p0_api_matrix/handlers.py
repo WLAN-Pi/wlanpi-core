@@ -1124,8 +1124,8 @@ def handle_wlan_link(client, auth_headers, scenario):
         "interface": "wlan0",
         "namespace": None,
         "connected": True,
-        "ssid": "PurpleDove",
-        "bssid": "68:51:34:7c:32:13",
+        "ssid": "ExampleNet",
+        "bssid": "02:00:00:00:00:01",
         "freq_mhz": 5200.0,
         "signal_dbm": -48.0,
         "rx_bitrate": "286.7 MBit/s HE-MCS 11",
@@ -1143,7 +1143,7 @@ def handle_wlan_link(client, auth_headers, scenario):
     _expect_status(response, scenario.expected_http)
     body = response.json()
     assert body["connected"] is True
-    assert body["ssid"] == "PurpleDove"
+    assert body["ssid"] == "ExampleNet"
 
 
 HANDLERS.update(
