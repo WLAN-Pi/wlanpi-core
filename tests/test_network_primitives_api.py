@@ -292,8 +292,8 @@ def test_api_wlan_link(client):
         "interface": "wlan0",
         "namespace": None,
         "connected": True,
-        "ssid": "PurpleDove",
-        "bssid": "68:51:34:7c:32:13",
+        "ssid": "ExampleNet",
+        "bssid": "02:00:00:00:00:01",
         "freq_mhz": 5200.0,
         "signal_dbm": -48.0,
         "rx_bitrate": "286.7 MBit/s HE-MCS 11",
@@ -310,7 +310,7 @@ def test_api_wlan_link(client):
             response = client.get("/api/v1/network/interfaces/wlan0/wlan-link")
 
     assert response.status_code == 200
-    assert response.json()["ssid"] == "PurpleDove"
+    assert response.json()["ssid"] == "ExampleNet"
     assert response.json()["connected"] is True
 
 

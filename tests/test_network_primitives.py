@@ -99,8 +99,8 @@ def test_get_link_stats_parses_ethtool():
 
 def test_get_wlan_link_parses_connected():
     iw_out = (
-        "Connected to 68:51:34:7c:32:13 (on wlan0)\n"
-        "\tSSID: Purple\\xc3\\xa9Dove\n"
+        "Connected to 02:00:00:00:00:01 (on wlan0)\n"
+        "\tSSID: Caf\\xc3\\xa9Net\n"
         "\tfreq: 5200.0\n"
         "\tsignal: -48 dBm\n"
         "\trx bitrate: 286.7 MBit/s HE-MCS 11\n"
@@ -115,8 +115,8 @@ def test_get_wlan_link_parses_connected():
         result = wlan_link.get_wlan_link("wlan0")
 
     assert result["connected"] is True
-    assert result["ssid"] == "PurpleéDove"
-    assert result["bssid"] == "68:51:34:7c:32:13"
+    assert result["ssid"] == "CaféNet"
+    assert result["bssid"] == "02:00:00:00:00:01"
     assert result["freq_mhz"] == 5200.0
     assert result["signal_dbm"] == -48.0
     assert result["rx_bytes"] == 2112666
@@ -354,8 +354,8 @@ def test_get_wlan_link_ibss_skips_station_fallback():
 
 def test_get_wlan_link_non_mlo_runs_only_iw_link():
     iw_out = (
-        "Connected to 68:51:34:7c:32:13 (on wlan0)\n"
-        "\tSSID: PurpleDove\n"
+        "Connected to 02:00:00:00:00:01 (on wlan0)\n"
+        "\tSSID: ExampleNet\n"
         "\tfreq: 5200.0\n"
         "\tsignal: -48 dBm\n"
     )
@@ -790,7 +790,7 @@ def test_wlan_driver_inventory_cache_expires_after_two_seconds():
 
 def test_get_wlan_link_status_words_in_ssid_do_not_change_state():
     iw_out = (
-        "Connected to 68:51:34:7c:32:13 (on wlan0)\n"
+        "Connected to 02:00:00:00:00:01 (on wlan0)\n"
         "\tSSID: Not connected\n"
         "\tfreq: 5200.0\n"
         "\tsignal: -48 dBm\n"
