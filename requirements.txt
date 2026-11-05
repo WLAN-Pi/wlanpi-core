@@ -20,7 +20,7 @@ anyio==4.8.0
     # via
     #   httpx
     #   starlette
-authlib==1.4.0
+authlib==1.9.4
     # via -r requirements.in
 certifi==2024.12.14
     # via
@@ -34,7 +34,9 @@ charset-normalizer==3.4.1
 click==8.1.8
     # via uvicorn
 cryptography==50.0.1
-    # via authlib
+    # via
+    #   authlib
+    #   joserfc
 deprecated==1.2.15
     # via limits
 fastapi==0.162.0
@@ -58,6 +60,8 @@ idna==3.19
     #   requests
 jinja2==3.1.6
     # via -r requirements.in
+joserfc==1.8.0
+    # via authlib
 limits==4.0.0
     # via slowapi
 mako==1.4.1
