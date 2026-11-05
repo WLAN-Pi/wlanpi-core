@@ -1,5 +1,7 @@
 import asyncio
 import sqlite3
+import subprocess
+import sys
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -369,3 +371,18 @@ async def test_revoke_device_tokens_only_touches_that_device(token_manager):
     for token in (webui, webui_2):
         assert (await token_manager.verify_token(token)).error == "Token revoked"
     assert (await token_manager.verify_token(other)).is_valid
+
+
+def test_token_module_import_is_free_of_authlib_deprecation_warning():
+    probe = (
+        "import warnings\n"
+        "from authlib.deprecate import AuthlibDeprecationWarning\n"
+        "with warnings.catch_warnings(record=True) as caught:\n"
+        "    warnings.simplefilter('always')\n"
+        "    import wlanpi_core.core.token\n"
+        "print(sum(issubclass(w.category, AuthlibDeprecationWarning) for w in caught))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "0"

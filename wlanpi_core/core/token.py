@@ -6,12 +6,13 @@ import json
 import math
 import secrets
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from authlib.jose import JoseError, jwt
+from authlib.deprecate import AuthlibDeprecationWarning
 from sqlalchemy import Integer, func, select, text, update
 from sqlalchemy import exc as sqlalchemy_exc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,11 @@ from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.models import SigningKey, Token
 from wlanpi_core.core.repositories import DeviceRepository, TokenRepository
 from wlanpi_core.services import system_service
+
+# ponytail: authlib.jose warns on import; drop with the joserfc migration (#168).
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", AuthlibDeprecationWarning)
+    from authlib.jose import JoseError, jwt
 
 log = get_logger(__name__)
 
