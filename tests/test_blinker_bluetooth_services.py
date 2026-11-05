@@ -496,6 +496,7 @@ async def test_pairing_mode_requires_pairable_and_discoverable(
         ("  Alias: wlanpi-bc2 [rw]", "wlanpi-bc2"),
         ("  Alias: my pi [ro]", "my pi"),
         ("  Alias: my pi", "my pi"),
+        ("  Alias: lab [ro] [rw]", "lab [ro]"),
     ],
 )
 def test_parse_adapter_property_drops_access_flag(line, expected):

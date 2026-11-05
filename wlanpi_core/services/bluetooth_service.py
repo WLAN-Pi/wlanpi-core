@@ -250,7 +250,7 @@ def _parse_adapter_property(output: str, property_name: str) -> str:
     for line in output.splitlines():
         key, separator, value = line.strip().partition(":")
         if separator and key.casefold() == property_name.casefold():
-            return value.strip().removesuffix(" [rw]").removesuffix(" [ro]")
+            return re.sub(r" \[r[ow]\]$", "", value.strip())
     return ""
 
 
