@@ -569,3 +569,64 @@ def test_set_ntp_enabled_runs_timedatectl(monkeypatch):
 
     assert ["timedatectl", "set-ntp", "false"] in calls
     assert result == {"ntp_service": True, "synchronized": True}
+
+
+_FREE = """\
+               total        used        free      shared  buff/cache   available
+Mem:            1842         720         356          10         844        1121
+Swap:           2047           0        2047
+"""
+_DF = """\
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        58G   12G   45G  21% /
+tmpfs           922M  9.4M  912M   2% /tmp
+/dev/mmcblk0p1  510M   79M  432M  16% /boot/firmware
+"""
+
+
+@pytest.mark.parametrize(
+    ("free", "df", "df_rc", "uptime", "ram", "disk", "uptime_str"),
+    [
+        (
+            _FREE,
+            _DF,
+            0,
+            "up 1 week, 2 days, 12 minutes\n",
+            "720/1842MB 39.09%",
+            "12/58GB 21%",
+            "1w 2d 12m",
+        ),
+        (
+            _FREE,
+            "/dev/root 1.5T 512M 1.4T 1% /\n",
+            1,
+            "up 1 year, 2 weeks, 1 day, 1 hour, 1 minute\n",
+            "720/1842MB 39.09%",
+            "512/1GB 1%",
+            "1 year 2w 1d 1h 1m",
+        ),
+    ],
+)
+def test_get_stats_strings_match_shell_pipelines(
+    monkeypatch, free, df, df_rc, uptime, ram, disk, uptime_str
+):
+    # FPMS and the WebUI parse these strings.
+    outputs = {
+        "mpstat": CommandResult('"idle": 75.00\n', "", 0),
+        "free": CommandResult(free, "", 0),
+        "df": CommandResult(df, "", df_rc),
+        "uptime": CommandResult(uptime, "", 0),
+    }
+    calls = []
+
+    def fake_run(cmd, shell=False, **kwargs):
+        calls.append((cmd, shell))
+        return outputs[(cmd.split() if isinstance(cmd, str) else cmd)[0]]
+
+    monkeypatch.setattr(system_service, "run_command", fake_run)
+    monkeypatch.setattr(system_service, "_read_cpu_temperature", lambda: "50.0C")
+
+    stats = system_service.get_stats()
+
+    assert (stats["ram"], stats["disk"], stats["uptime"]) == (ram, disk, uptime_str)
+    assert not any(shell for _, shell in calls)

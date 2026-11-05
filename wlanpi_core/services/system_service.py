@@ -288,6 +288,12 @@ def _read_cpu_temperature() -> str:
     return f"{round(temperature, 1)}C"
 
 
+def _awk_int(field: str) -> int:
+    """Return `field` as awk's printf %d does: its leading number, truncated."""
+    match = re.match(r"\d+(?:\.\d*)?|\.\d+", field)
+    return int(float(match.group())) if match else 0
+
+
 def get_stats() -> dict[str, str]:
     """Return device stats such as CPU, RAM, disk, and uptime."""
     IP = ""
@@ -317,23 +323,31 @@ def get_stats() -> dict[str, str]:
     except (RunCommandError, OSError, ValueError):
         CPU = "unknown"
 
-    cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
-        MemUsage = run_command(cmd, shell=True).stdout.strip()
-    except (RunCommandError, OSError):
+        mem = run_command(["free", "-m"]).stdout.splitlines()[1].split()
+        MemUsage = f"{mem[2]}/{mem[1]}MB {int(mem[2]) * 100 / int(mem[1]):.2f}%"
+    except (RunCommandError, OSError, IndexError, ValueError, ZeroDivisionError):
         MemUsage = "unknown"
 
-    cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
-        Disk = run_command(cmd, shell=True).stdout.strip()
-    except (RunCommandError, OSError):
+        # df exits 1 when any mount is unreadable but still lists "/".
+        df = run_command(["df", "-h"], raise_on_fail=False).stdout
+        Disk = ""
+        for line in df.splitlines():
+            fields = line.split()
+            if fields and fields[-1] == "/":
+                Disk += f"{_awk_int(fields[2])}/{_awk_int(fields[1])}GB {fields[4]}"
+        Disk = Disk.strip()
+    except (OSError, IndexError):
         Disk = "unknown"
 
     tempStr = _read_cpu_temperature()
 
-    cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
-        uptime = run_command(cmd, shell=True).stdout.strip()
+        uptime = re.sub(r"up|,", "", run_command(["uptime", "-p"]).stdout.strip())
+        for unit in ("week", "day", "hour", "minute"):
+            uptime = re.sub(rf"\s*{unit}s?", unit[0], uptime)
+        uptime = uptime.strip()
     except (RunCommandError, OSError):
         uptime = "unknown"
 
