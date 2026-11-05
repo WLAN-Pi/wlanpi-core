@@ -1,7 +1,6 @@
 """Exit 0 when this WLAN Pi model may transmit, 1 when it may not.
 
-`wpa_supplicant@wlan0.service` runs this as `ExecCondition`, so systemd skips
-the unit on a Go or an unknown model.
+`wpa_supplicant@wlan0.service` gates on this via `ExecCondition`.
 """
 
 import sys
