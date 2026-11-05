@@ -319,13 +319,13 @@ def parse_iw_bss_block(
         elif stripped.startswith("signal:"):
             try:
                 signal = int(float(stripped.split()[1]))
-            except (IndexError, ValueError):
+            except (IndexError, ValueError, OverflowError):
                 pass
         elif stripped.startswith("freq:"):
             # Newer iw prints the frequency as a float ("freq: 5560.0").
             try:
                 freq = int(float(stripped.split()[1]))
-            except (IndexError, ValueError):
+            except (IndexError, ValueError, OverflowError):
                 pass
         elif stripped.startswith("RSN:") or stripped.startswith("WPA:"):
             has_wpa = True

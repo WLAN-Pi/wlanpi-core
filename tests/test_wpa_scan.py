@@ -164,6 +164,22 @@ BSS 00:3e:73:3e:38:32(on wlan0)
     assert networks[0]["primaryChannel"] == 112
 
 
+@pytest.mark.parametrize("bad", ["inf", "-inf", "1e999"])
+def test_parse_iw_scan_output_ignores_non_finite_freq_and_signal(bad):
+    block = f"""\
+BSS 00:3e:73:3e:38:32(on wlan0)
+\tfreq: 5560
+\tsignal: -79.00 dBm
+\tSSID: Injected
+\t\t * Device name:
+\tfreq: {bad}
+\tsignal: {bad} dBm
+"""
+    networks = parse_iw_scan_output(block)
+    assert networks[0]["freq"] == 5560
+    assert networks[0]["signal"] == -79
+
+
 def test_parse_iw_scan_output_full_includes_raw():
     networks = parse_iw_scan_output(SAMPLE_IW, detail="full")
     assert networks[0]["raw"] == SAMPLE_IW_FULL_BLOCK
