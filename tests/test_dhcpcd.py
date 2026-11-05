@@ -9,6 +9,8 @@ produce a gatewayless default route.
 from __future__ import annotations
 
 import signal
+import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -202,6 +204,49 @@ def test_restart_keeps_the_state_for_the_next_lease(run_dir):
     with patch.object(nm, "ns_exec"):
         nm.restart_dhcp_with_timeout("wlan1", None)
     assert lease.read_text() == "x"
+
+
+def _run_wrapper(tmp_path, mac: str | None) -> tuple[Path, str]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("mkdir", "mount"):
+        (bin_dir / tool).write_text("#!/bin/sh\n")
+    (bin_dir / "dhcpcd").write_text('#!/bin/sh\necho "$@"\n')
+    for tool in bin_dir.iterdir():
+        tool.chmod(0o755)
+    sysfs = tmp_path / "sys"
+    if mac is not None:
+        (sysfs / "wlan1").mkdir(parents=True)
+        (sysfs / "wlan1" / "address").write_text(f"{mac}\n")
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    with patch.object(nm, "ns_exec") as ns_exec:
+        nm.restart_dhcp_with_timeout("wlan1", None)
+    argv = _started_argv(ns_exec)
+    sh = argv.index("sh")
+    argv[sh] = "/bin/sh"
+    argv[sh + 2] = argv[sh + 2].replace("/sys/class/net", str(sysfs))
+    argv[sh + 5] = str(lib)
+    out = subprocess.run(
+        argv[sh:],
+        env={"PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return lib, out.stdout.strip()
+
+
+def test_dhcpcd_wrapper_writes_a_duid_ll_from_the_mac(tmp_path, run_dir):
+    lib, dhcpcd_argv = _run_wrapper(tmp_path, "a0:02:a5:8f:0d:a5")
+    assert (lib / "duid").read_text() == "00:03:00:01:a0:02:a5:8f:0d:a5\n"
+    assert dhcpcd_argv.startswith("-4 ") and dhcpcd_argv.endswith(" wlan1")
+
+
+def test_dhcpcd_wrapper_starts_dhcpcd_without_a_mac(tmp_path, run_dir):
+    lib, dhcpcd_argv = _run_wrapper(tmp_path, None)
+    assert not (lib / "duid").exists()
+    assert dhcpcd_argv.endswith(" wlan1")
 
 
 def test_stop_dhcp_ignores_a_reused_pid_naming_the_iface(run_dir):
