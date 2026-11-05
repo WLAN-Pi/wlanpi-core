@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,6 +17,7 @@ from wlanpi_core.api.api_v1.endpoints import (
 )
 from wlanpi_core.app import create_app
 from wlanpi_core.asgi import app
+from wlanpi_core.cli import transmit_allowed
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.transmit_gate import (
@@ -769,3 +771,30 @@ def test_openapi_documents_transmit_403_only_on_gated_routes():
     stop = spec["paths"]["/api/v1/system/service/stop"]["post"]
     assert "403" not in status.get("responses", {})
     assert "403" not in stop.get("responses", {})
+
+
+@pytest.mark.parametrize(
+    ("probes", "code"),
+    [
+        (["Pro"], 0),
+        (["M4", "M4"], 0),
+        (["Go"], 1),
+        (["M4", "Go"], 1),
+        (["Unknown platform"], 1),
+        ([_timeout()], 1),
+    ],
+)
+def test_transmit_allowed_exit_code(mocker, capsys, probes, code: int):
+    _plant(None)
+    _probe_returns(mocker, *probes)
+
+    assert transmit_allowed.main() == code
+    assert bool(capsys.readouterr().err) == bool(code)
+
+
+def test_wpa_supplicant_unit_runs_the_transmit_condition():
+    unit = Path(__file__).parents[1] / "debian/wpa_supplicant@wlan0.service"
+    assert (
+        "ExecCondition=/opt/wlanpi-core/bin/python -m wlanpi_core.cli.transmit_allowed"
+        in unit.read_text().splitlines()
+    )

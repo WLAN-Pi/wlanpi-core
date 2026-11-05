@@ -7,6 +7,7 @@ Wants=network.target
 
 [Service]
 Type=simple
+ExecCondition=/opt/wlanpi-core/bin/python -m wlanpi_core.cli.transmit_allowed
 ExecStart=/sbin/wpa_supplicant -u -O /run/wpa_supplicant -c/etc/wpa_supplicant/wpa_supplicant-%I.conf -i%I
 ExecReload=/bin/kill -HUP \$MAINPID
 
