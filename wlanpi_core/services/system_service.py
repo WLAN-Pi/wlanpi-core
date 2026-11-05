@@ -525,19 +525,6 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
     )
 
 
-def _wait_for_job(manager: Any, job_path: str, service: str) -> None:
-    deadline = time.monotonic() + _SYSTEMD_DBUS_TIMEOUT_SEC
-    while time.monotonic() < deadline:
-        with _systemd_lock:
-            try:
-                jobs = manager.ListJobs(timeout=_SYSTEMD_DBUS_TIMEOUT_SEC)
-            except DBusException as exc:
-                _raise_systemd_dbus_error(exc, action="restarting", service=service)
-        if all(str(job[4]) != job_path for job in jobs):
-            return
-        time.sleep(0.1)
-
-
 def restart_service(service: str) -> bool:
     """Restart a systemd service and report its status after the job finishes or times out."""
     if ".service" not in service:
@@ -556,7 +543,16 @@ def restart_service(service: str) -> bool:
                 action="restarting",
                 service=service,
             )
-    _wait_for_job(manager, str(job_path), service)
+    deadline = time.monotonic() + _SYSTEMD_DBUS_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        with _systemd_lock:
+            try:
+                jobs = manager.ListJobs(timeout=_SYSTEMD_DBUS_TIMEOUT_SEC)
+            except DBusException as exc:
+                _raise_systemd_dbus_error(exc, action="restarting", service=service)
+        if all(str(job[4]) != str(job_path) for job in jobs):
+            break
+        time.sleep(0.1)
     return check_service_status(service)
 
 
