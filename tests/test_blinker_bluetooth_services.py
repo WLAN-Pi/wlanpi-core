@@ -490,6 +490,20 @@ async def test_pairing_mode_requires_pairable_and_discoverable(
     assert run_command.await_args.args[0] == ["bt-adapter", "-a", "hci1", "-i"]
 
 
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("  Alias: wlanpi-bc2 [rw]", "wlanpi-bc2"),
+        ("  Alias: my pi [ro]", "my pi"),
+        ("  Alias: my pi", "my pi"),
+    ],
+)
+def test_parse_adapter_property_drops_access_flag(line, expected):
+    output = f"[hci0]\n  Name: wlanpi\n{line}\n"
+
+    assert bluetooth_service._parse_adapter_property(output, "Alias") == expected
+
+
 @pytest.mark.asyncio
 async def test_bluetooth_pair_rejects_concurrent_request():
     assert bluetooth_service._pairing_lock.acquire(blocking=False)

@@ -250,7 +250,7 @@ def _parse_adapter_property(output: str, property_name: str) -> str:
     for line in output.splitlines():
         key, separator, value = line.strip().partition(":")
         if separator and key.casefold() == property_name.casefold():
-            return value.strip()
+            return value.strip().removesuffix(" [rw]").removesuffix(" [ro]")
     return ""
 
 
@@ -397,9 +397,8 @@ async def _pairing_mode_active(adapter: str) -> bool:
         raise_on_fail=True,
         timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
     )
-    # bt-adapter prints writable flags as "Pairable: 1 [rw]".
     return all(
-        _parse_adapter_property(result.stdout, flag).partition(" ")[0] == "1"
+        _parse_adapter_property(result.stdout, flag) == "1"
         for flag in ("Pairable", "Discoverable")
     )
 
