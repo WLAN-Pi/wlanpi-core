@@ -83,9 +83,7 @@ async def test_issuance_uses_absolute_boot_expiry(token_manager):
 
 
 @pytest.mark.asyncio
-async def test_all_digit_jti_is_not_rejected_as_card_number(
-    token_manager, monkeypatch
-):
+async def test_all_digit_jti_is_not_rejected_as_card_number(token_manager, monkeypatch):
     monkeypatch.setattr(
         token_module.secrets, "token_hex", lambda n: ("4111" * n)[: 2 * n]
     )
