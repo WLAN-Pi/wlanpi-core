@@ -571,10 +571,12 @@ def test_set_ntp_enabled_runs_timedatectl(monkeypatch):
     assert result == {"ntp_service": True, "synchronized": True}
 
 
-_FREE = """\
-               total        used        free      shared  buff/cache   available
-Mem:            1842         720         356          10         844        1121
-Swap:           2047           0        2047
+_MEMINFO = """\
+MemTotal:        1886556 kB
+MemFree:          491828 kB
+MemAvailable:    1276044 kB
+Buffers:           90744 kB
+HugePages_Total:       0
 """
 _DF = """\
 Filesystem      Size  Used Avail Use% Mounted on
@@ -584,38 +586,44 @@ tmpfs           922M  9.4M  912M   2% /tmp
 """
 
 
+def test_format_memory_matches_free():
+    assert system_service._format_memory(_MEMINFO) == "596/1842MB 32.36%"
+
+
 @pytest.mark.parametrize(
-    ("free", "df", "df_rc", "uptime", "ram", "disk", "uptime_str"),
+    ("seconds", "expected"),
     [
-        (
-            _FREE,
-            _DF,
-            0,
-            "up 1 week, 2 days, 12 minutes\n",
-            "720/1842MB 39.09%",
-            "12/58GB 21%",
-            "1w 2d 12m",
-        ),
-        (
-            _FREE,
-            "/dev/root 1.5T 512M 1.4T 1% /\n",
-            1,
-            "up 1 year, 2 weeks, 1 day, 1 hour, 1 minute\n",
-            "720/1842MB 39.09%",
-            "512/1GB 1%",
-            "1 year 2w 1d 1h 1m",
-        ),
+        (809828.75, "1w 2d 8h 57m"),
+        (30.2, "0m"),
+        (60.0, ""),
+        (3600.5, "1h 0m"),
+        (86400 * 8 + 61, "1w 1d 1m"),
+        (31536000 + 604800 * 2 + 1, "1 year 2w 0m"),
+        (315360000 * 2 + 31536000 * 3 + 5, "2 decades 3 years 0m"),
     ],
 )
-def test_get_stats_strings_match_shell_pipelines(
-    mocker, free, df, df_rc, uptime, ram, disk, uptime_str
-):
+def test_format_uptime_matches_uptime_pretty(seconds, expected):
+    assert system_service._format_uptime(seconds) == expected
+
+
+@pytest.mark.parametrize(
+    ("df", "df_rc", "disk"),
+    [
+        (_DF, 0, "12/58GB 21%"),
+        ("/dev/root 1.5T 512M 1.4T 1% /\n", 1, "512/1GB 1%"),
+    ],
+)
+def test_get_stats_strings_match_shell_pipelines(mocker, tmp_path, df, df_rc, disk):
     # FPMS and the WebUI parse these strings.
+    (tmp_path / "meminfo").write_text(_MEMINFO)
+    (tmp_path / "uptime").write_text("809828.75 3415827.91\n")
+    real_path = Path
+    mocker.patch.object(
+        system_service, "Path", lambda value: tmp_path / real_path(value).name
+    )
     outputs = {
         "mpstat": CommandResult('"idle": 75.00\n', "", 0),
-        "free": CommandResult(free, "", 0),
         "df": CommandResult(df, "", df_rc),
-        "uptime": CommandResult(uptime, "", 0),
     }
 
     def fake_run(cmd, raise_on_fail=True, **kwargs):
@@ -629,10 +637,12 @@ def test_get_stats_strings_match_shell_pipelines(
 
     stats = system_service.get_stats()
 
-    assert (stats["ram"], stats["disk"], stats["uptime"]) == (ram, disk, uptime_str)
+    assert (stats["ram"], stats["disk"], stats["uptime"]) == (
+        "596/1842MB 32.36%",
+        disk,
+        "1w 2d 8h 57m",
+    )
     assert run.call_args_list == [
         call("mpstat 1 1 -o JSON"),
-        call(["free", "-m"]),
         call(["df", "-h"], raise_on_fail=False),
-        call(["uptime", "-p"]),
     ]

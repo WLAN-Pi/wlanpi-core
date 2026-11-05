@@ -294,6 +294,39 @@ def _awk_int(field: str) -> int:
     return int(float(match.group())) if match else 0
 
 
+def _format_memory(meminfo: str) -> str:
+    """Return used/total RAM as `free -m` reports it (procps-ng 4), e.g. "596/1842MB 32.36%"."""
+    kb = {
+        line.split(":")[0]: int(line.split()[1])
+        for line in meminfo.splitlines()
+        if line.endswith(" kB")
+    }
+    total = kb["MemTotal"] // 1024
+    used = (kb["MemTotal"] - kb["MemAvailable"]) // 1024
+    return f"{used}/{total}MB {used * 100 / total:.2f}%"
+
+
+def _format_uptime(seconds: float) -> str:
+    """Return `uptime -p` (procps-ng 4) shortened to "1w 2d 8h 57m".
+
+    Copies procps_uptime_sprint_short, strict `>` comparisons included.
+    """
+    parts: list[str] = []
+    for size, one, many in (
+        (60 * 60 * 24 * 365 * 10, " decade", " decades"),
+        (60 * 60 * 24 * 365, " year", " years"),
+        (60 * 60 * 24 * 7, "w", "w"),
+        (60 * 60 * 24, "d", "d"),
+        (60 * 60, "h", "h"),
+        (60, "m", "m"),
+    ):
+        count = int(seconds) // size if seconds > size else 0
+        seconds -= count * size
+        if count or (size == 60 and seconds < 60):
+            parts.append(f"{count}{one if count == 1 else many}")
+    return " ".join(parts)
+
+
 def get_stats() -> dict[str, str]:
     """Return device stats such as CPU, RAM, disk, and uptime."""
     IP = ""
@@ -324,9 +357,8 @@ def get_stats() -> dict[str, str]:
         CPU = "unknown"
 
     try:
-        mem = run_command(["free", "-m"]).stdout.splitlines()[1].split()
-        MemUsage = f"{mem[2]}/{mem[1]}MB {int(mem[2]) * 100 / int(mem[1]):.2f}%"
-    except (RunCommandError, OSError, IndexError, ValueError, ZeroDivisionError):
+        MemUsage = _format_memory(Path("/proc/meminfo").read_text())
+    except (OSError, KeyError, ValueError, ZeroDivisionError):
         MemUsage = "unknown"
 
     try:
@@ -344,11 +376,8 @@ def get_stats() -> dict[str, str]:
     tempStr = _read_cpu_temperature()
 
     try:
-        uptime = re.sub(r"up|,", "", run_command(["uptime", "-p"]).stdout.strip())
-        for unit in ("week", "day", "hour", "minute"):
-            uptime = re.sub(rf"\s*{unit}s?", unit[0], uptime)
-        uptime = uptime.strip()
-    except (RunCommandError, OSError):
+        uptime = _format_uptime(float(Path("/proc/uptime").read_text().split()[0]))
+    except (OSError, IndexError, ValueError):
         uptime = "unknown"
 
     uptimeStr = f"{uptime}"
