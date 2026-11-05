@@ -526,7 +526,6 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
 
 
 def _wait_for_job(manager: Any, job_path: str, service: str) -> None:
-    """Wait until systemd finishes a queued job, at most the D-Bus timeout."""
     deadline = time.monotonic() + _SYSTEMD_DBUS_TIMEOUT_SEC
     while time.monotonic() < deadline:
         with _systemd_lock:
@@ -540,7 +539,7 @@ def _wait_for_job(manager: Any, job_path: str, service: str) -> None:
 
 
 def restart_service(service: str) -> bool:
-    """Restart a systemd service and report its status once the job finishes."""
+    """Restart a systemd service and report its status after the job finishes or times out."""
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
