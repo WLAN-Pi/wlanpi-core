@@ -8,6 +8,7 @@ import re
 import socket
 import subprocess
 import threading
+import time
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -525,13 +526,13 @@ async def start_systemd_service(name: str) -> dict[str, Any]:
 
 
 def restart_service(service: str) -> bool:
-    """Restart a systemd service and report its status."""
+    """Restart a systemd service and report its status after the job finishes or times out."""
     if ".service" not in service:
         service = service + ".service"
     with _systemd_lock:
         _, manager = _get_systemd_client()
         try:
-            manager.RestartUnit(
+            job_path = manager.RestartUnit(
                 service,
                 "replace",
                 timeout=_SYSTEMD_DBUS_TIMEOUT_SEC,
@@ -542,7 +543,17 @@ def restart_service(service: str) -> bool:
                 action="restarting",
                 service=service,
             )
-        return check_service_status(service)
+    deadline = time.monotonic() + _SYSTEMD_DBUS_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        with _systemd_lock:
+            try:
+                jobs = manager.ListJobs(timeout=_SYSTEMD_DBUS_TIMEOUT_SEC)
+            except DBusException as exc:
+                _raise_systemd_dbus_error(exc, action="restarting", service=service)
+        if all(str(job[4]) != str(job_path) for job in jobs):
+            break
+        time.sleep(0.1)
+    return check_service_status(service)
 
 
 async def restart_systemd_service(name: str) -> dict[str, Any]:
