@@ -288,6 +288,45 @@ def _read_cpu_temperature() -> str:
     return f"{round(temperature, 1)}C"
 
 
+def _awk_int(field: str) -> int:
+    """Return `field` as awk's printf %d does: its leading number, truncated."""
+    match = re.match(r"\d+(?:\.\d*)?|\.\d+", field)
+    return int(float(match.group())) if match else 0
+
+
+def _format_memory(meminfo: str) -> str:
+    """Return used/total RAM as `free -m` reports it (procps-ng 4), e.g. "596/1842MB 32.36%"."""
+    kb = {
+        line.split(":")[0]: int(line.split()[1])
+        for line in meminfo.splitlines()
+        if line.endswith(" kB")
+    }
+    total = kb["MemTotal"] // 1024
+    used = (kb["MemTotal"] - kb["MemAvailable"]) // 1024
+    return f"{used}/{total}MB {used * 100 / total:.2f}%"
+
+
+def _format_uptime(seconds: float) -> str:
+    """Return `uptime -p` (procps-ng 4) shortened to "1w 2d 8h 57m".
+
+    Copies procps_uptime_sprint_short, strict `>` comparisons included.
+    """
+    parts: list[str] = []
+    for size, one, many in (
+        (60 * 60 * 24 * 365 * 10, " decade", " decades"),
+        (60 * 60 * 24 * 365, " year", " years"),
+        (60 * 60 * 24 * 7, "w", "w"),
+        (60 * 60 * 24, "d", "d"),
+        (60 * 60, "h", "h"),
+        (60, "m", "m"),
+    ):
+        count = int(seconds) // size if seconds > size else 0
+        seconds -= count * size
+        if count or (size == 60 and seconds < 60):
+            parts.append(f"{count}{one if count == 1 else many}")
+    return " ".join(parts)
+
+
 def get_stats() -> dict[str, str]:
     """Return device stats such as CPU, RAM, disk, and uptime."""
     IP = ""
@@ -317,24 +356,28 @@ def get_stats() -> dict[str, str]:
     except (RunCommandError, OSError, ValueError):
         CPU = "unknown"
 
-    cmd = "free -m | awk 'NR==2{printf \"%s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
     try:
-        MemUsage = run_command(cmd, shell=True).stdout.strip()
-    except (RunCommandError, OSError):
+        MemUsage = _format_memory(Path("/proc/meminfo").read_text())
+    except (OSError, KeyError, ValueError, ZeroDivisionError):
         MemUsage = "unknown"
 
-    cmd = 'df -h | awk \'$NF=="/"{printf "%d/%dGB %s", $3,$2,$5}\''
     try:
-        Disk = run_command(cmd, shell=True).stdout.strip()
-    except (RunCommandError, OSError):
+        # df exits 1 when any mount is unreadable but still lists "/".
+        df = run_command(["df", "-h"], raise_on_fail=False).stdout
+        Disk = ""
+        for line in df.splitlines():
+            fields = line.split()
+            if fields and fields[-1] == "/":
+                Disk += f"{_awk_int(fields[2])}/{_awk_int(fields[1])}GB {fields[4]}"
+        Disk = Disk.strip()
+    except (OSError, IndexError):
         Disk = "unknown"
 
     tempStr = _read_cpu_temperature()
 
-    cmd = r"uptime -p | sed -r 's/up|,//g' | sed -r 's/\s*week[s]?/w/g' | sed -r 's/\s*day[s]?/d/g' | sed -r 's/\s*hour[s]?/h/g' | sed -r 's/\s*minute[s]?/m/g'"
     try:
-        uptime = run_command(cmd, shell=True).stdout.strip()
-    except (RunCommandError, OSError):
+        uptime = _format_uptime(float(Path("/proc/uptime").read_text().split()[0]))
+    except (OSError, IndexError, ValueError):
         uptime = "unknown"
 
     uptimeStr = f"{uptime}"
