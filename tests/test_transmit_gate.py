@@ -71,7 +71,25 @@ _UNGATED_ROUTES = (
     ("POST", "/api/v1/utils/blinker/start"),
     ("POST", "/api/v1/network/interfaces/{iface}/renew"),
     ("POST", "/api/v1/network/ethernet/{interface}/vlan/{vlan}"),
+    ("DELETE", "/api/v1/network/ethernet/{interface}/vlan/{vlan}"),
+    ("POST", "/api/v1/network/wlan/set-dbus"),
+    ("POST", "/api/v1/network/wlan/set"),
+    ("POST", "/api/v1/network/config/"),
+    ("PATCH", "/api/v1/network/config/{id}"),
+    ("POST", "/api/v1/auth/pam"),
+    ("POST", "/api/v1/auth/pam/change"),
+    ("POST", "/api/v1/auth/pam/account"),
+    ("POST", "/api/v1/auth/token"),
+    ("DELETE", "/api/v1/auth/token"),
+    ("POST", "/api/v1/auth/signing_key"),
+    ("POST", "/api/v1/system/timezone/set"),
+    ("POST", "/api/v1/system/timezone/auto"),
+    ("POST", "/api/v1/system/ntp"),
+    ("POST", "/api/v1/system/journal"),
+    ("POST", "/api/v1/utils/blinker/stop"),
 )
+
+_GATED_IN_HANDLER = {("POST", "/api/v1/network/config/activate/{id}")}
 
 _IGNORED_METHODS = {"HEAD", "OPTIONS"}
 
@@ -211,6 +229,17 @@ def test_transmit_dependencies_match_the_route_table():
             if (method, path) not in gated:
                 offenders.append((method, path))
     assert offenders == []
+
+
+def test_every_mutating_route_has_a_transmit_decision():
+    decided = set(_GATED_ROUTES) | set(_UNGATED_ROUTES) | _GATED_IN_HANDLER
+    undecided = sorted(
+        (method, path)
+        for path, route in _api_routes()
+        for method in route.methods - _IGNORED_METHODS - {"GET"}
+        if (method, path) not in decided
+    )
+    assert undecided == []
 
 
 @pytest.mark.parametrize("planted", ["Go", "Unknown", "", _timeout()])
