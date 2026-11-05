@@ -614,7 +614,7 @@ def test_format_uptime_matches_uptime_pretty(seconds, expected):
     ],
 )
 def test_get_stats_strings_match_shell_pipelines(mocker, tmp_path, df, df_rc, disk):
-    # FPMS and the WebUI parse these strings.
+    # Clients show these strings as they are; keep the format.
     (tmp_path / "meminfo").write_text(_MEMINFO)
     (tmp_path / "uptime").write_text("809828.75 3415827.91\n")
     real_path = Path
