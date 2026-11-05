@@ -147,6 +147,27 @@ def test_disconnected_system_bus_is_rebuilt_on_next_request(mocker):
     )
 
 
+def test_restart_reports_state_after_the_job_finishes(mocker):
+    job = "/org/freedesktop/systemd1/job/7"
+    manager = MagicMock()
+    manager.RestartUnit.return_value = job
+    queued = [(7, "iperf2.service", "restart", "running", job, "/u")]
+    manager.ListJobs.side_effect = [queued, queued, []]
+    service_properties = MagicMock()
+    service_properties.Get.side_effect = lambda _interface, name, **_kwargs: (
+        "loaded"
+        if name == "LoadState"
+        else ("active" if manager.ListJobs.call_count == 3 else "activating")
+    )
+    mocker.patch.object(
+        system_service, "_get_systemd_client", return_value=(MagicMock(), manager)
+    )
+    mocker.patch.object(system_service, "Interface", return_value=service_properties)
+
+    assert system_service.restart_service("iperf2") is True
+    assert manager.ListJobs.call_count == 3
+
+
 def test_start_and_stop_service_use_bounded_systemd_calls(mocker):
     manager = MagicMock()
     mocker.patch.object(
