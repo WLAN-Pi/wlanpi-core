@@ -608,7 +608,7 @@ tmpfs           922M  9.4M  912M   2% /tmp
     ],
 )
 def test_get_stats_strings_match_shell_pipelines(
-    monkeypatch, free, df, df_rc, uptime, ram, disk, uptime_str
+    mocker, free, df, df_rc, uptime, ram, disk, uptime_str
 ):
     # FPMS and the WebUI parse these strings.
     outputs = {
@@ -617,16 +617,22 @@ def test_get_stats_strings_match_shell_pipelines(
         "df": CommandResult(df, "", df_rc),
         "uptime": CommandResult(uptime, "", 0),
     }
-    calls = []
 
-    def fake_run(cmd, shell=False, **kwargs):
-        calls.append((cmd, shell))
-        return outputs[(cmd.split() if isinstance(cmd, str) else cmd)[0]]
+    def fake_run(cmd, raise_on_fail=True, **kwargs):
+        result = outputs[(cmd.split() if isinstance(cmd, str) else cmd)[0]]
+        if raise_on_fail and result.return_code:
+            raise RunCommandError("failed", result.return_code)
+        return result
 
-    monkeypatch.setattr(system_service, "run_command", fake_run)
-    monkeypatch.setattr(system_service, "_read_cpu_temperature", lambda: "50.0C")
+    run = mocker.patch.object(system_service, "run_command", side_effect=fake_run)
+    mocker.patch.object(system_service, "_read_cpu_temperature", return_value="50.0C")
 
     stats = system_service.get_stats()
 
     assert (stats["ram"], stats["disk"], stats["uptime"]) == (ram, disk, uptime_str)
-    assert not any(shell for _, shell in calls)
+    assert run.call_args_list == [
+        call("mpstat 1 1 -o JSON"),
+        call(["free", "-m"]),
+        call(["df", "-h"], raise_on_fail=False),
+        call(["uptime", "-p"]),
+    ]
