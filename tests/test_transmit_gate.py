@@ -389,6 +389,17 @@ def test_bluetooth_power_on_on_go_is_403(client, mocker):
     set_power.assert_not_called()
 
 
+def test_bluetooth_pair_on_go_is_403(client, mocker):
+    _plant("Go")
+    pair = mocker.patch.object(bluetooth_service, "bluetooth_pair", new=AsyncMock())
+
+    response = client.post("/api/v1/bluetooth/pair")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": GO_DETAIL}
+    pair.assert_not_awaited()
+
+
 def test_bluetooth_power_banana_on_go_is_plain_text_400(client, mocker):
     _plant("Go")
     set_power = mocker.patch.object(
