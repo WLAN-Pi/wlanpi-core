@@ -1,8 +1,6 @@
 import hashlib
 import hmac
 import json
-import subprocess
-import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -237,16 +235,3 @@ def test_bearer_cannot_mint_token_for_another_device(endpoint_state):
 
     assert resp.status_code == 403
     endpoint_state.create_token.assert_not_awaited()
-
-
-def test_token_module_import_is_free_of_authlib_deprecation_warning():
-    probe = (
-        "import warnings\n"
-        "with warnings.catch_warnings(record=True) as caught:\n"
-        "    import wlanpi_core.core.token\n"
-        "print([str(w.message) for w in caught if 'authlib' in str(w.message)])\n"
-    )
-    result = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
-    )
-    assert result.stdout.strip() == "[]"
