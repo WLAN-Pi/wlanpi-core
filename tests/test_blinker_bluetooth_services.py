@@ -164,6 +164,33 @@ def test_bluetooth_adapter_falls_back_to_hci0_only_without_the_selector(
     )
 
 
+@pytest.mark.asyncio
+async def test_bluetooth_endpoints_return_503_without_bluez(mocker):
+    from wlanpi_core.api.api_v1.endpoints import bluetooth_api
+
+    mocker.patch.object(
+        bluetooth_service, "run_command", side_effect=FileNotFoundError("hciconfig")
+    )
+
+    for response in (
+        await bluetooth_api.btstatus(),
+        await bluetooth_api.bt_power("off"),
+    ):
+        assert response.status_code == 503
+        assert response.body == b"Bluetooth hardware not found"
+
+
+@pytest.mark.asyncio
+async def test_bluetooth_present_async_is_false_without_hciconfig(mocker):
+    mocker.patch.object(
+        bluetooth_service,
+        "run_command_async",
+        new=AsyncMock(side_effect=FileNotFoundError("hciconfig")),
+    )
+
+    assert await bluetooth_service._bluetooth_present_async("hci0") is False
+
+
 def test_bluetooth_paired_devices_lists_only_the_adapters_paired_devices(mocker):
     present = mocker.patch.object(
         bluetooth_service, "bluetooth_present", return_value=True

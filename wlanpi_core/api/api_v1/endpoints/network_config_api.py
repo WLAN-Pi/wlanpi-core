@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from wlanpi_core.api.openapi_docs import RESPONSES_TRANSMIT_DISABLED
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.mode_guard import require_wlan_management_enabled
@@ -268,6 +269,7 @@ async def delete_config(id: str, force: bool = False) -> Any:
 @router.post(
     "/activate/{id}",
     response_model=ActivationResponse,
+    responses={**RESPONSES_TRANSMIT_DISABLED},
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def activate_config(id: str, override_active: bool = False) -> Any:
@@ -293,6 +295,12 @@ async def activate_config(id: str, override_active: bool = False) -> Any:
     (for example a driver refusing to delete an interface), the 500's
     `detail` holds the message and the command's `error`. 409 means another
     change is running or the configuration is already active.
+
+    Returns 403 when transmit is disabled on this WLAN Pi and an entry has
+    `security` or `autostart_app`. A configuration with neither, such as
+    monitor only, still activates. A refused `override_active` re-activation
+    of the recorded current profile tears it down, and the default
+    configuration is active again.
     """
     try:
         require_wlan_management_enabled()

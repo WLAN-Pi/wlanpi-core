@@ -9,7 +9,7 @@ from wlanpi_core.data import reg_domain_countries
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.models.validation_error import ValidationError
-from wlanpi_core.services import system_service
+from wlanpi_core.services import platform_cache, system_service
 
 _GET_MODE = system_service.get_mode
 
@@ -348,15 +348,19 @@ def test_set_reg_domain_accepts_installed_database_country(mocker):
     run.assert_called_once_with(["iw", "reg", "set", "AU"], raise_on_fail=True)
 
 
-def test_get_platform_missing_wlanpi_model(mocker):
-    mocker.patch.object(
+def test_get_platform_missing_wlanpi_model(mocker, monkeypatch):
+    run = mocker.patch.object(
         system_service,
         "run_command",
         side_effect=FileNotFoundError(2, "No such file or directory: 'wlanpi-model'"),
     )
 
     assert system_service.get_platform() == "Unknown"
+
+    monkeypatch.setattr(platform_cache, "_cached", None)
     assert system_service.get_model() == "Unknown"
+    assert system_service.get_model() == "Unknown"
+    assert run.call_count == 2
 
 
 def _path_factory(supply_root):

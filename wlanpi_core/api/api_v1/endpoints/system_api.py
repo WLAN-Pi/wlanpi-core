@@ -6,10 +6,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
-from wlanpi_core.api.openapi_docs import RESPONSES_MODE_CONFLICT
+from wlanpi_core.api.openapi_docs import (
+    RESPONSES_MODE_CONFLICT,
+    RESPONSES_TRANSMIT_UNIT,
+)
 from wlanpi_core.core.auth import verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
+from wlanpi_core.core.transmit_gate import require_transmit_for_unit
 from wlanpi_core.models.validation_error import ValidationError
 from wlanpi_core.schemas import system
 from wlanpi_core.services import hotspot_service, system_service
@@ -22,7 +26,7 @@ log = get_logger(__name__)
 @lru_cache(maxsize=1)
 def _read_static_device_info() -> dict[str, Any]:
     """Cache device identity fields that only change across system reconfiguration."""
-    model = system_service.get_platform()
+    model = system_service.get_model()
     hostname = system_service.get_hostname()
     name = hostname.split(".")[0]
     software_ver = system_service.get_image_ver()
@@ -53,7 +57,7 @@ async def show_device_info() -> Any:
     Return core information about the PI.
 
     Commands:
-     - Uses 'wlanpi-model -b' to query the device model.
+     - Uses the cached result of 'wlanpi-model -b' for the device model.
      - Uses '/usr/bin/hostname' to query the device hostname.
      - Uses '/etc/wlanpi-release' to query the device software version.
      - Uses '/etc/wlanpi-state' to query the device mode.
@@ -99,7 +103,7 @@ async def device_stats() -> Any:
     dependencies=[Depends(verify_auth_wrapper)],
 )
 async def show_device_model() -> Any:
-    """Use 'wlanpi-model -b' to query the device model."""
+    """Return the cached result of 'wlanpi-model -b'."""
     try:
         model = await asyncio.to_thread(system_service.get_model)
         return {"model": model}
@@ -193,10 +197,15 @@ async def show_a_systemd_service_status(name: str) -> Any:
 @router.post(
     "/service/start",
     response_model=system.ServiceRunning,
-    dependencies=[Depends(verify_auth_wrapper)],
+    responses={**RESPONSES_TRANSMIT_UNIT},
+    dependencies=[Depends(require_transmit_for_unit)],
 )
 async def start_a_systemd_service(name: str) -> Any:
-    """Use systemd via dbus to start an allowed service."""
+    """Use systemd via dbus to start an allowed service.
+
+    Returns 403, without starting the unit, when `name` is transmit-capable
+    and transmit is disabled. The 403 response names those units.
+    """
 
     try:
         return await system_service.start_systemd_service(name)
@@ -227,10 +236,15 @@ async def stop_a_systemd_service(name: str) -> Any:
 @router.post(
     "/service/restart",
     response_model=system.ServiceRunning,
-    dependencies=[Depends(verify_auth_wrapper)],
+    responses={**RESPONSES_TRANSMIT_UNIT},
+    dependencies=[Depends(require_transmit_for_unit)],
 )
 async def restart_a_systemd_service(name: str) -> Any:
-    """Use systemd via dbus to restart an allowed service."""
+    """Use systemd via dbus to restart an allowed service.
+
+    Returns 403, without restarting the unit, when `name` is transmit-capable
+    and transmit is disabled. The 403 response names those units.
+    """
 
     try:
         return await system_service.restart_systemd_service(name)

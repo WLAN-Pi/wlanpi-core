@@ -33,11 +33,14 @@ def get_interfaces(
 
     for interface in cmd_output:
         if interface["ifname"].startswith("eth"):
-            interface["link_speed"] = int(
-                run_command(
-                    ["cat", f"/sys/class/net/{interface['ifname']}/speed"]
-                ).stdout
-            )
+            try:
+                interface["link_speed"] = int(
+                    run_command(
+                        ["cat", f"/sys/class/net/{interface['ifname']}/speed"]
+                    ).stdout
+                )
+            except (RunCommandError, ValueError):
+                log.debug(f"No link speed for {interface['ifname']}")
 
     if custom_filter:
         return [

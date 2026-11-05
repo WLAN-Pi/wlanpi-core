@@ -2,9 +2,7 @@ import time
 import unittest.mock
 from unittest.mock import Mock, patch
 
-from wlanpi_core.models.runcommand_error import RunCommandError
 from wlanpi_core.utils import general
-from wlanpi_core.utils.general import get_model_info
 
 
 class TestGeneralUtils(unittest.TestCase):
@@ -38,39 +36,6 @@ class TestGeneralUtils(unittest.TestCase):
         actual_output = general.get_uptime()
 
         self.assertEqual(actual_output, expected_output)
-
-    @patch("wlanpi_core.utils.general.run_command")
-    def test_get_model_info(self, mock_run_command):
-        mock_output = """
-        Model:                WLAN Pi R4
-        Main board:           Raspberry Pi 4
-        USB Wi-Fi adapter:    3574:6211 MediaTek Inc. Wireless_Device
-        Bluetooth adapter:    Built-in
-        """
-
-        mock_run_command.return_value.stdout = mock_output
-
-        expected_dict = {
-            "Model": "WLAN Pi R4",
-            "Main board": "Raspberry Pi 4",
-            "USB Wi-Fi adapter": "3574:6211 MediaTek Inc. Wireless_Device",
-            "Bluetooth adapter": "Built-in",
-        }
-
-        result = get_model_info()
-
-        self.assertEqual(result, expected_dict)
-
-    @patch("wlanpi_core.utils.general.run_command")
-    def test_get_model_info_error(self, mock_run_command):
-        mock_output = "Error: Command not found"
-
-        mock_run_command.return_value.stdout = mock_output
-        mock_run_command.return_value.return_code = 1
-        mock_run_command.side_effect = RunCommandError("Failed to run command", 1)
-
-        with self.assertRaises(RunCommandError):
-            get_model_info()
 
 
 if __name__ == "__main__":

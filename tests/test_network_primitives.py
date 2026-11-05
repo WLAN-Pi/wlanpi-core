@@ -81,6 +81,36 @@ def test_get_interfaces_drops_empty_dicts_from_ip_output():
     assert result[0].link_speed == 1000
 
 
+def test_get_interfaces_omits_link_speed_when_eth_link_is_down():
+    from wlanpi_core.models.network.common import get_interfaces
+
+    eth0 = {
+        "ifindex": 2,
+        "ifname": "eth0",
+        "flags": ["BROADCAST", "MULTICAST"],
+        "mtu": 1500,
+        "qdisc": "fq_codel",
+        "operstate": "DOWN",
+        "group": "default",
+        "txqlen": 1000,
+        "link_type": "ether",
+        "address": "52:54:00:00:00:01",
+        "broadcast": "ff:ff:ff:ff:ff:ff",
+        "addr_info": [],
+    }
+
+    def _fake_run(cmd, **kwargs):
+        if cmd[0] == "ip":
+            return CommandResult(stdout=json.dumps([eth0]), stderr="", return_code=0)
+        raise RunCommandError("cat: /sys/class/net/eth0/speed: Invalid argument", 1)
+
+    with patch("wlanpi_core.models.network.common.run_command", side_effect=_fake_run):
+        result = get_interfaces()
+
+    assert [i.ifname for i in result] == ["eth0"]
+    assert "link_speed" not in result[0].model_dump()
+
+
 def test_get_link_stats_parses_ethtool():
     ethtool_out = (
         "Settings for eth0:\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tLink detected: yes\n"

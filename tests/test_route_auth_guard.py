@@ -53,8 +53,15 @@ def _api_routes() -> Iterator[tuple[str, APIRoute]]:
 
 
 def _has_auth(route: APIRoute) -> bool:
-    # ponytail: top-level auth deps only; recurse if a route ever nests auth.
-    return any(dep.call in AUTH_DEPENDENCIES for dep in route.dependant.dependencies)
+    def contains_auth(dependencies: list[Any]) -> bool:
+        for dep in dependencies:
+            if dep.call in AUTH_DEPENDENCIES:
+                return True
+            if contains_auth(dep.dependencies):
+                return True
+        return False
+
+    return contains_auth(route.dependant.dependencies)
 
 
 def _routes() -> list[tuple[str, APIRoute]]:

@@ -217,23 +217,6 @@ async def run_command_async(
     )
 
 
-def get_model_info() -> dict[str, str]:
-    """Get model info using the wlanpi-model CLI command.
-
-    Returns:
-        dictionary of model info
-    Raises:
-        RunCommandError: If the underlying command failed.
-    """
-
-    model_info = run_command(["wlanpi-model"]).stdout.split("\n")
-    split_model_info = [a.split(":", 1) for a in model_info if a.strip() != ""]
-    model_dict = {}
-    for a, b in split_model_info:
-        model_dict[a.strip()] = b.strip()
-    return model_dict
-
-
 def get_uptime() -> dict[str, Any] | list[Any] | int | float | str | None:
     """Get the system uptime using jc and the uptime command.
 
