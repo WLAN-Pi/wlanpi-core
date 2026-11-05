@@ -101,9 +101,12 @@ def bluetooth_adapter() -> str | None:
 
 
 def bluetooth_present(adapter: str) -> bool:
-    """Return whether hciconfig lists `adapter` (it works with no devices present)."""
-    cmd = "hciconfig"
-    return bool(_grep_text(run_command(cmd=cmd, raise_on_fail=True), adapter))
+    """Return whether hciconfig lists `adapter`, False when BlueZ is not installed."""
+    try:
+        result = run_command(cmd="hciconfig", raise_on_fail=True)
+    except FileNotFoundError:
+        return False
+    return bool(_grep_text(result, adapter))
 
 
 def bluetooth_name(adapter: str) -> str:
@@ -252,11 +255,14 @@ def _parse_adapter_property(output: str, property_name: str) -> str:
 
 
 async def _bluetooth_present_async(adapter: str) -> bool:
-    result = await run_command_async(
-        ["hciconfig"],
-        raise_on_fail=True,
-        timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
-    )
+    try:
+        result = await run_command_async(
+            ["hciconfig"],
+            raise_on_fail=True,
+            timeout=BLUETOOTH_COMMAND_TIMEOUT_SEC,
+        )
+    except FileNotFoundError:
+        return False
     return bool(_grep_text(result, adapter))
 
 
