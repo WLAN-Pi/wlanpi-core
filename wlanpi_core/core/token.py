@@ -229,7 +229,7 @@ class TokenManager:
                             "exp": int(expires.timestamp()),
                             "iat": int(wall_now),
                             "kid": str(signing_key.id),
-                            "jti": secrets.token_hex(8),
+                            "jti": secrets.token_hex(16),
                             "bid": boot_id,
                             "bexp": boot_expires,
                         }

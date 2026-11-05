@@ -83,6 +83,19 @@ async def test_issuance_uses_absolute_boot_expiry(token_manager):
 
 
 @pytest.mark.asyncio
+async def test_all_digit_jti_is_not_rejected_as_card_number(
+    token_manager, monkeypatch
+):
+    monkeypatch.setattr(
+        token_module.secrets, "token_hex", lambda n: ("4111" * n)[: 2 * n]
+    )
+
+    token = await token_manager.create_token("digits")
+
+    assert len((await _decode_token(token_manager, token))["jti"]) == 32
+
+
+@pytest.mark.asyncio
 async def test_verification_normalizes_bearer_whitespace(token_manager):
     token = await token_manager.create_token("whitespace")
 
