@@ -1,0 +1,8 @@
+/var/log/wlanpi_core/*.log {
+	size 10M
+	rotate 4
+	compress
+	missingok
+	notifempty
+	copytruncate
+}
