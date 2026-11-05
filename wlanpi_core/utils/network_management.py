@@ -17,10 +17,14 @@ log = logging.getLogger(__name__)
 
 # dhcpcd's fixed /run/dhcpcd and /var/lib/dhcpcd are shared across netns, so each
 # runs in a private mount ns; mkdir first, as /run/dhcpcd is absent after boot.
+# A DUID-LL from the MAC survives stop_dhcp and reboots, so the lease does too;
+# dhcpcd's own DUID-LLT is new whenever the state dir is (#353).
 _DHCPCD_WRAPPER = (
     "mkdir -p /run/dhcpcd /var/lib/dhcpcd "
+    '&& { read -r mac < "/sys/class/net/$3/address" '
+    '&& echo "00:03:00:01:$mac" > "$2/duid" || true; } '
     '&& mount --bind "$1" /run/dhcpcd && mount --bind "$2" /var/lib/dhcpcd '
-    '&& shift 2 && exec dhcpcd "$@"'
+    '&& shift 3 && exec dhcpcd "$@"'
 )
 
 
@@ -138,6 +142,7 @@ def restart_dhcp_with_timeout(
         "dhcpcd-wlanpi",
         str(state / "run"),
         str(state / "lib"),
+        iface,
         "-4",
         "-L",
         # No ARP probe: it delayed IPv4 ~5 s after every reassociation (#354).
