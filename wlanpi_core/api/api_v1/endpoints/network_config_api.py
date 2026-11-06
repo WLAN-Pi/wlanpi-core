@@ -201,7 +201,9 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     `roots` and `namespaces` replace the stored lists. An entry sent without
     `psk` or `password` keeps the stored secret for the same namespace and
     interface, so a configuration read with GET can be edited and sent back.
-    The response omits secrets like GET does.
+    The response omits secrets like GET does. Returns 409 when the
+    configuration is active, or while another network change (such as an
+    activate, deactivate or delete) is running.
     """
     try:
         config = network_config.edit_config(id, config_update)

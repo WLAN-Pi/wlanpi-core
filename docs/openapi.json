@@ -1955,7 +1955,7 @@
           "network_config"
         ],
         "summary": "Update Config",
-        "description": "Update an existing network configuration.\n\n`roots` and `namespaces` replace the stored lists. An entry sent without\n`psk` or `password` keeps the stored secret for the same namespace and\ninterface, so a configuration read with GET can be edited and sent back.\nThe response omits secrets like GET does.",
+        "description": "Update an existing network configuration.\n\n`roots` and `namespaces` replace the stored lists. An entry sent without\n`psk` or `password` keeps the stored secret for the same namespace and\ninterface, so a configuration read with GET can be edited and sent back.\nThe response omits secrets like GET does. Returns 409 when the\nconfiguration is active, or while another network change (such as an\nactivate, deactivate or delete) is running.",
         "operationId": "update_config_api_v1_network_config__id__patch",
         "security": [
           {

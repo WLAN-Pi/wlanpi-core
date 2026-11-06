@@ -65,7 +65,7 @@ def network_change_lock() -> Iterator[None]:
     and app start after the change that started them has returned.
 
     Raises:
-        ConfigBusyError: If another activate, deactivate or revert is running
+        ConfigBusyError: If another network configuration change is running
     """
     path = Path(RUN_DIR) / "netcfg.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
