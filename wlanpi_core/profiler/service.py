@@ -72,26 +72,8 @@ def profiler_beaconing_ssid() -> str | None:
 
 
 def _status_pid_alive() -> bool:
-    """Return True if the status file says starting/running for a live pid.
-
-    A file without a valid pid is not trusted: a crashed profiler leaves one
-    behind, and the pre-status window is covered by Core's process handle and
-    the systemd unit state.
-    """
-    try:
-        with open(cli.STATUS_FILE) as f:
-            status = json.load(f)
-    except (OSError, ValueError):
-        return False
-    if not isinstance(status, dict) or status.get("state") not in (
-        "starting",
-        "running",
-    ):
-        return False
-    pid = status.get("pid")
-    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
-        return False
-    return bool(psutil.pid_exists(pid))
+    pid = cli.status_pid()
+    return pid is not None and bool(psutil.pid_exists(pid))
 
 
 def profiler_active() -> bool:
