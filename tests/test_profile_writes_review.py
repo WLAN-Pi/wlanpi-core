@@ -3,7 +3,7 @@
 import pytest
 
 from wlanpi_core.models.network_config_errors import ConfigBusyError
-from wlanpi_core.schemas.network.network import NetConfig
+from wlanpi_core.schemas.network.network import NetConfig, NetConfigUpdate
 from wlanpi_core.utils import network_config as nc
 
 
@@ -24,3 +24,13 @@ def test_delete_waits_for_no_other_change(netcfg_env):
         with pytest.raises(ConfigBusyError):
             nc.delete_config("lab_cfg")
     assert (netcfg_env["cfg_dir"] / "lab_cfg.json").exists()
+
+
+def test_edit_waits_for_no_other_change(netcfg_env):
+    nc.add_config(NetConfig(id="lab_cfg", namespaces=[], roots=[]))
+    path = netcfg_env["cfg_dir"] / "lab_cfg.json"
+    before = path.read_text()
+    with nc.network_change_lock():
+        with pytest.raises(ConfigBusyError):
+            nc.edit_config("lab_cfg", NetConfigUpdate(roots=[]))
+    assert path.read_text() == before

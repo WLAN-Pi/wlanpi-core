@@ -528,26 +528,33 @@ def _keep_stored_secrets(stored: NetConfig, updated: NetConfig) -> None:
 
 
 def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
-    """Edit an existing configuration."""
+    """Edit an existing configuration.
+
+    Raises:
+        ConfigBusyError: If another change holds network_change_lock().
+    """
     path = _config_path(cfg_id)
-    cfg = get_config(cfg_id)
 
-    if is_active(cfg_id):
-        raise ConfigActiveError(f"Cannot edit active configuration {cfg_id}.")
+    # Locked so no activation can make cfg_id active between the check and the write.
+    with network_change_lock():
+        cfg = get_config(cfg_id)
 
-    stored = cfg.model_copy(deep=True)
-    for field in type(config_update).model_fields:
-        value = getattr(config_update, field)
-        if value is not None and field != "cfg_id":
-            setattr(cfg, field, value)
-    # setattr skips model validation; re-run it (uniqueness across entries)
-    try:
-        cfg = NetConfig.model_validate(cfg.model_dump())
-    except PydanticValidationError as e:
-        raise ValidationError(str(e), status_code=422) from None
-    _keep_stored_secrets(stored, cfg)
+        if is_active(cfg_id):
+            raise ConfigActiveError(f"Cannot edit active configuration {cfg_id}.")
 
-    _atomic_write(path, cfg.model_dump_json(indent=4))
+        stored = cfg.model_copy(deep=True)
+        for field in type(config_update).model_fields:
+            value = getattr(config_update, field)
+            if value is not None and field != "cfg_id":
+                setattr(cfg, field, value)
+        # setattr skips model validation; re-run it (uniqueness across entries)
+        try:
+            cfg = NetConfig.model_validate(cfg.model_dump())
+        except PydanticValidationError as e:
+            raise ValidationError(str(e), status_code=422) from None
+        _keep_stored_secrets(stored, cfg)
+
+        _atomic_write(path, cfg.model_dump_json(indent=4))
 
     return cfg
 

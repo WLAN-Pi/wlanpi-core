@@ -222,6 +222,8 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be updated: {cae}")
         raise HTTPException(status_code=409, detail=str(cae)) from None
+    except ConfigBusyError as cbe:
+        raise HTTPException(status_code=409, detail=cbe.message) from None
     except ValidationError as ve:
         raise HTTPException(status_code=ve.status_code, detail=ve.error_msg) from None
     except Exception as ex:
