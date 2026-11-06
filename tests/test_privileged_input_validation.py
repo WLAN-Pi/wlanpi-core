@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,20 @@ def test_wpa_values_round_trip_without_config_injection():
 
     assert f"ssid={security.ssid.encode().hex()}" in block
     assert 'psk="safe"pass\\word"' in block
+
+
+def test_wpa_passphrase_with_quote_and_hash_is_not_cut_by_comment():
+    psk = 'ab"cd#ef\\gh'
+    wpa2 = NetSecurity(ssid="Net", security=SecurityTypes.wpa2, psk=psk)
+    wpa3 = NetSecurity(ssid="Net", security=SecurityTypes.wpa3, psk=psk)
+
+    wpa2_block = generate_network_block(_root_config(security=wpa2))
+    wpa3_block = generate_network_block(_root_config(security=wpa3))
+
+    key = hashlib.pbkdf2_hmac("sha1", psk.encode(), b"Net", 4096, 32).hex()
+    assert f"    psk={key}\n" in wpa2_block
+    assert 'sae_password=P"ab\\x22cd\\x23ef\\\\gh"' in wpa3_block
+    assert "psk=" not in wpa3_block
 
 
 def test_wpa_raw_hex_psk_is_unquoted():
