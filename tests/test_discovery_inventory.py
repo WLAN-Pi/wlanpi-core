@@ -147,3 +147,11 @@ def test_inventory_skips_a_namespace_whose_iw_times_out():
         found = discovery.list_interfaces_all_namespaces()
 
     assert [(i.name, i.netns) for i in found] == [("wlan1", "lab")]
+
+
+def test_interface_driver_is_none_when_the_namespace_times_out():
+    with patch(
+        "wlanpi_core.adapters.discovery.ns_exec",
+        side_effect=subprocess.TimeoutExpired(["readlink"], 30),
+    ):
+        assert discovery.interface_driver("wlan0", "lab_ns") is None

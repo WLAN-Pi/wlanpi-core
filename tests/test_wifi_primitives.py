@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -94,6 +95,32 @@ def test_wifi_capabilities_record_a_namespaced_info_failure():
         "namespace": None,
         "info": "Wiphy phy1",
     }
+
+
+def test_wifi_capabilities_degrade_when_a_namespace_times_out():
+    timeout = subprocess.TimeoutExpired(["iw"], 30)
+
+    def fake_list_phys(namespace):
+        if namespace == "hung":
+            raise timeout
+        return ["phy0"]
+
+    with patch.object(capabilities, "list_phys", side_effect=fake_list_phys):
+        with patch.object(
+            capabilities, "list_namespaces", return_value=["hung", "nsvis"]
+        ):
+            with patch.object(
+                capabilities, "run_command", return_value=MagicMock(stdout="Wiphy phy0")
+            ):
+                with patch.object(capabilities, "ns_exec", side_effect=timeout):
+                    result = capabilities.get_wifi_capabilities()
+
+    assert [(a["phy"], a["namespace"]) for a in result["adapters"]] == [
+        ("phy0", None),
+        ("phy0", "nsvis"),
+    ]
+    assert result["adapters"][0]["info"] == "Wiphy phy0"
+    assert "timed out" in result["adapters"][1]["error"]
 
 
 def test_wifi_capabilities_skip_a_namespace_name_core_refuses():
