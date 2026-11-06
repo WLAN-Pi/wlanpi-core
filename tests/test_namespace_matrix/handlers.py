@@ -10,7 +10,7 @@ import threading
 import time
 import warnings
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
@@ -1828,6 +1828,71 @@ def handle_monitor_stop_during_poll_skips_dhcp(
     start_app.assert_not_called()
 
 
+def _stop_monitor_mid_dhcp(newer_owner: bool) -> tuple[MagicMock, MagicMock]:
+    """Mid-DHCP, drop the registry entry as a timed-out stop_connection_monitor join does; return (stop_dhcp, set_default_route)."""
+    from wlanpi_core.connection import monitor as mon
+
+    stop_all_connection_monitors()
+    _wait_for_monitors_idle()
+    cfg = _root(interface="wlan0", security=_security("Net"), default_route=True)
+    in_dhcp = threading.Event()
+    release = threading.Event()
+
+    def dhcp(*args, **kwargs):
+        in_dhcp.set()
+        assert release.wait(timeout=10), "test never released DHCP"
+
+    with patch(
+        "wlanpi_core.connection.monitor.get_wpa_status",
+        return_value={"wpa_status": {"wpa_state": "COMPLETED"}},
+    ):
+        with patch(
+            "wlanpi_core.connection.monitor.restart_dhcp_with_timeout",
+            side_effect=dhcp,
+        ):
+            with patch("wlanpi_core.connection.monitor.stop_dhcp") as stop_dhcp:
+                with patch("wlanpi_core.connection.monitor.set_default_route") as route:
+                    with _patch_monitor_clock():
+                        ConnectionMonitor.start_monitor(cfg, "wlan0", None, timeout=15)
+                        with mon._monitor_lock:
+                            thread = mon._connection_monitors["root:wlan0"]
+                        try:
+                            assert in_dhcp.wait(timeout=5), "monitor never reached DHCP"
+                            with mon._monitor_lock:
+                                mon._monitor_stop_flags.pop("root:wlan0").set()
+                                mon._connection_monitors.pop("root:wlan0")
+                                if newer_owner:
+                                    mon._monitor_stop_flags["root:wlan0"] = (
+                                        threading.Event()
+                                    )
+                        finally:
+                            release.set()
+                        thread.join(timeout=5)
+                        assert not thread.is_alive(), "monitor did not exit"
+                        with mon._monitor_lock:
+                            mon._monitor_stop_flags.pop("root:wlan0", None)
+                        _wait_for_monitors_idle()
+    return stop_dhcp, route
+
+
+def handle_monitor_stopped_mid_dhcp_stops_dhcpcd(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#472: a monitor stopped while DHCP runs stops the dhcpcd it started."""
+    stop_dhcp, route = _stop_monitor_mid_dhcp(newer_owner=False)
+    stop_dhcp.assert_called_once_with("wlan0", None)
+    route.assert_not_called()
+
+
+def handle_monitor_superseded_mid_dhcp_keeps_dhcpcd(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#472: a superseded monitor leaves dhcpcd to the newer monitor for the key."""
+    stop_dhcp, route = _stop_monitor_mid_dhcp(newer_owner=True)
+    stop_dhcp.assert_not_called()
+    route.assert_not_called()
+
+
 def handle_no_gatewayless_default_route(
     namespace_service, netcfg_env, scenario: Scenario
 ):
@@ -2944,6 +3009,8 @@ HANDLERS = {
     "atomic_write_failure_keeps_old_file": handle_atomic_write_failure_keeps_old_file,
     "monitor_restart_keeps_new_generation": handle_monitor_restart_keeps_new_generation,
     "monitor_stop_during_poll_skips_dhcp": handle_monitor_stop_during_poll_skips_dhcp,
+    "monitor_stopped_mid_dhcp_stops_dhcpcd": handle_monitor_stopped_mid_dhcp_stops_dhcpcd,
+    "monitor_superseded_mid_dhcp_keeps_dhcpcd": handle_monitor_superseded_mid_dhcp_keeps_dhcpcd,
     "no_gatewayless_default_route": handle_no_gatewayless_default_route,
     "force_delete_active_deactivates": handle_force_delete_active_deactivates,
     "failed_override_falls_back_to_default": handle_failed_override_falls_back_to_default,
