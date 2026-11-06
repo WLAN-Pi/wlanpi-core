@@ -243,8 +243,11 @@ async def delete_config(id: str, force: bool = False) -> Any:
 
     Deleting the active configuration returns 409 unless `force=true`, which
     deactivates it first (the default configuration becomes active).
+    `force=true` returns 409 when WLAN_MANAGEMENT is manual.
     """
     try:
+        if force:
+            require_wlan_management_enabled()
         success = await asyncio.to_thread(network_config.delete_config, id, force)
         if not success:
             log.error(f"Failed to delete configuration: {id}")

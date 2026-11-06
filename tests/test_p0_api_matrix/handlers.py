@@ -959,6 +959,20 @@ def handle_wlan_management_manual_deactivate_409(client, auth_headers, scenario)
     assert "WLAN_MANAGEMENT=manual" in detail
 
 
+def handle_wlan_management_manual_force_delete_409(client, auth_headers, scenario):
+    from wlanpi_core.core.config import settings
+    from wlanpi_core.utils import network_config as nc
+
+    with (
+        patch.object(settings, "WLAN_MANAGEMENT", "manual"),
+        patch.object(nc, "delete_config") as delete,
+    ):
+        response = client.delete("/api/v1/network/config/lab_cfg?force=true")
+    _expect_status(response, scenario.expected_http)
+    assert "WLAN_MANAGEMENT=manual" in response.json().get("detail", "")
+    delete.assert_not_called()
+
+
 def handle_wlan_management_manual_revert_409(client, auth_headers, scenario):
     from wlanpi_core.core.config import settings
 
@@ -1206,6 +1220,7 @@ HANDLERS.update(
         "system_device_info_wlan_management": handle_system_device_info_wlan_management,
         "wlan_management_manual_activate_409": handle_wlan_management_manual_activate_409,
         "wlan_management_manual_deactivate_409": handle_wlan_management_manual_deactivate_409,
+        "wlan_management_manual_force_delete_409": handle_wlan_management_manual_force_delete_409,
         "wlan_management_manual_revert_409": handle_wlan_management_manual_revert_409,
         "system_ntp_get": handle_system_ntp_get,
         "system_ntp_set": handle_system_ntp_set,

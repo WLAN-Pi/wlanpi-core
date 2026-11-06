@@ -206,6 +206,15 @@ def test_restart_keeps_the_state_for_the_next_lease(run_dir):
     assert lease.read_text() == "x"
 
 
+def test_restart_skips_start_when_old_dhcpcd_survives(run_dir):
+    _pidfile(run_dir, None, "wlan1", 10)
+    with patch.object(nm, "_read_cmdline", return_value=["dhcpcd: wlan1 [ip4]"]):
+        with patch.object(nm.os, "kill"), patch.object(nm.time, "sleep"):
+            with patch.object(nm, "ns_exec") as ns_exec:
+                nm.restart_dhcp_with_timeout("wlan1", None)
+    ns_exec.assert_not_called()
+
+
 def _run_wrapper(tmp_path, mac: str | None) -> tuple[Path, str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

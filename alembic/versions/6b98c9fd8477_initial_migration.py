@@ -18,25 +18,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_table('device_activity_recent')
-    op.drop_table('device_activity')
-    op.drop_table('devices')
-    op.drop_table('signing_keys')
-    op.drop_table('tokens')
-    op.drop_table('device_stats')
-
-
-def downgrade() -> None:
-    op.create_table('device_stats',
+    op.create_table('devices',
     sa.Column('device_id', sa.VARCHAR(), nullable=False),
-    sa.Column('request_count', sa.INTEGER(), nullable=False),
-    sa.Column('error_count', sa.INTEGER(), nullable=False),
-    sa.Column('endpoint_count', sa.INTEGER(), nullable=False),
-    sa.Column('last_activity', sa.DATETIME(), nullable=True),
+    sa.Column('first_seen', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('last_seen', sa.DATETIME(), nullable=True),
     sa.Column('created_at', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DATETIME(), nullable=True),
-    sa.ForeignKeyConstraint(['device_id'], ['devices.device_id'], name='fk_device_stats_device_id_devices'),
-    sa.PrimaryKeyConstraint('device_id', name='pk_device_stats')
+    sa.PrimaryKeyConstraint('device_id', name='pk_devices')
+    )
+    op.create_table('signing_keys',
+    sa.Column('id', sa.INTEGER(), nullable=False),
+    sa.Column('key', sa.TEXT(), nullable=False),
+    sa.Column('active', sa.BOOLEAN(), nullable=False),
+    sa.Column('created_at', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DATETIME(), nullable=True),
+    sa.PrimaryKeyConstraint('id', name='pk_signing_keys'),
+    sa.UniqueConstraint('key', name='uq_signing_keys_key')
     )
     op.create_table('tokens',
     sa.Column('id', sa.INTEGER(), nullable=False),
@@ -52,22 +49,16 @@ def downgrade() -> None:
     sa.PrimaryKeyConstraint('id', name='pk_tokens'),
     sa.UniqueConstraint('token', name='uq_tokens_token')
     )
-    op.create_table('signing_keys',
-    sa.Column('id', sa.INTEGER(), nullable=False),
-    sa.Column('key', sa.TEXT(), nullable=False),
-    sa.Column('active', sa.BOOLEAN(), nullable=False),
-    sa.Column('created_at', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DATETIME(), nullable=True),
-    sa.PrimaryKeyConstraint('id', name='pk_signing_keys'),
-    sa.UniqueConstraint('key', name='uq_signing_keys_key')
-    )
-    op.create_table('devices',
+    op.create_table('device_stats',
     sa.Column('device_id', sa.VARCHAR(), nullable=False),
-    sa.Column('first_seen', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('last_seen', sa.DATETIME(), nullable=True),
+    sa.Column('request_count', sa.INTEGER(), nullable=False),
+    sa.Column('error_count', sa.INTEGER(), nullable=False),
+    sa.Column('endpoint_count', sa.INTEGER(), nullable=False),
+    sa.Column('last_activity', sa.DATETIME(), nullable=True),
     sa.Column('created_at', sa.DATETIME(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DATETIME(), nullable=True),
-    sa.PrimaryKeyConstraint('device_id', name='pk_devices')
+    sa.ForeignKeyConstraint(['device_id'], ['devices.device_id'], name='fk_device_stats_device_id_devices'),
+    sa.PrimaryKeyConstraint('device_id', name='pk_device_stats')
     )
     op.create_table('device_activity',
     sa.Column('id', sa.INTEGER(), nullable=False),
@@ -89,3 +80,12 @@ def downgrade() -> None:
     sa.ForeignKeyConstraint(['device_id'], ['devices.device_id'], name='fk_device_activity_recent_device_id_devices'),
     sa.PrimaryKeyConstraint('id', name='pk_device_activity_recent')
     )
+
+
+def downgrade() -> None:
+    op.drop_table('device_activity_recent')
+    op.drop_table('device_activity')
+    op.drop_table('device_stats')
+    op.drop_table('tokens')
+    op.drop_table('signing_keys')
+    op.drop_table('devices')
