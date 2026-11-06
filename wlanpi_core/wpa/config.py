@@ -1,5 +1,6 @@
 """wpa_supplicant configuration file generation."""
 
+import hashlib
 import logging
 import os
 import string
@@ -23,15 +24,33 @@ def _ssid_value(ssid: str) -> str:
     return ssid.encode("utf-8").hex()
 
 
-def _psk_value(psk: str) -> str:
+def _quote_hides_hash(psk: str) -> bool:
+    """Return True if a quoted psk could have its tail read as a # comment.
+
+    wpa_supplicant pairs double quotes to decide whether # starts a comment,
+    so a " in the passphrase can expose a later # (#327).
+    """
+    return '"' in psk and "#" in psk
+
+
+def _psk_value(psk: str, ssid: str) -> str:
     """Encode a PSK: 64 hex digits are a raw key; a passphrase is quoted as-is.
 
     The passphrase is not escaped: wpa_supplicant reads up to the last quote,
-    so embedded quotes and backslashes survive. psk does not accept P"...".
+    so embedded quotes and backslashes survive. psk does not accept P"...",
+    so a passphrase flagged by _quote_hides_hash is written as its derived key.
     """
     if len(psk) == 64 and all(c in string.hexdigits for c in psk):
         return psk.lower()
+    if _quote_hides_hash(psk):
+        return hashlib.pbkdf2_hmac("sha1", psk.encode(), ssid.encode(), 4096, 32).hex()
     return f'"{psk}"'
+
+
+def _sae_password_value(psk: str) -> str:
+    """Encode a SAE passphrase as P"..." with " and # hex-escaped, so no quote or # is bare."""
+    escaped = psk.replace("\\", "\\\\").replace('"', "\\x22").replace("#", "\\x23")
+    return f'P"{escaped}"'
 
 
 def _string_value(value: str) -> str:
@@ -88,12 +107,14 @@ def generate_network_block(
         lines.append("    ieee80211w=2")
     elif sec in ("WPA2-PSK", "WPA-PSK"):
         if cfg.security.psk:
-            lines.append(f"    psk={_psk_value(cfg.security.psk)}")
+            lines.append(f"    psk={_psk_value(cfg.security.psk, original_ssid)}")
         lines.append("    key_mgmt=WPA-PSK")
         lines.append("    ieee80211w=1")
     elif sec == "WPA3-PSK":
-        if cfg.security.psk:
-            lines.append(f"    psk={_psk_value(cfg.security.psk)}")
+        if cfg.security.psk and _quote_hides_hash(cfg.security.psk):
+            lines.append(f"    sae_password={_sae_password_value(cfg.security.psk)}")
+        elif cfg.security.psk:
+            lines.append(f"    psk={_psk_value(cfg.security.psk, original_ssid)}")
         # SAE-EXT-KEY (AKM 24) with GCMP-256 for Wi-Fi 7 MLO APs; plain SAE keeps CCMP.
         lines.append("    key_mgmt=SAE SAE-EXT-KEY")
         lines.append("    pairwise=GCMP-256 CCMP")
