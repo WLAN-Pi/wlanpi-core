@@ -9,6 +9,7 @@ from wlanpi_core.schemas.network.network import NamespaceConfig, RootConfig
 from wlanpi_core.utils.network_management import (
     restart_dhcp_with_timeout,
     set_default_route,
+    stop_dhcp,
 )
 from wlanpi_core.wpa.status import get_wpa_status
 
@@ -38,6 +39,15 @@ class ConnectionMonitor:
 
         # Captured, not looked up by key, so a newer monitor cannot swap it.
         stop_event = threading.Event()
+
+        def stopped_after_dhcp() -> bool:
+            if not stop_event.is_set():
+                return False
+            # Teardown's stop_dhcp can predate this dhcpcd's pidfile (#472); spare a newer owner's dhcpcd.
+            with _monitor_lock:
+                if _monitor_stop_flags.get(monitor_key) in (None, stop_event):
+                    stop_dhcp(iface, namespace)
+            return True
 
         def monitor_loop() -> None:
             try:
@@ -115,7 +125,7 @@ class ConnectionMonitor:
                     restart_dhcp_with_timeout(
                         iface, namespace, timeout=15, default_route=cfg.default_route
                     )
-                    if stop_event.is_set():
+                    if stopped_after_dhcp():
                         log.info(
                             f"[ConnectionMonitor] {monitor_key} stopped after DHCP; skipping route and app"
                         )
@@ -158,6 +168,7 @@ class ConnectionMonitor:
                     restart_dhcp_with_timeout(
                         iface, namespace, timeout=1, default_route=cfg.default_route
                     )
+                    stopped_after_dhcp()
                 except Exception as e:
                     log.warning(
                         f"[ConnectionMonitor] Could not leave DHCP running for {iface}: {e}"

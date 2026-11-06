@@ -123,7 +123,12 @@ def restart_dhcp_with_timeout(
         f"Starting DHCP client for {iface} in namespace {namespace_display} with timeout {timeout}s"
     )
     state = dhcp_dir(iface, namespace)
-    _stop_dhcpcd_dir(state, namespace)  # keep the state: the DUID and lease are reused
+    # Keep the state: the DUID and lease are reused.
+    if not _stop_dhcpcd_dir(state, namespace):
+        log.warning(
+            f"DHCP not restarted for {iface} in namespace {namespace_display}: old dhcpcd still running"
+        )
+        return
     for sub in ("run", "lib"):
         (state / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
 
