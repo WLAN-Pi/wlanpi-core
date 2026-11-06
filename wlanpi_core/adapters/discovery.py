@@ -218,7 +218,7 @@ def interface_driver(iface: str, namespace: str | None = None) -> str | None:
             no_output=True,
             raise_on_fail=False,
         )
-    except (RunCommandError, ValueError) as e:
+    except (RunCommandError, ValueError, subprocess.TimeoutExpired) as e:
         log.warning(f"Could not read the driver of {iface}: {e}")
         return None
     return result.stdout.strip().rpartition("/")[2] or None

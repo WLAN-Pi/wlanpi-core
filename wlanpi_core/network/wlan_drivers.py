@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -39,7 +40,12 @@ def _driver_for_interface(iface: str, namespace: str | None = None) -> str | Non
         output = _run([ETHTOOL_FILE, "-i", iface], namespace).stdout
         match = re.search(r"driver:\s+(\S+)", output)
         return match.group(1) if match else None
-    except (RunCommandError, FileNotFoundError, ValueError):
+    except (
+        RunCommandError,
+        FileNotFoundError,
+        ValueError,
+        subprocess.TimeoutExpired,
+    ):
         return None
 
 
@@ -79,7 +85,13 @@ def _bus_for_interface(iface: str, namespace: str | None = None) -> str | None:
         if not device_path.exists():
             return None
         return _bus_from_sysfs_path(device_path)
-    except (RunCommandError, FileNotFoundError, OSError, ValueError):
+    except (
+        RunCommandError,
+        FileNotFoundError,
+        OSError,
+        ValueError,
+        subprocess.TimeoutExpired,
+    ):
         pass
     return None
 
@@ -95,7 +107,7 @@ def _collect_wlan_driver_inventory() -> dict[str, Any]:
             pci_devices.append(
                 {"pci_id": pci_id.strip(), "description": description.strip()}
             )
-    except (RunCommandError, FileNotFoundError):
+    except (RunCommandError, FileNotFoundError, subprocess.TimeoutExpired):
         pci_devices = []
 
     interfaces: list[tuple[str, str | None]] = []
@@ -108,7 +120,7 @@ def _collect_wlan_driver_inventory() -> dict[str, Any]:
         except NetworkNamespaceError as exc:
             log.warning("Could not list namespaces; root only: %r", exc)
             interfaces = [(name, None) for name in discovery.list_interfaces()]
-    except RunCommandError as exc:
+    except (RunCommandError, subprocess.TimeoutExpired) as exc:
         log.warning("Could not list WLAN interfaces: %r", exc)
 
     adapters: list[dict[str, Any]] = []

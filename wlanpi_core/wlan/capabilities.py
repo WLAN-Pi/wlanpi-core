@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from typing import Any
 
 from wlanpi_core.adapters.phy import list_phys
@@ -32,7 +33,7 @@ def get_wifi_capabilities() -> dict[str, Any]:
         phys_by_ns: list[tuple[str | None, list[str]]] = [
             (None, list_phys(namespace=None))
         ]
-    except RunCommandError as exc:
+    except (RunCommandError, subprocess.TimeoutExpired) as exc:
         raise ValidationError(
             f"Unable to list wireless PHY devices: {exc}", status_code=503
         ) from exc
@@ -45,7 +46,7 @@ def get_wifi_capabilities() -> dict[str, Any]:
     for netns in namespaces:
         try:
             phys_by_ns.append((netns, list_phys(namespace=netns)))
-        except (RunCommandError, ValueError) as exc:
+        except (RunCommandError, ValueError, subprocess.TimeoutExpired) as exc:
             log.warning("Could not list PHYs in %s: %r", netns, exc)
 
     adapters: list[dict[str, Any]] = []
@@ -57,7 +58,7 @@ def get_wifi_capabilities() -> dict[str, Any]:
                     raw = run_command(cmd, raise_on_fail=True).stdout
                 else:
                     raw = ns_exec(cmd, namespace=netns, no_output=True).stdout
-            except RunCommandError as exc:
+            except (RunCommandError, subprocess.TimeoutExpired) as exc:
                 adapters.append({"phy": phy, "namespace": netns, "error": str(exc)})
                 continue
             adapters.append({"phy": phy, "namespace": netns, "info": raw})

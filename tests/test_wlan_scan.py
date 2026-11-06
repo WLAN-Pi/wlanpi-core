@@ -248,3 +248,44 @@ def test_parse_iw_dev_output_records_the_phy_header():
     }
     assert parsed["wlan2"]["type"] == "managed"
     assert not any(k.startswith("phy#") for info in parsed.values() for k in info)
+
+
+MLO_IW_DEV = """\
+phy#0
+\tInterface wlan0
+\t\tifindex 3
+\t\twdev 0x1
+\t\taddr dc:97:ba:7f:30:05
+\t\tssid DHA_DOT1X
+\t\ttype managed
+\t\tmulticast TXQ:
+\t\t\tqsz-byt\tqsz-pkt\tflows\tdrops\tmarks\toverlmt\thashcol\ttx-bytes\ttx-packets
+\t\t\t0\t0\t0\t0\t0\t0\t0\t0\t\t0
+\t\tMLD with links:
+\t\t - link ID  0 link addr 56:7c:03:b9:70:d1
+\t\t - link ID  1 link addr 2e:a5:0c:d8:23:a2
+\t\t   channel 56 (5280 MHz), width: 20 MHz, center1: 5280 MHz
+\t\t   txpower 22.00 dBm
+\t\t - link ID  2 link addr 36:39:29:56:fd:86
+\tInterface wlanpi0
+\t\tifindex 7
+\t\twdev 0x2
+\t\taddr dc:97:ba:7f:30:05
+\t\ttype monitor
+"""
+
+
+def test_parse_iw_dev_output_reports_the_active_mlo_link_channel():
+    from wlanpi_core.utils.network_config import parse_iw_dev_output
+
+    parsed = parse_iw_dev_output(MLO_IW_DEV)
+    assert parsed["wlan0"] == {
+        "wiphy": "0",
+        "ifindex": "3",
+        "wdev": "0x1",
+        "addr": "dc:97:ba:7f:30:05",
+        "ssid": "DHA_DOT1X",
+        "type": "managed",
+        "channel": "56 (5280 MHz), width: 20 MHz, center1: 5280 MHz",
+    }
+    assert parsed["wlanpi0"]["type"] == "monitor"

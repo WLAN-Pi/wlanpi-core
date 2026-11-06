@@ -956,7 +956,12 @@ class NetworkNamespaceService:
             self.log.info("Namespace %s already exists", namespace)
 
         moved_to = live.netns
-        interface.delete_interface(live.name, namespace=live.netns)
+        try:
+            interface.delete_interface(live.name, namespace=live.netns)
+        except RunCommandError:
+            if created_namespace is not None:
+                self._delete_namespace_if_empty(created_namespace)
+            raise
         if live.netns != namespace:
             try:
                 if live.netns is not None:
