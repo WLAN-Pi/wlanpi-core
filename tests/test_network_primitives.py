@@ -776,7 +776,6 @@ def test_bus_and_driver_for_namespaced_interface_run_in_the_namespace():
 
 
 def test_wlan_driver_inventory_degrades_when_commands_time_out():
-    """A hung command skips its interface or field instead of failing the inventory."""
     timeout = subprocess.TimeoutExpired(["cmd"], 30)
     outputs = {
         ("iw", "dev", "wlan2", "info"): "Interface wlan2\n\twiphy 1\n",
