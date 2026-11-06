@@ -545,8 +545,23 @@ def handle_network_config_change_busy_409(client, auth_headers, scenario, netcfg
         "busy_cfg",
         {"id": "busy_cfg", "namespaces": [], "roots": []},
     )
+    busy_cfg = netcfg_env["cfg_dir"] / "busy_cfg.json"
+    before = busy_cfg.read_text()
     with nc.network_change_lock():
         responses = [
+            client.patch(
+                "/api/v1/network/config/busy_cfg",
+                json={
+                    "roots": [
+                        {
+                            "mode": "monitor",
+                            "iface_display_name": "wlan1",
+                            "phy": "phy1",
+                            "interface": "wlan1",
+                        }
+                    ]
+                },
+            ),
             client.post(
                 "/api/v1/network/config/activate/busy_cfg",
                 params={"override_active": True},
@@ -564,6 +579,7 @@ def handle_network_config_change_busy_409(client, auth_headers, scenario, netcfg
         _expect_status(response, scenario.expected_http)
         assert "in progress" in response.text
     assert netcfg_env["ccf"].read_text().strip() == "default"
+    assert busy_cfg.read_text() == before
 
 
 def handle_network_config_reserved_ids_400(client, auth_headers, scenario, netcfg_env):
