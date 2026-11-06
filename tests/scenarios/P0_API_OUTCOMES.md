@@ -84,6 +84,7 @@ service-level NTP/health parsers may still keep focused unit tests.
 | `system_device_info_wlan_management` | #238 / webui #123 | 200 | `wlan_management` present and reflects settings |
 | `wlan_management_manual_activate_409` | #238 | 409 | activate gated |
 | `wlan_management_manual_deactivate_409` | #238 | 409 | deactivate gated |
+| `wlan_management_manual_force_delete_409` | #471 | 409 | forced delete gated |
 | `wlan_management_manual_revert_409` | #238 | 409 | revert gated |
 | `system_ntp_get` / `system_ntp_set` | webui #124 | 200 | GET/POST `/system/ntp` |
 | `system_health` | #241 | 200 | health snapshot keys |
