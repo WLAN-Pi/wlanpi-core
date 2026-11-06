@@ -2022,7 +2022,7 @@
           "network_config"
         ],
         "summary": "Delete Config",
-        "description": "Delete a network configuration by ID.\n\nDeleting the active configuration returns 409 unless `force=true`, which\ndeactivates it first (the default configuration becomes active).",
+        "description": "Delete a network configuration by ID.\n\nDeleting the active configuration returns 409 unless `force=true`, which\ndeactivates it first (the default configuration becomes active).\n`force=true` returns 409 when WLAN_MANAGEMENT is manual.",
         "operationId": "delete_config_api_v1_network_config__id__delete",
         "security": [
           {
