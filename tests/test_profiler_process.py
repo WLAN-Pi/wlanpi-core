@@ -223,7 +223,6 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
 
 @pytest.fixture
 def unowned_profiler(tmp_path):
-    """Run a process named profiler that this worker holds no handle for."""
     script = tmp_path / "profiler"
     script.write_text("import time\ntime.sleep(60)\n")
     process = subprocess.Popen([sys.executable, str(script)], start_new_session=True)

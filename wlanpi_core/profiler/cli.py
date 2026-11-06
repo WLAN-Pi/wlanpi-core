@@ -57,9 +57,7 @@ def _read_if_changed(path: str, before: tuple[int, int] | None) -> dict[str, Any
 def status_pid() -> int | None:
     """Return the pid STATUS_FILE gives for a starting or running profiler.
 
-    A file without a valid pid is not trusted: a crashed profiler leaves one
-    behind, and the pre-status window is covered by Core's process handle and
-    the systemd unit state.
+    A file without a valid pid is not trusted: a crashed profiler leaves one behind.
     """
     try:
         with open(STATUS_FILE) as f:
@@ -78,12 +76,7 @@ def status_pid() -> int | None:
 
 
 def _unowned_profiler() -> psutil.Process | None:
-    """Return the profiler named by STATUS_FILE when it is still that program.
-
-    Finds a profiler this worker has no handle for, such as one started by a
-    gunicorn worker that has since been replaced. The cmdline check guards
-    against the pid having been reused by another program.
-    """
+    """Find a profiler started by a replaced gunicorn worker, rejecting a reused pid."""
     pid = status_pid()
     if pid is None:
         return None
@@ -99,10 +92,7 @@ def _unowned_profiler() -> psutil.Process | None:
 
 
 def _stop_unowned(process: psutil.Process) -> None:
-    """Terminate a profiler group that is not Core's child and wait for it to exit.
-
-    Core and systemd both start the profiler as its own process group leader.
-    """
+    # Core and systemd both start the profiler as its own process group leader.
     try:
         os.killpg(process.pid, signal.SIGTERM)
         try:

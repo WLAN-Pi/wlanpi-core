@@ -72,7 +72,6 @@ def profiler_beaconing_ssid() -> str | None:
 
 
 def _status_pid_alive() -> bool:
-    """Return True if the status file says starting/running for a live pid."""
     pid = cli.status_pid()
     return pid is not None and bool(psutil.pid_exists(pid))
 
