@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import subprocess
+import sys
 from unittest.mock import AsyncMock
 
 import pytest
@@ -217,6 +219,46 @@ async def test_stop_profiler_terminates_and_reaps_process(mocker):
 
     terminate_process.assert_awaited_once_with(process, grace=10.0)
     assert cli.profiler_process is None
+
+
+@pytest.fixture
+def unowned_profiler(tmp_path):
+    """Run a process named profiler that this worker holds no handle for."""
+    script = tmp_path / "profiler"
+    script.write_text("import time\ntime.sleep(60)\n")
+    process = subprocess.Popen([sys.executable, str(script)], start_new_session=True)
+    write_json(cli.STATUS_FILE, {"state": "running", "pid": process.pid})
+    yield process
+    process.kill()
+    process.wait(timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_stop_profiler_stops_profiler_from_lost_handle(unowned_profiler):
+    assert await cli.stop_profiler() is True
+
+    assert unowned_profiler.poll() is not None
+
+
+@pytest.mark.asyncio
+async def test_start_profiler_rejects_profiler_from_lost_handle(
+    mocker, unowned_profiler
+):
+    create_process = mocker.patch.object(
+        cli.asyncio, "create_subprocess_exec", new=AsyncMock()
+    )
+
+    result = await cli.start_profiler(Start())
+
+    assert result["reason"] == "already_running"
+    create_process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stop_profiler_ignores_reused_status_pid():
+    write_json(cli.STATUS_FILE, {"state": "running", "pid": os.getpid()})
+
+    assert await cli.stop_profiler() is False
 
 
 @pytest.mark.asyncio

@@ -3,9 +3,12 @@
 import asyncio
 import json
 import os
+import signal
 import time
 from asyncio.subprocess import Process
 from typing import Any
+
+import psutil
 
 import wlanpi_core.profiler.models as models
 from wlanpi_core.core.logging import get_logger
@@ -49,6 +52,66 @@ def _read_if_changed(path: str, before: tuple[int, int] | None) -> dict[str, Any
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def status_pid() -> int | None:
+    """Return the pid STATUS_FILE gives for a starting or running profiler.
+
+    A file without a valid pid is not trusted: a crashed profiler leaves one
+    behind, and the pre-status window is covered by Core's process handle and
+    the systemd unit state.
+    """
+    try:
+        with open(STATUS_FILE) as f:
+            status = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(status, dict) or status.get("state") not in (
+        "starting",
+        "running",
+    ):
+        return None
+    pid = status.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return None
+    return pid
+
+
+def _unowned_profiler() -> psutil.Process | None:
+    """Return the profiler named by STATUS_FILE when it is still that program.
+
+    Finds a profiler this worker has no handle for, such as one started by a
+    gunicorn worker that has since been replaced. The cmdline check guards
+    against the pid having been reused by another program.
+    """
+    pid = status_pid()
+    if pid is None:
+        return None
+    try:
+        process = psutil.Process(pid)
+        cmdline = process.cmdline()
+    except psutil.Error:
+        return None
+    # The profiler is a script, so argv[0] is its interpreter.
+    if not any(os.path.basename(arg) == "profiler" for arg in cmdline[:2]):
+        return None
+    return process
+
+
+def _stop_unowned(process: psutil.Process) -> None:
+    """Terminate a profiler group that is not Core's child and wait for it to exit.
+
+    Core and systemd both start the profiler as its own process group leader.
+    """
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(_PROFILER_STOP_GRACE_SEC)
+        except psutil.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(_PROFILER_STOP_GRACE_SEC)
+    except (ProcessLookupError, psutil.NoSuchProcess):
+        pass
 
 
 async def _await_start(
@@ -125,7 +188,9 @@ async def start_profiler(args: models.Start) -> dict[str, Any]:
     cmd += [flag for flag, enabled in bool_flags if enabled]
 
     async with profiler_lock:
-        if profiler_process and profiler_process.returncode is None:
+        if (
+            profiler_process and profiler_process.returncode is None
+        ) or _unowned_profiler():
             return {
                 "success": False,
                 "reason": "already_running",
@@ -160,14 +225,16 @@ async def stop_profiler() -> Any:
     global profiler_process
 
     async with profiler_lock:
-        if not profiler_process:
-            return False
-
         process = profiler_process
-        if process.returncode is not None:
-            await process.wait()
-            profiler_process = None
-            return False
+        if process is None or process.returncode is not None:
+            if process is not None:
+                await process.wait()
+                profiler_process = None
+            unowned = _unowned_profiler()
+            if unowned is None:
+                return False
+            await asyncio.to_thread(_stop_unowned, unowned)
+            return True
 
         # The profiler needs ~2 s after SIGTERM to restore the radio; an
         # earlier SIGKILL leaves it staged and breaks later captures.
