@@ -210,11 +210,13 @@ def parse_iw_dev_output(output: str) -> dict[str, Any]:
     current_iface = None
     current_wiphy = None
     skip_table_block = False
+    in_mld_links = False
 
     for line in output.splitlines():
         line = line.rstrip()
         if not line.strip():
             skip_table_block = False
+            in_mld_links = False
             continue
 
         # `iw dev` names the PHY only in its unindented "phy#N" header; it
@@ -223,6 +225,7 @@ def parse_iw_dev_output(output: str) -> dict[str, Any]:
             current_wiphy = line[len("phy#") :]
             current_iface = None
             skip_table_block = False
+            in_mld_links = False
             continue
 
         if line.lstrip().startswith("Interface "):
@@ -231,12 +234,25 @@ def parse_iw_dev_output(output: str) -> dict[str, Any]:
                 {} if current_wiphy is None else {"wiphy": current_wiphy}
             )
             skip_table_block = False
+            in_mld_links = False
             continue
 
         if not current_iface:
             continue
 
         stripped = line.strip()
+
+        # nl80211 reports an MLD's channel per active link, never at interface level.
+        if stripped == "MLD with links:":
+            skip_table_block = False
+            in_mld_links = True
+            continue
+        if in_mld_links:
+            if stripped.startswith("channel "):
+                interfaces[current_iface].setdefault(
+                    "channel", stripped[len("channel ") :]
+                )
+            continue
 
         if stripped.endswith("TXQ:") or stripped.startswith("qsz-byt"):
             skip_table_block = True
