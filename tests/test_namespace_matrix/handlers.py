@@ -1893,6 +1893,30 @@ def handle_rollback_after_partial_prepare(
     assert netcfg_env["ccf"].read_text().strip() == "default"
 
 
+def handle_netdev_delete_refused_removes_namespace(
+    namespace_service, netcfg_env, scenario: Scenario
+):
+    """#343: a refused `iw dev del` leaves no Core namespace behind."""
+    _write_netconfig(
+        netcfg_env,
+        "brcm_cfg",
+        namespaces=[
+            _ns("brcm_ns", interface="wlan1", phy="phy2").model_dump(mode="json")
+        ],
+    )
+    faults = {
+        (None, ("iw", "dev", "wlan1", "del")): (
+            "command failed: Unknown error 524 (-524)\n"
+        )
+    }
+    with live_adapter_inventory_mocks(JOSH_THREE_RADIO, faults=faults) as inventory:
+        with pytest.raises(RunCommandError):
+            nc.activate_config("brcm_cfg", override_active=True)
+    assert "brcm_ns" not in inventory.netns
+    assert inventory.adds == []
+    assert inventory.live() == JOSH_LIVE
+
+
 OTHER_TOOLS_LAYOUT: dict[str, dict[str, str]] = {
     # wlanpi-profiler: hostapd holds wlan0 as AP, plus its own monitor
     "wlan0": {"phy": "phy0", "mac": "00:11:22:33:66:00", "type": "AP"},
@@ -2932,6 +2956,7 @@ HANDLERS = {
     "revert_leaves_foreign_namespace": handle_revert_leaves_foreign_namespace,
     "revert_moves_phy_without_netdev": handle_revert_moves_phy_without_netdev,
     "shared_phy_monitor_iface_round_trip": handle_shared_phy_monitor_iface_round_trip,
+    "netdev_delete_refused_removes_namespace": handle_netdev_delete_refused_removes_namespace,
 }
 
 
