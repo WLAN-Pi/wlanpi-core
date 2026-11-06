@@ -20,9 +20,9 @@ coverage[toml]==7.6.10
     #   pytest-cov
 coverage-badge==1.1.2
     # via -r testing.in
-distlib==0.3.9
+distlib==0.4.4
     # via virtualenv
-filelock==3.32.7
+filelock==4.2.9
     # via
     #   python-discovery
     #   tox
@@ -33,12 +33,13 @@ mypy==1.14.1
     # via -r testing.in
 mypy-extensions==1.0.0
     # via mypy
-packaging==24.2
+packaging==26.3
     # via
     #   pyproject-api
     #   pytest
     #   tox
-platformdirs==4.3.6
+    #   virtualenv
+platformdirs==4.14.5
     # via
     #   tox
     #   virtualenv
@@ -68,9 +69,9 @@ pytest-cov==6.0.0
     # via -r testing.in
 pytest-mock==3.14.0
     # via -r testing.in
-python-discovery==1.6.0
+python-discovery==1.9.5
     # via virtualenv
-python-dotenv==1.0.1
+python-dotenv==1.2.4
     # via pydantic-settings
 ruff==0.16.8
     # via -r testing.in
@@ -81,7 +82,7 @@ typing-extensions==4.12.2
     #   mypy
     #   pydantic
     #   pydantic-core
-virtualenv==21.7.10
+virtualenv==21.15.5
     # via tox
 
 # The following packages are considered to be unsafe in a requirements file:
