@@ -775,6 +775,36 @@ def test_bus_and_driver_for_namespaced_interface_run_in_the_namespace():
     root.assert_not_called()
 
 
+def test_wlan_driver_inventory_degrades_when_commands_time_out():
+    timeout = subprocess.TimeoutExpired(["cmd"], 30)
+    outputs = {
+        ("iw", "dev", "wlan2", "info"): "Interface wlan2\n\twiphy 1\n",
+        ("readlink", "-f", "/sys/class/ieee80211/phy1/device"): (
+            "/sys/devices/platform/axi/1000110000.pcie/pci0000:00/0000:01:00.0\n"
+        ),
+    }
+
+    def fake_ns_exec(cmd, namespace, no_output, raise_on_fail):
+        if namespace == "hung" or tuple(cmd) not in outputs:
+            raise timeout
+        return MagicMock(stdout=outputs[tuple(cmd)])
+
+    with patch.object(wlan_drivers, "IW_FILE", "iw"):
+        with patch.object(wlan_drivers, "run_command", side_effect=timeout):
+            with patch.object(wlan_drivers, "ns_exec", side_effect=fake_ns_exec):
+                with patch.object(
+                    wlan_drivers.discovery,
+                    "list_interfaces_all_namespaces",
+                    return_value=[_live("wlan1", "hung"), _live("wlan2", "nsvis", 1)],
+                ):
+                    result = wlan_drivers._collect_wlan_driver_inventory()
+
+    assert result["adapters"] == [
+        {"interface": "wlan2", "namespace": "nsvis", "driver": None, "bus": "pci"}
+    ]
+    assert result["pci_devices"] == []
+
+
 def test_wlan_driver_inventory_cache_is_shared_within_ttl():
     inventory = {
         "adapters": [
