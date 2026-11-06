@@ -4,6 +4,8 @@
 #
 #    pip-compile --no-index testing.in
 #
+--extra-index-url https://www.piwheels.org/simple
+
 annotated-types==0.7.0
     # via pydantic
 cachetools==5.5.1
