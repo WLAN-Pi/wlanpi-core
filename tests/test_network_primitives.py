@@ -1053,7 +1053,8 @@ def test_get_wlan_link_mlo_info_failure_has_no_link_details():
     ):
         result = wlan_link.get_wlan_link("wlan0")
 
-    assert all("local_addr" not in x for x in result["links"])
+    for key in ("local_addr", "width_mhz", "center1_mhz"):
+        assert all(key not in x for x in result["links"])
 
 
 def test_parse_link_details_keys_channel_to_its_own_link():
