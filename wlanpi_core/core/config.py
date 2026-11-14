@@ -13,6 +13,8 @@ from wlanpi_core.api.openapi_docs import OPENAPI_DESCRIPTION, OPENAPI_TAGS
 log = logging.getLogger(__name__)
 
 VALID_WLAN_MANAGEMENT = ("auto", "manual")
+DEFAULT_ACCESS_TOKEN_EXPIRE_DAYS = 7
+MAX_ACCESS_TOKEN_EXPIRE_DAYS = 365
 
 
 class Settings(BaseSettings):
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
 
     API_DEFAULT_TIMEOUT: int = 20
 
-    ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_DAYS: int = DEFAULT_ACCESS_TOKEN_EXPIRE_DAYS
 
     API_V1_STR: str = constants.API_V1_STR
 
@@ -45,6 +47,23 @@ class Settings(BaseSettings):
                 return normalized
         log.warning("Invalid WLAN_MANAGEMENT=%r; falling back to 'auto'", value)
         return "auto"
+
+    @field_validator("ACCESS_TOKEN_EXPIRE_DAYS", mode="before")
+    @classmethod
+    def _bound_access_token_expire_days(cls, value: Any) -> int:
+        """Fall back to the default so a bad value never stops startup."""
+        try:
+            days = int(value) if isinstance(value, (int, str)) else 0
+        except ValueError:
+            days = 0
+        if 1 <= days <= MAX_ACCESS_TOKEN_EXPIRE_DAYS:
+            return days
+        log.warning(
+            "Invalid ACCESS_TOKEN_EXPIRE_DAYS=%r; falling back to %d",
+            value,
+            DEFAULT_ACCESS_TOKEN_EXPIRE_DAYS,
+        )
+        return DEFAULT_ACCESS_TOKEN_EXPIRE_DAYS
 
     model_config = SettingsConfigDict(case_sensitive=True)
 

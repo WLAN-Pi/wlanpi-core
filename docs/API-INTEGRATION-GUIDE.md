@@ -224,15 +224,8 @@ Tokens issued before the change keep their original expiry.
 A longer lifetime keeps a leaked or forgotten token valid for longer. Prefer
 rotation ([1.4](#14-keep-a-session-alive)) for clients that can run code.
 
-Use a whole number of days, 1 or more. Core checks only that the value is an
-integer, not that it is positive
-([#388](https://github.com/WLAN-Pi/wlanpi-core/issues/388)):
-
-- A value that is not an integer, such as `abc`, stops Core from starting.
-  `/var/log/wlanpi_core/gunicorn_error.log` shows a `ValidationError` for
-  `ACCESS_TOKEN_EXPIRE_DAYS`.
-- `0` or a negative value lets Core start, but every new token fails with `401`
-  on first use.
+Use a whole number of days from 1 to 365. For any other value, such as `abc`,
+`0`, or `400`, Core logs a warning and uses the default of 7 days.
 
 1. Set the lifetime in its own drop-in file. This example sets 30 days:
 
@@ -267,13 +260,13 @@ integer, not that it is positive
    30.0
    ```
 
+   If the second line is `7.0`, Core did not accept the value.
+
 To return to the default of 7 days, delete the drop-in and restart Core.
-`reset-failed` clears the failed state if a bad value stopped Core.
 
 ```bash
 sudo rm /etc/systemd/system/wlanpi-core.service.d/token-lifetime.conf
 sudo systemctl daemon-reload
-sudo systemctl reset-failed wlanpi-core
 sudo systemctl restart wlanpi-core
 ```
 
