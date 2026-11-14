@@ -1,6 +1,7 @@
 """Run commands in a network namespace or the root namespace."""
 
 import logging
+import time
 
 from wlanpi_core.models.command_result import CommandResult
 from wlanpi_core.models.runcommand_error import RunCommandError
@@ -18,7 +19,7 @@ def ns_exec(
 ) -> CommandResult:
     """Run `cmd` under sudo, inside `namespace` via `ip netns exec` when given.
 
-    `no_output` suppresses debug logging of the output.
+    `no_output` leaves stdout and stderr out of the debug record.
 
     Raises:
         RunCommandError: If `raise_on_fail` and the command fails.
@@ -29,15 +30,21 @@ def ns_exec(
         namespace = validate_namespace_name(namespace)
         full_cmd = ["sudo", "ip", "netns", "exec", namespace, *cmd]
 
-    log.debug(f"Executing in namespace '{namespace or 'root'}': {' '.join(full_cmd)}")
+    start = time.monotonic()
 
     try:
         result = run_command(full_cmd, raise_on_fail=raise_on_fail)
 
+        record = (
+            f"Executed in namespace '{namespace or 'root'}' "
+            f"(return_code={result.return_code}, {time.monotonic() - start:.3f}s): "
+            f"{' '.join(full_cmd)}"
+        )
         if not no_output:
-            log.debug(f"stdout: {result.stdout}")
-            log.debug(f"stderr: {result.stderr}")
-            log.debug(f"return_code: {result.return_code}")
+            record += f"\nstdout: {result.stdout}"
+            if result.stderr:
+                record += f"\nstderr: {result.stderr}"
+        log.debug(record)
 
         return result
     except RunCommandError as e:

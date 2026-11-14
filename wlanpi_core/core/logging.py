@@ -20,20 +20,6 @@ LOG_LEVELS = {
 }
 
 
-class ContextFilter(logging.Filter):
-    """A logging filter that ensures contextual information is added to log records."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Populate contextual fields on log records."""
-        if not hasattr(record, "source_file"):
-            record.source_file = "Unknown"
-        if not hasattr(record, "line_number"):
-            record.line_number = 0
-        if not hasattr(record, "source_function"):
-            record.source_function = "Unknown"
-        return True
-
-
 class JsonFormatter(logging.Formatter):
     """JSON log formatter."""
 
@@ -53,9 +39,7 @@ class JsonFormatter(logging.Formatter):
                 "logger": "%(name)s",
                 "module": "%(module)s",
                 "function": "%(funcName)s",
-                "source_function": "%(source_function)s",
-                "line": "%(line_number)d",
-                "source_file": "%(source_file)s",
+                "line": "%(lineno)d",
             }
         )
 
@@ -130,7 +114,6 @@ def configure_logging(debug_mode: bool = False) -> None:
         if isinstance(handler, logging.FileHandler):
             handler.close()
 
-    context_filter = ContextFilter()
     console_stream_handler = logging.StreamHandler()
 
     try:
@@ -145,10 +128,6 @@ def configure_logging(debug_mode: bool = False) -> None:
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
-    console_stream_handler.addFilter(context_filter)
-    app_file_handler.addFilter(context_filter)
-    debug_file_handler.addFilter(context_filter)
-
     console_stream_handler.setFormatter(standard_formatter)
     console_stream_handler.setLevel(logging.DEBUG if debug_mode else logging.INFO)
 
@@ -162,24 +141,3 @@ def configure_logging(debug_mode: bool = False) -> None:
     root_logger.addHandler(console_stream_handler)
     root_logger.addHandler(app_file_handler)
     root_logger.addHandler(debug_file_handler)
-
-
-def test_logging_levels() -> dict[str, str]:
-    """Test function to verify logging levels are working."""
-    logger = get_logger("test")
-
-    test_messages = {
-        "debug": "This is a debug message",
-        "info": "This is an info message",
-        "warning": "This is a warning message",
-        "error": "This is an error message",
-        "critical": "This is a critical message",
-    }
-
-    logger.debug(test_messages["debug"])
-    logger.info(test_messages["info"])
-    logger.warning(test_messages["warning"])
-    logger.error(test_messages["error"])
-    logger.critical(test_messages["critical"])
-
-    return test_messages
