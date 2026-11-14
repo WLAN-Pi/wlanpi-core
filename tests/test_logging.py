@@ -1,3 +1,4 @@
+import json
 import logging
 
 import pytest
@@ -47,3 +48,16 @@ def test_debug_log_rotates_and_keeps_writing(
     for path in debug_dir.iterdir():
         assert path.stat().st_size <= 2000
     assert "filler" not in (tmp_path / "app.log").read_text()
+
+
+def test_json_record_carries_the_call_site_line_and_no_source_fields():
+    record = logging.LogRecord(
+        "wlanpi_core.test", logging.INFO, "/x/mod.py", 42, "hello", None, None, "fn"
+    )
+
+    data = json.loads(core_logging.JsonFormatter().format(record))
+
+    assert data["line"] == "42"
+    assert data["function"] == "fn"
+    assert "source_file" not in data
+    assert "source_function" not in data
