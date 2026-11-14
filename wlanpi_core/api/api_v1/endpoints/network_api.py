@@ -372,17 +372,37 @@ async def show_interface_wlan_link(iface: str) -> Any:
     SSID, BSSID, frequency, signal, and rx/tx bitrate when connected.
 
     For an MLO association, ``bssid`` is the AP MLD address and ``links``
-    lists every set-up link with its frequency and whether it is active
-    (from ``iw dev <iface> info``; null when that query fails). Each link
-    also carries this station's own address on it (``local_addr``, the
-    address on air), and active links carry their channel ``width_mhz``
-    and ``center1_mhz``.
-    ``freq_mhz`` is present only when exactly one active link can be
-    determined, otherwise null. ``signal_dbm`` is the ``iw link`` signal
-    for a single link. With several MLO links it is the driver's beacon
-    average for the active link instead, because the kernel's MLD-level
-    signal is the maximum over all links, including idle ones. It is null
-    when the kernel has no reading.
+    lists every set-up link with its BSSID and frequency. The other link
+    fields come from ``iw dev <iface> info``:
+
+    - ``active``: whether the link holds a channel now.
+    - ``local_addr``: this station's own address on the link, which is
+      the address on air. It is null when ``iw`` prints no address for
+      the link.
+    - ``width_mhz`` and ``center1_mhz``: the channel of an active link.
+      Both are null on an inactive link.
+
+    When ``iw dev <iface> info`` fails, all four fields are null on every
+    link.
+
+    ``freq_mhz`` is the frequency from ``iw link``. For MLO, ``freq_mhz``
+    is the frequency of the active link when exactly one link is active.
+    Otherwise it is null, which includes the case where
+    ``iw dev <iface> info`` fails.
+
+    ``signal_dbm`` is the first of these values that holds a reading.
+    A value of 0 dBm is not a reading.
+
+    1. The ``iw link`` signal. With several MLO links this value is not
+       used, because the kernel's MLD-level signal is the maximum over
+       all links, including idle ones.
+    2. ``signal avg``, then ``beacon signal avg``, from
+       ``iw dev <iface> station get <bssid>``. With several MLO links,
+       ``beacon signal avg`` comes first, because it follows the active
+       link. This query runs only when the interface is associated with
+       an AP.
+
+    ``signal_dbm`` is null when none of them holds a reading.
     """
     try:
         return await asyncio.to_thread(_read_interface_wlan_link, iface=iface)
