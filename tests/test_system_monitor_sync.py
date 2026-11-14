@@ -36,7 +36,7 @@ BRCMFMAC_PHY_INFO = """Wiphy phy2
 """
 
 
-def _sync(mocker, layout, no_monitor=()):
+def _sync(mocker, layout, no_monitor=(), no_phy=()):
     """Run sync_monitor_interfaces against fake `iw dev` state."""
     iw_dev = "".join(
         f"phy#{phy}\n\tInterface {name}\n\t\ttype {typ}\n"
@@ -49,6 +49,8 @@ def _sync(mocker, layout, no_monitor=()):
         if cmd[1:] == ["dev"]:
             return iw_dev
         if cmd[1] == "dev" and cmd[3:] == ["info"]:
+            if cmd[2] in no_phy:
+                return None
             return f"Interface {cmd[2]}\n\twiphy {layout[cmd[2]][1]}\n"
         if cmd[1:2] == ["-i"]:
             return "driver: iwlwifi\nversion: 7.3.0\n"
@@ -132,6 +134,24 @@ def test_foreign_wlanpi_prefixed_monitor_is_not_cores(mocker):
     assert added == ["wlanpi2"]
     thread.assert_not_called()
     assert downs == ["wlan0"]
+    assert deleted == []
+
+
+@pytest.mark.parametrize("radio_type", ["AP", "monitor"])
+def test_core_monitor_is_kept_while_its_radio_is_not_managed(mocker, radio_type):
+    added, _, _, deleted = _sync(
+        mocker, {"wlan0": (radio_type, 0), "wlanpi0": ("monitor", 0)}
+    )
+
+    assert deleted == []
+    assert added == []
+
+
+def test_core_monitor_is_kept_when_a_phy_lookup_fails(mocker):
+    *_, deleted = _sync(
+        mocker, {"wlan0": ("AP", 0), "wlanpi0": ("monitor", 0)}, no_phy=("wlan0",)
+    )
+
     assert deleted == []
 
 
