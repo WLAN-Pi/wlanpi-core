@@ -1173,7 +1173,7 @@
           "network"
         ],
         "summary": "Show Interface Wlan Link",
-        "description": "Wireless association for an interface, from ``iw dev <iface> link``.\n\nCompanion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the\nSSID, BSSID, frequency, signal, and rx/tx bitrate when connected.\n\nFor an MLO association, ``bssid`` is the AP MLD address and ``links``\nlists every set-up link with its frequency and whether it is active\n(from ``iw dev <iface> info``; null when that query fails). Each link\nalso carries this station's own address on it (``local_addr``, the\naddress on air), and active links carry their channel ``width_mhz``\nand ``center1_mhz``.\n``freq_mhz`` is present only when exactly one active link can be\ndetermined, otherwise null. ``signal_dbm`` is the ``iw link`` signal\nfor a single link. With several MLO links it is the driver's beacon\naverage for the active link instead, because the kernel's MLD-level\nsignal is the maximum over all links, including idle ones. It is null\nwhen the kernel has no reading.",
+        "description": "Wireless association for an interface, from ``iw dev <iface> link``.\n\nCompanion to ``/interfaces/{iface}/link-stats`` (ethtool): reports the\nSSID, BSSID, frequency, signal, and rx/tx bitrate when connected.\n\nFor an MLO association, ``bssid`` is the AP MLD address and ``links``\nlists every set-up link with its BSSID and frequency. The other link\nfields come from ``iw dev <iface> info``:\n\n- ``active``: whether the link holds a channel now.\n- ``local_addr``: this station's own address on the link, which is\n  the address on air. It is null when ``iw`` prints no address for\n  the link.\n- ``width_mhz`` and ``center1_mhz``: the channel of an active link.\n  Both are null on an inactive link.\n\nWhen ``iw dev <iface> info`` fails, all four fields are null on every\nlink.\n\n``freq_mhz`` is the frequency from ``iw link``. For MLO, ``freq_mhz``\nis the frequency of the active link when exactly one link is active.\nOtherwise it is null, which includes the case where\n``iw dev <iface> info`` fails.\n\n``signal_dbm`` is the first of these values that holds a reading.\nA value of 0 dBm is not a reading.\n\n1. The ``iw link`` signal. With several MLO links this value is not\n   used, because the kernel's MLD-level signal is the maximum over\n   all links, including idle ones.\n2. ``signal avg``, then ``beacon signal avg``, from\n   ``iw dev <iface> station get <bssid>``. With several MLO links,\n   ``beacon signal avg`` comes first, because it follows the active\n   link. This query runs only when the interface is associated with\n   an AP.\n\n``signal_dbm`` is null when none of them holds a reading.",
         "operationId": "show_interface_wlan_link_api_v1_network_interfaces__iface__wlan_link_get",
         "security": [
           {
@@ -8785,7 +8785,7 @@
               }
             ],
             "title": "Active",
-            "description": "Link holds a channel now (mac80211 active link); null if unknown"
+            "description": "Link holds a channel now (mac80211 active link). Null when iw dev info fails"
           },
           "local_addr": {
             "anyOf": [
@@ -8797,7 +8797,7 @@
               }
             ],
             "title": "Local Addr",
-            "description": "This station's own MAC on the link (mac80211 gives each link its own address; it is the address on air, not the interface MAC)",
+            "description": "This station's own MAC on the link (mac80211 gives each link its own address; it is the address on air, not the interface MAC). Null when iw prints no address for the link or when iw dev info fails",
             "example": "46:4e:e4:c6:8a:7e"
           },
           "width_mhz": {
@@ -8810,7 +8810,7 @@
               }
             ],
             "title": "Width Mhz",
-            "description": "Channel width of an active link; null when inactive",
+            "description": "Channel width of an active link. Null when the link is inactive or when iw dev info fails",
             "example": 80
           },
           "center1_mhz": {
@@ -8823,7 +8823,7 @@
               }
             ],
             "title": "Center1 Mhz",
-            "description": "Center frequency of an active link's channel; null when inactive",
+            "description": "Center frequency of an active link's channel. Null when the link is inactive or when iw dev info fails",
             "example": 6305
           }
         },
