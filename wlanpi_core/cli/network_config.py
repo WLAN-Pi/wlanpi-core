@@ -31,62 +31,10 @@ SECURITY_TYPES: dict[str, dict[str, Any]] = {
         "description": "WPA3 with pre-shared key (newer, more secure)",
         "fields": ["psk"],
     },
-    "WPA2-EAP": {
-        "name": "WPA2-Enterprise",
-        "description": "WPA2 with 802.1X authentication (corporate networks)",
-        "fields": ["identity", "password", "eap_method", "ca_cert"],
-    },
-    "WPA3-EAP": {
-        "name": "WPA3-Enterprise",
-        "description": "WPA3 with 802.1X authentication (corporate networks)",
-        "fields": ["identity", "password", "eap_method", "ca_cert"],
-    },
-    "802.1X": {
-        "name": "802.1X",
-        "description": "Generic 802.1X authentication",
-        "fields": ["identity", "password", "eap_method", "ca_cert"],
-    },
     "OWE": {
         "name": "OWE (Enhanced Open)",
         "description": "Opportunistic Wireless Encryption",
         "fields": [],
-    },
-    "WEP": {
-        "name": "WEP (Legacy)",
-        "description": "Deprecated - use only if absolutely necessary",
-        "fields": ["wep_key"],
-    },
-    "OPENROAMING": {
-        "name": "OpenRoaming/Passpoint",
-        "description": "Hotspot 2.0 / Passpoint networks",
-        "fields": ["identity", "client_cert", "private_key", "ca_cert"],
-    },
-}
-
-EAP_METHODS: dict[str, dict[str, Any]] = {
-    "PEAP": {
-        "name": "PEAP",
-        "description": "Protected EAP (most common for username/password)",
-        "phase2_methods": ["MSCHAPV2", "GTC", "MD5"],
-        "requires_cert": False,
-    },
-    "TLS": {
-        "name": "EAP-TLS",
-        "description": "Certificate-based authentication (most secure)",
-        "phase2_methods": [],
-        "requires_cert": True,
-    },
-    "TTLS": {
-        "name": "EAP-TTLS",
-        "description": "Tunneled TLS",
-        "phase2_methods": ["PAP", "CHAP", "MSCHAPV2"],
-        "requires_cert": False,
-    },
-    "PWD": {
-        "name": "EAP-PWD",
-        "description": "Password-based authentication",
-        "phase2_methods": [],
-        "requires_cert": False,
     },
 }
 
@@ -171,14 +119,6 @@ class NetworkConfigCLI:
             raise ValidationError("Interface name cannot be empty")
         if len(name) > 15:  # Linux interface name limit
             raise ValidationError("Interface name too long (max 15 characters)")
-        return True
-
-    def validate_file_path(self, path: str) -> bool:
-        """Validate file path exists."""
-        if not path:
-            return True
-        if not Path(path).exists():
-            raise ValidationError(f"File does not exist: {path}")
         return True
 
     def get_available_phys(self) -> list[str]:
@@ -460,80 +400,6 @@ class NetworkConfigCLI:
             except ValueError as e:
                 self.print_error(str(e))
 
-    def prompt_eap_method(
-        self, existing_method: str | None = None
-    ) -> tuple[str, str | None]:
-        """Prompt for an EAP method and its phase 2 method."""
-        print("\nEAP Method Configuration:")
-        print("-" * 40)
-
-        if existing_method:
-            print(f"Current EAP method: {existing_method}")
-
-        eap_list = list(EAP_METHODS.items())
-        for idx, (method, info) in enumerate(eap_list, 1):
-            current_marker = " (current)" if method == existing_method else ""
-            cert_req = " [Requires Certificate]" if info["requires_cert"] else ""
-            print(f"{idx}. {info['name']}{current_marker}{cert_req}")
-            print(f"   {info['description']}")
-
-        while True:
-            try:
-                if existing_method:
-                    choice = input(
-                        f"\nSelect EAP method [1-{len(eap_list)}] (Enter to keep current): "
-                    ).strip()
-                    if not choice:
-                        selected_method = existing_method
-                        break
-                else:
-                    choice = input(f"\nSelect EAP method [1-{len(eap_list)}]: ").strip()
-
-                if not choice.isdigit():
-                    raise ValueError("Please enter a number")
-
-                idx = int(choice) - 1
-                if idx < 0 or idx >= len(eap_list):
-                    raise ValueError(
-                        f"Please enter a number between 1 and {len(eap_list)}"
-                    )
-
-                selected_method = eap_list[idx][0]
-                break
-
-            except ValueError as e:
-                self.print_error(str(e))
-
-        phase2_method = None
-        method_info = EAP_METHODS[selected_method]
-
-        if method_info["phase2_methods"]:
-            print(f"\nPhase 2 Authentication for {method_info['name']}:")
-            for idx, phase2 in enumerate(method_info["phase2_methods"], 1):
-                print(f"{idx}. {phase2}")
-
-            while True:
-                try:
-                    choice = input(
-                        f"Select Phase 2 method [1-{len(method_info['phase2_methods'])}] (default: 1): "
-                    ).strip()
-                    if not choice:
-                        phase2_method = method_info["phase2_methods"][0]
-                        break
-                    if not choice.isdigit():
-                        raise ValueError("Please enter a number")
-                    idx = int(choice) - 1
-                    if idx < 0 or idx >= len(method_info["phase2_methods"]):
-                        raise ValueError(
-                            f"Please enter a number between 1 and {len(method_info['phase2_methods'])}"
-                        )
-                    phase2_method = method_info["phase2_methods"][idx]
-                    break
-                except ValueError as e:
-                    self.print_error(str(e))
-
-        return selected_method, phase2_method
-
     def prompt_field_with_validation(
         self,
         prompt: str,
@@ -629,106 +495,6 @@ class NetworkConfigCLI:
                 "Enter PSK/Password",
                 validator=self.validate_psk,
                 existing_value=existing_security.get("psk"),
-                required=True,
-                secret=True,
-            )
-
-        elif security_type in ["WPA2-EAP", "WPA3-EAP", "802.1X"]:
-            eap_method, phase2_method = self.prompt_eap_method(
-                existing_security.get("eap_method")
-            )
-            config["eap_method"] = eap_method
-            if phase2_method:
-                config["phase2_method"] = phase2_method
-
-            config["identity"] = self.prompt_field_with_validation(
-                "Enter username/identity",
-                existing_value=existing_security.get("identity"),
-                required=True,
-            )
-
-            if EAP_METHODS[eap_method]["requires_cert"]:
-                self.print_info("Certificate-based authentication selected")
-                config["client_cert"] = self.prompt_field_with_validation(
-                    "Enter client certificate path",
-                    validator=self.validate_file_path,
-                    existing_value=existing_security.get("client_cert"),
-                    required=True,
-                )
-                config["private_key"] = self.prompt_field_with_validation(
-                    "Enter private key path",
-                    validator=self.validate_file_path,
-                    existing_value=existing_security.get("private_key"),
-                    required=True,
-                )
-
-                config["private_key_passwd"] = self.prompt_field_with_validation(
-                    "Enter private key password (optional)",
-                    existing_value=existing_security.get("private_key_passwd"),
-                    secret=True,
-                )
-            else:
-                config["password"] = self.prompt_field_with_validation(
-                    "Enter password",
-                    existing_value=existing_security.get("password"),
-                    required=True,
-                    secret=True,
-                )
-
-            config["ca_cert"] = self.prompt_field_with_validation(
-                "Enter CA certificate path (optional)",
-                validator=self.validate_file_path,
-                existing_value=existing_security.get("ca_cert"),
-                default_value="/etc/ssl/certs/ca-certificates.crt",
-            )
-
-            if input("Configure advanced options? (y/n): ").lower() == "y":
-                config["anonymous_identity"] = self.prompt_field_with_validation(
-                    "Enter anonymous identity (optional)",
-                    existing_value=existing_security.get("anonymous_identity"),
-                )
-                config["subject_match"] = self.prompt_field_with_validation(
-                    "Enter subject match (optional)",
-                    existing_value=existing_security.get("subject_match"),
-                )
-                config["domain_suffix_match"] = self.prompt_field_with_validation(
-                    "Enter domain suffix match (optional)",
-                    existing_value=existing_security.get("domain_suffix_match"),
-                )
-
-        elif security_type == "OPENROAMING":
-            self.print_info("OpenRoaming/Passpoint configuration")
-            config["identity"] = self.prompt_field_with_validation(
-                "Enter identity",
-                existing_value=existing_security.get("identity"),
-                required=True,
-            )
-            config["client_cert"] = self.prompt_field_with_validation(
-                "Enter client certificate path",
-                validator=self.validate_file_path,
-                existing_value=existing_security.get("client_cert"),
-                required=True,
-            )
-            config["private_key"] = self.prompt_field_with_validation(
-                "Enter private key path",
-                validator=self.validate_file_path,
-                existing_value=existing_security.get("private_key"),
-                required=True,
-            )
-            config["ca_cert"] = self.prompt_field_with_validation(
-                "Enter CA certificate path",
-                validator=self.validate_file_path,
-                existing_value=existing_security.get("ca_cert"),
-                required=True,
-            )
-
-        elif security_type == "WEP":
-            self.print_warning(
-                "WEP is deprecated and insecure. Use only if absolutely necessary."
-            )
-            config["wep_key"] = self.prompt_field_with_validation(
-                "Enter WEP key",
-                existing_value=existing_security.get("wep_key"),
                 required=True,
                 secret=True,
             )
@@ -922,11 +688,6 @@ class NetworkConfigCLI:
             sec_type = sec.get("security", "")
             if sec_type in ["WPA2-PSK", "WPA3-PSK"] and not sec.get("psk"):
                 issues.append(f"{sec_type} requires PSK")
-            elif sec_type in ["WPA2-EAP", "WPA3-EAP", "802.1X"]:
-                if not sec.get("identity"):
-                    issues.append(f"{sec_type} requires identity/username")
-                if sec.get("eap_method") == "TLS" and not sec.get("client_cert"):
-                    issues.append("EAP-TLS requires client certificate")
 
         if issues:
             print("\nConfiguration Issues:")
@@ -1305,10 +1066,7 @@ class NetworkConfigCLI:
         """Fetch a token and run the menu."""
         self.print_header("WLAN Pi Core Network Configuration CLI")
         print("Advanced network configuration tool with support for:")
-        print("- WPA2/WPA3 PSK and Enterprise")
-        print("- 802.1X with multiple EAP methods")
-        print("- Certificate-based authentication")
-        print("- OpenRoaming/Passpoint")
+        print("- WPA2/WPA3 PSK, OWE and open networks")
         print("- Network namespaces")
         print("- Monitor mode")
 
