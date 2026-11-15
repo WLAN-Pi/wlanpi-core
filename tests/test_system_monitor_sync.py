@@ -36,10 +36,11 @@ BRCMFMAC_PHY_INFO = """Wiphy phy2
 """
 
 
-def _sync(mocker, layout, no_monitor=(), no_phy=()):
+def _sync(mocker, layout, no_monitor=(), no_phy=(), ssids=None):
     """Run sync_monitor_interfaces against fake `iw dev` state."""
+    ssid_lines = {name: f"\t\tssid {ssid}\n" for name, ssid in (ssids or {}).items()}
     iw_dev = "".join(
-        f"phy#{phy}\n\tInterface {name}\n\t\ttype {typ}\n"
+        f"phy#{phy}\n\tInterface {name}\n{ssid_lines.get(name, '')}\t\ttype {typ}\n"
         for name, (typ, phy) in layout.items()
     )
     calls = []
@@ -51,7 +52,7 @@ def _sync(mocker, layout, no_monitor=(), no_phy=()):
         if cmd[1] == "dev" and cmd[3:] == ["info"]:
             if cmd[2] in no_phy:
                 return None
-            return f"Interface {cmd[2]}\n\twiphy {layout[cmd[2]][1]}\n"
+            return f"Interface {cmd[2]}\n{ssid_lines.get(cmd[2], '')}\twiphy {layout[cmd[2]][1]}\n"
         if cmd[1:2] == ["-i"]:
             return "driver: iwlwifi\nversion: 7.3.0\n"
         if cmd[1] == "phy" and cmd[3:] == ["info"]:
@@ -135,6 +136,13 @@ def test_foreign_wlanpi_prefixed_monitor_is_not_cores(mocker):
     thread.assert_not_called()
     assert downs == ["wlan0"]
     assert deleted == []
+
+
+@pytest.mark.parametrize("ssid", ["Prototype Lab", "wiphy5"])
+def test_ssid_text_is_not_read_as_the_type_or_the_phy(mocker, ssid):
+    added, _, _, _ = _sync(mocker, {"wlan0": ("managed", 2)}, ssids={"wlan0": ssid})
+
+    assert added == ["wlanpi2"]
 
 
 @pytest.mark.parametrize("radio_type", ["AP", "monitor"])

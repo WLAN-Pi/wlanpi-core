@@ -72,7 +72,7 @@ class SystemManager:
         output = self._run([IW_FILE, "dev", name, "info"], capture_output=True)
         if output:
             for line in output.splitlines():
-                if "wiphy" in line:
+                if line.strip().startswith("wiphy "):
                     return "".join(filter(str.isdigit, line))
         return None
 
@@ -107,7 +107,7 @@ class SystemManager:
         for line in output.splitlines():
             if line.strip().startswith("Interface"):
                 current_iface = line.strip().split()[1]
-            elif "type" in line and current_iface:
+            elif line.strip().startswith("type ") and current_iface:
                 iface_type = line.strip().split()[1]
                 if current_iface not in self.exclusions:
                     interfaces[current_iface] = iface_type
