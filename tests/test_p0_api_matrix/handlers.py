@@ -709,11 +709,12 @@ def handle_api_validation_errors_omit_input(client, auth_headers, scenario):
     app.dependency_overrides[verify_local_auth] = _allow
     try:
         rejected(client.post("/api/v1/auth/pam", json={"password": secret}))
-        too_long = client.post(
-            "/api/v1/auth/pam", json={"username": "wlanpi", "password": secret * 40}
-        )
-        rejected(too_long)
-        assert str(len(secret * 40)) not in too_long.text
+        for password in (secret * 40, ""):
+            wrong_length = client.post(
+                "/api/v1/auth/pam", json={"username": "wlanpi", "password": password}
+            )
+            rejected(wrong_length)
+            assert str(len(password)) not in wrong_length.text
         rejected(
             client.post(
                 "/api/v1/auth/pam/change",
