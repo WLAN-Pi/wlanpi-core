@@ -12,9 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from pydantic import ValidationError as SchemaValidationError
-
-from wlanpi_core.schemas.network.network import NetSecurity
 
 COMMAND_TIMEOUT_SEC = 10
 
@@ -159,6 +156,11 @@ class NetworkConfigCLI:
 
     def validate_psk(self, psk: str, security_type: str) -> bool:
         """Validate a PSK with the rule the API applies to the security type."""
+        # Imported on first use: the schema adds about 0.5 s to every networkcfg start.
+        from pydantic import ValidationError as SchemaValidationError
+
+        from wlanpi_core.schemas.network.network import NetSecurity
+
         try:
             NetSecurity.model_validate(
                 {"ssid": "placeholder", "security": security_type, "psk": psk}
