@@ -643,7 +643,7 @@ def handle_network_config_validation_errors_omit_input(
         )
     )
     assert error["type"] == "missing" and error["loc"][-1] == "ssid"
-    assert "input" not in error
+    assert set(error) == {"type", "loc", "msg"}
 
     entry = _root_entry("wlan0", "phy0", security)
     [error] = rejected(
@@ -653,7 +653,7 @@ def handle_network_config_validation_errors_omit_input(
         )
     )
     assert "interface used by more than one entry" in error["msg"]
-    assert "input" not in error
+    assert set(error) == {"type", "loc", "msg"}
     assert not (netcfg_env["cfg_dir"] / "echo_cfg.json").exists()
 
     with live_adapter_inventory_mocks(JOSH_THREE_RADIO):
@@ -684,8 +684,63 @@ def handle_network_config_validation_errors_omit_input(
     )
     with patch("wlanpi_core.utils.network_config.log") as log:
         detail = rejected(client.get("/api/v1/network/config/stored_cfg"))
+        edited = rejected(
+            client.patch("/api/v1/network/config/stored_cfg", json={"roots": [entry]})
+        )
     assert "psk must be 8-63 printable ASCII" in detail
-    assert "2short" not in detail and "2short" not in str(log.mock_calls)
+    assert "2short" not in detail + edited + str(log.mock_calls)
+
+
+def handle_api_validation_errors_omit_input(client, auth_headers, scenario):
+    from wlanpi_core.asgi import app
+    from wlanpi_core.core.auth import verify_local_auth
+
+    secret = "made-up-secret"
+
+    def rejected(response):
+        _expect_status(response, scenario.expected_http)
+        assert secret not in response.text
+        errors = response.json()["detail"]
+        assert all(set(error) == {"type", "loc", "msg"} for error in errors)
+
+    async def _allow():
+        return True
+
+    app.dependency_overrides[verify_local_auth] = _allow
+    try:
+        rejected(client.post("/api/v1/auth/pam", json={"password": secret}))
+        too_long = client.post(
+            "/api/v1/auth/pam", json={"username": "wlanpi", "password": secret * 40}
+        )
+        rejected(too_long)
+        assert str(len(secret * 40)) not in too_long.text
+        rejected(
+            client.post(
+                "/api/v1/auth/pam/change",
+                json={"username": "wlanpi", "current_password": secret},
+            )
+        )
+    finally:
+        app.dependency_overrides.pop(verify_local_auth, None)
+
+    no_ssid = _root_entry("wlan0", "phy0", {"security": "WPA2-PSK", "psk": secret})
+    rejected(
+        client.post(
+            "/api/v1/network/wlan/set",
+            json={
+                "interface": "wlan0",
+                "removeAllFirst": False,
+                "netConfig": {"id": "echo_cfg", "namespaces": [], "roots": [no_ssid]},
+            },
+        )
+    )
+    rejected(
+        client.post(
+            "/api/v1/network/config/",
+            content=b"\xff\xfe" + f'{{"psk": "{secret}"}}'.encode(),
+            headers={"Content-Type": "text/plain"},
+        )
+    )
 
 
 def handle_network_config_secrets_not_returned(
@@ -1277,6 +1332,7 @@ HANDLERS.update(
         "network_config_create_invalid_psk_422": handle_network_config_create_invalid_psk_422,
         "network_config_secrets_not_returned": handle_network_config_secrets_not_returned,
         "network_config_validation_errors_omit_input": handle_network_config_validation_errors_omit_input,
+        "api_validation_errors_omit_input": handle_api_validation_errors_omit_input,
         "network_config_legacy_mlo_accepted": handle_network_config_legacy_mlo_accepted,
         "network_config_activate_invalid_entry_422": handle_network_config_activate_invalid_entry_422,
         "network_config_activate_fault_500_outcomes": handle_network_config_activate_fault_500_outcomes,
