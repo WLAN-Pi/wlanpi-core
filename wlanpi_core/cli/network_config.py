@@ -154,16 +154,21 @@ class NetworkConfigCLI:
             raise ValidationError("SSID too long (max 32 bytes in UTF-8)")
         return True
 
-    def validate_psk(self, psk: str) -> bool:
-        """Validate PSK/password."""
-        if not psk:
-            raise ValidationError("PSK/password cannot be empty")
-        if len(psk) == 64 and all(c in "0123456789abcdefABCDEF" for c in psk):
-            return True
-        elif 8 <= len(psk) <= 63:
-            return True
-        else:
-            raise ValidationError("PSK must be 8-63 characters or 64 hex characters")
+    def validate_psk(self, psk: str, security_type: str) -> bool:
+        """Validate a PSK with the rule the API applies to the security type."""
+        # Imported on first use: the schema adds about 0.5 s to every networkcfg start.
+        from pydantic import ValidationError as SchemaValidationError
+
+        from wlanpi_core.schemas.network.network import NetSecurity
+
+        try:
+            NetSecurity.model_validate(
+                {"ssid": "placeholder", "security": security_type, "psk": psk}
+            )
+        except SchemaValidationError as e:
+            message = e.errors(include_input=False)[0]["msg"]
+            raise ValidationError(message.removeprefix("Value error, ")) from None
+        return True
 
     def validate_interface_name(self, name: str) -> bool:
         """Validate interface name."""
@@ -627,7 +632,7 @@ class NetworkConfigCLI:
         if security_type in ["WPA2-PSK", "WPA3-PSK"]:
             config["psk"] = self.prompt_field_with_validation(
                 "Enter PSK/Password",
-                validator=self.validate_psk,
+                validator=lambda psk: self.validate_psk(psk, security_type),
                 existing_value=existing_security.get("psk"),
                 required=True,
                 secret=True,
