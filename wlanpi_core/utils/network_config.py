@@ -376,6 +376,16 @@ def get_config(cfg_id: str) -> NetConfig:
         return _write_live_default()
 
 
+def _validation_summary(error: PydanticValidationError) -> str:
+    """Describe a validation failure without the rejected value, which can hold credentials."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in item['loc']) or 'configuration'}: {item['msg']}"
+        for item in error.errors(
+            include_input=False, include_url=False, include_context=False
+        )
+    )
+
+
 def _read_config(cfg_id: str, path: Path) -> NetConfig:
     try:
         file_content = path.read_text().strip()
@@ -402,9 +412,10 @@ def _read_config(cfg_id: str, path: Path) -> NetConfig:
     except ConfigMalformedError:
         raise
     except (OSError, TypeError, PydanticValidationError) as e:
-        log.error(f"Failed to parse configuration {cfg_id}: {e}")
+        reason = _validation_summary(e) if isinstance(e, PydanticValidationError) else e
+        log.error(f"Failed to parse configuration {cfg_id}: {reason}")
         raise ConfigMalformedError(
-            f"Failed to parse configuration {cfg_id}: {e}", cfg_id=cfg_id
+            f"Failed to parse configuration {cfg_id}: {reason}", cfg_id=cfg_id
         ) from None
 
 
@@ -551,7 +562,7 @@ def edit_config(cfg_id: str, config_update: NetConfigUpdate) -> NetConfig:
         try:
             cfg = NetConfig.model_validate(cfg.model_dump())
         except PydanticValidationError as e:
-            raise ValidationError(str(e), status_code=422) from None
+            raise ValidationError(_validation_summary(e), status_code=422) from None
         _keep_stored_secrets(stored, cfg)
 
         _atomic_write(path, cfg.model_dump_json(indent=4))
