@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sqlite3
 import subprocess
 import sys
@@ -82,6 +83,16 @@ async def test_issuance_uses_absolute_boot_expiry(token_manager):
     assert payload["exp"] == WALL_TIME + 60
     assert "upt" not in payload
     assert "ttl" not in payload
+
+
+@pytest.mark.asyncio
+async def test_issuance_does_not_log_the_token(token_manager, caplog):
+    with caplog.at_level(logging.DEBUG, logger="wlanpi_core"):
+        token = await token_manager.create_token(
+            "claims", expires_delta=timedelta(seconds=60)
+        )
+
+    assert token not in caplog.text
 
 
 @pytest.mark.asyncio
