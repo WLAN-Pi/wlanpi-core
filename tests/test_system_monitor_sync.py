@@ -155,12 +155,15 @@ def test_core_monitor_is_kept_while_its_radio_is_not_managed(mocker, radio_type)
     assert added == []
 
 
-def test_core_monitor_is_kept_when_a_phy_lookup_fails(mocker):
-    *_, deleted = _sync(
-        mocker, {"wlan0": ("AP", 0), "wlanpi0": ("monitor", 0)}, no_phy=("wlan0",)
+def test_failed_phy_lookup_stops_deletion_but_not_creation(mocker):
+    added, _, _, deleted = _sync(
+        mocker,
+        {"wlan0": ("managed", 0), "wlan1": ("AP", 1), "wlanpi3": ("monitor", 3)},
+        no_phy=("wlan1",),
     )
 
     assert deleted == []
+    assert added == ["wlanpi0"]
 
 
 def test_orphan_core_monitor_is_deleted_but_foreign_one_is_kept(mocker):
