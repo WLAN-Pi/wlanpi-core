@@ -254,9 +254,6 @@ class TokenManager:
                         )
                         session.add(token_model)
 
-                    log.debug(token_model)
-                    log.debug(vars(token_model))
-
                     return jwt_token
 
                 except sqlalchemy_exc.IntegrityError as e:
