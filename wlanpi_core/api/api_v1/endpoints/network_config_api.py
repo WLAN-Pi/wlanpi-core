@@ -203,7 +203,8 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     interface, so a configuration read with GET can be edited and sent back.
     The response omits secrets like GET does. Returns 409 when the
     configuration is active, or while another network change (such as an
-    activate, deactivate or delete) is running.
+    activate, deactivate or delete) is running. Returns 422 when the stored
+    configuration cannot be loaded.
     """
     try:
         config = network_config.edit_config(id, config_update)
@@ -221,6 +222,9 @@ async def update_config(id: str, config_update: NetConfigUpdate) -> Any:
     except FileNotFoundError as e:
         log.error(f"Configuration not found: {e}")
         raise HTTPException(status_code=404, detail=str(e)) from None
+    except ConfigMalformedError as cme:
+        log.error(f"Configuration is malformed: {cme}")
+        raise HTTPException(status_code=422, detail=cme.message) from None
     except ConfigActiveError as cae:
         log.error(f"Active configuration cannot be updated: {cae}")
         raise HTTPException(status_code=409, detail=str(cae)) from None

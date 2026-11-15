@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -730,6 +731,19 @@ def create_app(debug: bool = False) -> FastAPI:
         )
 
     app.add_exception_handler(AuthClockNotSetError, auth_clock_not_set_handler)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # `input` repeats the request, which can hold credentials (#272); `ctx` and a length message give its size.
+        detail = []
+        for error in exc.errors():
+            msg = error["msg"]
+            if error["type"] in ("too_long", "too_short"):
+                msg = msg.partition(", not ")[0]
+            detail.append({"type": error["type"], "loc": error["loc"], "msg": msg})
+        return JSONResponse(status_code=422, content={"detail": detail})
 
     @app.exception_handler(SecurityInitError)
     async def security_error_handler(
