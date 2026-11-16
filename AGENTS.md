@@ -141,7 +141,7 @@ Reuse first, write second:
   services before adding a module, endpoint, or helper. This repo already paid
   for these.
 - New endpoints go in the existing routers (`api/api_v1/endpoints/`).
-- A dependency already installed (`httpx`, `requests`, `aiosqlite`, `psutil`,
+- A dependency already installed (`requests`, `aiosqlite`, `psutil`,
   `sqlalchemy`, ...) covers most needs. Adding a new one needs a human OK.
   Leave `debian/changelog` unchanged.
 
