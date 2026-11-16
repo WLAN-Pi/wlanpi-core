@@ -15,12 +15,7 @@ class _Result:
 
 
 @pytest.fixture
-def clock(monkeypatch, tmp_path):
-    """Record clock_settime_ns calls instead of stepping the real clock.
-
-    Returns the list of (clock_id, target_ns) calls. The stamp is redirected to
-    tmp_path and starts with an old mtime.
-    """
+def settime_calls(monkeypatch, tmp_path):
     stamp = tmp_path / "clock"
     stamp.touch()
     os.utime(stamp, (OLD_STAMP_MTIME, OLD_STAMP_MTIME))
@@ -42,15 +37,16 @@ def _ntp(monkeypatch, synchronized: str) -> None:
     monkeypatch.setattr(system_service, "run_command", _run)
 
 
-def _set(delta_ms: int, allow_backward: bool = False, handling_ms: int = 0):
-    """Send a client time `delta_ms` away from now, read `handling_ms` ago."""
-    epoch_ms = time.time_ns() // 1_000_000 + delta_ms - handling_ms
-    received_ns = time.monotonic_ns() - handling_ms * 1_000_000
+def _push_client_time(
+    ahead_ms: int, allow_backward: bool = False, received_ms_ago: int = 0
+):
+    epoch_ms = time.time_ns() // 1_000_000 + ahead_ms - received_ms_ago
+    received_ns = time.monotonic_ns() - received_ms_ago * 1_000_000
     return epoch_ms, system_service.set_datetime(epoch_ms, allow_backward, received_ns)
 
 
 @pytest.mark.parametrize(
-    "synchronized,delta_ms,allow_backward,outcome,steps",
+    "synchronized,ahead_ms,allow_backward,outcome,steps",
     [
         ("no", 5000, False, "stepped", True),
         ("no", -5000, False, "backward_not_allowed", False),
@@ -62,56 +58,57 @@ def _set(delta_ms: int, allow_backward: bool = False, handling_ms: int = 0):
     ],
 )
 def test_set_datetime_decision(
-    monkeypatch, clock, synchronized, delta_ms, allow_backward, outcome, steps
+    monkeypatch, settime_calls, synchronized, ahead_ms, allow_backward, outcome, steps
 ):
     _ntp(monkeypatch, synchronized)
 
-    _epoch_ms, result = _set(delta_ms, allow_backward)
+    _epoch_ms, result = _push_client_time(ahead_ms, allow_backward)
 
     assert result["outcome"] == outcome
-    assert delta_ms - 20 <= result["offset_ms"] <= delta_ms + 20
-    assert bool(clock) is steps
+    assert ahead_ms - 20 <= result["offset_ms"] <= ahead_ms + 20
+    assert bool(settime_calls) is steps
 
 
-def test_set_datetime_steps_to_client_time_and_saves_stamp(monkeypatch, clock):
+def test_set_datetime_steps_to_client_time_and_saves_stamp(monkeypatch, settime_calls):
     _ntp(monkeypatch, "no")
 
-    epoch_ms, result = _set(5000)
+    epoch_ms, result = _push_client_time(5000)
 
     assert result["outcome"] == "stepped"
-    [(clock_id, target_ns)] = clock
+    [(clock_id, target_ns)] = settime_calls
     assert clock_id == time.CLOCK_REALTIME
     assert 0 <= target_ns - epoch_ms * 1_000_000 < 1_000_000_000
     assert system_service.TIMESYNC_CLOCK_FILE.stat().st_mtime > OLD_STAMP_MTIME
 
 
-def test_set_datetime_adds_handling_time(monkeypatch, clock):
-    """A client time read 2 s before Core acts on it is not 2 s behind."""
+def test_set_datetime_adds_handling_time(monkeypatch, settime_calls):
     _ntp(monkeypatch, "no")
 
-    _epoch_ms, result = _set(0, handling_ms=2000)
+    _epoch_ms, result = _push_client_time(0, received_ms_ago=2000)
 
     assert result["outcome"] == "within_tolerance"
-    assert not clock
+    assert not settime_calls
 
 
-def test_set_datetime_steps_when_stamp_is_missing(monkeypatch, clock):
+def test_set_datetime_steps_when_stamp_is_missing(monkeypatch, settime_calls):
     _ntp(monkeypatch, "no")
     system_service.TIMESYNC_CLOCK_FILE.unlink()
 
-    _epoch_ms, result = _set(5000)
+    _epoch_ms, result = _push_client_time(5000)
 
     assert result["outcome"] == "stepped"
-    assert len(clock) == 1
+    assert len(settime_calls) == 1
 
 
-def test_set_datetime_leaves_clock_alone_when_ntp_state_is_unknown(monkeypatch, clock):
+def test_set_datetime_leaves_clock_alone_when_ntp_state_is_unknown(
+    monkeypatch, settime_calls
+):
     def _run(cmd, **_kwargs):
         raise RunCommandError("Failed to query server", 1)
 
     monkeypatch.setattr(system_service, "run_command", _run)
 
     with pytest.raises(RunCommandError):
-        _set(5000)
+        _push_client_time(5000)
 
-    assert not clock
+    assert not settime_calls
