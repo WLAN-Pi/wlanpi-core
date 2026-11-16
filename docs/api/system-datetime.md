@@ -96,3 +96,4 @@ If `datetime` is empty, core returns **503** (not 200 with an empty string).
 | GET | `/system/timezone` | Current TZ name only |
 | GET | `/system/timezone/list` | All zones |
 | POST | `/system/timezone/set` | `{ "timezone": "Europe/London" }` |
+| POST | `/system/datetime` | `{ "epoch_ms": 1794861724000 }` sets the clock from your time, for a device with no RTC and no NTP server in reach |

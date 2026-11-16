@@ -4,6 +4,8 @@ from .system import (
     AllowedServices,
     BatteryInfo,
     DateTimeInfo,
+    DateTimeSetRequest,
+    DateTimeSetResult,
     DeviceInfo,
     DeviceModel,
     DeviceStats,

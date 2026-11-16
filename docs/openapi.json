@@ -2657,6 +2657,51 @@
             "HTTPBearer": []
           }
         ]
+      },
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Set Datetime",
+        "description": "Set the device clock from the client's time.\n\nFor a device with no RTC and no NTP server in reach. Send your current time\nas `epoch_ms`. Core decides in this order:\n\n1. The clock is NTP-synchronized: no change (`ntp_synchronized`).\n2. Your time and the device time differ by less than 100 ms: no change\n   (`within_tolerance`).\n3. Your time is ahead: the clock steps forward (`stepped`).\n4. Your time is behind: no change (`backward_not_allowed`), unless\n   `allow_backward` is true.\n\nAll four return 200. `offset_ms` reports the difference in every case.\n\nCore adds the time it spent on the request to `epoch_ms`, so the error is the\nlatency from you to the device. Read your clock immediately before you\nsend. The first request after Core starts can arrive several hundred\nmilliseconds late. When the outcome is `stepped`, send the request again:\nthe second request corrects what is left.\n\nAfter a step, Core saves the time to `/var/lib/systemd/timesync/clock`,\nwhich the device restarts from after a power cut.\n\nA backward step of more than about 15 seconds restarts Core's worker within\n30 seconds: requests fail for a few seconds, and `wlanpi-webui` tokens are\nrevoked. A backward step can also end WebUI sessions, and a token from an\nearlier boot can then fail with `503 AUTH_CLOCK_NOT_SET`. Send\n`allow_backward` only when a user asked for the change.",
+        "operationId": "set_datetime_api_v1_system_datetime_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DateTimeSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateTimeSetResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/system/timezone": {
@@ -4552,6 +4597,74 @@
         ],
         "title": "DateTimeInfo",
         "description": "Device local date/time. Always parse `datetime` as ISO 8601 / RFC 3339."
+      },
+      "DateTimeSetRequest": {
+        "properties": {
+          "epoch_ms": {
+            "type": "integer",
+            "exclusiveMaximum": 4102444800000.0,
+            "minimum": 1767225600000.0,
+            "title": "Epoch Ms",
+            "description": "Client time in milliseconds since the Unix epoch (UTC). Accepted from 2026-01-01 up to 2100-01-01.",
+            "examples": [
+              1794861724000
+            ]
+          },
+          "allow_backward": {
+            "type": "boolean",
+            "title": "Allow Backward",
+            "description": "Permit a step to an earlier time",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "epoch_ms"
+        ],
+        "title": "DateTimeSetRequest",
+        "description": "Request to set the device clock from the client's time."
+      },
+      "DateTimeSetResult": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "stepped",
+              "within_tolerance",
+              "backward_not_allowed",
+              "ntp_synchronized"
+            ],
+            "title": "Outcome",
+            "description": "stepped: the clock was set. within_tolerance: client and device differ by less than 100 ms. backward_not_allowed: the client is behind the device and allow_backward is false. ntp_synchronized: an NTP source owns the clock.",
+            "examples": [
+              "stepped"
+            ]
+          },
+          "offset_ms": {
+            "type": "integer",
+            "title": "Offset Ms",
+            "description": "Client time minus device time before any change, in milliseconds. Positive means the device was behind.",
+            "examples": [
+              86400123
+            ]
+          },
+          "epoch_ms": {
+            "type": "integer",
+            "title": "Epoch Ms",
+            "description": "Device time after the request, in milliseconds since the Unix epoch (UTC)",
+            "examples": [
+              1794861724004
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "offset_ms",
+          "epoch_ms"
+        ],
+        "title": "DateTimeSetResult",
+        "description": "What a request to set the device clock did."
       },
       "DeactivationResponse": {
         "properties": {

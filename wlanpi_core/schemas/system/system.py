@@ -82,6 +82,46 @@ class DateTimeInfo(BaseModel):
     )
 
 
+class DateTimeSetRequest(BaseModel):
+    """Request to set the device clock from the client's time."""
+
+    epoch_ms: int = Field(
+        ge=1_767_225_600_000,
+        lt=4_102_444_800_000,
+        description="Client time in milliseconds since the Unix epoch (UTC). "
+        "Accepted from 2026-01-01 up to 2100-01-01.",
+        examples=[1794861724000],
+    )
+    allow_backward: bool = Field(
+        default=False,
+        description="Permit a step to an earlier time",
+    )
+
+
+class DateTimeSetResult(BaseModel):
+    """What a request to set the device clock did."""
+
+    outcome: Literal[
+        "stepped", "within_tolerance", "backward_not_allowed", "ntp_synchronized"
+    ] = Field(
+        description="stepped: the clock was set. within_tolerance: client and device "
+        "differ by less than 100 ms. backward_not_allowed: the client is behind the "
+        "device and allow_backward is false. ntp_synchronized: an NTP source owns "
+        "the clock.",
+        examples=["stepped"],
+    )
+    offset_ms: int = Field(
+        description="Client time minus device time before any change, in "
+        "milliseconds. Positive means the device was behind.",
+        examples=[86400123],
+    )
+    epoch_ms: int = Field(
+        description="Device time after the request, in milliseconds since the Unix "
+        "epoch (UTC)",
+        examples=[1794861724004],
+    )
+
+
 class TimezoneInfo(BaseModel):
     """Current system timezone."""
 

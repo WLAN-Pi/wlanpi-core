@@ -75,6 +75,10 @@ _JOURNAL_CONF = {
     "persistent": "[Journal]\nStorage=persistent\nSystemMaxUse=256M\nRuntimeMaxUse=50M\n",
     "volatile": "[Journal]\nStorage=volatile\nRuntimeMaxUse=50M\n",
 }
+# systemd moves the clock forward to this file's mtime at boot.
+TIMESYNC_CLOCK_FILE = Path("/var/lib/systemd/timesync/clock")
+# A client's time is late by its one-way latency; a smaller difference is not worth a step.
+CLOCK_STEP_TOLERANCE_MS = 100
 _POWER_ACTION_TIMEOUT_SEC = 10
 _SYSTEMD_DBUS_TIMEOUT_SEC = 10
 _SYSTEMD_BUS_NAME = "org.freedesktop.systemd1"
@@ -698,6 +702,49 @@ def get_datetime() -> dict[str, str | None]:
         result["timezone"],
     )
     return result
+
+
+def set_datetime(
+    epoch_ms: int, allow_backward: bool, received_ns: int
+) -> dict[str, Any]:
+    """Step the clock to a client's time when NTP and the direction allow it.
+
+    `received_ns` is `time.monotonic_ns()` at the moment the request arrived. The
+    time spent since then is added to `epoch_ms`, so slow handling does not set
+    the clock late.
+    """
+    synchronized = run_command(
+        ["timedatectl", "show", "-p", "NTPSynchronized", "--value"]
+    ).stdout.strip()
+    target_ns = epoch_ms * 1_000_000 + time.monotonic_ns() - received_ns
+    offset_ms = (target_ns - time.time_ns()) // 1_000_000
+    if synchronized == "yes":
+        outcome = "ntp_synchronized"
+    elif abs(offset_ms) < CLOCK_STEP_TOLERANCE_MS:
+        outcome = "within_tolerance"
+    elif offset_ms < 0 and not allow_backward:
+        outcome = "backward_not_allowed"
+    else:
+        time.clock_settime_ns(time.CLOCK_REALTIME, target_ns)
+        outcome = "stepped"
+        try:
+            fd = os.open(TIMESYNC_CLOCK_FILE, os.O_RDONLY)
+            try:
+                os.utime(fd)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            log.warning(
+                "set_datetime: clock stepped, but %s was not updated: %s",
+                TIMESYNC_CLOCK_FILE,
+                exc,
+            )
+    return {
+        "outcome": outcome,
+        "offset_ms": offset_ms,
+        "epoch_ms": time.time_ns() // 1_000_000,
+    }
 
 
 def get_timezone() -> dict[str, str]:
