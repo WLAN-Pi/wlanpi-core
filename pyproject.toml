@@ -45,6 +45,7 @@ testing = [
     "ruff",
     "mypy",
     "pytest",
+    "httpx2",
     "pytest-asyncio",
     "pytest-cov",
     "genbadge[coverage]",
