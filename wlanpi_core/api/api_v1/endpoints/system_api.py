@@ -1,8 +1,9 @@
 """System information and control endpoints."""
 
 import asyncio
+import time
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Response
 
@@ -10,7 +11,7 @@ from wlanpi_core.api.openapi_docs import (
     RESPONSES_MODE_CONFLICT,
     RESPONSES_TRANSMIT_UNIT,
 )
-from wlanpi_core.core.auth import verify_auth_wrapper
+from wlanpi_core.core.auth import Caller, verify_auth_wrapper
 from wlanpi_core.core.config import settings
 from wlanpi_core.core.logging import get_logger
 from wlanpi_core.core.transmit_gate import require_transmit_for_unit
@@ -275,6 +276,61 @@ async def show_datetime() -> Any:
     except Exception as ex:
         log.error(ex)
         return Response(content="Internal Server Error", status_code=500)
+
+
+@router.post(
+    "/datetime",
+    response_model=system.DateTimeSetResult,
+)
+async def set_datetime(
+    body: system.DateTimeSetRequest,
+    caller: Annotated[Caller, Depends(verify_auth_wrapper)],
+) -> Any:
+    """
+    Set the device clock from the client's time.
+
+    For a device with no RTC and no NTP server in reach. Send your current time
+    as `epoch_ms`. Core decides in this order:
+
+    1. The clock is NTP-synchronized: no change (`ntp_synchronized`).
+    2. Your time and the device time differ by less than 100 ms: no change
+       (`within_tolerance`).
+    3. Your time is ahead: the clock steps forward (`stepped`).
+    4. Your time is behind: no change (`backward_not_allowed`), unless
+       `allow_backward` is true.
+
+    All four return 200. `offset_ms` reports the difference in every case.
+
+    Core adds the time it spent on the request to `epoch_ms`, so the error is the
+    latency from you to the device. Read your clock immediately before you
+    send. The first request after Core starts can arrive several hundred
+    milliseconds late. When the outcome is `stepped`, send the request again:
+    the second request corrects what is left.
+
+    After a step, Core saves the time to `/var/lib/systemd/timesync/clock`,
+    which the device restarts from after a power cut.
+
+    A backward step of more than about 15 seconds restarts Core's worker within
+    30 seconds: requests fail for a few seconds, and `wlanpi-webui` tokens are
+    revoked. A backward step can also end WebUI sessions, and a token from an
+    earlier boot can then fail with `503 AUTH_CLOCK_NOT_SET`. Send
+    `allow_backward` only when a user asked for the change.
+    """
+    received_ns = time.monotonic_ns()
+    try:
+        result = await asyncio.to_thread(
+            system_service.set_datetime, body.epoch_ms, body.allow_backward, received_ns
+        )
+        log.info(
+            "POST /system/datetime: %s, offset_ms=%d, caller=%s",
+            result["outcome"],
+            result["offset_ms"],
+            getattr(caller, "device_id", caller),
+        )
+        return result
+    except Exception as ex:
+        log.error(ex)
+        return Response(content="Unable to set the clock", status_code=503)
 
 
 @router.get(

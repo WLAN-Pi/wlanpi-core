@@ -87,6 +87,7 @@ _UNGATED_ROUTES = (
     ("POST", "/api/v1/system/timezone/set"),
     ("POST", "/api/v1/system/timezone/auto"),
     ("POST", "/api/v1/system/ntp"),
+    ("POST", "/api/v1/system/datetime"),
     ("POST", "/api/v1/system/journal"),
     ("POST", "/api/v1/utils/blinker/stop"),
 )

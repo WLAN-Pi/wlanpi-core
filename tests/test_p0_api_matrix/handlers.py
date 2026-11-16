@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from tests.conftest import (
     JOSH_THREE_RADIO,
@@ -1272,6 +1272,38 @@ def handle_system_journal_set_failure_503(client, auth_headers, scenario):
     assert response.text == "Unable to set journal storage"
 
 
+_DATETIME_SET = {"outcome": "stepped", "offset_ms": 86400123, "epoch_ms": 1794861724004}
+
+
+def handle_system_datetime_set(client, auth_headers, scenario):
+    with patch(
+        f"{_SYSTEM_SERVICE}.set_datetime", return_value=_DATETIME_SET
+    ) as set_datetime:
+        response = client.post(
+            "/api/v1/system/datetime", json={"epoch_ms": 1794861724000}
+        )
+    _expect_status(response, scenario.expected_http)
+    set_datetime.assert_called_once_with(1794861724000, False, ANY)
+    assert response.json() == _DATETIME_SET
+
+
+def handle_system_datetime_set_invalid_422(client, auth_headers, scenario):
+    with patch(f"{_SYSTEM_SERVICE}.set_datetime") as set_datetime:
+        response = client.post("/api/v1/system/datetime", json={"epoch_ms": 1794861724})
+    _expect_status(response, scenario.expected_http)
+    set_datetime.assert_not_called()
+
+
+def handle_system_datetime_set_failure_503(client, auth_headers, scenario):
+    error = RunCommandError("Failed to query server", 1)
+    with patch(f"{_SYSTEM_SERVICE}.set_datetime", side_effect=error):
+        response = client.post(
+            "/api/v1/system/datetime", json={"epoch_ms": 1794861724000}
+        )
+    _expect_status(response, scenario.expected_http)
+    assert response.text == "Unable to set the clock"
+
+
 def handle_wlan_link(client, auth_headers, scenario):
     payload = {
         "interface": "wlan0",
@@ -1358,6 +1390,9 @@ HANDLERS.update(
         "system_journal_set_invalid_422": handle_system_journal_set_invalid_422,
         "system_journal_set_override_409": handle_system_journal_set_override_409,
         "system_journal_set_failure_503": handle_system_journal_set_failure_503,
+        "system_datetime_set": handle_system_datetime_set,
+        "system_datetime_set_invalid_422": handle_system_datetime_set_invalid_422,
+        "system_datetime_set_failure_503": handle_system_datetime_set_failure_503,
         "wlan_link": handle_wlan_link,
     }
 )

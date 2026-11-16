@@ -227,6 +227,7 @@ Core does **not** implement: menu JSON, `UiSession`, job freshness cache, adapte
 |----------|---------------|
 | `GET /system/battery` | Platform-specific read |
 | `GET /system/datetime` | `date` / timedatectl |
+| `POST /system/datetime` | `clock_settime`, then saves `/var/lib/systemd/timesync/clock` |
 | `GET /system/timezone` | `wlanpi-timezone` or `/etc/timezone` |
 | `GET /system/timezone/list` | `timedatectl list-timezones` or script |
 | `POST /system/timezone/set` | `wlanpi-timezone` |
