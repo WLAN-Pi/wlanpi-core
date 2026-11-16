@@ -45,7 +45,7 @@ The Flag rules below name changes that meet this bar.
 - Keep live response shapes stable. A removed route returns 410 with `error: ENDPOINT_DEPRECATED` and a `replacement`, stays tagged `deprecated`, and is listed in `docs/API-DEPRECATED-ENDPOINTS.md`. Flag a silent removal or a shape change with no docs note.
 - A docstring or schema change that alters the OpenAPI document must regenerate `docs/openapi.json` with `tox -e openapi` (deps from `requirements.txt`, not a loose venv). Flag a hand edit of that file, or a schema or docstring change that leaves it stale. Placeholders such as `<jwt>` in descriptions must sit inside backticks.
 - The rate limit is per client (`slowapi`, default `90/minute` in `wlanpi_core/app.py`). Flag a global limiter that lets one busy client 429 the WebUI and other local callers.
-- Reuse `wlanpi_core/services/`, `schemas/`, `models/`, and `utils/` before adding a helper. Flag a one-caller wrapper or a new dependency when `httpx`, `requests`, `aiosqlite`, `psutil`, or `sqlalchemy` already covers the job.
+- Reuse `wlanpi_core/services/`, `schemas/`, `models/`, and `utils/` before adding a helper. Flag a one-caller wrapper or a new dependency when `requests`, `aiosqlite`, `psutil`, or `sqlalchemy` already covers the job.
 
 ## Database and Alembic
 

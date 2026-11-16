@@ -16,7 +16,6 @@ updates:
       interval: "weekly"
     allow:
       - dependency-name: fastapi
-      - dependency-name: httpx
       - dependency-name: Jinja2
       - dependency-name: aiofiles
       - dependency-name: gunicorn
