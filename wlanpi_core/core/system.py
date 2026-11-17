@@ -72,7 +72,7 @@ class SystemManager:
         output = self._run([IW_FILE, "dev", name, "info"], capture_output=True)
         if output:
             for line in output.splitlines():
-                if "wiphy" in line:
+                if line.strip().startswith("wiphy "):
                     return "".join(filter(str.isdigit, line))
         return None
 
@@ -107,7 +107,7 @@ class SystemManager:
         for line in output.splitlines():
             if line.strip().startswith("Interface"):
                 current_iface = line.strip().split()[1]
-            elif "type" in line and current_iface:
+            elif line.strip().startswith("type ") and current_iface:
                 iface_type = line.strip().split()[1]
                 if current_iface not in self.exclusions:
                     interfaces[current_iface] = iface_type
@@ -147,21 +147,27 @@ class SystemManager:
     def sync_monitor_interfaces(self) -> None:
         """Sync monitor interfaces with their managed counterparts."""
         interfaces = self._get_interfaces_by_type()
-        managed: dict[str, str] = {}
-        for name, typ in interfaces.items():
-            if typ == "managed":
-                index = self._get_wiphy_index(name)
-                if index is not None:
-                    managed[name] = index
-        monitor: dict[str, str] = {}
-        for name, typ in interfaces.items():
-            if typ == "monitor":
-                index = self._get_wiphy_index(name)
-                if index is not None:
-                    monitor[name] = index
+        phys: dict[str, str] = {}
+        for name in interfaces:
+            index = self._get_wiphy_index(name)
+            if index is not None:
+                phys[name] = index
+        managed = {n: i for n, i in phys.items() if interfaces[n] == "managed"}
+        monitor = {n: i for n, i in phys.items() if interfaces[n] == "monitor"}
+        # A radio in AP or monitor mode still holds its phy (#467).
+        in_use = {
+            i
+            for n, i in phys.items()
+            if n not in monitor or not self._is_core_monitor(n)
+        }
 
+        all_phys_known = len(phys) == len(interfaces)
         for mon_name, mon_index in monitor.items():
-            if self._is_core_monitor(mon_name) and mon_index not in managed.values():
+            if (
+                all_phys_known
+                and self._is_core_monitor(mon_name)
+                and mon_index not in in_use
+            ):
                 log.info(f"Deleting unused monitor interface: {mon_name}")
                 self._run([IW_FILE, "dev", mon_name, "del"], suppress_output=True)
 
