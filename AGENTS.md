@@ -159,8 +159,9 @@ Reuse first, write second:
   reads over dumping whole files. Run the real gates once, not ad-hoc
   exploratory commands.
 - Stop and ask the human before: creating a new top-level module or router
-  file, or when scope is ambiguous. Don't spend 20 tool calls on a decision a
-  human answers in one message.
+  file, or when the request could mean two changes with different API or
+  device behavior. Don't spend 20 tool calls on a decision a human answers
+  in one message.
 - Verify before committing: run the gates in "Tooling and gates"
   (`tox -e lint && tox -e formatcheck && tox`).
 
